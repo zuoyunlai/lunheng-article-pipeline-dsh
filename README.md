@@ -40,6 +40,16 @@ npm login     # 首次需登录
 npm publish   # 或 npm publish --access public
 ```
 
+## 文档
+
+- `docs/installation.md` — 安装与验证
+- `docs/usage.md` — 使用流程（五阶段 + 产物结构）
+- `docs/architecture.md` — 架构（7 角色 + 三角验证 + G0-G11 审计）
+- `docs/introduction.md` — 插件介绍
+- `docs/faq.md` — 常见问题
+- `CHANGELOG.md` — 版本历史
+- `CONTRIBUTING.md` — 维护与同步指南
+
 ## 许可
 
 MIT，见 `LICENSE`。
