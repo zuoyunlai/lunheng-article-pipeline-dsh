@@ -100,6 +100,8 @@ dsh plugin --profile web add lunheng-article-pipeline
 
 安装后，新会话的 `skill` 工具目录会出现 `lunheng-article-pipeline`。使用时直接说「加载 lunheng-article-pipeline 技能」或交给它一个深度文章主题即可，它会先走 Phase 0 定题确认。
 
+> **安装注意**：① 目标机器需有 pnpm（`dsh plugin` 内部转 pnpm）；② `dsh plugin add` 只装包、**不会**自动把 bundle 加进 `dsh.profile.bundles`——第 2 步必须手动做；③ 用 `dshmarket` 市场的用户会看到「校验失败」误报（它只认 JS 入口，不认 `dsh.bundle.patch`），不影响实际使用。
+
 ---
 
 ## 实战验证
