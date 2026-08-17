@@ -1,0 +1,26 @@
+{
+  "name": "lunheng-article-pipeline",
+  "version": "2.1.8-dsh.1",
+  "description": "论衡（lunheng-article-pipeline）— 多 Agent 深度长文流水线技能包（DeepSeek Harness 适配版）：定题→并行检索→分析→大纲人在环确认→写作→审计→修订→配图→终检交付，7 角色 + 5 阶段，用 dsh subagent 子代理编排。",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "skill",
+    "bundle",
+    "article-pipeline",
+    "agent",
+    "论文流水线"
+  ],
+  "license": "MIT",
+  "files": [
+    "skills",
+    "cordis.patch.yml",
+    "LICENSE",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
