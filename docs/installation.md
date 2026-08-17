@@ -15,6 +15,15 @@ dsh plugin --profile web add lunheng-article-pipeline
 
 安装后技能自动出现在会话的 `skill` 工具目录，无需手动复制到技能根。
 
+## 安装前提与注意事项
+
+1. **需要 pnpm**：`dsh plugin add` 内部转 pnpm，目标机器需有 pnpm；没有则先：
+   ```sh
+   corepack enable && corepack prepare pnpm@latest --activate
+   ```
+2. **`dsh plugin add` 不会自动加 bundles 清单**：它只把包装进 node_modules 并写进 `dependencies`，第 2 步（手动加 `dsh.profile.bundles`）是必须的——漏掉会导致 bundle 不生效。
+3. **dshmarket 市场会显示「校验失败」误报**：它只认 JS 入口（`main`/`exports`/`index.js`），不认 `dsh.bundle.patch`，会把论衡误标「入口产物缺失」。**实际安装与使用不受影响**（见 `docs/faq.md`）。
+
 ## 验证
 
 ```sh
