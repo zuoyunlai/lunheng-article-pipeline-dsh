@@ -24,7 +24,7 @@ Phase 5/T7 终检  → 通读全文 → final/定稿.md + 证据包/ + 交付说
 ## 关键规则
 - **派发话术**：直接从 `references/pipeline-readme.md` 复制，改项目名即可
 - **每个项目一个目录**：`run/<项目名>/`，产物路径见任务简报
-- **模型分配（DSH：仅供参考）**：`subagent` 默认继承会话模型，路由由 DSH `settings.yaml` 决定；建议检索用便宜的（deepseek-v4-flash），审计用顶配（minimax-m3 / claude-opus-5）
+- **模型分配（DSH：分档预设可选）**：`subagent` 默认继承会话模型，路由由 DSH `settings.yaml` 决定。要按角色分模型，装「分档预设」（三档工具 `subagent_retrieval`/`subagent_strong`/`subagent_audit`，模型经 `LUNHENG_*_MODEL` 覆盖，默认检索 `deepseek-v4-flash`、分析写作/审计 `deepseek-v4-pro`）；未挂载对应工具时回退 `subagent`
 - **子代理产出必须交交接报告**：六要素缺一不可（做了什么/产物在哪/怎么验证/已知问题/下一步 + status.md 更新），长时间无产出则主控用 `list_agents` 查看并介入
 - **执行约定（DSH 精简版）**：状态机 + 交接报告六要素 + G8 自检（无需心跳/分阶段 ack/预检/硬卡）
 - **项目进展记入** `memory/YYYY-MM-DD.md` 和 `memory/projects.md`

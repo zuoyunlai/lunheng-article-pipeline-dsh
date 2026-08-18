@@ -41,6 +41,32 @@ dsh --profile headless-lunheng-test "请调用 skill 工具列出你可见的技
 # 预期输出包含：lunheng-article-pipeline
 ```
 
+## 分档预设（按角色分模型，可选）
+
+默认所有角色继承会话模型。若要按角色指派不同模型，安装随包附带的「分档预设」：
+
+| 工具 | 角色 | 默认模型 | 环境变量 |
+|---|---|---|---|
+| `subagent_retrieval` | T1 文献 / T2 数据 / T6 案例 | `deepseek-v4-flash` | `LUNHENG_RETRIEVAL_MODEL` |
+| `subagent_strong` | T3 分析 / T4 写作 | `deepseek-v4-pro` | `LUNHENG_STRONG_MODEL` |
+| `subagent_audit` | T5 审计 | `deepseek-v4-pro` | `LUNHENG_AUDIT_MODEL` |
+
+```sh
+# 1) 复制预设到用户预设根（Windows 用 copy / xcopy 同理）
+cp -r examples/preset "$DSH_HOME/.agent-presets/lunheng"
+
+# 2) 新会话在预设选择器里选「论衡分档」
+
+# 3) 换模型：设环境变量后重启 dsh（模型挂载期求值一次，改完必须重启）
+export LUNHENG_AUDIT_MODEL=claude-opus-5
+dsh web
+```
+
+- 不装预设：技能回退到 `subagent`，所有角色继承会话模型（对多数场景够用）。
+- 模型在挂载期用 `!!js` 求值一次，改环境变量后**必须重启 dsh** 才生效。
+- 若某档未设环境变量，用上表默认值。
+- 完整说明见 `examples/preset/README.md`。
+
 ## 使用
 
 新开会话后，说「加载 lunheng-article-pipeline 技能」，或直接交给它一个深度文章主题。它会先走 Phase 0 定题确认（人在环），确认后自动推进三线并行检索 → 分析 → 写作 → 审计 → 终检。

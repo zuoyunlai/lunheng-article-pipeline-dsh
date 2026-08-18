@@ -26,6 +26,29 @@ dsh plugin --profile web add lunheng-article-pipeline
 - `skills/lunheng-article-pipeline/` — 技能本体（`SKILL.md` + `AGENTS.md` + `SOUL.md` + `references/`：7 张角色卡 + 4 个模板 + 运行手册）
 - `cordis.patch.yml` — bundle 补丁：注册指向包内 `skills/` 的 filesystem 技能提供者
 
+## 按角色分模型（可选）
+
+默认所有角色继承会话模型。若要**按角色指派不同模型**（检索用便宜快模型，分析/写作/审计用强模型），用随包附带的「分档预设」：
+
+| 工具 | 角色 | 默认模型 | 环境变量 |
+|---|---|---|---|
+| `subagent_retrieval` | T1 文献 / T2 数据 / T6 案例 | `deepseek-v4-flash` | `LUNHENG_RETRIEVAL_MODEL` |
+| `subagent_strong` | T3 分析 / T4 写作 | `deepseek-v4-pro` | `LUNHENG_STRONG_MODEL` |
+| `subagent_audit` | T5 审计 | `deepseek-v4-pro` | `LUNHENG_AUDIT_MODEL` |
+
+```sh
+# 1) 复制预设到用户预设根
+cp -r examples/preset "$DSH_HOME/.agent-presets/lunheng"
+
+# 2) 新会话在预设选择器里选「论衡分档」
+
+# 3) 换模型：设环境变量后重启 dsh（模型挂载期求值一次）
+export LUNHENG_AUDIT_MODEL=claude-opus-5
+dsh web
+```
+
+不装预设也没关系——技能会回退到 `subagent`，所有角色继承会话模型。详见 `examples/preset/README.md` 与 `docs/installation.md`。
+
 ## 验证
 
 ```sh

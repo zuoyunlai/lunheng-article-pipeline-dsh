@@ -192,6 +192,16 @@ dsh plugin --profile web add lunheng-article-pipeline
 
 DSH 的模型路由由 `settings.yaml` 配置决定，`subagent` 默认继承会话模型。本技能内的「成本与模型建议」表只作能力分层参考，不构成硬性配置（详见 `references/pipeline-readme.md`）。
 
+要**按角色分模型**，装本包的「分档预设」`examples/preset/`（复制到 `$DSH_HOME/.agent-presets/lunheng/`，新会话选「论衡分档」），主控会改用三档工具按角色分派：
+
+| 工具 | 角色 | 默认模型 | 环境变量 |
+|---|---|---|---|
+| `subagent_retrieval` | T1 文献 / T2 数据 / T6 案例 | `deepseek-v4-flash` | `LUNHENG_RETRIEVAL_MODEL` |
+| `subagent_strong` | T3 分析 / T4 写作 | `deepseek-v4-pro` | `LUNHENG_STRONG_MODEL` |
+| `subagent_audit` | T5 审计 | `deepseek-v4-pro` | `LUNHENG_AUDIT_MODEL` |
+
+模型挂载期求值一次，改环境变量后须重启 dsh；未挂载对应工具时自动回退 `subagent`。
+
 ---
 
 ## 实战验证

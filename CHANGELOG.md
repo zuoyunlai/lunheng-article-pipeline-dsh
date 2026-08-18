@@ -2,6 +2,12 @@
 
 本文件记录 DSH bundle（`lunheng-article-pipeline`）的版本历史。DSH 版与 OpenClaw 原版分离维护，版本号以 `-dsh.N` 标记第 N 次 DSH 适配。
 
+## 未发布（2.1.8-dsh.2 候选）
+
+- 新增「分档预设」`examples/preset/`：三档 subagent 工具按角色分模型（`subagent_retrieval`/`subagent_strong`/`subagent_audit`），模型经 `LUNHENG_*_MODEL` 环境变量覆盖，默认检索档 `deepseek-v4-flash`、分析写作档/审计档 `deepseek-v4-pro`
+- 技能内「成本与模型建议」与派发话术同步标注分档工具，未挂载时回退 `subagent`
+- 执行韧化协议精简为「执行约定（DSH 精简版）」：保留状态机 + 交接报告六要素 + G8 自检 + 超时介入（`list_agents`），移除心跳/ack/预检/8 分钟硬卡
+
 ## 2.1.8-dsh.1（2026-08-17）
 
 - 首个 DSH bundle 发布（npm + GitHub）
