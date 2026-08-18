@@ -142,6 +142,8 @@ run/<项目名>/
 
 ## 派发话术（主控复制即用，完整版见 references/agents/）
 
+> **分档派发**：若装了「论衡分档」预设，检索角色（T1/T2/T6）用 `subagent_retrieval`、分析写作（T3/T4）用 `subagent_strong`、审计（T5）用 `subagent_audit` 派发；未装则统一用 `subagent`。
+
 ### T1 文献检索员（并行①）
 ```
 你是「文献检索员」。任务编号 T1。
@@ -286,13 +288,23 @@ run/<项目名>/
 
 ## 成本与模型建议（模型可自由更换）
 
-> 下表模型名为示例，非锁定。DSH 的模型路由由 `settings.yaml` 配置决定，`subagent` 默认继承会话模型；更换途径见 DSH 设置（Web UI Models 页）或 `references/pipeline-readme.md` 的「模型配置与更换指南」。
+> DSH 下 `subagent` 默认继承会话模型（由 `settings.yaml` 决定）。若要**按角色分模型**，用「论衡分档」预设（`examples/preset/`，把其 `agent.cordis.yml`+`preset.yml` 复制到 `$DSH_HOME/.agent-presets/lunheng/`），它挂载三档 subagent 工具：
+
+| 档位 | 工具 | 角色 | 默认模型 | 环境变量 |
+|------|------|------|---------|---------|
+| 检索 | `subagent_retrieval` | T1 文献 / T2 数据 / T6 案例 | deepseek-v4-flash | `LUNHENG_RETRIEVAL_MODEL` |
+| 分析写作 | `subagent_strong` | T3 分析 / T4 写作 | deepseek-v4-pro | `LUNHENG_STRONG_MODEL` |
+| 审计 | `subagent_audit` | T5 审计 | deepseek-v4-pro | `LUNHENG_AUDIT_MODEL` |
+
+派发时**优先用对应档位的工具**（若这些工具不存在，则回退到普通 `subagent`）。模型在挂载期求值一次，改环境变量后需重启 dsh。
+
+> 未装「论衡分档」预设时，所有角色统一用会话模型；下表仅作能力分层参考：
 
 | 角色 | 模型建议（示例） | 理由 |
 |------|------|------|
 | 文献/数据/案例检索 | 便宜快模型（如 deepseek-v4-flash） | 机械检索，最便宜可靠 |
 | 分析/写作 | 推理强模型（如 deepseek-v4-pro / minimax-m3） | 推理与成文质量 |
-| 审计 | 顶配模型（如 minimax-m3 / claude） | 专抓错，必须顶配 |
+| 审计 | 顶配模型（如 deepseek-v4-pro / claude） | 专抓错，必须顶配 |
 | 主控 | 强推理模型（如 deepseek-v4-pro） | 判断与终检 |
 
 ## 角色卡与模板（完整版）

@@ -77,6 +77,8 @@ Phase 5 终检      主控终检 → final/定稿.md + 图件/（如有）+ 证�
 
 ## 派发话术（主控复制即用）
 
+> **分档派发**：装了「论衡分档」预设时，检索角色（T1/T2/T6）用 `subagent_retrieval`、分析写作（T3/T4）用 `subagent_strong`、审计（T5）用 `subagent_audit`；未装则统一用 `subagent`。
+
 ### 文献检索员（并行①）
 
 ```
@@ -223,13 +225,23 @@ Phase 5 终检      主控终检 → final/定稿.md + 图件/（如有）+ 证�
 
 ## 成本与模型建议（DSH：仅供参考）
 
-DSH 的模型路由由 `settings.yaml` 配置决定，`subagent` 默认继承会话模型。下表只作**能力分层**参考，不构成硬性配置：
+DSH 下 `subagent` 默认继承会话模型。若要**按角色分模型**，用「论衡分档」预设（见仓库 `examples/preset/`），三档工具 + 环境变量：
+
+| 档位 | 工具 | 角色 | 默认模型 | 环境变量 |
+|------|------|------|---------|---------|
+| 检索 | `subagent_retrieval` | T1/T2/T6 | deepseek-v4-flash | `LUNHENG_RETRIEVAL_MODEL` |
+| 分析写作 | `subagent_strong` | T3/T4 | deepseek-v4-pro | `LUNHENG_STRONG_MODEL` |
+| 审计 | `subagent_audit` | T5 | deepseek-v4-pro | `LUNHENG_AUDIT_MODEL` |
+
+派发时优先用对应档位工具（不存在则回退 `subagent`）。模型挂载期求值一次，改环境变量需重启 dsh。
+
+未装该预设时，下表仅作能力分层参考：
 
 | 角色 | 模型建议 | 理由 |
 |------|------|------|
 | 文献/数据/案例检索 | deepseek-v4-flash | 机械检索，最便宜可靠 |
 | 分析/写作 | deepseek-v4-pro 或 minimax-m3 | 推理与成文质量 |
-| 审计 | minimax-m3 / claude-opus-5 | 专抓错，必须顶配 |
+| 审计 | deepseek-v4-pro / claude-opus-5 | 专抓错，必须顶配 |
 | 主控 | deepseek-v4-pro | 判断与终检 |
 
 能力分层原则：检索便宜快 / 分析写作强推理 / 审计顶配 / 主控稳定。
