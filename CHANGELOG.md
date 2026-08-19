@@ -2,6 +2,14 @@
 
 本文件记录 DSH bundle（`lunheng-article-pipeline`）的版本历史。DSH 版与 OpenClaw 原版分离维护，版本号以 `-dsh.N` 标记第 N 次 DSH 适配。
 
+## 2.2.8-dsh.2（2026-08-18）
+
+- **深入质量审计修复**（workflow 5 组并行 × 36 文件 × 6 维度，~130 处问题）：
+  - **去除 DSH 用不上的 OpenClaw 残留**：删除 `m_exist_1_diff.sh`；fallback 链 / `include_domains` / `session-kill` / 15 项白名单 / `fc-list`/`ls -la`/`sha256sum` 等 bash 命令改 DSH 等价；`/tmp` 路径适配 Windows
+  - **修复 8 处 SOUL.md 坏引用**（正典已删）→ `failure-modes.md` / 设计文档；README/scripts/lessons.md/workspace-paperwriter 等无效引用修正
+  - **统一口径**：M 门 6+3+2、M-Gate-Report-v2.2.4.json、T6 任何量级必 spawn、T8 可跳过、G0-G13、终检必查 13 项、交接报告六要素（5 卡补齐）
+  - **版本升级自审门 DSH 化**（门 C/D/E 改为仓库/活动副本/npm 路径）
+
 ## 2.2.8-dsh.1（2026-08-18）
 
 - **同步 OpenClaw 正典 v2.2.8 全量升级**（41 文件重构基线）：
