@@ -30,6 +30,7 @@ OpenClaw 时代论衡的 15 项工具白名单不含 `exec`，M 门 shell 脚本
 
 **主控 T7 终检前必须**：
 
+0. ✅ **确认引用模式**：先读 `01-任务简报.md` 的「引用模式」字段——**内联（机构，年份）**（公众号/商业评论）走 v2.2.4 内联分支（可回溯性检查，不强制编号>0）；**编号 [Lxx]/[Dxx]**（期刊/学术）走标准分支。模式决定 M-Form-1/M-Exist-1 的算法。
 1. ✅ **读取本规约全文**（用 `read` 工具读 `M-Gate-Algorithm.md`，**不再需要读 4 个历史版本**）
 2. ✅ **读取 final/定稿.md + final/证据包/所有文件**（用 `read` 工具）
 3. ✅ **依次执行 M-Form 6 项 + M-Exist 3 项 + M-Integrity 2 项**（按本规约伪代码推理，含 v2.2.1.2/v2.2.4 升级算法）
@@ -245,7 +246,7 @@ return (len(leaked) == 0 and len(orphan) == 0, leaked, orphan)
 4. 写入 final/交付说明.md 的「证据包指纹」段
 5. 判定：所有文件都能计算 sha256（非空）→ 通过；否则 → 失败
 
-注意：LLM 实际无法直接计算 sha256 哈希（需要 binary 计算），但可以验证文件非空 + 列文件名 + 大小 + 修改时间 + 标 "sha256 待主控 host shell 计算" 占位。
+注意：LLM 实际无法直接计算 sha256 哈希（需要 binary 计算），但可以验证文件非空 + 列文件名 + 大小 + 修改时间 + 标 "sha256 待主控 host shell 计算" 占位。**主控收尾时调用宿主 shell 计算并回填**：Linux/macOS 用 `sha256sum final/证据包/*.md`；Windows 用 PowerShell `Get-FileHash final\证据包\*.md -Algorithm SHA256`（M-Exist-2 输出「文件清单 + 大小 + sha256(待补→回填)」）。
 ```
 
 ### M-Exist-3: 数据信任级别一致性 diff（v2.2.1.2 双格式升级版，教训 #84）
@@ -294,23 +295,25 @@ return (all_pass, leaked, orphan, missing_trust)
 
 ### M-Integrity-1: T2.5 完整性门（T2 数据检索 → T3 分析前，v2.2.1 新增）
 
+> **时序说明（v2.2.8-dsh.3 修正）**：T2.5 在 **T2 → T3 之间**执行，此时分析大纲尚未产出——**不能以大纲为数据需求的基准**。数据需求基准改为任务简报的「数据需求声明」字段（Phase 0 填写：需要哪几类/哪些口径的数据）。
+
 ```
 算法步骤（主控 LLM 兜底执行）：
 1. 检查数据卡文件存在：ls final/证据包/数据卡.md → 必须存在
 2. 提取数据条目数：grep -c '^\[D[0-9]+\]' final/证据包/数据卡.md
-3. 提取大纲 D 列需求数：grep -oE '\[D[0-9]+\]' analysis/分析大纲.md | sort -u | wc -l
-4. 数据条目数 >= 大纲 D 需求数 → 数据完整 → 通过；否则 → 触发 T2 重检索
+3. 读取任务简报「数据需求声明」的需求类别数（T2.5 在大纲前，不能用大纲做基准）
+4. 数据条目数 >= 简报数据需求类别数，且每条「与本文的关联」可对应到需求类别 → 数据完整 → 通过；否则 → 触发 T2 重检索或主控补数据
 5. 信任级别完整性：M-Form-6 exit 0 → 通过；否则 → 触发 T2 补标注
 6. 信任级别一致性：M-Exist-3 exit 0 → 通过；否则 → 触发 T2 补数据卡
-7. 数据卡 sha256 指纹：写入 final/交付说明.md「证据包指纹」段（M-Exist-2 复用）
+7. 数据卡 sha256 指纹：写入 final/交付说明.md「证据包指纹」段（M-Exist-2 复用；Windows 用 `Get-FileHash -Algorithm SHA256`）
 8. 主人签字 Phase 1：任务简报有 4 选 1 选项确认
 9. 判定：8 项全通过 → T2.5 ✅ 派发 T3；任一失败 → T2.5 ❌ 不派发 T3
 
 伪代码：
 data_card = 'final/证据包/数据卡.md'
 data_count = count_d_entries(data_card)
-outline_count = count_d_in_outline('analysis/分析大纲.md')
-data_ok = data_count >= outline_count
+need_count = count_data_needs('01-任务简报.md')   # 简报「数据需求声明」类别数
+data_ok = data_count >= need_count and all_entries_mapped_to_needs(data_card, need_list)
 trust_form_ok = check_M_Form_6(data_card)
 trust_exist_ok = check_M_Exist_3(data_card, 'final/定稿.md')
 sha256_ok = write_evidence_sha256(data_card)

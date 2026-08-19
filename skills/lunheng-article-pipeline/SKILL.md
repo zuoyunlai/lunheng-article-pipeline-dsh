@@ -1,6 +1,6 @@
 ---
 name: "lunheng-article-pipeline"
-version: "2.2.8-dsh.2"
+version: "2.2.8-dsh.3"
 description: "多 Agent 深度长文流水线（DSH 适配版，对应 OpenClaw 正典 v2.2.8）：8 角色协作（T0 主控 + T1-T2-T6 三检索员并行 + T3 分析 + T4 写作 + T5 审计 + T8 批判伙伴），5 阶段，用 DSH subagent 子代理编排，产出三角验证证据底座 [Lxx]+[Dxx]+[Cxx]、独立审计（G0-G13）、4 个人在环节点。完整变更历史见原仓库 git log。"
 metadata:
   note: "DSH 不识别技能级工具白名单——工具集由 Agent 预设（组合文件）决定；原 OpenClaw 的 metadata.requires/tools 段已移除，工具映射见正文「DSH 适配说明」章节。"
@@ -76,6 +76,8 @@ metadata:
 **触发关键词**：深度长文 / 学术论文 / 商业评论 / 行业分析 / 研究文章 / 系统论证 / 严谨论证 / 评论文章 / 调研报告
 
 **对字数分层的理解**：流水线本身有固定成本（三方并行 + 8 角色 + 4 个人在环节点 + 2 道阶段闸门），字数太少投入产出比低；但 2000 字以下不是「不能用」，是「不划算」。主人按需选。
+
+**💡 分档预设推荐（v2.2.8-dsh.3 新增，实跑建议）**：跑**全量长文（≥3000 字）或检索量大**的项目时，优先用「论衡分档」会话预设——检索角色（T1/T2/T6）走 `subagent_retrieval`（默认 `deepseek-v4-flash`，便宜快），分析/写作/批判走 `subagent_strong`，审计走 `subagent_audit`；未装预设则所有角色继承会话模型（轻量档够用）。装法见包内 `examples/preset/README.md`。
 
 ## 边界与轻量化建议（v2.2.7 软化「不适用场景」段）
 
