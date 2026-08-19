@@ -6,7 +6,7 @@
 
 - **数据图表**：程序化生成（matplotlib/SVG 脚本），**禁止文生图**（数字不可控）。图位来自写手标注的 [图N]，图上数字必须来自数据卡，与正文 [Dxx]/案例卡 [Cxx] 一致，生成后抽查核对
 - **封面视觉（DSH 无内置文生图）**：降级为 **SVG 矢量风（程序化，本地，无外发）或主人投喂图片**，prompt 严格遵循主人「极简自然」调性 + 主题关键词 + 文字排版位置预留。**生成前需主人首次确认（v2.1.1 新增）**；出图先送主人确认风格再定稿。如需外部文生图，可另配图像生成 MCP 工具
-- **中文字体**：matplotlib 需显式注册 Noto Sans CJK SC，否则中文乱码
+- **中文字体**：matplotlib 需显式注册已装中文字体（先查系统字体：Linux `fc-list :lang=zh`，Windows 查 `$env:WINDIR\Fonts` 或 InstalledFontCollection；本机常见 Noto Serif SC/微软雅黑/宋体），注册不存在的字体名会导致中文乱码
 - **图件入 final/图件/**，交付说明列清单；数值标签与来源注释避免同侧重叠（来源统一放底部）
 - **案例示意图**（可选）：复杂事件链可用 SVG 画时间线/关系图，不画文生图
 
@@ -34,8 +34,6 @@
 | 审计 | 顶配模型（如 minimax-m3 / claude） | 专抓错，必须顶配 |
 | 主控 | 强推理模型（如 deepseek-v4-pro） | 判断与终检 |
 
-**v2.2.8 论衡模型 fallback 链（实测有效）**：
-- primary: `deepseek/deepseek-v4-pro`
-- fallback 1: `minimax-portal/MiniMax-M3`
-- fallback 2: `deepseek/deepseek-v4-flash`
-- fallback 3: `coding-plan/glm-5.3`（跨供应商最终兜底）
+**模型优先级参考（DSH 无自动 fallback 链）**：
+- DSH 的模型路由由 `settings.yaml` 决定，**无脚本级自动降级**；建议主模型顺序参考：`deepseek-v4-pro` → `minimax-m3` → `deepseek-v4-flash`（按可用性/成本在 settings.yaml 配置）
+- 子代理超时由主控人工介入：`list_agents` 查看 → 中断（`interrupt_agent`）→ 换档重派（分档预设）或继承会话模型重派
