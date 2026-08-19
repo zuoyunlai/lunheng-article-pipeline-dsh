@@ -2,6 +2,18 @@
 
 本文件记录 DSH bundle（`lunheng-article-pipeline`）的版本历史。DSH 版与 OpenClaw 原版分离维护，版本号以 `-dsh.N` 标记第 N 次 DSH 适配。
 
+## 2.2.8-dsh.1（2026-08-18）
+
+- **同步 OpenClaw 正典 v2.2.8 全量升级**（41 文件重构基线）：
+  - **8 角色**：新增 T8 批判伙伴（C1-C5 反方攻击，Phase 3.6，轻量档可跳过）
+  - **审计 G0-G13**（新增 G11 时效告警 / G12 信任级别一致性 / G13 AI 使用披露）+ **M 门**（M-Form 6 + M-Exist 3 + M-Integrity 2，LLM 兜底执行，零 exec 依赖）
+  - **T2.5 / T5.5 阶段闸门**（主控 checkpoint）+ 修订回环 ≤2 轮硬约束 + Acknowledged Limitations 模式
+  - **字数分层**（≥5000 全量 / 3000-5000 标准 / 2000-3000 轻量跳 T8 / <2000 简化）
+  - 文档分层：SKILL.md 瘦身，机制详情进 `references/`（设计文档 / deliverables / operations / case-studies / `_shared/`）
+  - 模板拆分为 7 个（新增文献卡 / 数据卡 / 先行者清单模板）
+- **DSH 适配**：8 张角色卡全部 DSH 化（执行约定精简版：状态机 + 交接报告六要素 + G8 自检 + 超时介入 `list_agents`，移除心跳/ack/预检/8 分钟硬卡）；工具映射 subagent/web_search/todo_write/list_agents/SVG 降级；分档预设新增 T8 归 strong 档
+- **删除**：SOUL.md（正典 v2.2.8 已移除，内容并入 SKILL.md）
+
 ## 2.1.8-dsh.3（2026-08-18）
 
 - npm 包补入 `docs/` 与 `examples/`（分档预设随包发布；2.1.8-dsh.2 漏配 `files` 清单，tarball 未含此二者）

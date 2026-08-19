@@ -2,9 +2,9 @@
 
 多 Agent 深度长文流水线技能包，**DeepSeek Harness（dsh）bundle 插件版**。
 
-把一篇深度文章/论文的生产拆成 **7 个角色 + 5 个阶段**（Phase 1 为 T1 文献∥T2 数据∥T6 案例 三检索员**三方真并行、互不干涉**，T6 **任何量级必 spawn** 含 0 条场景空卡协议），用 dsh `subagent` 子代理编排，产出有**证据底座、反方论证、独立审计、人工核验节点**的交付物。
+把一篇深度文章/论文的生产拆成 **8 个角色 + 5 个阶段**（Phase 1 为 T1 文献∥T2 数据∥T6 案例 三检索员**三方真并行、互不干涉**，T6 **任何量级必 spawn** 含 0 条场景空卡协议；T8 批判伙伴从反方攻击论证；G0-G13 独立审计 + M 门机械化终检），用 dsh `subagent` 子代理编排，产出有**证据底座、反方论证、独立审计、人工核验节点**的交付物。
 
-> 版本：v2.1.8-dsh.1（DSH 适配版，对应正典 v2.1.8）。
+> 版本：v2.2.8-dsh.1（DSH 适配版，对应正典 v2.2.8）。
 
 ## 安装（在目标机器上）
 
@@ -23,7 +23,7 @@ dsh plugin --profile web add lunheng-article-pipeline
 
 ## 内容
 
-- `skills/lunheng-article-pipeline/` — 技能本体（`SKILL.md` + `AGENTS.md` + `SOUL.md` + `references/`：7 张角色卡 + 4 个模板 + 运行手册）
+- `skills/lunheng-article-pipeline/` — 技能本体（`SKILL.md` + `AGENTS.md` + `references/`：8 张角色卡 + 7 个模板 + `_shared/` 共享机制（M 门/F 模式/韧化协议）+ 运行手册 + 设计文档）
 - `cordis.patch.yml` — bundle 补丁：注册指向包内 `skills/` 的 filesystem 技能提供者
 
 ## 按角色分模型（可选）
@@ -33,7 +33,7 @@ dsh plugin --profile web add lunheng-article-pipeline
 | 工具 | 角色 | 默认模型 | 环境变量 |
 |---|---|---|---|
 | `subagent_retrieval` | T1 文献 / T2 数据 / T6 案例 | `deepseek-v4-flash` | `LUNHENG_RETRIEVAL_MODEL` |
-| `subagent_strong` | T3 分析 / T4 写作 | `deepseek-v4-pro` | `LUNHENG_STRONG_MODEL` |
+| `subagent_strong` | T3 分析 / T4 写作 / T8 批判 | `deepseek-v4-pro` | `LUNHENG_STRONG_MODEL` |
 | `subagent_audit` | T5 审计 | `deepseek-v4-pro` | `LUNHENG_AUDIT_MODEL` |
 
 ```sh
@@ -67,7 +67,7 @@ npm publish   # 或 npm publish --access public
 
 - `docs/installation.md` — 安装与验证
 - `docs/usage.md` — 使用流程（五阶段 + 产物结构）
-- `docs/architecture.md` — 架构（7 角色 + 三角验证 + G0-G11 审计）
+- `docs/architecture.md` — 架构（8 角色 + 三角验证 + G0-G13 审计 + M 门）
 - `docs/introduction.md` — 插件介绍
 - `docs/faq.md` — 常见问题
 - `CHANGELOG.md` — 版本历史

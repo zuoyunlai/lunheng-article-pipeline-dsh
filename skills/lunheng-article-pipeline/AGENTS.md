@@ -1,24 +1,27 @@
 # AGENTS.md — 论文流水线操作手册
 
-> **DSH 适配**：本手册由 OpenClaw 版移植。工具映射（`sessions_spawn`→`subagent`、`tavily_search`→`web_search`、`update_plan`→`todo_write` 等）与结构性差异见 `SKILL.md` 的「🔧 DSH 适配说明」章节。
+> **DSH 适配**：本手册由 OpenClaw 版移植（对应正典 v2.2.8）。工具映射（`sessions_spawn`→`subagent`、`sessions_yield`→等完成通知、`sessions_history/list`→`list_agents`、`tavily_search`→`web_search`、`update_plan`→`todo_write`、`image_generate`→SVG/投喂、`exec`→`pwsh`/`bash`）与结构性差异见 `SKILL.md` 的「🔧 DSH 适配说明」章节。
 
 ## 启动时必读
-1. `SOUL.md` — 我的身份与职责
-2. `references/pipeline-readme.md` — 流水线运行手册（含复制即用的派发话术）
+1. `references/pipeline-readme.md` — 流水线运行手册（含复制即用的派发话术）
+2. `references/设计文档.md` — 设计哲学（数据信任级别 / M 门 / 阶段闸门 / F 失败模式 / T8 批判）
 3. `memory/YYYY-MM-DD.md` — 今日/昨日记录（如有）
 
 ## 流水线协议（摘要，详见 references/pipeline-readme.md）
 
 ```
-Phase 0 定题     → 与主人确认主题/类型/篇幅/引用格式 + cases 需求（含 0 条场景显式声明）+ 外部服务告知 → 写 run/<项目>/01-任务简报.md
+Phase 0 定题     → 与主人确认主题/类型/篇幅/引用格式 + cases 需求（含 0 条场景显式声明）+ 外部服务 4 选 1 同意 → 写 run/<项目>/01-任务简报.md
 Phase 1 并行检索 → spawn T1 文献检索员 ∥ T2 数据检索员 ∥ T6 案例检索员（**任何量级必 spawn**，含 0 条场景空卡协议；subagent 三方真并行互不干涉，等完成通知）
+[🔒 T2.5 完整性门] 数据条目≥大纲 D 列 + 信任级别完整 + 主人签字 Phase 1 → 通过才派 T3
 Phase 2 分析     → spawn T3 分析员 → analysis/分析大纲.md
 Phase 2.5 大纲确认 → 主人过目 → 三角验证 [L]+[D]+[C] 缺角补检索
 Phase 3 写作     → spawn T4 写手 → drafts/初稿-v1.md
+Phase 3.6 批判   → spawn T8 批判伙伴（C1-C5 反方攻击，轻量档 ≤3000 字可跳）→ analysis/批判报告-vN.md
 Phase 3.5 洞察补充 → 主人深度洞察补充（人在环，v2.1.3）→ 写手 v2 融入
-Phase 4 审计     → spawn T5 审计员 → audits/审计报告-vN.md（G0-G11 全项检查）
-                 → 打回修订 ≤2 轮；仍不过 → 升级决策
-Phase 5/T7 终检  → 通读全文 → final/定稿.md + 证据包/ + 交付说明.md
+Phase 4 审计     → spawn T5 审计员 → audits/审计报告-vN.md（G0-G13 全项检查）
+                 → 打回修订 ≤2 轮（必须 spawn 独立写手）；仍不过 → 升级决策 / Acknowledged Limitations 模式
+[🔒 T5.5 完整性门] 审计报告最新版 + P0/P1 清单 + M 门全 exit 0 + 隔离 + 主人签字 Phase 5 → 通过才终检
+Phase 5 终检     → M 门（M-Form 6 项 + M-Exist 3 项 + M-Integrity 2 项，LLM 兜底执行）→ final/定稿.md + 证据包/ + 交付说明.md
 ```
 
 ## 关键规则
@@ -26,7 +29,9 @@ Phase 5/T7 终检  → 通读全文 → final/定稿.md + 证据包/ + 交付说
 - **每个项目一个目录**：`run/<项目名>/`，产物路径见任务简报
 - **模型分配（DSH：分档预设可选）**：`subagent` 默认继承会话模型，路由由 DSH `settings.yaml` 决定。要按角色分模型，装「分档预设」（三档工具 `subagent_retrieval`/`subagent_strong`/`subagent_audit`，模型经 `LUNHENG_*_MODEL` 覆盖，默认检索 `deepseek-v4-flash`、分析写作/审计 `deepseek-v4-pro`）；未挂载对应工具时回退 `subagent`
 - **子代理产出必须交交接报告**：六要素缺一不可（做了什么/产物在哪/怎么验证/已知问题/下一步 + status.md 更新），长时间无产出则主控用 `list_agents` 查看并介入
-- **执行约定（DSH 精简版）**：状态机 + 交接报告六要素 + G8 自检（无需心跳/分阶段 ack/预检/硬卡）
+- **执行约定（DSH 精简版）**：状态机 + 交接报告六要素 + G8 自检（无需心跳/分阶段 ack/预检/8 分钟硬卡；OpenClaw 完整韧化协议见 `references/_shared/执行韧化协议-v2.1.0.md`，仅作参考）
+- **阶段闸门（v2.2.1）**：T2.5（T2→T3）与 T5.5（T5→终检）两道主控 checkpoint，用 `todo_write` + `read` 实现，**不绕过交接直接派发**
+- **M 门（v2.2.0+）**：终检前必读 `references/_shared/M-Gate-Algorithm.md`，按伪代码执行 M-Form/M-Exist/M-Integrity，产出 `final/M-Gate-Report-v2.2.4.json`，exit 0 才返回
 - **项目进展记入** `memory/YYYY-MM-DD.md` 和 `memory/projects.md`
 
 ## 文件修改操作约束（v2.1.4 F5 补完，教训 #48）
