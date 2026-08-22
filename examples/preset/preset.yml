@@ -1,2 +1,2 @@
 name: 论衡分档
-description: 论衡（lunheng-article-pipeline）专用预设：三档 subagent 工具按角色分模型（检索/分析写作/审计），模型经 LUNHENG_*_MODEL 环境变量覆盖。
+description: 论衡（lunheng-article-pipeline）专用预设：三档 subagent 工具按角色分模型（检索 T1-T3 / 分析写作批判 T4-T6 / 审计 T7），模型经 LUNHENG_*_MODEL 环境变量覆盖。

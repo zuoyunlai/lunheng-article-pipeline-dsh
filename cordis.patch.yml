@@ -1,4 +1,4 @@
-# lunheng-article-pipeline bundle patch（DSH 适配版 v2.1.8-dsh.1）
+# lunheng-article-pipeline bundle patch（DSH 适配版 v2.3.7-dsh.1）
 #
 # 注册一个只指向本包 skills/ 目录的 filesystem 技能提供者。
 # 注意：补丁层的普通行是按 id 覆盖已存在行；新增行必须用 `insert:` 列表。

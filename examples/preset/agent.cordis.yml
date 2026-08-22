@@ -198,10 +198,10 @@
         backgroundMode: continuable
 
     # ── 论衡分档模型（方式②：环境变量，审计档默认 deepseek-v4-pro）──────
-    # 三档独立的 spawn subagent 工具，供论衡流水线按角色指派模型：
-    #   检索（T1/T2/T6）→ subagent_retrieval
-    #   分析/写作（T3/T4）→ subagent_strong
-    #   审计（T5）        → subagent_audit
+    # 三档独立的 spawn subagent 工具，供论衡流水线按角色指派模型（v2.3.7 编号）：
+    #   检索（T1 文献/T2 数据/T3 案例）→ subagent_retrieval
+    #   分析/写作/批判（T4/T5/T6）     → subagent_strong
+    #   审计（T7）                     → subagent_audit
     # 模型经环境变量覆盖，挂载期求值一次，改后需重启 dsh 生效。
     - id: tool-subagent-retrieval
       name: '@deepseek-ai/dsh-tool-subagent'

@@ -2,9 +2,9 @@
 
 多 Agent 深度长文流水线技能包，**DeepSeek Harness（dsh）bundle 插件版**。
 
-把一篇深度文章/论文的生产拆成 **8 个角色 + 5 个阶段**（Phase 1 为 T1 文献∥T2 数据∥T6 案例 三检索员**三方真并行、互不干涉**，T6 **任何量级必 spawn** 含 0 条场景空卡协议；T8 批判伙伴从反方攻击论证；G0-G13 独立审计 + M 门机械化终检），用 dsh `subagent` 子代理编排，产出有**证据底座、反方论证、独立审计、人工核验节点**的交付物。
+把一篇深度文章/论文的生产拆成 **8 张角色卡**（T0 主控 + T1-T3 检索 + T4 分析 + T5 写作 + T6 批判 + T7 审计，T8 终检 = 主控亲完成）：Phase 1 三检索员（T1 文献 ∥ T2 数据 ∥ T3 案例）**三方真并行、互不干涉**，T3 **任何量级必 spawn**（含 0 条场景空卡协议）；T6 批判伙伴从反方攻击论证；G0-G13 独立审计 + M 门机械化终检（M-Form 6+7 / M-Exist 3 / M-Integrity 2）。用 dsh `subagent` 子代理编排，产出有**证据底座、反方论证、独立审计、人工核验节点**的交付物。
 
-> 版本：v2.2.8-dsh.1（DSH 适配版，对应正典 v2.2.8）。
+> 版本：v2.3.7-dsh.1（DSH 适配版，对应正典 v2.3.7）。
 
 ## 安装（在目标机器上）
 
@@ -28,13 +28,13 @@ dsh plugin --profile web add lunheng-article-pipeline
 
 ## 按角色分模型（可选）
 
-默认所有角色继承会话模型。若要**按角色指派不同模型**（检索用便宜快模型，分析/写作/审计用强模型），用随包附带的「分档预设」：
+默认所有角色继承会话模型。若要**按角色指派不同模型**（检索用便宜快模型，分析/写作/批判/审计用强模型），用随包附带的「分档预设」：
 
 | 工具 | 角色 | 默认模型 | 环境变量 |
 |---|---|---|---|
-| `subagent_retrieval` | T1 文献 / T2 数据 / T6 案例 | `deepseek-v4-flash` | `LUNHENG_RETRIEVAL_MODEL` |
-| `subagent_strong` | T3 分析 / T4 写作 / T8 批判 | `deepseek-v4-pro` | `LUNHENG_STRONG_MODEL` |
-| `subagent_audit` | T5 审计 | `deepseek-v4-pro` | `LUNHENG_AUDIT_MODEL` |
+| `subagent_retrieval` | T1 文献 / T2 数据 / T3 案例 | `deepseek-v4-flash` | `LUNHENG_RETRIEVAL_MODEL` |
+| `subagent_strong` | T4 分析 / T5 写作 / T6 批判 | `deepseek-v4-pro` | `LUNHENG_STRONG_MODEL` |
+| `subagent_audit` | T7 审计 | `deepseek-v4-pro` | `LUNHENG_AUDIT_MODEL` |
 
 ```sh
 # 1) 复制预设到用户预设根
@@ -66,7 +66,7 @@ npm publish   # 或 npm publish --access public
 ## 文档
 
 - `docs/installation.md` — 安装与验证
-- `docs/usage.md` — 使用流程（五阶段 + 产物结构）
+- `docs/usage.md` — 使用流程（阶段 + 产物结构）
 - `docs/architecture.md` — 架构（8 角色 + 三角验证 + G0-G13 审计 + M 门）
 - `docs/introduction.md` — 插件介绍
 - `docs/faq.md` — 常见问题

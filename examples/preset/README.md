@@ -4,9 +4,9 @@
 
 | 工具 | 角色 | 默认模型 | 环境变量 |
 |---|---|---|---|
-| `subagent_retrieval` | T1 文献 / T2 数据 / T6 案例 | `deepseek-v4-flash` | `LUNHENG_RETRIEVAL_MODEL` |
-| `subagent_strong` | T3 分析 / T4 写作 | `deepseek-v4-pro` | `LUNHENG_STRONG_MODEL` |
-| `subagent_audit` | T5 审计 | `deepseek-v4-pro` | `LUNHENG_AUDIT_MODEL` |
+| `subagent_retrieval` | T1 文献 / T2 数据 / T3 案例 | `deepseek-v4-flash` | `LUNHENG_RETRIEVAL_MODEL` |
+| `subagent_strong` | T4 分析 / T5 写作 / T6 批判 | `deepseek-v4-pro` | `LUNHENG_STRONG_MODEL` |
+| `subagent_audit` | T7 审计 | `deepseek-v4-pro` | `LUNHENG_AUDIT_MODEL` |
 
 ## 安装
 
