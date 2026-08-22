@@ -1,6 +1,16 @@
 # Changelog
 
-本文件记录 DSH bundle（`lunheng-article-pipeline`）的版本历史。DSH 版与 OpenClaw 原版分离维护，版本号以 `-dsh.N` 标记第 N 次 DSH 适配。
+本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版与 OpenClaw 原版分离维护，版本号以 -dsh.N 标记第 N 次 DSH 适配。
+
+## 2.3.7-dsh.1（2026-08-22）
+
+- **同步 OpenClaw 正典 v2.3.7 全量升级**（43 提交 / 60 文件 +6996 行）：
+  - **角色编号重构（v2.3.0）**：T1 文献 / T2 数据 / T3 案例（原 T6）/ T4 分析（原 T3）/ T5 写作（原 T4）/ T6 批判（原 T8）/ T7 审计（原 T5）/ T8 终检=主控亲完成——编号 = 流水线 Phase 顺序
+  - **M-Form-7 定稿文末白名单硬门**（v2.3.5）+ **渐进式 M 门验证**（v2.2.15）+ 阶段闸门 T2.5/T7.5
+  - **lite 模板族**（7 类 × full+lite）+ 图表-SVG 模板 + 版本号自动化（scripts/check-version.sh）
+  - **新文档**：glossary.md（单一真源词汇表）/ errors.md（错误友好化）/ 设计文档-哲学/架构拆分 / QUICKSTART.md
+  - **人在环纠偏**：Phase 3.6 批判非人在环节点（教训 #138）；删 T2.5 主人签字（教训 #136/#137）
+- **DSH 适配**：8 张角色卡全部 DSH 化（执行约定精简 + 分档预设 T3 案例→retrieval/T6 批判→strong/T7 审计→audit）；机械替换 + 深度审计修复（workflow 3 组 × 全文件，修复旧编号残留/OpenClaw 现行机制/坏引用/矛盾 100+ 处）
 
 ## 2.2.8-dsh.3（2026-08-19）
 
