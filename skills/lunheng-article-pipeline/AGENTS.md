@@ -30,6 +30,7 @@ Phase 5 终检     → T8 主控亲完成 M 门（M-Form 6+7 / M-Exist 3 / M-Int
 - **角色编号（v2.3.0 重构）**：T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / **T8 终检 = 主控亲完成**（编号 = 流水线 Phase 顺序）
 - **模型分配（DSH：分档预设可选）**：`subagent` 默认继承会话模型，路由由 DSH `settings.yaml` 决定。要按角色分模型，装「分档预设」（三档工具 `subagent_retrieval`/`subagent_strong`/`subagent_audit`，模型经 `LUNHENG_*_MODEL` 覆盖，默认检索 `deepseek-v4-flash`、分析写作批判/审计 `deepseek-v4-pro`）；未挂载对应工具时回退 `subagent`
 - **子代理产出必须交交接报告**：六要素缺一不可（做了什么/产物在哪/怎么验证/已知问题/下一步 + status.md 更新），长时间无产出则主控用 `list_agents` 查看并介入
+- **status.md 写入约定（v2.3.7-dsh.4 强化，教训：T1/T2 与主控并发写冲突）**：status.md 由**主控独占写**——子代理**只读** status.md（了解当前状态），**不直接 edit** 整表；子代理的进度/完成状态通过「交接报告 + 产物落盘」回报，主控在收到交接报告后统一更新 status.md。如子代理确实需要记录执行细节，追加到独立执行记录段（`### Tn 执行记录`），不做整表替换。冲突已发生时：主控先 re-read 再 edit。
 - **执行约定（DSH 精简版）**：状态机 + 交接报告六要素 + G8 自检（无需心跳/分阶段 ack/预检/8 分钟硬卡；OpenClaw 完整韧化协议见 `references/_shared/archive/legacy-protocols/执行韧化协议-v2.1.0.md`，仅作参考）
 - **阶段闸门（v2.2.1，v2.3.0 改 T5.5→T7.5）**：T2.5（检索→分析）与 T7.5（审计→终检）两道主控 checkpoint，用 `todo_write` + `read` 实现，**不绕过交接直接派发**
 - **M 门（v2.2.0+）**：终检前必读 `references/_shared/M-Gate-Algorithm.md`，按伪代码执行 M-Form/M-Exist/M-Integrity（含 M-Form-7 定稿文末白名单 v2.3.5），产出 `final/M-Gate-Report-v2.2.4.json`，exit 0 才返回

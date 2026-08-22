@@ -1,4 +1,4 @@
-> 版本：v2.3.7-dsh.3（DSH 适配版，对应正典 v2.3.7，自动同步 2026-08-22）
+> 版本：v2.3.7-dsh.4（DSH 适配版，对应正典 v2.3.7，自动同步 2026-08-22）
 
 > **DSH 适配说明（v2.3.7-dsh.1）**：本词汇表为 OpenClaw 正典版。DSH 环境下以下条目按 `SKILL.md`「DSH 适配说明」执行——工具能力边界（§五：DSH 无技能级白名单，工具集由 Agent 预设决定，`image_generate`→SVG/投喂、`sessions_*`→`subagent`/`list_agents`、`tavily_*`→`web_search`/`read_page`）；执行韧化协议（§四：DSH 精简为状态机+交接报告六要素+G8 自检+超时介入 `list_agents`，心跳/ack/预检/8 分钟硬卡不强制）；版本号管理（§八：真源 = git + 双端副本 + npm，无 ClawHub）；外部服务声明（§九：web_search 走 DSH 配置的 web provider，无 Tavily/文生图 fallback 链）。
 
