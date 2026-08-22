@@ -2,6 +2,18 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版与 OpenClaw 原版分离维护，版本号以 -dsh.N 标记第 N 次 DSH 适配。
 
+## 2.3.7-dsh.3（2026-08-22）
+
+- **文档深度清理（第二轮独立审计）**：净 -447 行
+  - **OpenClaw 专属机制归档**：`执行韧化协议-v2.1.0.md` + `通用韧化块-v2.1.0.md` 移入 `references/_shared/archive/legacy-protocols/`（心跳/分阶段 ack/模型预检/8 分钟硬卡/`subagents(action=list)` 伪代码均为 OpenClaw 机制，DSH 用不上）；8 张角色卡 + AGENTS.md 引用改指 DSH 执行约定
+  - **DSH 事实矛盾修复**：`image_generate`/OpenAI gpt-image-2→gemini→minimax fallback 链 → SVG 矢量风/主人投喂/图像 MCP；`exec 被 deny` → DSH standard 预设含 `pwsh`/`bash`；Tavily/Ollama fallback → DSH web provider/本地模型；`~/.DSH/agents/*.trajectory.jsonl` 诊断 → `list_agents`
+  - **冗余清理**：16 个文件头部 12-13 行自动同步版本行堆叠压缩为 1 行 DSH 版本；SKILL.md 重复 T8 行/重复工具条目；status 模板心跳/ack/降级记录段精简
+  - 涉及 SKILL.md / AGENTS.md / QUICKSTART.md / pipeline-readme.md / glossary.md / 8 张角色卡 / 4 个模板 / 3 份设计文档，共 27 文件
+
+## 2.3.7-dsh.2（2026-08-22）
+
+- **工程层编号同步审计修复**：README.md / docs/{introduction,usage,architecture,faq,installation}.md / examples/preset 全量对齐 v2.3.7 编号（T3 案例/T6 批判/T7 审计、T7.5 门、分档表 T1-T3/T4-T6/T7）；package.json description、cordis.patch.yml 注释同步
+
 ## 2.3.7-dsh.1（2026-08-22）
 
 - **同步 OpenClaw 正典 v2.3.7 全量升级**（43 提交 / 60 文件 +6996 行）：

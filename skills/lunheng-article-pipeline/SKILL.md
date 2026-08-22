@@ -1,16 +1,16 @@
 ---
 name: "lunheng-article-pipeline"
-version: "2.3.7-dsh.2"
+version: "2.3.7-dsh.3"
 description: "严肃长文流水线（学术论文 / 商业评论 / 行业分析 / 公众号深度长文）——多 Agent 子代理编排（DSH 适配版，对应正典 v2.3.7）。8 张角色卡（T0 主控 + T1-T3 检索 + T4 分析 + T5 写作 + T6 批判 + T7 审计，T8 终检=主控亲完成）。**不适用于** <2000 字短文/即时问答/文学创作。三角验证 + M 机械化硬门 + F 失败模式防御 + 数据信任 3 档 + 修订回环 ≤2 轮。完整变更历史见原仓库 git log。"
 metadata:
   note: "DSH 不识别技能级工具白名单——工具集由 Agent 预设（组合文件）决定；原 OpenClaw 的 metadata.requires/tools 段已移除，工具映射见正文「DSH 适配说明」章节。"
 ---
 
-> 版本：v2.3.7-dsh.2（DSH 适配版，对应正典 v2.3.7，自动同步 2026-08-22）
+> 版本：v2.3.7-dsh.3（DSH 适配版，对应正典 v2.3.7，自动同步 2026-08-22）
 
 # 多 Agent 深度长文流水线（论文/深度文章生产）
 
-## 🔧 DSH 适配说明（v2.3.7-dsh.2 — 从 OpenClaw v2.3.7 移植到 DeepSeek Harness）
+## 🔧 DSH 适配说明（v2.3.7-dsh.3 — 从 OpenClaw v2.3.7 移植到 DeepSeek Harness）
 
 本技能原为 OpenClaw 编写。在 DeepSeek Harness（dsh web，standard 预设）环境下，工具映射如下：
 
