@@ -1,21 +1,9 @@
-> 版本：v2.3.7（自动同步 2026-08-22）
+> 版本：v2.3.7-dsh.2（DSH 适配版，对应正典 v2.3.7，自动同步 2026-08-22）
 
 > **DSH 适配说明（v2.3.7-dsh.1）**：本词汇表为 OpenClaw 正典版。DSH 环境下以下条目按 `SKILL.md`「DSH 适配说明」执行——工具能力边界（§五：DSH 无技能级白名单，工具集由 Agent 预设决定，`image_generate`→SVG/投喂、`sessions_*`→`subagent`/`list_agents`、`tavily_*`→`web_search`/`read_page`）；执行韧化协议（§四：DSH 精简为状态机+交接报告六要素+G8 自检+超时介入 `list_agents`，心跳/ack/预检/8 分钟硬卡不强制）；版本号管理（§八：真源 = git + 双端副本 + npm，无 ClawHub）；外部服务声明（§九：web_search 走 DSH 配置的 web provider，无 Tavily/文生图 fallback 链）。
 
-> 版本：v2.3.6（自动同步 2026-08-22）
-> 版本：v2.3.4（自动同步 2026-08-21）
-> 版本：v2.3.3（自动同步 2026-08-21）
-> 版本：v2.3.2（自动同步 2026-08-21）
-> 版本：v2.3.1（自动同步 2026-08-21）
-> 版本：v2.3.0（自动同步 2026-08-21）
-
-> 版本：v2.2.14（自动同步 2026-08-20）
-
-> 版本：v2.2.13（自动同步 2026-08-20）
-
 # 论衡核心概念词汇表
 
-> 版本：v2.3.0（2026-08-21，角色编号重构教训 #116）
 > 用途：单一真源，集中定义核心概念，减少文档冗余
 
 > **v2.3.0 重构**：角色编号重构——T6 案例检索 → T3 案例检索（三方并行检索员连贯 T1∥T2∥T3），T3-T8 顺延，T7/T8 交换位置（终检 → T8 主控亲完成、批判 → T6 独立早期攻击、审计 → T7 形式审查）。**编号 = 流水线 Phase 顺序**：T1-T3 检索 / T4-T5 加工 / T6-T8 防御。教训 #116。
@@ -257,41 +245,30 @@ grep -c "关键特征" drafts/[产物文件]  # 验证内容完整性
 
 ---
 
-### 执行韧化协议（v2.1.0）
-**四层防御**：
+### 执行韧化协议（v2.1.0 → DSH 精简为「执行约定」）
+**DSH 下仅执行精简版**（详见 `SKILL.md`「DSH 适配说明」+ `AGENTS.md`「执行约定（DSH 精简版）」）：
 
-1. **心跳机制**：每 30 秒一次心跳 ACK
-2. **分阶段 ACK**（3 档）：
-   - 短任务（<3 分钟）：不需要
-   - 中任务（3-8 分钟）：1 次中途 ACK
-   - 长任务（>8 分钟）：多次 ACK
-3. **模型健康度预检**：spawn 前 1-token ping（30s 无响应降级 fallback）
-4. **8 分钟硬卡**：6 分警告 / 7 分 partial / 8 分 kill
+1. **状态机**：`status.md` 每角色启动即 `🔄 In Progress` + 启动时间 + 当前模型
+2. **交接报告六要素**：产出必交（做了什么/产物在哪/怎么验证/已知问题/下一步 + status.md 更新）
+3. **G8 自检**：完成后 grep「v2 稿/初稿/草稿/修订说明/主人结构性观察/据行业经验估算/论据类型」有命中立即删除
+4. **超时介入**：主控用 `list_agents` 查看子代理状态，长时间无产出 → 介入（换档重派/接受 partial/主控兜底）
+5. **禁止假装在线**：状态与产出必须真实
 
-**Fallback 链**（4 档）：
-```
-deepseek-v4-pro → minimax-M3 → deepseek-v4-flash → glm-5.3
-```
+> OpenClaw 完整版（心跳/分阶段 ack/模型健康度预检/8 分钟硬卡/Fallback 链）在 DSH 下不执行，见 `archive/legacy-protocols/`。
 
 ---
 
-## 五、工具能力边界（v2.2.12 前置声明）
+## 五、工具能力边界（DSH 版，替代 OpenClaw 白名单）
 
-### ✅ 可以使用的工具（15 项）
+**DSH 无技能级工具白名单/denied**——工具集由 Agent 预设（组合文件）决定，以当前会话预设为准（standard 预设含 read/write/edit/web_search/read_page/todo_write/subagent/list_agents/pwsh/bash 等）。论衡流水线用到的核心工具：
+
 - **文件操作**：read / write / edit
-- **Web 检索**：web_search / read_page / read_page / web_fetch
-- **记忆系统**：文件记忆 / 文件记忆
-- **子代理编排**：subagent / 等子代理完成通知 / subagents
-- **图像生成**：image_generate
-- **其他**：session_status / todo_write
+- **Web 检索**：web_search / read_page
+- **子代理编排**：subagent / list_agents
+- **计划跟踪**：todo_write
+- **Shell（可选）**：pwsh / bash（standard 预设含，经主人同意可执行）
 
-### ❌ 不可以使用的工具（7 项）
-- **Shell 执行**：exec / process
-- **浏览器控制**：browser
-- **定时任务**：cron
-- **消息发送**：message
-- **配置修改**：gateway
-- **节点控制**：nodes
+> OpenClaw 版 15 项可用 / 7 项禁用白名单在 DSH 下无效（原 `image_generate`/`exec` deny 等条目由预设与授权约束替代）。
 
 ### ℹ️ 关键澄清
 - **M 门算法**：主控 LLM 通过 `read` 读取算法文档，按伪代码**推理判定**
@@ -361,24 +338,23 @@ deepseek-v4-pro → minimax-M3 → deepseek-v4-flash → glm-5.3
 
 ---
 
-## 九、外部服务声明（v2.1.2）
+## 九、外部服务声明（v2.1.2，DSH 版）
 
-### 🌐 涉及的外部服务
-1. **Tavily API**：web_search / read_page / read_page
-2. **OpenAI API**：image_generate（gpt-image-2，封面生成）
-3. **Google Gemini**：image_generate fallback
-4. **MiniMax API**：image_generate 最终 fallback
+### 🌐 涉及的外部服务（DSH）
+1. **Web 检索**：`web_search` / `read_page` → DSH 配置的 web provider（无独立 Tavily 工具）
+2. **封面/配图**：默认本地 SVG（程序化，不外发）；如需文生图另配图像生成 MCP（如 MiniMax image-01，外发）
+3. **模型推理**：文章全文发到当前模型 provider（deepseek/MiniMax/Anthropic 等）用于推理/写作/审计
 
 ### 🔒 数据流方向
-- **向外发送**：检索关键词 / 图像生成 prompt
+- **向外发送**：检索关键词 / （可选）图像生成 prompt
 - **不发送**：原始文献内容 / 主人投喂数据 / 中间产物
 
 ### 🛡️ 主人拒绝外部服务时的备选方案
-1. **Web 检索**：主人手动提供文献/数据 PDF
+1. **Web 检索**：主人手动提供文献/数据 PDF（投喂）
 2. **封面生成**：
-   - 方案 A：主人提供封面图片
-   - 方案 B：使用 SVG 手绘（本地生成）
-   - 方案 C：使用 Ollama 本地模型（如 llama3.2-vision）
+   - 方案 A：主人提供封面图片（投喂）
+   - 方案 B：使用 SVG 手绘（本地生成，默认）
+   - 方案 C：使用本地模型（如 Ollama 等本地 provider，零外发推理）
 
 ---
 

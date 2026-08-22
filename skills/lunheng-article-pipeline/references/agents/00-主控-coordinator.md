@@ -1,23 +1,4 @@
-> 版本：v2.3.7（自动同步 2026-08-22）
-
-> 版本：v2.3.6（自动同步 2026-08-22）
-> 版本：v2.3.5（自动同步 2026-08-21）
-> 版本：v2.3.4（自动同步 2026-08-21）
-> 版本：v2.3.3（自动同步 2026-08-21）
-> 版本：v2.3.1（自动同步 2026-08-21）
-> 版本：v2.3.0（自动同步 2026-08-21）
-
-> 版本：v2.2.18（自动同步 2026-08-20）
-
-> 版本：v2.2.17（自动同步 2026-08-20）
-
-> 版本：v2.2.16（自动同步 2026-08-20）
-
-> 版本：v2.2.15（自动同步 2026-08-20）
-
-> 版本：v2.2.14（自动同步 2026-08-20）
-
-> 版本：v2.2.13（自动同步 2026-08-20）
+> 版本：v2.3.7-dsh.2（DSH 适配版，对应正典 v2.3.7，自动同步 2026-08-22）
 
 # 角色：主控 Coordinator（主 Agent，v2.3.0）
 
@@ -34,7 +15,7 @@
 - 三层防御体系（M 门/F 模式/G 清单）
 - 关键协议（Phase 0/三检索员并行/修订回环/完成验证铁律）
 - 数据信任级别（3 档）
-- 工具能力边界（15 项可用 / 7 项禁用）
+- 工具能力边界（DSH：工具集由 Agent 预设决定，见 `SKILL.md`「DSH 适配说明」）
 
 本文档是主控特有的操作细节，不重复概念定义。
 
@@ -42,7 +23,7 @@
 
 ## ⚡ 执行韧化协议
 
-> **详细协议见** [`_shared/执行韧化协议-v2.1.0.md`](../_shared/执行韧化协议-v2.1.0.md) + [`glossary.md § 执行韧化协议`](../glossary.md)
+> **详细协议见** `AGENTS.md`「执行约定（DSH 精简版）」+ [`glossary.md § 执行韧化协议`](../glossary.md)；OpenClaw 完整韧化协议见 `_shared/archive/legacy-protocols/`（仅参考）。
 
 **4 层防御**（详见词汇表）：
 1. **状态机** → 启动即更新 `status.md` 对应行为 `🔄 In Progress`
@@ -60,10 +41,10 @@
     - 例外：主控可写「期望研究方向」「假设性结论」作为写手参考，但必须加标记 `[仅供参考，以数据卡为准]`
     - **根因**：主控凭印象先写数据 = 把不可靠脑补带入简报 → 写手可能误以为是简报预设
 - **拆解**：把主题拆成 3-5 个可检索的子问题，写 `01-任务简报.md`
-- **Phase 0 外部服务告知**（v2.1.2 新增，教训 #45）：定题同时必须明确告知主人以下外发项——① 研究主题+子问题+关键词发到 Tavily（外部 web 检索）；② 封面生成发到 OpenAI gpt-image-2（可能 fallback Google gemini-3.1-flash-image-preview → minimax/minimax-image-01）；③ 文章全文发到当前模型 provider 用于推理/写作/审计；④ 主控如用本地 Ollama 模型（gemma4:31b / qwen3-coder:30b 等）可零外发推理。**主人拒绝任一外发项 → 调整方案并重做 Phase 0 确认**；涉未公开主题/客户内部信息/商业机密 → 建议脱敏措辞 + SVG 封面 + 本地 Ollama
+- **Phase 0 外部服务告知**（v2.1.2 新增，教训 #45，DSH 版）：定题同时必须明确告知主人以下外发项——① 检索关键词发到 DSH 配置的 web provider（外部 web 检索）；② 封面/配图默认本地 SVG，如需文生图走图像 MCP（如 MiniMax image-01，外发）；③ 文章全文发到当前模型 provider 用于推理/写作/审计；④ 主控如用本地模型（如 Ollama 等本地 provider）可零外发推理。**主人拒绝任一外发项 → 调整方案并重做 Phase 0 确认**；涉未公开主题/客户内部信息/商业机密 → 建议脱敏措辞 + SVG 封面 + 本地模型
 - **状态机**：维护 `status.md`（Inbox → Assigned → In Progress → Review → Done | Failed），每个角色交接时更新状态；子代理长时间无产出 → 主动介入（list_agents 查看）
 - **status.md 主控独占写（v2.3.7 论文三实战升级，P2-1）**：实战中主控 edit status.md 失败 2 次（子代理改了 status.md 内容），主控和子代理并发写有 race condition。**v2.3.7 升级后协议**：
-  - **主控独占写**：`status.md` 只能由主控（主 agent）写入，子代理**不得直接 `write`/`edit`** status.md——子代理通过心跳文件（如 `run/<项目>/.tmp/<role>-heartbeat.md`）或 `list_agents 查看状态后由主控更新` 信号通知主控更新，主控收到信号后独占写入 status.md。
+  - **主控独占写**：`status.md` 只能由主控（主 agent）写入，子代理**不得直接 `write`/`edit`** status.md——子代理用 `list_agents`（查看状态）或交接报告通知主控更新，主控收到信号后独占写入 status.md。
   - **子代理标识状态**：子代理在产物路径写**自己的阶段文件**（如 `drafts/<role>-status.json`），主控轮询阶段文件后更新到主 status.md。
   - **修改状态补锁**（可选）：如主控需频繁修改 status.md，在脚本中加 `flock /tmp/status-md.lock` 文件锁防并发。
   - **实战背景**（v2.3.7 论文三）：14:46 T7.5 闸门时主控edit status.md 失败 2 次（子代理改了 status.md），主控需手动重试。v2.3.7 升级后 status.md 不再并发写冲突。
@@ -102,7 +83,7 @@
     ```
   - **异常结束路径**（v2.2.10 新增，3 步兑底协议）：收到任何「异常通知」（failed / timeout / process died / unexpected end）→ 必做 3 步：
     1. **验产物**：`ls -la <产物路径>` + 文件大小检查 + 关键内容 grep → 是否有 partial output（哪怕不完整）
-    2. **验 status.md**：该 T 角色行是否更新？是否卡在 In Progress？是否过期未 ack？
+    2. **验 status.md**：该 T 角色行是否更新？是否卡在 In Progress？
     3. **缺什么补什么**（**不默认重跑**）：
        - partial 存在 + 部分可用 → 接受 partial，主控用 `edit` 工具代记 status.md 标「partial」+ 决定是否补派
        - 无产物 + status 卡 In Progress → 主控代记 status.md 标「Failed」+ 主动 `中断子代理（interrupt_agent）` + 决定是否重派（≤2 次，教训 #46 同场景重试约束）
@@ -115,7 +96,7 @@
         | grep -oE '.{6,}' | sort | uniq -c | sort -rn | head -3
       # 如果任一短语出现 ≥3 次 → 循环嫌疑
       ```
-    - **静默响应检测**：补充 v2.2.10 3 步兑底协议——子代理最后输出后 5 分钟无新 tokens（用 `list_agents 查看子代理状态` 看 mtime 或 status.md 心跳）→ 主控主动 ping（`list_agents` 看 session 状态）+ 立即准备兑底 spawn。
+    - **静默响应检测（DSH）**：子代理最后输出后较长时间无新产出（用 `list_agents` 看子代理状态）→ 主控主动 ping（`list_agents` 看 session 状态）+ 立即准备兑底 spawn。
     - **兑底产物必含头部标注**（v2.3.2 强化 #134）：兑底触发的产物（`final/交付说明.md`「AI 使用披露」段）必须明示：
       ```
       ⚠️ 本任务由 XX 由 {fallback_model} 兑底（原 {primary_model} 静默无响应 / 死循环，{触发原因}）
@@ -222,7 +203,7 @@
   - 角色静默（长时间无产出）→ 立即告警「⚠️ <角色> 静默超时，触发 <兜底>」并介入（沿用「主动介入机制」6 步）
 - **异常即时打断**（保留 v2.2.10）：角色中途出错 / 产物异常 / 跳过质控阈值 / 需主人在环决策 → 立即报告，不等阶段完成
 - **预计状态汇总**（保留）：status.md 顶部维护「当前 Phase 进度条」，主人可随时查
-- **汇报原则**：① 每条 ≤2-3 行，不刷屏 ② 派发/完成/异常必报，中间心跳不打扰 ③ 卡住时宁可多报「仍在进行」也不让主人干等
+- **汇报原则**：① 每条 ≤2-3 行，不刷屏 ② 派发/完成/异常必报，过程状态不打扰 ③ 卡住时宁可多报「仍在进行」也不让主人干等
 
 ### 状态汇报协议伪代码
 ```python
@@ -273,12 +254,12 @@ if phase_complete:
 
 ## 主动介入机制（v2.1.0 6 步，含 F4 轮次约束）
 
-发现下游角色卡住（长时间无产出）→ 主动介入：
-1. 查 status.md 是否含心跳/ack（缺失 = 没遵循 v2.1.0 协议 → 拍醒子代理）
+发现下游角色卡住（长时间无产出）→ 主动介入（DSH 精简版）：
+1. 查 status.md 该角色状态（缺失/停滞 = 异常 → 介入）
 2. 用 list_agents 看子代理最近输出（判断是真卡还是模型思考中）
-3. 如果模型健康度问题 → 手动 kill 会话，手动 spawn 新子代理（指定下一档 fallback 模型）
+3. 如果模型异常（静默无产出）→ 换档重派（如 `subagent_strong`→`subagent_retrieval`，或改 `LUNHENG_*_MODEL` 后重启 dsh）
 4. 如果只是产生物到中途中断（partial output 存在）→ 接受现有产出，手动补齐缺失部分
-5. 在 status.md 阶段行写明介入记录：`[介入 HH:MM] 主控介入，session-kill，重派 model=fallback1`
+5. 在 status.md 阶段行写明介入记录：`[介入 HH:MM] 主控介入，换档重派/接受 partial，说明=
 6. **两类上限独立判断**（F4 重构 + v2.2.0 补强）：
    - **同场景重试 ≤2 次**（重派同一任务），避免无限重试
    - **修订回环 ≤2 轮硬约束**（**T7** 审计打回后 **T5** 重写，v2.3.0 改 T5→T7/T4→T5，**v2.2.0 新增，教训 #64**；**v2.3.1 定义细化 + T8 小幅修补权限 + P1 分级，教训 #120**；**v2.3.7 论文三实战升级（P1-3）二分类修订**，详见 deliverables.md「修订回环」）：
@@ -291,17 +272,17 @@ if phase_complete:
 
 > **背景**：T8→T5 交接点被 duplicate 完成事件打断，spawn T5 的 tool call 丢失，主控空转 2.5 小时。根因：push-based 编排循环过度依赖「完成事件恰好投递一次」。
 
-**主控在 T 角色交接点必须遵守的三道防御**（详见 [`_shared/执行韧化协议-v2.1.0.md`](../_shared/执行韧化协议-v2.1.0.md) § 4）：
+**主控在 T 角色交接点必须遵守的三道防御**（DSH 版，原 §4 完整版见 `_shared/archive/legacy-protocols/执行韧化协议-v2.1.0.md`）：
 
 1. **spawn 后立即验证落地**：每次 `subagent` 后用 `list_agents` 确认 runId 在 active，没出现 = spawn 丢失，立即重试（≤2 次）
-2. **yield watchdog**：yield 后 3 分钟无完成事件 → 自查 `subagents list` + `list_agents`，判断 spawn 丢失空转还是子代理真在跑
+2. **yield watchdog**：yield 后 3 分钟无完成事件 → 自查 `list_agents`，判断 spawn 丢失空转还是子代理真在跑
 3. **完成事件幂等**：收到某角色完成事件时先查 `status.md` 该角色是否已 Done，已 Done = duplicate 事件，**忽略不重复推进**
 4. **交接点「三段式 spawn」**：T8→T5、T4→T8、T5→T4（修订）禁止「spawn → 直接 yield」，必须「spawn → 验证落地 → 确认后 yield」
 
-**主控 spawn 验证落地伪代码**：
+**主控 spawn 验证落地伪代码（DSH）**：
 ```python
 run = subagent(task=...)
-if not subagents_has_active(run.runId):
+if run.runId 不在 list_agents 的 active 列表:
     log("[#102] spawn runId={} 未落地，重试".format(run.runId))
     run = subagent(task=...)
 ```
@@ -316,15 +297,7 @@ def on_completion(role, runId):
     spawn_next_role()
 ```
 
-**诊断（spawn 链空转排查）**：
-```bash
-cd ~/.DSH/agents/<agent>/子代理/
-F=$(ls -t *.trajectory.jsonl | head -1)
-echo "spawn: $(grep -c '"subagent"' $F) / yield: $(grep -c '"等子代理完成通知"' $F)"
-# yield > spawn = 空转嫌疑
-grep -oE 'session_key: agent:[a-z]+:subagent:[a-f0-9-]+' $F | sort | uniq -c | sort -rn | head -5
-# 同一 subagent uuid >1 次 = duplicate 完成事件
-```
+**诊断（spawn 链空转排查，DSH 用 `list_agents`）**：主控用 `list_agents` 看 active 子代理列表与最近输出，判断是「spawn 丢失空转」还是「子代理真在跑」；同一角色状态已 Done 却收到完成通知 = duplicate 事件，忽略即可（不读任何 runtime 内部日志）。
      - **「轮」的定义（v2.3.1 重定义，教训 #120）**：**0 轮**=主控启动 T5 出 v1；**1 轮**=T6 批判攻击 + T5 出 v2（融入主人洞察+批判反馈）；**2 轮**=T8 主控亲修出 v3（小幅修补）；**超 2 轮**=结构性 P1（A/B/C）+ P0 才启 T5 v3（独立写手）
      - **T8 小幅修补权限（v2.3.1 新增，教训 #120）**：T8 从「只做签字」升级为「可做小幅修补」——✅ 可修：≤字数 5% / AI 披露修正 / 元叙事清理 / P1-D 事实错误（引用格式/元数据/漏引/拼写）；❌ 不可修：结构性（P1-A/B/C 论证补强/结构缺失/反方缺失）+ P0 → 必须启 T5 独立写手
      - **P1 分级细分（v2.3.1 新增，教训 #120）**：P1-A/B/C（结构性）→ T5 重启（独立写手）；P1-D（事实错误）→ T8 亲修（慢活快改）

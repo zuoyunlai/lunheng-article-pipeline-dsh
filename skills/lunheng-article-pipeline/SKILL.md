@@ -6,7 +6,7 @@ metadata:
   note: "DSH 不识别技能级工具白名单——工具集由 Agent 预设（组合文件）决定；原 OpenClaw 的 metadata.requires/tools 段已移除，工具映射见正文「DSH 适配说明」章节。"
 ---
 
-> 版本：v2.3.7-dsh.2（DSH 适配版，对应正典 v2.3.7）
+> 版本：v2.3.7-dsh.2（DSH 适配版，对应正典 v2.3.7，自动同步 2026-08-22）
 
 # 多 Agent 深度长文流水线（论文/深度文章生产）
 
@@ -53,8 +53,8 @@ metadata:
 - 三层防御体系（M 门/F 模式/G 清单）
 - 数据信任级别（3 档）
 - 关键协议（Phase 0/0 条空卡/并行独立运行）
-- 工具能力边界（15 项可用 / 11 项禁用）
-- 版本号管理（5 层真源）
+- 工具能力边界（DSH：工具集由 Agent 预设决定，见上文「DSH 适配说明」）
+- 版本号管理（DSH：git + 双端副本 + npm）
 - 教训沉淀体系（#1-#115）
 
 **为什么要先读词汇表**：
@@ -67,11 +67,11 @@ metadata:
 ## ⚠️ 执行能力边界（重要：先读这一段）
 
 **论衡技能的执行能力**：
-- ✅ **可以**：read / write / edit / web_search / read_page / 文件记忆 等 15 项工具（见上方 metadata.tools.declared）
-- ❌ **不可以**：exec / process / browser / apply_patch / cron / video_generate / music_generate / tts / 文件记忆 / 文件记忆 / skill_workshop（11 项，见上方 metadata.tools.denied）
+- ✅ **可以**：read / write / edit / web_search / read_page / todo_write / subagent / list_agents / pwsh / bash 等当前会话预设提供的工具（DSH 无技能级白名单——工具集由 Agent 预设（组合文件）决定，以当前会话为准）
+- ❌ **不做**：凭据访问 / 浏览器自动化 / 定时任务 / 记忆系统外文件（DSH 无技能级 denied——靠预设与主人授权约束；原 OpenClaw 的 exec/apply_patch deny 在 DSH 下不适用，standard 预设含 `pwsh`/`bash`）
 - ℹ️  **M 门算法**：主控 LLM 通过 `read` 读取算法文档，按伪代码**推理判定**，不执行实际 shell 命令
 - ℹ️  **跨平台 sha256**：需要主人在 host shell 手动计算后回填（算法文档中的 shell 示例仅供人类参考）
-- ℹ️  **算法文档中的 grep/ls/sort/sha256 等命令**（v2.2.17 澄清，回应 ClawHub scanner v2.2.16 finding F06 90%）：是「**LLM 推理模拟**」伪代码，主控用 `read` 读全文后用 LLM 推理模拟「如果执行 grep 会得到什么结果」。**论衡 agent 不执行这些 bash 命令**——它们是给人类主人参考的跨平台命令示例，不是 agent 执行代码。判定以「LLM 推理模拟结果」为准。
+- ℹ️  **算法文档中的 grep/ls/sort/sha256 等命令**（v2.2.17 澄清）：是「**LLM 推理模拟**」伪代码，主控用 `read` 读全文后用 LLM 推理模拟「如果执行 grep 会得到什么结果」。**论衡 agent 不执行这些 bash 命令**——它们是给人类主人参考的跨平台命令示例，不是 agent 执行代码。判定以「LLM 推理模拟结果」为准。
 
 **为什么这么设计**：
 - 论衡是纯推理流水线，所有验证都通过 LLM 推理完成（读文件 → 正则匹配 → 集合运算 → 判定）
@@ -126,7 +126,6 @@ metadata:
 | T6 批判伙伴 | `subagent_strong`（deepseek-v4-pro） | 批判论证也需强推理 |
 | T7 审计 | `subagent_audit`（deepseek-v4-pro，可换 minimax-M3/Claude） | 审计顶配防漏判 |
 | T0 主控 | 会话模型（默认） | 主控是判断+路由 |
-| T8 终检 | 主控亲自完成 | 不 spawn 子代理 |
 | T8 终检 | 主控亲自完成 | 不 spawn 子代理，v2.3.0 明确 T8 终检 = 主控职责 |
 
 **模型配置路径（DSH）**：会话级模型路由改 `settings.yaml`；按角色分模型装「分档预设」（`examples/preset/`，见上文 DSH 适配说明第 2 条）；未装预设则 `subagent` 继承会话模型。详见 `references/pipeline-readme.md`「模型配置与更换指南」段。
@@ -201,7 +200,7 @@ Phase 3.5 洞察补充  主人过目初稿 v1 → 主控问主人洞要补 → T
 Phase 3.6 批判      T6 批判伙伴（v2.2.2 新增）→ analysis/批判报告-vN.md（攻击 v2 不是 v1，轻量档可跳过，v2.3.0 改 T8→T6）
 Phase 4 审计        T7 审计员 → audits/审计报告-vN.md（G0覆盖度/G1引用核验/G2数据溯源/G3逻辑/G4格式/G5规范，v2.3.0 改 T5→T7）
 Phase 4.2 修订      审计打回 → 写手交修订说明+修订稿 → 审计复核 ≤2 轮 → 仍不过升级主控（v2.2.4 起修订轮强制 spawn 独立写手）
-Phase 4.5 配图      （**默认关闭**，需主人在 Phase 0 同意关卡明确勾选）写手标 [图N：标题] 图位 → 主控程序化生成图表（数字与数据卡一致）；封面生成需主人首次确认（v2.1.1 + v2.2.17 强化）——首次调用 image_generate 前**必须**先询问主人同意（调用外部图像生成服务，可能 fallback 跨 provider）。**重要**（v2.2.17 修订，回应 ClawHub scanner v2.2.16 finding F08 93%）：**封面调用 image_generate 不是默认行为**，而是「可选行为」，需主人在 Phase 0 同意关卡明确勾选「启用封面生成」才调用。如未勾选，则不调用 image_generate，默认用 SVG 矢量风（程序化生成）或主人人工上传。如启用后调用 OpenAI gpt-image-2 失败，按 recover_failed_article_illustration_gen 模式自动降级到 fallback（Google gemini-3.1-flash-image-preview → minimax/minimax-image-01 → SVG）。
+Phase 4.5 配图      （**默认关闭**，需主人在 Phase 0 同意关卡明确勾选）写手标 [图N：标题] 图位 → 主控程序化生成 SVG 数据图表（数字与数据卡一致）；封面生成需主人首次确认（v2.1.1 + v2.2.17 强化）——DSH 无内置文生图：默认 SVG 矢量风（程序化，本地）或主人投喂；如需文生图，另配图像生成 MCP（如 MiniMax image-01），首次调用前必须经主人同意。封面不是默认行为——需主人在 Phase 0 明确勾选「启用封面生成」才处理；未勾选则用 SVG 或主人上传。
 Phase 5 终检        主控终检 → final/定稿.md + 图件/ + 证据包/ + 交付说明.md
 ```
 
