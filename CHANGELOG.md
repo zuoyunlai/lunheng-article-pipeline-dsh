@@ -2,6 +2,15 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版与 OpenClaw 原版分离维护，版本号以 -dsh.N 标记第 N 次 DSH 适配。
 
+## 2.3.7-dsh.8（2026-08-22）
+
+- **全面独立审计修复**（工程层 + 3 独立子代理并行，13 严重 + 40 中轻微）：
+  - **P0 自审门 DSH 化**：版本升级自审门-v2.3.0 头部加 DSH 适配映射表；门 C/D/E/G/J 路径与编号 DSH 化（pipeline/→references/、ClawHub→仓库↔.dsh 副本、门 D 文件列表 00-07 实际编号）；门数口径统一（21 门含门 V）
+  - **P0 执行层歧义清零**：M 门项数统一「M-Form 8 + M-Exist 3 + M-Integrity 2 = 13 项」（原 6/7/11 混用）；修订回环**定案为审计独立 2 轮预算**（v1→v2 洞察 + v2→v3 批判不计入）；G/F 清单 glossary 重写对齐执行真源；渐进式验证标注未启用；M-Gate-Report 文件名统一（去版本后缀）；批判维度统一 C1-C7；终检必查项 15 项；六要素第 6 条统一状态机更新
+  - **P1 元数据/残留**：package.json 补 repository/homepage/bugs/author；cordis 注释 dsh.8；preset.yml 补 PROVIDER；版本残留（faq/introduction/skills README 的 dsh.1、三处 dsh.6 标注）清零；m_exist_1_diff.sh 归档；glossary §七 ClawHub 第 5 层删除改 DSH 3 层真源
+  - **P1 中轻微项**：operations 禁做#3、任务简报 M-Form-4/T3.5、errors 三处旧编号、架构篇 Phase 3.6/6 阶段、数据卡残字符/测算者、侦查→检索、案例封顶矛盾、status 8 分钟硬卡、SKILL 重复行、损坏链接、死锚点等 40 处
+  - **P2 门 V 固化**：自审门新增「门 V：DSH 口径一致性」，机械化检查 M 门项数/Report 文件名/C1-C7/修订回环语义/旧编号，防本轮问题复发
+
 ## 2.3.7-dsh.7（2026-08-22）
 
 - **角色卡模型设定去硬编码（通用化收尾，v2.3.7-dsh.6 的延续）**：

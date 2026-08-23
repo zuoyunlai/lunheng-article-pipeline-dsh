@@ -1,6 +1,6 @@
-> 版本：v2.3.7-dsh.7（DSH 适配版，对应正典 v2.3.7，自动同步 2026-08-22）
+> 版本：v2.3.7-dsh.8（DSH 适配版，对应正典 v2.3.7，自动同步 2026-08-22）
 
-> **DSH 适配说明（v2.3.7-dsh.1）**：本词汇表为 OpenClaw 正典版。DSH 环境下以下条目按 `SKILL.md`「DSH 适配说明」执行——工具能力边界（§五：DSH 无技能级白名单，工具集由 Agent 预设决定，`image_generate`→SVG/投喂、`sessions_*`→`subagent`/`list_agents`、`tavily_*`→`web_search`/`read_page`）；执行韧化协议（§四：DSH 精简为状态机+交接报告六要素+G8 自检+超时介入 `list_agents`，心跳/ack/预检/8 分钟硬卡不强制）；版本号管理（§八：真源 = git + 双端副本 + npm，无 ClawHub）；外部服务声明（§九：web_search 走 DSH 配置的 web provider，无 Tavily/文生图 fallback 链）。
+> **DSH 适配说明（v2.3.7-dsh.8）**：本词汇表为 OpenClaw 正典版。DSH 环境下以下条目按 `SKILL.md`「DSH 适配说明」执行——工具能力边界（§五：DSH 无技能级白名单，工具集由 Agent 预设决定，`image_generate`→SVG/投喂、`sessions_*`→`subagent`/`list_agents`、`tavily_*`→`web_search`/`read_page`）；执行韧化协议（§四：DSH 精简为状态机+交接报告六要素+G8 自检+超时介入 `list_agents`，心跳/ack/预检/8 分钟硬卡不强制）；版本号管理（§七：真源 = git + 双端副本 + npm，无 ClawHub）；外部服务声明（§九：web_search 走 DSH 配置的 web provider，无 Tavily/文生图 fallback 链）。
 
 # 论衡核心概念词汇表
 
@@ -20,7 +20,7 @@
 - **关键协议**：Phase 0 同意关卡 / spawn-yield 模式 / 完成验证铁律
 - **T8 终检职责**：交付物完整性 + 引用闭环 + AI 使用披露 + 主控签字 → `final/定稿.md` + `final/交付说明.md`
 
-### T1 - 文献侦查（Literature Scout）
+### T1 - 文献检索（Literature Scout）
 - **职责**：已发布学术文献 / 政策文件 / 统计年鉴检索
 - **输出**：`[Lxx]` 文献卡
 - **并行模式**：T1 ∥ T2 ∥ **T3** 独立运行（v2.3.0 改 T6→T3）
@@ -41,7 +41,7 @@
 ### T4 - 分析（Analyst，v2.3.0 改 T3→T4）
 - **职责**：论点拆解 + 论证结构设计 + 大纲编写
 - **输入**：T1 + T2 + T3 全部完成后触发（v2.3.0 改 T6→T3）
-- **输出**：`drafts/大纲.md`
+- **输出**：`analysis/分析大纲.md`
 
 ### T5 - 写手（Writer，v2.3.0 改 T4→T5）
 - **职责**：正文撰写 + 修订执行
@@ -52,7 +52,7 @@
 - **职责**：批判性审查（非对抗性，从反方攻击论证）
 - **触发**：T5 写手 v2（含主人洞察）完成后、T7 审计前（v2.3.0 改 T8→T5/T8→T7）
 - **触发阶段**：**Phase 3.6**（v2.3.0 引入的独立节点）
-- **输出**：`drafts/批判审查-v[x].md`
+- **输出**：`analysis/批判报告-vN.md`
 - **定位**（v2.2.2）：不是 adversarial，是 critical companion
 - **攻击对象**：v2（含主人洞察），不是 v1
 
@@ -60,7 +60,7 @@
 
 ### T7 - 审计（Auditor，v2.3.0 改 T5→T7）
 - **职责**：质量审计（G0-G13）+ 修订任务书
-- **输出**：`drafts/审计报告-v[x].md`
+- **输出**：`audits/审计报告-vN.md`
 - **双完整性门**：T2.5（数据卡完整性）+ T7.5（引用完整性，原 T5.5→T7.5）
 
 ### T8 - 终检（主控亲完成，无独立角色卡）
@@ -82,41 +82,42 @@
 - **执行模型**（v2.2.12 澄清）：
   - ✅ **主控 LLM 推理判定**：主控用 `read` 读取算法文档，按伪代码**推理**判定
   - ❌ **不执行 shell**：算法中的 `sha256sum` 等命令仅供人类手动验证
-- **覆盖范围**：11 项检查（M-Form-1 到 M-Integrity-4）
+- **覆盖范围**：13 项检查（M-Form-1~8 + M-Exist-1~3 + M-Integrity-1~2，v2.3.7 修订）
 - **单一真源**：`references/_shared/M-Gate-Algorithm.md`
 
 ### F 模式（失败模式清单）
 - **性质**：面向用户的叙事层，解释"为什么要这么做"
-- **覆盖范围**：F1-F9（v2.2.2）
-  - F1：证据链断裂
-  - F2：论证跳跃
-  - F3：数据来源不明
-  - F4：逻辑循环
-  - F5：过度依赖单一来源
-  - F6：时效性失效
-  - F7：引用形式不规范
-  - F8：数据信任失败
-  - F9：论证强度不足
+- **覆盖范围**：F1-F9（v2.3.7-dsh.8 对齐执行真源 failure-modes.md）
+  - F1：幻觉引用（引用真实但用错语境 / 引用完全捏造）
+  - F2：幻觉数据（数字真实但过期 / 数字完全捏造）
+  - F3：早期框架锁定（分析大纲先入为主，写手被锁死）
+  - F4：论证自洽陷阱（论据与论点逻辑脱节）
+  - F5：拼凑式章节断裂（章节无过渡 / 结构过度对称）
+  - F6：过度防御口吻（破坏客观分析视角）
+  - F7：主人风格模仿失真（把主人洞察混入正文）
+  - F8：数据信任失败（二手转引未标原始出处）
+  - F9：论证强度不足（论据不足以支撑论点）
 - **单一真源**：`references/_shared/failure-modes.md`
 
 ### G 清单（质量审计清单）
 - **性质**：面向审计员的执行层，详细的操作手册
-- **覆盖范围**：G0-G13（v2.2.11）
-  - G0：大纲合规性
-  - G1：证据完备性
-  - G2：论证强度
-  - G2.5：估算专项（v2.2.0）
-  - G3：时效性
-  - G4：数据真实性
-  - G5：逻辑一致性
-  - G6：融合自然度
-  - G7：原创性
-  - G8：成品度（v2.1.0）
-  - G9：时序合理性（v2.1.0）
-  - G10：核心模型一致性（v2.1.3）
-  - G11：数据时效告警（v2.1.5）
-  - G12：数据信任验证（v2.2.1）
-  - G13：AI 使用披露（v2.2.2）
+- **覆盖范围**：G0-G13 共 17 项（v2.3.7-dsh.8 对齐执行真源 audit-checklist-quickref.md）
+  - G0：覆盖度检查（防选题漂移）
+  - G0.5：视角一致性（无第一人称具体经历）
+  - G1：引用真实性分级核验（C 级 100%/B 级 ≥50%/A 级 ≥10% 实测）
+  - G2：数据溯源核验
+  - G2.5：案例核验（≥2 来源 + 时间锚点 + 多方立场）
+  - G3：逻辑核验（论点-论据支撑）
+  - G4：结构与格式 + G4-2 文末四节双向 diff
+  - G5：学术规范（查重/AI 痕迹/伦理）
+  - G6：论据类型自标
+  - G7：原创性审计（对照先行者清单）
+  - G8：成品度（元数据残留 + 字数偏差）
+  - G9：时序合理性
+  - G10：核心模型一致性
+  - G11：数据时效告警
+  - G12：数据信任验证
+  - G13：AI 使用披露
 - **单一真源**：`references/_shared/audit-checklist-quickref.md`
 
 ---
@@ -129,7 +130,7 @@
   - 官方统计年鉴（国家统计局）
   - 学术论文中的研究数据（已发表）
   - 行业协会公开报告（中国汽车工业协会）
-- **验证要求**：M-Exist-1 检查来源 URL
+- **验证要求**：G2 数据溯源核验来源 URL（已发布数据）
 - **引用形式**：内联引用 `(来源，年份)` 或编号引用 `[Dxx]`
 
 ### 🟡 Level 2：主人投喂数据（中信任）
@@ -138,7 +139,7 @@
   - 主人提供的企业内部销售数据
   - 主人进行的问卷调查结果
   - 主人的实地考察笔记
-- **验证要求**：M-Exist-3 检查主人确认记录
+- **验证要求**：M-Form-6 信任级别标注（主人投喂档必填数据包路径）
 - **引用形式**：标注 `[主人提供]` 或 `[内部数据]`
 
 ### 🔴 Level 3：二手转引（低信任，严格限制）
@@ -293,31 +294,27 @@ grep -c "关键特征" drafts/[产物文件]  # 验证内容完整性
 
 ---
 
-## 七、版本号管理（5 层真源）
+## 七、版本号管理（DSH 版 3 层真源，v2.3.7-dsh.8 修订）
+
+> DSH 无 ClawHub、无 settings.yaml 论衡 description——真源为 3 层：
 
 ### 第 1 层：Git
 - **Commit**：`git commit -m "论衡 vX.Y.Z: ..."`
-- **Tag**：`git tag -a vX.Y.Z -m "..."`
-- **Push**：`git push origin master && git push origin vX.Y.Z`
+- **Tag**：`git tag -a vX.Y.Z-dsh.N -m "..."`
+- **Push**：`git push origin master && git push origin vX.Y.Z-dsh.N`
 
-### 第 2 层：技能文档
-- `SKILL.md` frontmatter `version: X.Y.Z`
+### 第 2 层：技能文档 + 包
+- `SKILL.md` frontmatter `version: X.Y.Z-dsh.N`
+- `package.json` `version`
 - `references/设计文档.md` 版本引用
 - `references/pipeline-readme.md` 版本变更记录
 - `references/_shared/M-Gate-Algorithm.md` 顶部版本标注
 - 8 个角色卡顶部版本标注
 
-### 第 3 层：DSH 配置
-- `settings.yaml` agents.paperwriter.description
-
-### 第 4 层：GitHub Web UI（需显式 API PATCH）
-- Repository description
-- Topics
-- Homepage URL
-
-### 第 5 层：ClawHub
-- Skill package 重新打包上传
-- Security scan 通过
+### 第 3 层：GitHub + npm
+- GitHub repository description / topics / homepage（`gh api` PATCH）
+- npm 包版本 + dist-tag（`npm publish --tag dsh`）
+- 双端副本（仓库 `skills/` ↔ `.dsh/skills/`）md5 一致
 
 ---
 
@@ -392,8 +389,8 @@ grep -c "关键特征" drafts/[产物文件]  # 验证内容完整性
 - **yield**：主控通过 `等子代理完成通知` 挂起等待子代理完成
 
 ### 真源 vs 副本
-- **真源**：论衡工作区 `工作区/pipeline/`
-- **副本**：ClawHub skill ZIP / GitHub 仓库
+- **真源**：git 仓库 `lunheng-article-pipeline-dsh/skills/`
+- **副本**：`.dsh/skills/` 活动副本（npm 安装）/ GitHub 仓库
 
 ### 蒸馏 vs 压缩
 - **蒸馏**（Distillation）：从日记忆提炼长期记忆（有损压缩）

@@ -1,8 +1,8 @@
-> 版本：v2.3.7-dsh.7（DSH 适配版，对应正典 v2.3.7，自动同步 2026-08-22）
+> 版本：v2.3.7-dsh.8（DSH 适配版，对应正典 v2.3.7，自动同步 2026-08-22）
 
 # M 门算法规约（论衡当前主流程完整版，v2.2.12 Phase D-1 合并）
 
-> **v2.2.15 新增**：[渐进式执行模式](M-Gate-渐进式验证-v2.2.15.md)—— 把 11 项 M 门从「T8 一次性全跑」改为「5 阶段分批执行 + T8 兜底」，P0 错误提前暴露（Phase 1.5 而非 T8），节省 30-50% 工作量。
+> **v2.2.15 新增（性能优化提案，未默认启用，v2.3.7-dsh.8 标注）**：[渐进式执行模式](M-Gate-渐进式验证-v2.2.15.md)—— 把 M 门从「T8 一次性全跑」改为「5 阶段分批执行 + T8 兜底」，P0 错误提前暴露。**主流程仍按本文件 T8 一次性全跑 13 项**，渐进式模式启用前须全局改名闸门。
 >
 > **v2.2.8 Phase D-1 重大变更**：本规约从「**4 个增量版本并存**」（v2.2.0/v2.2.1/v2.2.1.2/v2.2.4 共 15.4K tokens）合并为「**1 个完整版**」（本文件约 12K tokens，主流程只读这一份）。
 >
@@ -25,7 +25,7 @@
 **M 门的执行方式**：
 1. 主控用 `read` 工具读取本算法文档
 2. 主控用 `read` 工具读取 `final/定稿.md` + `final/证据包/` 所有文件  
-3. 主控按下面的**伪代码推理判定**，产出 `M-Gate-Report-v2.2.12.json`
+3. 主控按下面的**伪代码推理判定**，产出 `M-Gate-Report.json`
 4. exit 0 才能返回，否则触发修订或补检索
 
 **本文档中的代码示例**：
@@ -38,7 +38,7 @@
 
 ## 背景（v2.2.0 原版）
 
-论衡 agent 的 15 项白名单不含 `exec`，M 门由 LLM 推理执行，不引入新代码风险。
+> **DSH 说明（v2.3.7-dsh.8）**：原「15 项白名单不含 exec」是 OpenClaw 表述——DSH 无技能级白名单（工具集由 Agent 预设决定，standard 预设含 pwsh/bash）。但 M 门「**LLM 推理执行、零 shell 依赖**」的设计哲学不变：M 门判定的正确性不依赖 agent 执行 shell，而是靠主控 read 算法文档后用 LLM 推理模拟 grep/diff/sha256 的结果，保证跨平台 + 零执行风险。
 
 **设计哲学**：算法规约 100% 由论衡主控可读懂的伪代码构成，零 shell 依赖。
 
@@ -58,15 +58,15 @@
 
 1. ✅ **读取本规约全文**（用 `read` 工具读 `M-Gate-Algorithm.md`，**不再需要读 4 个历史版本**）
 2. ✅ **读取 final/定稿.md + final/证据包/所有文件**（用 `read` 工具）
-3. ✅ **依次执行 M-Form 6 项 + M-Exist 3 项 + M-Integrity 2 项**（按本规约伪代码推理，含 v2.2.1.2/v2.2.4 升级算法）
-4. ✅ **产出 M-Gate-Report-v2.2.12.json**（用 `write` 工具写入）
+3. ✅ **依次执行 M-Form 8 项 + M-Exist 3 项 + M-Integrity 2 项**（按本规约伪代码推理，含 v2.2.1.2/v2.2.4/v2.3.5/v2.3.7 升级算法）
+4. ✅ **产出 M-Gate-Report.json**（用 `write` 工具写入）
 5. ✅ **判定 exit code 0 才允许 T8 返回**，否则触发 T5 修订（v2.3.0 改 T4→T5）或主控补检索
 
 **Phase 0 同意关卡**：本算法不调用任何外部服务（纯 LLM 推理 + 文件 I/O），无需主人额外同意。实战验证如需 m_exist_1_diff.sh（shell 版）跑 dry-run，需主人明示同意（教训 #51 金标准）。
 
 ---
 
-## M-Form 形式合规门（7 项，含 v2.2.1.2 + v2.3.5 升级）
+## M-Form 形式合规门（8 项，含 v2.2.1.2 + v2.3.5 + v2.3.7 升级）
 
 ### M-Form-1: 引用标注完整性（v2.2.0 原版）
 
@@ -495,7 +495,7 @@ return (len(leaked) == 0 and len(orphan) == 0, leaked, orphan)
    - （b）实际 sha256 已回填（主人手动计算后）→ **P5 ✅ 通过**（高信任度）
    - （c）指纹段完全缺失 → **P5 ❌ 失败**（主控未生成占位符，是真错误）
 5. **人类主人补填**（v2.2.17 明示）：可选步骤，人类主人在 host shell 跑后回填 sha256 值
-6. **本文档中所有 sha256 示例**（v2.2.17 立场声明）：是「跨平台命令参考」，给主人在自己机器上手动验证用——**不是 agent 执行的代码**。论衡 LLM **不执行**任何 bash 命令（不在 15 项白名单内）。
+6. **本文档中所有 sha256 示例**（v2.2.17 立场声明）：是「跨平台命令参考」，给主人在自己机器上手动验证用——**不是 agent 执行的代码**。论衡 LLM **不执行**任何 bash 命令（用 LLM 推理模拟结果）。
 ```
 
 **跨平台等价命令**（v2.2.10 新增，教训 #107）——**仅人类主人使用，不是论衡 agent 调用**：
@@ -508,7 +508,7 @@ return (len(leaked) == 0 and len(orphan) == 0, leaked, orphan)
 | **Python（任意平台）** | `hashlib.sha256(open(file,'rb').read()).hexdigest()` |
 
 **v2.2.11 能力边界澄清**（回应 ClawHub scanner finding #4 98%）：
-- 论衡 agent **不能** 直接计算 sha256（不在 15 项白名单内）
+- 论衡 agent **不能** 直接计算 sha256（M 门零 shell 依赖，用 LLM 推理）
 - 主控 LLM 能用 `read` 读全文做「文件非空/有内容」验证（**这是 LLM 推理，不是 sha256**）
 - 真正 sha256 由人类主人在 host shell **手动计算后回填**到「证据包指纹」段
 - 本算法的「exit code」判定仅指「所有文件能被主控 read 验证非空」，不包括 sha256 完整性验证（sha256 是人类补填项）
@@ -576,7 +576,7 @@ return (all_pass, leaked, orphan, missing_trust)
 4. 数据条目数 >= 任务简报需求总数 → 数据完整 → 通过；否则 → 触发 T2 重检索
 5. 信任级别完整性：M-Form-6 exit 0 → 通过；否则 → 触发 T2 补标注
 6. 信任级别一致性：M-Exist-3 exit 0 → 通过；否则 → 触发 T2 补数据卡
-7. **v2.2.17 修复（教训 #123）**：sha256 指纹为**可选验证**——主控发占位符 `[SHA256-PENDING:HOST-VERIFY]` 到 `final/交付说明.md`「证据包指纹」段，**不**作为闸门强制项。主人需手动在 host shell 跑 `sha256sum final/证据包/*.md >> final/交付说明.md`（参考 `_shared/m_exist_1_diff.sh`）。**该步骤不是 agent 执行的代码，是人类验证示例。**
+7. **v2.2.17 修复（教训 #123）**：sha256 指纹为**可选验证**——主控发占位符 `[SHA256-PENDING:HOST-VERIFY]` 到 `final/交付说明.md`「证据包指纹」段，**不**作为闸门强制项。主人需手动在 host shell 跑 `sha256sum final/证据包/*.md >> final/交付说明.md`（参考 `archive/legacy-protocols/m_exist_1_diff.sh（已归档，人类可选 dry-run 工具）`）。**该步骤不是 agent 执行的代码，是人类验证示例。**
 8. **v2.2.10 新增（教训 #106）**：数据卡头部「共 N 条」声明 vs 实际 grep 计数一致性
    头部声明：grep -oE '共 [0-9]+ 条' final/证据包/数据卡.md
    实际计数：步骤 2 的双格式并集 dedupe
@@ -601,13 +601,13 @@ return (all_pass, fail_reasons, sha256_pending)
 **实战反例**（教训 #106）：T2 写数据卡时凭印象在头部写「共 29 条」，实际 grep 只有 26 条，T4 靠人工 grep 才发现。本次新增步骤 9 拦截。
 ```
 
-### M-Integrity-2: T7.5 完整性门（T8 审计 → T8 终检前，v2.2.1 新增 + v2.2.4 修订轮扩展）
+### M-Integrity-2: T7.5 完整性门（T7 审计 → T8 终检前，v2.2.1 新增 + v2.2.4 修订轮扩展）
 
 ```
 算法步骤（主控 LLM 兜底执行）：
 1. 检查审计报告最新版：ls audits/审计报告-vN.md → N 取最大 → 必须存在
 2. P0/P1 清单已列：grep -E '^- \*\*P0|^- \*\*P1' audits/审计报告-vN.md → 必须有 ≥1 条
-3. M 门（M-Form 6 项 + M-Exist 3 项）全部 exit 0：读 M-Gate-Report-v2.2.12.json → 全部 true
+3. M 门（M-Form 8 项 + M-Exist 3 项）全部 exit 0：读 M-Gate-Report.json → 全部 true
 4. 证据包 sha256 指纹完整：读 final/交付说明.md「证据包指纹」段 → 必须有 sha256 哈希
 5. 信任级别一致性：M-Exist-3 exit 0 → 通过
 6. 论文交付物 vs 操作员报告独立隔离：
@@ -623,7 +623,7 @@ return (all_pass, fail_reasons, sha256_pending)
 伪代码：
 audit_latest = get_latest_audit_report('audits/')
 p0_p1_listed = check_p0_p1_listed(audit_latest)
-m_gate_ok = check_m_gate_all_pass('final/M-Gate-Report-v2.2.12.json')
+m_gate_ok = check_m_gate_all_pass('final/M-Gate-Report.json')
 sha256_ok = check_evidence_sha256('final/交付说明.md')
 trust_ok = check_M_Exist_3(...)
 isolation_ok = check_draft_vs_report_isolation('final/定稿.md', 'final/交付说明.md', 'audits/')
@@ -634,17 +634,17 @@ return (all_pass, fail_reasons)
 
 ---
 
-## M-Gate-Report v2.2.4 输出格式（4 版本合并最终版）
+## M-Gate-Report 输出格式（合并完整版，v2.3.7-dsh.8 起文件名统一 M-Gate-Report.json）
 
-主控 T8 执行 M 门后，必须产出 `final/M-Gate-Report-v2.2.12.json`：
+主控 T8 执行 M 门后，必须产出 `final/M-Gate-Report.json`：
 
 ```json
 {
-  "schema": "M-Gate-Report-v2.2.4",
+  "schema": "M-Gate-Report",
   "项目": "<项目名>",
   "执行时间": "<ISO-8601>",
   "执行者": "论衡主控 T8 (LLM 兜底执行)",
-  "M门执行版本": "v2.2.4（v2.2.8 起主流程读合并完整版 M-Gate-Algorithm.md）",
+  "M门执行版本": "v2.3.7（v2.2.8 起主流程读合并完整版 M-Gate-Algorithm.md）",
 
   "M-Form_形式合规门": {
     "M-Form-1_引用标注完整性": true | false,

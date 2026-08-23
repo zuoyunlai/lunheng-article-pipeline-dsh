@@ -1,6 +1,8 @@
 # 论衡 M 门渐进式验证（v2.2.15 P2-2b 性能优化）
 
-> **目标**：把 11 项 M 门检查从「T8 一次性全跑」改为「按阶段分批执行 + T8 兜底复跑」
+> **⚠️ 状态（v2.3.7-dsh.8 标注）：本文件为「性能优化提案」，未默认启用**——主流程仍按 `M-Gate-Algorithm.md` 在 T8 终检一次性全跑（M-Form 8 + M-Exist 3 + M-Integrity 2）。本文件描述的分批执行（Phase 1.5/4.5 等）与主流程闸门名（T2.5/T7.5）**不同名不同义**，启用前须全局改名并重新设计闸门；当前仅作性能优化方向参考，主控不按此文件执行。
+
+> **目标**：把 13 项 M 门检查从「T8 一次性全跑」改为「按阶段分批执行 + T8 兜底复跑」
 > **预期效果**：错误提前暴露（不用等到 T7） + 单次执行检查项减少（节省 token）
 
 ---
@@ -135,7 +137,7 @@ grep -E "^\[L[0-9]+\]|^\[D[0-9]+\]|^\[C[0-9]+\]" drafts/初稿-v1.md | sort -u >
 diff /tmp/in_body /tmp/in_refs  # 应为 0 差异
 
 # M-Exist-2: 证据包 sha256（主控手动跑，LLM 不直接执行）
-# 见 references/_shared/m_exist_1_diff.sh
+# 见 references/archive/legacy-protocols/m_exist_1_diff.sh（已归档，人类可选 dry-run 工具）
 
 # M-Exist-3: 信任级别一致性 diff
 grep -oE "\[D[0-9]+\]" drafts/初稿-v1.md | sort -u > /tmp/data_in_body

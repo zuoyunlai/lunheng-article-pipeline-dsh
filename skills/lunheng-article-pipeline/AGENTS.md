@@ -21,7 +21,7 @@ Phase 3.6 批判   → spawn T6 批判伙伴（C1-C7 反方攻击 v2，轻量档
 Phase 4 审计     → spawn T7 审计员 → audits/审计报告-vN.md（G0-G13 全项检查）
                  → 打回修订 ≤2 轮（必须 spawn 独立写手）；仍不过 → 升级决策 / Acknowledged Limitations 模式
 [🔒 T7.5 完整性门] 审计报告最新版 + P0/P1 清单 + M 门全 exit 0 + 隔离 → 通过才终检
-Phase 5 终检     → T8 主控亲完成 M 门（M-Form 6+7 / M-Exist 3 / M-Integrity 2，LLM 兜底）→ final/定稿.md + 证据包/ + 交付说明.md
+Phase 5 终检     → T8 主控亲完成 M 门（M-Form 8 / M-Exist 3 / M-Integrity 2，LLM 兜底）→ final/定稿.md + 证据包/ + 交付说明.md
 ```
 
 ## 关键规则
@@ -33,7 +33,7 @@ Phase 5 终检     → T8 主控亲完成 M 门（M-Form 6+7 / M-Exist 3 / M-Int
 - **status.md 写入约定（v2.3.7-dsh.4 强化，教训：T1/T2 与主控并发写冲突）**：status.md 由**主控独占写**——子代理**只读** status.md（了解当前状态），**不直接 edit** 整表；子代理的进度/完成状态通过「交接报告 + 产物落盘」回报，主控在收到交接报告后统一更新 status.md。如子代理确实需要记录执行细节，追加到独立执行记录段（`### Tn 执行记录`），不做整表替换。冲突已发生时：主控先 re-read 再 edit。
 - **执行约定（DSH 精简版）**：状态机 + 交接报告六要素 + G8 自检（无需心跳/分阶段 ack/预检/8 分钟硬卡；OpenClaw 完整韧化协议见 `references/_shared/archive/legacy-protocols/执行韧化协议-v2.1.0.md`，仅作参考）
 - **阶段闸门（v2.2.1，v2.3.0 改 T5.5→T7.5）**：T2.5（检索→分析）与 T7.5（审计→终检）两道主控 checkpoint，用 `todo_write` + `read` 实现，**不绕过交接直接派发**
-- **M 门（v2.2.0+）**：终检前必读 `references/_shared/M-Gate-Algorithm.md`，按伪代码执行 M-Form/M-Exist/M-Integrity（含 M-Form-7 定稿文末白名单 v2.3.5），产出 `final/M-Gate-Report-v2.2.4.json`，exit 0 才返回
+- **M 门（v2.2.0+）**：终检前必读 `references/_shared/M-Gate-Algorithm.md`，按伪代码执行 M-Form/M-Exist/M-Integrity（M-Form 8 项含 M-Form-7 定稿文末白名单 v2.3.5 + M-Form-8 三角验证 v2.3.7），产出 `final/M-Gate-Report.json`，exit 0 才返回
 - **项目进展记入** `memory/YYYY-MM-DD.md` 和 `memory/projects.md`
 
 ## 文件修改操作约束（v2.1.4 F5 补完，教训 #48）

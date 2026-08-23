@@ -1,6 +1,6 @@
 # 论衡（lunheng-article-pipeline）— 多 Agent 深度长文流水线
 
-> **DSH 适配版（v2.3.7-dsh.1）**：本仓库为 DSH bundle 插件（技能包）；工具映射与结构性差异见 `SKILL.md` 的「🔧 DSH 适配说明」章节。
+> **DSH 适配版（v2.3.7-dsh.8）**：本仓库为 DSH bundle 插件（技能包）；工具映射与结构性差异见 `SKILL.md` 的「🔧 DSH 适配说明」章节。
 
 把一篇深度文章 / 论文的生产拆成 **8 张角色卡 + 6 个阶段**（Phase 1 为 T1 文献 ∥ T2 数据 ∥ T3 案例 三检索员三方真并行互不干涉，T3 任何量级必 spawn 含 0 条空卡协议；T6 批判伙伴 + T7 审计 + T8 终检=主控亲完成，v2.3.0 角色编号重构），用 DSH 的 `subagent` 子代理编排，产出有**证据底座、反方论证、独立审计、人工核验节点**的交付物。
 
@@ -76,7 +76,7 @@
   ├─ T5 写手       ── 初稿（内联/编号引用，AI 去味 10 项）
   ├─ T6 批判伙伴   ── 批判报告（C1-C7 反方攻击，轻量档可跳）
   ├─ T7 审计员     ── 审计报告（G0-G13 全项检查，只审不改）
-  └─ T8 终检（主控亲完成）── M 门（M-Form 6+7 / M-Exist 3 / M-Integrity 2）+ 定稿 + 证据包
+  └─ T8 终检（主控亲完成）── M 门（M-Form 8 / M-Exist 3 / M-Integrity 2）+ 定稿 + 证据包
 ```
 
 ### 三角验证（证据底座）
@@ -100,7 +100,7 @@
 
 ### 独立审计（G0-G13 + M 门）
 
-审计员与写手分离，全项检查：G0 覆盖度 · G0.5 视角一致性 · G1 引用核验 · G2 数据溯源 · G2.5 案例核验 · G3 逻辑 · G4 格式 · G4-2 文末四节 · G5 规范 · G6 论据自标 · G7 原创性 · G8 成品度 · G9 时序 · G10 一致性 · G11 时效 · G12 信任级别 · G13 AI 披露。终检前主控跑 **M 门**（M-Form 6+7 / M-Exist 3 / M-Integrity 2，LLM 兜底执行，产出 `final/M-Gate-Report-v2.2.4.json`，exit 0 才交付）。
+审计员与写手分离，全项检查：G0 覆盖度 · G0.5 视角一致性 · G1 引用核验 · G2 数据溯源 · G2.5 案例核验 · G3 逻辑 · G4 格式 · G4-2 文末四节 · G5 规范 · G6 论据自标 · G7 原创性 · G8 成品度 · G9 时序 · G10 一致性 · G11 时效 · G12 信任级别 · G13 AI 披露。终检前主控跑 **M 门**（M-Form 8 / M-Exist 3 / M-Integrity 2，LLM 兜底执行，产出 `final/M-Gate-Report-v2.2.4.json`，exit 0 才交付）。
 
 ---
 
@@ -148,7 +148,7 @@ lunheng-article-pipeline/                    # npm 包（DSH bundle）
         │   └── 07-审计-auditor.md
         ├── templates/                       # 7 类模板 × (full + lite) + 图表-SVG 模板
         ├── _shared/                         # M 门 / F 模式 / 韧化协议 / 自审门
-        │   ├── M-Gate-Algorithm.md          # M 门算法（M-Form 6+7 / M-Exist 3 / M-Integrity 2）
+        │   ├── M-Gate-Algorithm.md          # M 门算法（M-Form 8 / M-Exist 3 / M-Integrity 2）
         │   ├── M-Gate-渐进式验证-v2.2.15.md
         │   ├── audit-checklist-quickref.md  # G0-G13 速查
         │   ├── failure-modes.md             # F1-F9 失败模式

@@ -1,4 +1,4 @@
-> 版本：v2.3.7-dsh.7（DSH 适配版，对应正典 v2.3.7，自动同步 2026-08-22）
+> 版本：v2.3.7-dsh.8（DSH 适配版，对应正典 v2.3.7，自动同步 2026-08-22）
 
 # 审计员必查项快速参考（v2.2.8 抽离，v2.3.0 改 T5→T7）
 
@@ -97,7 +97,7 @@ echo "纯中文字符数 = $CN"
 
 执行必查项时，配合以下 M 门算法（**T7 必跑 exit 0**）：
 
-- **M-Form 形式合规门**（6 项）：见 `M-Gate-Algorithm.md` § M-Form
+- **M-Form 形式合规门**（8 项）：见 `M-Gate-Algorithm.md` § M-Form
 - **M-Exist 存在性合规门**（3 项）：见 `M-Gate-Algorithm.md` § M-Exist
 - **M-Integrity 阶段闸门**（2 项）：见 `M-Gate-Algorithm.md` § M-Integrity
 

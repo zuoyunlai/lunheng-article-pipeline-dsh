@@ -2,7 +2,7 @@
 
 > **论衡（lunheng-article-pipeline）** 是一个多 Agent 深度长文生产流水线，DeepSeek Harness（dsh）bundle 插件。它不是让一个 AI 直接写文章，而是让一支 **8 个 AI 角色组成的"论文生产小队"** 按既定协议协作：定题 → 三线并行检索 → 分析 → 写作 → 批判 → 审计 → 终检。每一步都有明确产出物、交接报告与质量闸门，最终交付**有证据底座、有反方论证、有独立审计、有人工核验节点**的文章。
 
-> 适用：公众号深度长文、研究报告、学术论文、商业评论、行业分析——任何"要站得住脚"的长内容。当前版本 **v2.3.7-dsh.7**（对应 OpenClaw 正典 v2.3.7）。
+> 适用：公众号深度长文、研究报告、学术论文、商业评论、行业分析——任何"要站得住脚"的长内容。当前版本 **v2.3.7-dsh.8**（对应 OpenClaw 正典 v2.3.7）。
 
 ---
 
@@ -93,7 +93,7 @@ Phase 1 一次性并行派出 **T1 文献 ∥ T2 数据 ∥ T3 案例** 三个�
 DSH 下的三个关键适配：
 
 1. **执行约定精简**：OpenClaw 的心跳/分阶段 ack/8 分钟硬卡在 DSH 下移除，改为「状态机 + 交接报告六要素 + G8 自检 + 超时介入（`list_agents`）」——贴合 DSH 的子代理机制，不空转轮询。
-2. **分档预设（按角色能力分模型，可选，v2.3.7-dsh.6 通用化）**：**单模型配置零配置可用**（所有角色继承会话模型）。配了多模型想按角色能力分档时，装「论衡分档」会话预设——检索角色（T1/T2/T3）走 `subagent_retrieval`（便宜快）、分析/写作/批判（T4/T5/T6）走 `subagent_strong`（推理强）、审计（T7）走 `subagent_audit`（顶配防漏判）；默认 `deepseek-v4-flash`/`deepseek-v4-pro`，经 `LUNHENG_*_PROVIDER` + `LUNHENG_*_MODEL` 环境变量覆盖（**provider 与 model 分离，跨 provider 必须同时指定**）；未装预设则全部继承会话模型，流水线照常运行（任何模型配置都能跑）。
+2. **分档预设（按角色能力分模型，可选，通用化）**：**单模型配置零配置可用**（所有角色继承会话模型）。配了多模型想按角色能力分档时，装「论衡分档」会话预设——检索角色（T1/T2/T3）走 `subagent_retrieval`（便宜快）、分析/写作/批判（T4/T5/T6）走 `subagent_strong`（推理强）、审计（T7）走 `subagent_audit`（顶配防漏判）；默认 `deepseek-v4-flash`/`deepseek-v4-pro`，经 `LUNHENG_*_PROVIDER` + `LUNHENG_*_MODEL` 环境变量覆盖（**provider 与 model 分离，跨 provider 必须同时指定**）；未装预设则全部继承会话模型，流水线照常运行（任何模型配置都能跑）。
 3. **子代理异常兜底**：failed 通知时主控按「验产物 → 验 status → 验口径」三步处理，不默认重跑（实跑沉淀）。
 
 ---
@@ -133,6 +133,7 @@ dsh plugin --profile web add lunheng-article-pipeline
 
 | 版本 | 内容 |
 |---|---|
+| **v2.3.7-dsh.8** | 全面审计修复（13 严重 + 40 中轻微）：自审门 DSH 化（门 C/D/E/G/J + 门数口径）、M 门项数统一 13 项、修订回环定案审计独立预算、G/F 清单对齐执行真源、批判 C1-C7 统一、Report 文件名统一、模板/glossary/errors 编号与路径修正、npm 元数据补全、m_exist_1_diff.sh 归档、门 V 防复发固化 |
 | **v2.3.7-dsh.7** | 角色卡模型设定去硬编码（通用化收尾）：07 审计卡/operations/pipeline-readme/00 主控/status 模板删除写死模型名与 OpenClaw fallback 链，改为能力定位（便宜快/推理强/顶配）+ 换档重派；门 U 同步修订为 DSH 版 |
 | **v2.3.7-dsh.6** | 模型配置通用化：单模型零配置继承 / 多模型按角色能力分档（检索便宜快/分析写作批判推理强/审计顶配）；预设补 `LUNHENG_*_PROVIDER`（provider 与 model 分离，跨 provider 必同时指定）；修正无效示例（claude-opus-5→实际可用模型） |
 | **v2.3.7-dsh.5** | 定稿文末两处必填规范（主人终稿评审确立）：先行者文献节后必附「本文与先行者的差异」原创性声明（聚焦论点/分析范式，一句式 AI 使用声明） |
@@ -150,7 +151,7 @@ dsh plugin --profile web add lunheng-article-pipeline
 ## 获取方式
 
 - **GitHub（DSH bundle）**：https://github.com/zuoyunlai/lunheng-article-pipeline-dsh
-- **npm**：`lunheng-article-pipeline@2.3.7-dsh.1`（`npm i lunheng-article-pipeline@dsh`）
+- **npm**：`lunheng-article-pipeline`（`npm i lunheng-article-pipeline@dsh`）
 - **OpenClaw 原版**：https://github.com/zuoyunlai/lunheng-article-pipeline
 
 ---
