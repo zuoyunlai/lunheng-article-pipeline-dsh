@@ -1,4 +1,4 @@
-> 版本：v2.3.7-dsh.6（DSH 适配版，对应正典 v2.3.7，自动同步 2026-08-22）
+> 版本：v2.3.7-dsh.7（DSH 适配版，对应正典 v2.3.7，自动同步 2026-08-22）
 
 # 论衡（lunheng-article-pipeline）— 通用深度长文多 Agent 流水线 运行手册（v2.2.14）
 
@@ -356,7 +356,7 @@ Phase 5 终检      **T8** 主控终检 → final/定稿.md + 图件/（如有�
 
 **触发条件**：T7 仅在 T6 批判报告 + T5 v3 完成后 spawn
 **独立性**：T7 仅审不改，与 T5 写手分离；引用分级抽验（C 级 100% / B 级 ≥50% / A 级 ≥10%）
-**模型 fallback（v2.3.1 新增，教训 #119）**：主模型 `claude-opus-5` → fallback 链 `deepseek-v4-pro → minimax-M3`；若 claude-opus-5 静默无响应（0 tokens / 超时），自动切 fallback，并在审计报告头部标注「T7 由 XX 兑底（原 claude-opus-5 静默无响应）」
+**模型说明（DSH，v2.3.7-dsh.6 通用化）**：审计档模型由 `LUNHENG_AUDIT_PROVIDER` + `LUNHENG_AUDIT_MODEL` 或 settings.yaml 决定（定位顶配防漏判，不写死具体模型名）；**无脚本级 fallback 链**（OpenClaw 的 claude-opus-5 → deepseek-v4-pro → minimax-M3 链在 DSH 下不适用，教训 #119 历史）——审计子代理静默无响应/循环时，主控用 `list_agents` 查看后**换档重派**，并在审计报告头部标注「T7 由 XX 兑底（原 XX 静默无响应/循环）」
 ```
 
 ### 终检（T8，主控亲完成）

@@ -1,4 +1,4 @@
-> 版本：v2.3.7-dsh.6（DSH 适配版，对应正典 v2.3.7，自动同步 2026-08-22）
+> 版本：v2.3.7-dsh.7（DSH 适配版，对应正典 v2.3.7，自动同步 2026-08-22）
 
 # 角色：审计员 Auditor（T7，v2.3.0）
 
@@ -36,10 +36,10 @@
 3. **G8 自检** → 完成后 grep「v2 稿/初稿/草稿/修订说明/据行业经验估算」有命中立即删除
 4. **超时介入（DSH 精简版）** → 主控用 `list_agents` 查看，长时间无产出即介入
 
-**模型说明（DSH）**：模型由 `settings.yaml` / 分档预设 `subagent_audit` 路由，无脚本级 fallback 链（OpenClaw 曾用主模型 + Fallback 链，教训 #119 历史）：
-- **主模型**：`claude-opus-5`（kkaiapi 接口，审计顶配，成本高）
-- 审计建议顶配模型（如 minimax-M3 / claude-opus-5，经 `LUNHENG_AUDIT_MODEL` 覆盖）；超时由主控介入
-- **fallback 触发后必须标注**（v2.3.1 新增，教训 #119）：若主模型静默无响应（0 tokens / 超时）自动切 fallback 后，**必须**在①产物头部 + ②交接报告 写明「T7 由 XX 兑底（原 claude-opus-5 静默无响应）」，让主人可追溯到模型降级事实
+**模型说明（DSH，v2.3.7-dsh.6 通用化）**：模型由 `settings.yaml` / 分档预设 `subagent_audit` 路由，**无脚本级 fallback 链**（OpenClaw 曾用主模型 + Fallback 链，教训 #119 历史，DSH 下不适用）：
+- **审计档定位**：顶配防漏判（建议用你环境最强的模型，经 `LUNHENG_AUDIT_PROVIDER` + `LUNHENG_AUDIT_MODEL` 指定，或改 settings.yaml 会话模型）；**不写死具体模型名**——任何 dsh 可用的模型都能承担审计档
+- **超时/异常处理（DSH 版）**：审计子代理静默无响应或循环无产出（教训 #119/#142）→ 主控用 `list_agents` 查看 → 换档重派（如 `subagent_audit` → `subagent_strong`，或改 `LUNHENG_AUDIT_*` 后重启 dsh）
+- **兑底后必须标注**（v2.3.1 新增，教训 #119）：若审计档换模型重派后完成，**必须**在①产物头部 + ②交接报告 写明「T7 由 XX 兑底（原 XX 静默无响应/循环）」，让主人可追溯到模型降级事实
 
 ## 职责
 

@@ -25,17 +25,13 @@
 
 ## 成本与模型建议（模型可自由更换）
 
-> 下表模型名为示例，非锁定。任何 DSH 兼容模型都可替换，更换途径见 `references/pipeline-readme.md` 的「模型配置与更换指南」段。
+> 下表为**能力定位**（不写死具体模型名——任何 DSH 兼容模型都可承担对应角色，具体模型由 `settings.yaml` / 分档预设 `LUNHENG_*_PROVIDER`+`_MODEL` 决定，v2.3.7-dsh.6 通用化）：
 
-| 角色 | 模型建议（示例） | 理由 |
+| 角色 | 能力定位 | 理由 |
 |------|------|------|
-| 文献/数据/案例检索 | 便宜快模型（如 deepseek-v4-flash） | 机械检索，最便宜可靠 |
-| 分析/写作 | 推理强模型（如 deepseek-v4-pro / minimax-m3） | 推理与成文质量 |
-| 审计 | 顶配模型（如 minimax-m3 / claude） | 专抓错，必须顶配 |
-| 主控 | 强推理模型（如 deepseek-v4-pro） | 判断与终检 |
+| 文献/数据/案例检索 | 便宜快模型 | 机械检索，最便宜可靠 |
+| 分析/写作 | 推理强模型 | 推理与成文质量 |
+| 审计 | 顶配模型 | 专抓错，必须顶配 |
+| 主控 | 强推理模型 | 判断与终检 |
 
-**v2.2.8 论衡模型 fallback 链（实测有效）**：
-- primary: `deepseek/deepseek-v4-pro`
-- fallback 1: `minimax-portal/MiniMax-M3`
-- fallback 2: `deepseek/deepseek-v4-flash`
-- fallback 3: `coding-plan/glm-5.3`（跨供应商最终兜底）
+**模型异常处理（DSH 版，替代 OpenClaw fallback 链）**：DSH 无脚本级 fallback 链（OpenClaw 的 primary→fallback1→fallback2→fallback3 链不适用）——角色子代理静默无响应/循环时，主控用 `list_agents` 查看后**换档重派**（如 `subagent_audit` → `subagent_strong`，或改 `LUNHENG_*_` 环境变量后重启 dsh），并在产物头部标注「由 XX 兑底（原 XX 静默无响应/循环）」（教训 #119/#142）。

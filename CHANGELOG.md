@@ -2,6 +2,18 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版与 OpenClaw 原版分离维护，版本号以 -dsh.N 标记第 N 次 DSH 适配。
 
+## 2.3.7-dsh.7（2026-08-22）
+
+- **角色卡模型设定去硬编码（通用化收尾，v2.3.7-dsh.6 的延续）**：
+  - `07-审计-auditor.md`：删「主模型 claude-opus-5（kkaiapi 接口）」+ OpenClaw fallback 链 → 「审计档定位顶配防漏判，不写死具体模型名；超时换档重派」
+  - `pipeline-readme.md`：删「claude-opus-5 → deepseek-v4-pro → minimax-M3 fallback 链」→ 「DSH 无脚本级 fallback 链，换档重派」
+  - `operations.md`：模型建议表「如 deepseek-v4-flash/minimax-m3」示例 → 纯能力定位（便宜快/推理强/顶配）；删 OpenClaw fallback 链 4 档
+  - `status-template-lite.md`：模板写死「当前模型: deepseek-v4-pro」→ 「继承会话模型或分档指定」
+  - `00-主控-coordinator.md`：删「自动兑底路径：模型路由顺序（deepseek-v4-pro → minimax-M3 → ...）」→ 「换档重派路径（DSH 版）」；命名隔离示例 `06-v2-attack.deepseek-v4-pro.md` → `<模型名>`
+  - `SKILL.md` 核心原则 5：模型分工示例名 → 纯能力描述（不写死具体模型名）
+  - **门 U 同步修订**（版本升级自审门）：原检查「claude-opus-5 fallback 链 + 1-token ping 预检」与删除的硬编码冲突会自审 FAIL → 改为 DSH 版（检查「不写死模型名 + 换档重派 + 异常标注」）
+  - 设计原则：能力描述（便宜快/推理强/顶配）→ 角色卡/文档；具体模型名 → 只在分档预设默认值（可覆盖）+ settings.yaml
+
 ## 2.3.7-dsh.6（2026-08-22）
 
 - **模型配置通用化（通用插件诉求）**：

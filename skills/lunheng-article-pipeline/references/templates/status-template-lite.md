@@ -13,7 +13,7 @@
 - 🔄 In Progress / ✅ Done / ❌ Failed
 - 角色: T1 / T2 / **T3** 案例检索（v2.3.0 重命名原 T6）/ T4 分析（v2.3.0 改 T3→T4）/ T5 写手（v2.3.0 改 T4→T5）/ T6 批判（v2.3.0 重命名原 T8）/ T7 审计（v2.3.0 改 T5→T7）/ T8 终检主控亲完成
 - 启动时间: YYYY-MM-DD HH:MM
-- 当前模型: deepseek-v4-pro
+- 当前模型: <继承会话模型或分档指定，如 subagent_retrieval 档模型>
 
 ## 执行记录（DSH 精简版）
 
