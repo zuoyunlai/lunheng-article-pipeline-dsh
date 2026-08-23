@@ -4,7 +4,7 @@
 
 把一篇深度文章/论文的生产拆成 **8 张角色卡**（T0 主控 + T1-T3 检索 + T4 分析 + T5 写作 + T6 批判 + T7 审计，T8 终检 = 主控亲完成）：Phase 1 三检索员（T1 文献 ∥ T2 数据 ∥ T3 案例）**三方真并行、互不干涉**，T3 **任何量级必 spawn**（含 0 条场景空卡协议）；T6 批判伙伴从反方攻击论证；G0-G13 独立审计 + M 门机械化终检（M-Form 6+7 / M-Exist 3 / M-Integrity 2）。用 dsh `subagent` 子代理编排，产出有**证据底座、反方论证、独立审计、人工核验节点**的交付物。
 
-> 版本：v2.3.7-dsh.5（DSH 适配版，对应正典 v2.3.7）。
+> 版本：v2.3.7-dsh.6（DSH 适配版，对应正典 v2.3.7）。
 
 ## 安装（在目标机器上）
 
@@ -26,15 +26,15 @@ dsh plugin --profile web add lunheng-article-pipeline
 - `skills/lunheng-article-pipeline/` — 技能本体（`SKILL.md` + `AGENTS.md` + `references/`：8 张角色卡 + 7 个模板 + `_shared/` 共享机制（M 门/F 模式/韧化协议）+ 运行手册 + 设计文档）
 - `cordis.patch.yml` — bundle 补丁：注册指向包内 `skills/` 的 filesystem 技能提供者
 
-## 按角色分模型（可选）
+## 按角色分模型（可选，v2.3.7-dsh.6 通用化）
 
-默认所有角色继承会话模型。若要**按角色指派不同模型**（检索用便宜快模型，分析/写作/批判/审计用强模型），用随包附带的「分档预设」：
+**单模型用户零配置**——默认所有角色继承会话模型，任何模型配置都能跑。配了多模型想**按角色能力分档**（检索便宜快 / 分析写作批判推理强 / 审计顶配）时，用随包附带的「分档预设」：
 
-| 工具 | 角色 | 默认模型 | 环境变量 |
+| 工具 | 角色 | 能力定位 | 默认 provider/model（可覆盖） |
 |---|---|---|---|
-| `subagent_retrieval` | T1 文献 / T2 数据 / T3 案例 | `deepseek-v4-flash` | `LUNHENG_RETRIEVAL_MODEL` |
-| `subagent_strong` | T4 分析 / T5 写作 / T6 批判 | `deepseek-v4-pro` | `LUNHENG_STRONG_MODEL` |
-| `subagent_audit` | T7 审计 | `deepseek-v4-pro` | `LUNHENG_AUDIT_MODEL` |
+| `subagent_retrieval` | T1 文献 / T2 数据 / T3 案例 | 便宜快 | `deepseek-official` / `deepseek-v4-flash` |
+| `subagent_strong` | T4 分析 / T5 写作 / T6 批判 | 推理强 | `deepseek-official` / `deepseek-v4-pro` |
+| `subagent_audit` | T7 审计 | 顶配防漏判 | `deepseek-official` / `deepseek-v4-pro` |
 
 ```sh
 # 1) 复制预设到用户预设根
@@ -43,7 +43,9 @@ cp -r examples/preset "$DSH_HOME/.agent-presets/lunheng"
 # 2) 新会话在预设选择器里选「论衡分档」
 
 # 3) 换模型：设环境变量后重启 dsh（模型挂载期求值一次）
-export LUNHENG_AUDIT_MODEL=claude-opus-5
+#    ⚠️ provider 与 model 分离：model 是裸 id，provider 必须单独指定
+export LUNHENG_AUDIT_PROVIDER=minimax
+export LUNHENG_AUDIT_MODEL=MiniMax-M3
 dsh web
 ```
 

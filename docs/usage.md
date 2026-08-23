@@ -38,11 +38,12 @@ Phase 0（定题）、Phase 2.5（大纲）、Phase 3.5（洞察补充）、Phas
 
 默认所有角色走同一个 `subagent` 工具、继承会话模型。装了「分档预设」后，主控会按角色改用三档工具，把模型也分档：
 
-| 工具 | 角色 | 默认模型 | 环境变量 |
+| 工具 | 角色 | 能力定位 | 默认 provider/model（可覆盖） |
 |---|---|---|---|
-| `subagent_retrieval` | T1 文献 / T2 数据 / T3 案例 | `deepseek-v4-flash` | `LUNHENG_RETRIEVAL_MODEL` |
-| `subagent_strong` | T4 分析 / T5 写作 / T6 批判 | `deepseek-v4-pro` | `LUNHENG_STRONG_MODEL` |
-| `subagent_audit` | T7 审计 | `deepseek-v4-pro` | `LUNHENG_AUDIT_MODEL` |
+| `subagent_retrieval` | T1 文献 / T2 数据 / T3 案例 | 便宜快 | `deepseek-official` / `deepseek-v4-flash` |
+| `subagent_strong` | T4 分析 / T5 写作 / T6 批判 | 推理强 | `deepseek-official` / `deepseek-v4-pro` |
+| `subagent_audit` | T7 审计 | 顶配防漏判 | `deepseek-official` / `deepseek-v4-pro` |
 
+- 覆盖环境变量：`LUNHENG_{RETRIEVAL,STRONG,AUDIT}_PROVIDER`（provider 名）+ `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_MODEL`（裸模型 id）——**两者分离，跨 provider 必须同时指定**；
 - 安装与切换见 `docs/installation.md` 的「分档预设」一节；
 - 未装预设或未挂载对应工具时，主控自动回退到 `subagent`（所有角色继承会话模型），不影响流水线运行。

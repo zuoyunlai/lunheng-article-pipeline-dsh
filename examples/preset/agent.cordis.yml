@@ -203,6 +203,16 @@
     #   分析/写作/批判（T4/T5/T6）     → subagent_strong
     #   审计（T7）                     → subagent_audit
     # 模型经环境变量覆盖，挂载期求值一次，改后需重启 dsh 生效。
+    #
+    # 通用性设计（v2.3.7-dsh.6）：
+    # - 不设任何 LUNHENG_* 变量 → 用下方默认值（deepseek-v4-flash / deepseek-v4-pro）；
+    #   若你的 dsh 未配置 deepseek 模型，请勿装本预设（改用纯继承：不装预设即可，
+    #   所有角色继承会话模型，任何模型配置都能跑）。
+    # - 多模型按能力分档 → 设环境变量（provider 与 model 分离，DSH 架构要求）：
+    #     $env:LUNHENG_RETRIEVAL_PROVIDER = "minimax"; $env:LUNHENG_RETRIEVAL_MODEL = "MiniMax-M2.7"   # 检索：便宜快
+    #     $env:LUNHENG_STRONG_PROVIDER     = "deepseek-official"; $env:LUNHENG_STRONG_MODEL = "deepseek-v4-pro"  # 分析/写作/批判：推理强
+    #     $env:LUNHENG_AUDIT_PROVIDER      = "minimax"; $env:LUNHENG_AUDIT_MODEL = "MiniMax-M3"        # 审计：顶配防漏判
+    #   ⚠️ model 是裸 id（不含 provider 前缀），provider 必须单独指定，否则 dsh-llm 报 NO_ADAPTER。
     - id: tool-subagent-retrieval
       name: '@deepseek-ai/dsh-tool-subagent'
       config:
@@ -210,6 +220,7 @@
         toolName: subagent_retrieval
         backgroundMode: continuable
         agentOptions:
+          provider: !!js process.env.LUNHENG_RETRIEVAL_PROVIDER ?? 'deepseek-official'
           model: !!js process.env.LUNHENG_RETRIEVAL_MODEL ?? 'deepseek-v4-flash'
 
     - id: tool-subagent-strong
@@ -219,6 +230,7 @@
         toolName: subagent_strong
         backgroundMode: continuable
         agentOptions:
+          provider: !!js process.env.LUNHENG_STRONG_PROVIDER ?? 'deepseek-official'
           model: !!js process.env.LUNHENG_STRONG_MODEL ?? 'deepseek-v4-pro'
 
     - id: tool-subagent-audit
@@ -228,6 +240,7 @@
         toolName: subagent_audit
         backgroundMode: continuable
         agentOptions:
+          provider: !!js process.env.LUNHENG_AUDIT_PROVIDER ?? 'deepseek-official'
           model: !!js process.env.LUNHENG_AUDIT_MODEL ?? 'deepseek-v4-pro'
 
     # Product providers are host-plane singletons. Copy this preset, then

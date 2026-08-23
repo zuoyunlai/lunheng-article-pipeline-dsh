@@ -1,4 +1,4 @@
-> 版本：v2.3.7-dsh.5（DSH 适配版，对应正典 v2.3.7，自动同步 2026-08-22）
+> 版本：v2.3.7-dsh.6（DSH 适配版，对应正典 v2.3.7，自动同步 2026-08-22）
 
 # 论衡（lunheng-article-pipeline）— 通用深度长文多 Agent 流水线 运行手册（v2.2.14）
 
@@ -121,10 +121,11 @@ v2.1.4（2026-08-15，**测试期 finding，本地修订未发布**）：**文�
 
 **主控 T 派发前必须明确 2 点**：
 
-1. **模型路由（按角色分模型，可选）**：
-   - 会话级模型由 `settings.yaml` 决定（默认所有角色继承）；
-   - 按角色分模型装「分档预设」（`examples/preset/`）：`subagent_retrieval`（T1/T2/T3，默认 `deepseek-v4-flash`）/ `subagent_strong`（T4/T5/T6，默认 `deepseek-v4-pro`）/ `subagent_audit`（T7，默认 `deepseek-v4-pro`，可经 `LUNHENG_AUDIT_MODEL` 换 minimax-M3/claude-opus-5 等顶配）；
-   - 未装预设则全部继承会话模型，流水线照常运行。
+1. **模型路由（通用自适应，v2.3.7-dsh.6）**：
+   - **单模型配置**：会话级模型由 `settings.yaml` 决定，所有角色继承——**零配置可用**；
+   - **多模型按能力分档（可选）**：装「分档预设」（`examples/preset/`）后按角色分派三档工具：`subagent_retrieval`（T1/T2/T3 检索：便宜快）/ `subagent_strong`（T4/T5/T6 分析写作批判：推理强）/ `subagent_audit`（T7 审计：顶配防漏判）；
+   - **分档模型可覆盖**（默认 `deepseek-v4-flash`/`deepseek-v4-pro`）：`LUNHENG_RETRIEVAL_PROVIDER`+`_MODEL` / `LUNHENG_STRONG_PROVIDER`+`_MODEL` / `LUNHENG_AUDIT_PROVIDER`+`_MODEL`——**provider（provider 名）与 model（裸 id）分离，跨 provider 必须同时指定两者**，否则 dsh-llm 报 NO_ADAPTER；
+   - **未装预设或未挂载对应工具 → 全部继承会话模型**，流水线照常运行（任何模型配置都能跑）。
 
 2. **超时介入（DSH 精简版，无硬卡）**（OpenClaw 曾用 8 分钟硬卡 + 自动 kill）：
    - T 派发后长时间无产出 → 主控用 `list_agents` 查看子代理实际状态，判定异常即介入（换档重派 / 主控兜底）；

@@ -185,17 +185,17 @@ dsh plugin --profile web add lunheng-article-pipeline
 
 把本仓库的 `skills/lunheng-article-pipeline/` 目录复制到任一 DSH 技能根（`$DSH_HOME/skills/` 或项目 `.dsh/skills/`）即可，无需安装、热加载生效。
 
-### 模型更换 / 按角色分模型
+### 模型更换 / 按角色分模型（v2.3.7-dsh.6 通用化）
 
-DSH 的模型路由由 `settings.yaml` 配置决定，`subagent` 默认继承会话模型。要**按角色分模型**，装本包的「分档预设」`examples/preset/`（复制到 `$DSH_HOME/.agent-presets/lunheng/`，新会话选「论衡分档」），主控会改用三档工具按角色分派：
+DSH 的模型路由由 `settings.yaml` 配置决定，`subagent` 默认继承会话模型（**单模型配置零配置可用**）。配了多模型想**按角色能力分档**，装本包的「分档预设」`examples/preset/`（复制到 `$DSH_HOME/.agent-presets/lunheng/`，新会话选「论衡分档」），主控会改用三档工具按角色分派：
 
-| 工具 | 角色 | 默认模型 | 环境变量 |
+| 工具 | 角色 | 能力定位 | 默认 provider/model（可覆盖） |
 |---|---|---|---|
-| `subagent_retrieval` | T1 文献 / T2 数据 / T3 案例 | `deepseek-v4-flash` | `LUNHENG_RETRIEVAL_MODEL` |
-| `subagent_strong` | T4 分析 / T5 写作 / T6 批判 | `deepseek-v4-pro` | `LUNHENG_STRONG_MODEL` |
-| `subagent_audit` | T7 审计 | `deepseek-v4-pro` | `LUNHENG_AUDIT_MODEL` |
+| `subagent_retrieval` | T1 文献 / T2 数据 / T3 案例 | 便宜快 | `deepseek-official` / `deepseek-v4-flash` |
+| `subagent_strong` | T4 分析 / T5 写作 / T6 批判 | 推理强 | `deepseek-official` / `deepseek-v4-pro` |
+| `subagent_audit` | T7 审计 | 顶配防漏判 | `deepseek-official` / `deepseek-v4-pro` |
 
-模型挂载期求值一次，改环境变量后须重启 dsh；未挂载对应工具时自动回退 `subagent`。
+覆盖环境变量：`LUNHENG_{RETRIEVAL,STRONG,AUDIT}_PROVIDER`（provider 名）+ `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_MODEL`（裸模型 id）——**两者分离，跨 provider 必须同时指定**。模型挂载期求值一次，改环境变量后须重启 dsh；未挂载对应工具或未装预设时自动回退 `subagent`（继承会话模型，任何模型配置都能跑）。
 
 ---
 

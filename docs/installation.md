@@ -41,15 +41,15 @@ dsh --profile headless-lunheng-test "请调用 skill 工具列出你可见的技
 # 预期输出包含：lunheng-article-pipeline
 ```
 
-## 分档预设（按角色分模型，可选）
+## 分档预设（按角色分模型，可选，v2.3.7-dsh.6 通用化）
 
-默认所有角色继承会话模型。若要按角色指派不同模型，安装随包附带的「分档预设」：
+**单模型用户无需本预设**——默认所有角色继承会话模型，任何模型配置都能跑。装预设只对「配了多个模型、想按角色能力分档」的用户有意义（检索便宜快 / 分析写作批判推理强 / 审计顶配）：
 
-| 工具 | 角色 | 默认模型 | 环境变量 |
+| 工具 | 角色 | 能力定位 | 默认 provider/model（可覆盖） |
 |---|---|---|---|
-| `subagent_retrieval` | T1 文献 / T2 数据 / T3 案例 | `deepseek-v4-flash` | `LUNHENG_RETRIEVAL_MODEL` |
-| `subagent_strong` | T4 分析 / T5 写作 / T6 批判 | `deepseek-v4-pro` | `LUNHENG_STRONG_MODEL` |
-| `subagent_audit` | T7 审计 | `deepseek-v4-pro` | `LUNHENG_AUDIT_MODEL` |
+| `subagent_retrieval` | T1 文献 / T2 数据 / T3 案例 | 便宜快 | `deepseek-official` / `deepseek-v4-flash` |
+| `subagent_strong` | T4 分析 / T5 写作 / T6 批判 | 推理强 | `deepseek-official` / `deepseek-v4-pro` |
+| `subagent_audit` | T7 审计 | 顶配防漏判 | `deepseek-official` / `deepseek-v4-pro` |
 
 ```sh
 # 1) 复制预设到用户预设根（Windows 用 copy / xcopy 同理）
@@ -58,13 +58,16 @@ cp -r examples/preset "$DSH_HOME/.agent-presets/lunheng"
 # 2) 新会话在预设选择器里选「论衡分档」
 
 # 3) 换模型：设环境变量后重启 dsh（模型挂载期求值一次，改完必须重启）
-export LUNHENG_AUDIT_MODEL=claude-opus-5
+#    ⚠️ provider 与 model 分离：model 是裸 id，provider 必须单独指定
+export LUNHENG_AUDIT_PROVIDER=minimax
+export LUNHENG_AUDIT_MODEL=MiniMax-M3
 dsh web
 ```
 
 - 不装预设：技能回退到 `subagent`，所有角色继承会话模型（对多数场景够用）。
 - 模型在挂载期用 `!!js` 求值一次，改环境变量后**必须重启 dsh** 才生效。
-- 若某档未设环境变量，用上表默认值。
+- 若某档未设环境变量，用上表默认值；**未配置 deepseek 模型的用户不要装预设**（默认值会 NO_ADAPTER），直接继承会话模型即可。
+- provider 名须是你 dsh 已注册的 LLM provider（查 `settings.yaml` 的 `agent-default-model.provider`）。
 - 完整说明见 `examples/preset/README.md`。
 
 ## 使用

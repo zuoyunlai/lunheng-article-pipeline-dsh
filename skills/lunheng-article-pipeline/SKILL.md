@@ -1,16 +1,16 @@
 ---
 name: "lunheng-article-pipeline"
-version: "2.3.7-dsh.5"
+version: "2.3.7-dsh.6"
 description: "严肃长文流水线（学术论文 / 商业评论 / 行业分析 / 公众号深度长文）——多 Agent 子代理编排（DSH 适配版，对应正典 v2.3.7）。8 张角色卡（T0 主控 + T1-T3 检索 + T4 分析 + T5 写作 + T6 批判 + T7 审计，T8 终检=主控亲完成）。**不适用于** <2000 字短文/即时问答/文学创作。三角验证 + M 机械化硬门 + F 失败模式防御 + 数据信任 3 档 + 修订回环 ≤2 轮。完整变更历史见原仓库 git log。"
 metadata:
   note: "DSH 不识别技能级工具白名单——工具集由 Agent 预设（组合文件）决定；原 OpenClaw 的 metadata.requires/tools 段已移除，工具映射见正文「DSH 适配说明」章节。"
 ---
 
-> 版本：v2.3.7-dsh.5（DSH 适配版，对应正典 v2.3.7，自动同步 2026-08-22）
+> 版本：v2.3.7-dsh.6（DSH 适配版，对应正典 v2.3.7，自动同步 2026-08-22）
 
 # 多 Agent 深度长文流水线（论文/深度文章生产）
 
-## 🔧 DSH 适配说明（v2.3.7-dsh.5 — 从 OpenClaw v2.3.7 移植到 DeepSeek Harness）
+## 🔧 DSH 适配说明（v2.3.7-dsh.6 — 从 OpenClaw v2.3.7 移植到 DeepSeek Harness）
 
 本技能原为 OpenClaw 编写。在 DeepSeek Harness（dsh web，standard 预设）环境下，工具映射如下：
 
@@ -32,11 +32,14 @@ metadata:
 **结构性差异（重要，覆盖正文中所有残留的 OpenClaw 表述）**：
 
 1. **技能级工具白名单/denied 在 DSH 无效**：工具集由 Agent 预设决定，技能声明不了也禁不了工具；正文中「15 项工具」「exec 被 deny」等段落仅为原 OpenClaw 环境的残留说明，DSH 下模型可用工具以当前会话预设为准（standard 预设含 `pwsh`/`bash`，可按需给主控/子代理使用）。
-2. **模型分配无法在技能内强制**：DSH 的模型路由由 `settings.yaml` / LLM 适配器配置决定，`subagent` 默认继承会话模型。要**按角色分模型**，装本包「分档预设」（`examples/preset/`，会话预设选「论衡分档」）后，主控按角色用三档工具派发：
-   - `subagent_retrieval`（T1 文献/T2 数据/T3 案例）→ 默认 `deepseek-v4-flash`，`LUNHENG_RETRIEVAL_MODEL`
-   - `subagent_strong`（T4 分析/T5 写作/T6 批判）→ 默认 `deepseek-v4-pro`，`LUNHENG_STRONG_MODEL`
-   - `subagent_audit`（T7 审计）→ 默认 `deepseek-v4-pro`，`LUNHENG_AUDIT_MODEL`
-   - 未装预设或未挂载对应工具 → 全部回退 `subagent`（继承会话模型），流水线照常运行。
+2. **模型分配（通用自适应，v2.3.7-dsh.6 重构）**：DSH 的模型路由由 `settings.yaml` / LLM 适配器配置决定，`subagent` 默认继承会话模型。论衡的模型策略是**任何模型配置都能跑**：
+   - **只配了一个模型** → **什么都不用做**：不装分档预设，所有角色用 `subagent` 继承会话模型，流水线照常运行；
+   - **配了多个模型** → 装本包「分档预设」（`examples/preset/`，会话预设选「论衡分档」）按角色能力分档：`subagent_retrieval`（T1/T2/T3 检索：便宜快）/ `subagent_strong`（T4/T5/T6 分析写作批判：推理强）/ `subagent_audit`（T7 审计：顶配防漏判）；
+   - **分档模型可覆盖**：默认 `deepseek-v4-flash`（检索）/ `deepseek-v4-pro`（强档+审计），经环境变量改（**provider 与 model 分离**，DSH 架构要求——model 是裸 id，provider 单独指定）：
+     - `LUNHENG_RETRIEVAL_PROVIDER` + `LUNHENG_RETRIEVAL_MODEL`（T1/T2/T3）
+     - `LUNHENG_STRONG_PROVIDER` + `LUNHENG_STRONG_MODEL`（T4/T5/T6）
+     - `LUNHENG_AUDIT_PROVIDER` + `LUNHENG_AUDIT_MODEL`（T7）
+   - **未装预设或未挂载对应工具 → 全部回退 `subagent`（继承会话模型）**，流水线照常运行——这是通用性兜底：无论用户 dsh 配了什么模型、装没装预设，论衡都能跑。
 3. **执行韧化协议在 DSH 精简为「执行约定」**：OpenClaw 的 30 秒心跳/分阶段 ack/模型健康度预检/8 分钟硬卡在 DSH 下移除，改为——状态机（status.md）+ 交接报告六要素 + G8 自检 + 超时介入（主控用 `list_agents` 查看子代理，长时间无产出即介入）。
 4. **运行时目录约定**：`run/<项目名>/` 工作树、`memory/*.md`、`final/` 等由本技能在项目启动时创建；机制文档在本技能目录的 `references/`（原 OpenClaw 部署的 `pipeline/` 对应 `references/`）。
 5. **角色编号（v2.3.0 重构）**：T1 文献 / T2 数据 / **T3 案例** / **T4 分析** / **T5 写作** / **T6 批判** / **T7 审计** / **T8 终检 = 主控亲完成**（无独立角色卡）——编号 = 流水线 Phase 顺序（T1-T3 检索 / T4-T5 加工 / T6-T8 防御）。
@@ -117,18 +120,28 @@ metadata:
 
 **对字数分层的理解**：流水线本身有固定成本（三方并行 + 8 角色 + 4 个闸门），字数太少投入产出比低；但 2000 字以下不是「不能用」，是「不划算」。主人按需选。
 
-**论衡分档模型预设**（v2.2.10 新增，教训 #107；DSH 下装「分档预设」落实）：跑全量长文时，**优先按角色分层选模型**——检索便宜快 / 分析写作强推理 / 审计顶配 / 主控稳定，能省不少成本：
+**论衡分档模型预设**（v2.2.10 新增，教训 #107；DSH 下装「分档预设」落实，v2.3.7-dsh.6 通用化）：跑全量长文时，**优先按角色分层选模型**——检索便宜快 / 分析写作强推理 / 审计顶配 / 主控稳定，能省不少成本。默认值仅作推荐，**任何档位都可通过 `LUNHENG_*_PROVIDER` + `LUNHENG_*_MODEL` 覆盖为你环境可用的模型**：
 
-| 角色 | 推荐模型 | 理由 |
-|------|---------|------|
-| T1 / T2 / T3 检索类 | `subagent_retrieval`（deepseek-v4-flash） | 检索任务是抽取+分类，便宜快足够 |
-| T4 分析 + T5 写手 | `subagent_strong`（deepseek-v4-pro） | 分析写作需强推理 |
-| T6 批判伙伴 | `subagent_strong`（deepseek-v4-pro） | 批判论证也需强推理 |
-| T7 审计 | `subagent_audit`（deepseek-v4-pro，可换 minimax-M3/Claude） | 审计顶配防漏判 |
-| T0 主控 | 会话模型（默认） | 主控是判断+路由 |
-| T8 终检 | 主控亲自完成 | 不 spawn 子代理，v2.3.0 明确 T8 终检 = 主控职责 |
+| 角色 | 工具 | 能力定位 | 默认（可覆盖） |
+|------|------|---------|---------------|
+| T1 / T2 / T3 检索 | `subagent_retrieval` | 便宜快（抽取+分类） | `deepseek-v4-flash` |
+| T4 分析 + T5 写手 | `subagent_strong` | 推理强（分析/成文） | `deepseek-v4-pro` |
+| T6 批判伙伴 | `subagent_strong` | 推理强（反方攻击） | `deepseek-v4-pro` |
+| T7 审计 | `subagent_audit` | 顶配防漏判 | `deepseek-v4-pro` |
+| T0 主控 | 会话模型（默认） | 判断+路由 | 跟随 settings.yaml |
+| T8 终检 | 主控亲自完成 | 不 spawn 子代理 | — |
 
-**模型配置路径（DSH）**：会话级模型路由改 `settings.yaml`；按角色分模型装「分档预设」（`examples/preset/`，见上文 DSH 适配说明第 2 条）；未装预设则 `subagent` 继承会话模型。详见 `references/pipeline-readme.md`「模型配置与更换指南」段。
+**模型配置路径（DSH）**：会话级模型路由改 `settings.yaml`；按角色分模型装「分档预设」（`examples/preset/`，见上文 DSH 适配说明第 2 条）；未装预设则 `subagent` 继承会话模型（**任何模型配置都能跑**）。覆盖示例：
+```powershell
+# 检索档：便宜快（换 minimax 便宜模型）
+$env:LUNHENG_RETRIEVAL_PROVIDER = "minimax"; $env:LUNHENG_RETRIEVAL_MODEL = "MiniMax-M2.7"
+# 强档：分析/写作/批判用推理强模型
+$env:LUNHENG_STRONG_PROVIDER = "deepseek-official"; $env:LUNHENG_STRONG_MODEL = "deepseek-v4-pro"
+# 审计档：顶配防漏判
+$env:LUNHENG_AUDIT_PROVIDER = "minimax"; $env:LUNHENG_AUDIT_MODEL = "MiniMax-M3"
+# ⚠️ provider 与 model 分离：model 是裸 id，provider 必须单独指定，否则 dsh-llm 报 NO_ADAPTER
+```
+详见 `references/pipeline-readme.md`「模型配置与更换指南」段。
 
 ## 边界与轻量化建议（v2.2.7 软化「不适用场景」段）
 

@@ -2,6 +2,16 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版与 OpenClaw 原版分离维护，版本号以 -dsh.N 标记第 N 次 DSH 适配。
 
+## 2.3.7-dsh.6（2026-08-22）
+
+- **模型配置通用化（通用插件诉求）**：
+  - **单模型配置零配置可用**：不装预设，所有角色继承会话模型，任何 dsh 模型配置都能跑（通用性兜底）；
+  - **多模型按角色能力分档**：分档预设默认「检索便宜快 / 分析写作批判推理强 / 审计顶配」，各档可经 `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_PROVIDER` + `_MODEL` 覆盖；
+  - **预设补 provider 字段**（DSH 架构要求：`agentOptions.provider` 与 `model` 分离，跨 provider 必须同时指定两者，否则 dsh-llm 报 NO_ADAPTER）；
+  - **修正无效示例**：`LUNHENG_AUDIT_MODEL=claude-opus-5`（用户环境无此 provider）→ 实际可用模型（minimax/MiniMax-M3 + provider 指定）；
+  - 涉及：examples/preset/agent.cordis.yml + README、SKILL.md（模型分配段+分档表）、AGENTS.md、pipeline-readme（调度模型段）、docs/{installation,usage,introduction}.md、skills/README.md；
+  - 技术验证：DSH `!!js` 仅求值标量（js-yaml scalar type），条件注入 provider 对象不可行 → 采用「固定默认 + 双环境变量覆盖」方案；新预设经 dsh --dump-config 加载验证 exit 0
+
 ## 2.3.7-dsh.5（2026-08-22）
 
 - **定稿文末两处必填规范**（主人终稿评审确立，固化到 deliverables.md 真源 + pipeline-readme 终检项 14/15 + 00 主控卡 ⑭ + 05 写手卡铁律 9/12）：
