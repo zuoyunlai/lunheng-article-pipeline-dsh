@@ -1,10 +1,10 @@
 ---
 name: "lunheng-article-pipeline"
-version: "2.5.2-dsh.2"
+version: "2.5.2-dsh.3"
 description: "严肃长文流水线（学术论文/商业评论/行业分析/公众号深度长文）——多 Agent 子代理编排（DSH 适配版，对应正典 v2.5.2）。9 张角色卡（T0 主控 + T1-T3 检索 + T4 分析 + T5 写作 + T6 批判 + T7 审计 + T9 审稿，T8 终检=主控亲完成）。三角验证 + M 机械化硬门 + F 失败模式防御 + 数据信任 3 档 + 修订回环 ≤2 轮 + G14 中文 AI 痕迹闸 + 期刊匹配助手。**不适用于** <2000 字短文/即时问答/文学创作。完整变更历史见原仓库 git log。"
 ---
 
-> 版本：v2.5.2-dsh.2（DSH 适配版，对应正典 v2.5.2，自动同步 2026-08-25）
+> 版本：v2.5.2-dsh.3（DSH 适配版，对应正典 v2.5.2，自动同步 2026-08-25）
 
 # 多 Agent 深度长文流水线（论文/深度文章生产）
 
@@ -80,9 +80,20 @@ description: "严肃长文流水线（学术论文/商业评论/行业分析/公
 2. 读 `references/glossary.md`（核心概念单一真源：角色卡/三层防御/数据信任/协议/工具边界）
 3. 读 `MEMORY.md` + `memory/YYYY-MM-DD.md`（主人偏好 + 最近关注主题）
 4. **spawn 子代理前必读派发话术**：T1/T2/T3/T4/T5/T6/T7/T9 八个角色的完整派发模板在 `pipeline-readme.md`，不要凭记忆复制（教训 #57）
-5. **审计前必读 G 体系**：`references/agents/07-审计-auditor.md#必查项`（G0-G14）+ `_shared/M-Gate-Algorithm.md`（M 门算法）
+5. **审计前必读 G 体系**：`references/agents/07-审计-auditor.md#必查项`（G0-G14）+ `_shared/M-Gate-Algorithm.md`（M 门算法）；**M-Form-1/3/5/7 + M-Exist-2 可先跑 `scripts/m-gate-check.mjs`**（v2.5.2-dsh 补丁：脚本化免 LLM 全读，T8 只判 M-Form-8 + 复核）
 6. **文件修改安全流程**（v2.1.4 F5）：**任何时候禁止 `sed -i`**（静默清空文件教训 #48）——用 `edit` 工具精确 oldText 匹配；改前 `wc -l` 记录 + `cp` 备份、改后 `wc -l` 对比 + `diff` 验证
 7. **子代理交接报告六要素缺一不可**，长时间无产出 → 主控用 `list_agents` 查看并介入（DSH 精简版，无 8 分钟硬卡）
+
+> **分层加载（v2.5.2-dsh 补丁，token 优化——主控启动 ~35K 降本）**：上下文紧张时先读下方「⚡ 启动速查表」，glossary/pipeline-readme 按需查概念/话术再读对应节，不必全文加载。
+
+## ⚡ 启动速查表（v2.5.2-dsh 补丁）
+
+- 版本：v2.5.2-dsh.3（对应正典 v2.5.2）｜角色：T0 主控 / T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / **T8 终检=主控亲完成** / T9 审稿（可选）
+- Phase：0 定题 → 1 检索(T1∥T2∥T3) → 2 分析 → 2.5 大纲(人) → 3 写作 → 3.5 洞察(人) → 3.6 批判 → 4 审计 → 4.5 审稿+G14 → 5 终检(人)
+- 工具：subagent=派发 / list_agents=查看 / todo_write=计划 / web_search=检索 / read_page=读页 / pwsh=命令 / edit|write=文件
+- 闸门：T2.5（检索→分析）/ T7.5（审计→终检）；M 门 13 项 exit 0（`scripts/m-gate-check.mjs` 预检）；修订回环双轨制
+- 终检成本：`node scripts/token-cost.mjs --sessions <主会话ID>,<子代理ID...>`（读会话投影缓存，实取 token 四类 + 估算成本）
+- 详细：pipeline-readme.md（派发话术/模型）/ glossary.md（概念单一真源）
 
 ## 何时使用 + 字数分层（v2.2.7 软化）
 
@@ -189,39 +200,11 @@ description: "严肃长文流水线（学术论文/商业评论/行业分析/公
 > **错误信息友好化**：详见 [`references/errors.md`](references/errors.md)（12 类常见错误的三段式友好版）
 ## 流水线全景（Phase 0-5）
 
-```
-Phase 0 定题        与主人确认主题/篇幅/受众/配图意向（无/要图） → 01-任务简报.md + status.md
-Phase 1 并行检索    T1 文献检索员 ∥ T2 数据检索员 ∥ T3 案例检索员（subagent 三方真并行，等完成通知 等待；T3 任何量级必 spawn，含 0 条空卡协议）
-Phase 2 分析        T4 分析员 → analysis/分析大纲.md（论点-论据映射 + 反方论证规划 + 三角验证）
-Phase 2.5 大纲确认  主人过目大纲 → 确认/修改 + 拍板 T4 建议图表（图位数量/类型/数据源）（人在环！改方向成本最低，不可跳过）
-Phase 3 写作        T5 写手 → drafts/初稿-v1.md（铁律：引用标[Lxx]、数字标[Dxx]、案例标[Cxx]、AI去味10项）
-Phase 3.5 洞察补充  主人过目初稿 v1 → 主控问主人洞要补 → T5 写手 v2 融入（人在环！v2.1.3 教训 #46）
-Phase 3.6 批判      T6 批判伙伴（v2.2.2 新增）→ analysis/批判报告-vN.md（攻击 v2 不是 v1，轻量档可跳过）
-Phase 4 审计        T7 审计员 → audits/审计报告-vN.md（G0-G14，v2.4.0 加 G14）
-Phase 4.2 修订      审计打回 → 写手交修订说明+修订稿 → 审计复核 ≤2 轮 → 仍不过升级主控
-Phase 4.5 配图      数据图表：Phase 2.5 拍板图位 → 写手已标 [图N：标题] → 主控 write 手写 SVG（本地零外发）；封面：Phase 0 勾选「启用封面生成」→ DSH 无内置文生图，降级 SVG 矢量风/主人投喂/图像 MCP（需主人首次确认，默认关闭）
-Phase 4.5 审稿      T9 同行评审（v2.4.0 新增，v2.4.6 按模式默认开启：行业分析/学术默认开启，公众号可选）→ audits/审稿报告-vN.md（6 维度评分 → accept/minor/major/reject；**v2.5.0 期刊匹配助手**：学术模式默认输出 Top 3 推荐期刊 + 综合匹配度，详见 [_shared/期刊数据库.md](references/_shared/期刊数据库.md) + [_shared/期刊匹配算法.md](references/_shared/期刊匹配算法.md)）；G14 中文 AI 痕迹闸（v2.4.0 新增，与 T6 并行）→ audits/G14-检测报告-vN.md（0-2 类 Pass / 3-4 类 Warning / 5+ 类 Fail）
-Phase 5 终检        主控终检 → final/定稿.md + 图件/ + 证据包/ + 交付说明.md（**v2.5.0 多格式导出**：默认 md，按需选 `--format latex/docx/pdf`，详见 [_shared/format-export.md](references/_shared/format-export.md)；**v2.5.1 中文数据源集成**（OpenAlex/Crossref 第一梯队默认推荐，无需 Key，详见 [_shared/中文数据源集成.md](references/_shared/中文数据源集成.md)））
-```
+> **单一真源**：[`references/pipeline-readme.md` 流水线全景段](references/pipeline-readme.md)（此处不重复维护，防双形式漂移教训 #60）。速查：Phase 0 定题 → 1 并行检索（T1∥T2∥T3）→ 2 分析 → 2.5 大纲确认（人）→ 3 写作 → 3.5 洞察（人）→ 3.6 批判 → 4 审计 → 4.5 审稿+G14 → 5 终检（人）。
 
 ## 项目目录结构
 
-```
-run/<项目名>/
-├── 01-任务简报.md       # Phase 0 产出：子问题拆解 + 字数预算 + 配图意向 + 期刊/风格模板
-├── status.md            # 状态机：Inbox→Assigned→In Progress→Review→Done|Failed（角色交接必更新）
-├── literature/文献卡.md # T1 产出：[L01]... 每条含可信度等级 A/B/C + 关联
-├── data/数据卡.md       # T2 产出：[D01]... 每条含来源机构+年份+URL+时效🟢🟡🔴
-├── cases/案例卡.md      # T3 产出：[C01]... 每条含事件/主体/时间窗口/多方说法/≥2来源
-├── analysis/分析大纲.md # T4 产出：论证主线+映射表+反方规划+章节字数预算
-├── analysis/批判报告-vN.md # T6 产出：C1-C7 五维批判（从反方攻击论证）
-├── drafts/初稿-vN.md    # T5 产出 + 修订稿 v2/v3（**显式覆盖前稿**，每轮均同步 `drafts/修订说明-vN.md`） + 修订说明
-├── audits/审计报告-vN.md# T7 产出：P0致命/P1严重/P2建议
-├── final/定稿.md        # Phase 5：终稿（去标注版另存）
-├── final/图件/          # 数据图表 + 封面
-├── final/证据包/        # 文献卡+数据卡+审计报告+核验记录
-└── final/交付说明.md    # 路径+图件清单+遗留风险+人工核验项
-```
+> **单一真源**：[`references/pipeline-readme.md` 项目目录段](references/pipeline-readme.md)（此处不重复维护，防双形式漂移教训 #60）。速查：`run/<项目名>/` 下 01-任务简报 / status / literature / data / cases / analysis / drafts / audits / final（定稿 + 图件 + 证据包 + 交付说明）。
 
 ## 核心原则
 

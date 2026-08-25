@@ -38,6 +38,7 @@ Phase 5 终检     → T8 主控亲完成 M 门（M-Form 8 / M-Exist 3 / M-Integ
 - **G14 中文 AI 痕迹闸（v2.4.0+）**：Phase 4.5 与 T6 并行触发（LLM 推理判定，零 exec），8 类检测维度，0-2 类 Pass / 3-4 类 Warning 触发 T5 修订 1 轮 / 5+ 类 Fail 触发 2 轮；主人在 Phase 0 可显式关闭。闸门定义 `references/gates/14-中文AI痕迹-gate.md`，检测器 `references/checkers/中文AI痕迹-checker.md`
 - **T9 同行评审 + 期刊匹配（v2.4.0+/v2.5.0）**：Phase 4.5 终稿前可选触发（行业分析/学术默认开启），6 维度评分 → accept/minor/major/reject；学术模式输出 Top 3 推荐期刊（`references/_shared/期刊数据库.md` + `期刊匹配算法.md`）
 - **项目进展记入** `memory/YYYY-MM-DD.md` 和 `memory/projects.md`
+- **注解聚合（v2.5.2-dsh 补丁，token 优化）**：新机制注解**不再逐层堆叠**（v2.1.8 新增/v2.2.1 新增/v2.3.0 改…），同主题合并为单行「v2.5.2-dsh 补丁，教训：…」格式；历史分层注解聚合到卡头一行，细节见 git log——防角色卡/文档随版本膨胀（实测单卡已 4-5 层历史注解）。
 
 ## 文件修改操作约束（v2.1.4 F5 补完，教训 #48）
 

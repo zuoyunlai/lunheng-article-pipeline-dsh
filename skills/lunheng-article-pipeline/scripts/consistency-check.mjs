@@ -2,7 +2,7 @@
 // 用法：node scripts/consistency-check.mjs
 // 覆盖五类漂移：双头版本行 / 悬空引用 / 裸「（检查）」占位符 / 8 分钟硬卡残留 / 硬编码 fallback 链
 // 退出码 0 = 通过；1 = 有漂移（列在 stderr）
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -45,6 +45,14 @@ for (const f of files) {
   // 2b. 裸「（检查）」占位符残留（净化剥离未标记；SKILL.md/glossary.md 为元文档说明，豁免）
   if (text.includes('（检查）') && !rel.endsWith('SKILL.md') && !rel.endsWith('glossary.md')) {
     errors.push(`[P2 裸「（检查）」占位符] ${rel}`);
+  }
+
+  // 2c. scripts/ 引用完整性：文档引用的脚本文件必须存在（防悬空引用，如 pdfcheck 曾漏入库）
+  const scriptRefs = [...text.matchAll(/scripts\/([a-z0-9\-]+\.mjs)/g)].map((mm) => mm[1]);
+  for (const s of new Set(scriptRefs)) {
+    if (!existsSync(join(ROOT, 'scripts', s))) {
+      errors.push(`[P1 scripts 悬空引用 scripts/${s}] ${rel}`);
+    }
   }
 
   if (active.includes(f)) {

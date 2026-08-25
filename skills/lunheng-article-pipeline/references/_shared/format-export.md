@@ -1,4 +1,4 @@
-> 版本：v2.5.2-dsh.2（DSH 适配版，对应正典 v2.5.2，自动同步 2026-08-25）
+> 版本：v2.5.2-dsh.3（DSH 适配版，对应正典 v2.5.2，自动同步 2026-08-25）
 
 
 # 多格式导出（v2.5.0 新增，可选，默认 md）
@@ -33,6 +33,17 @@
 
 
 > **零外发原则**：SVG 转 PDF 用 rsvg-convert（本地工具，零外发），pandoc 本地跑。
+
+### 三-b、无 pandoc/LaTeX 环境降级路径（v2.5.2-dsh 补丁，教训：善行实战本机无 pandoc/rsvg-convert/LaTeX）
+
+当主机未装 pandoc + LaTeX 引擎时，用零安装替代：**`scripts/md2html.mjs`（Markdown→HTML + 内嵌 SVG + 中文打印 CSS）→ Chrome/Edge headless `--print-to-pdf`**。
+
+```sh
+node scripts/md2html.mjs <定稿.md> <定稿.html> [<SVG 文件路径，可选，替换 [图1] 图位>]
+"C:\Program Files\Google\Chrome\Application\chrome.exe" --headless --disable-gpu --user-data-dir="%TEMP%\chrome-pdf-profile" --print-to-pdf="<定稿.pdf>" "file:///<定稿.html 绝对路径>"
+```
+
+校验：`scripts/pdfcheck.mjs`（解压 PDF FlateDecode 流 + 原始字节直查 `/Page` `/Font`/`ToUnicode`/`CIDFont` 计数 + `%%EOF`）。中文字体依赖系统字体（Windows 自带 SimSun/微软雅黑即够）。
 
 ## 四、Phase 0 + Phase 5 选择流程
 
