@@ -443,6 +443,7 @@ return (len(leaked) == 0 and len(orphan) == 0, leaked, orphan)
 算法步骤（v2.2.17 修订，回应 ClawHub scanner v2.2.16 finding F03+F05 94%/92%）：
 1. 读取 final/证据包/ 目录下所有 .md 和 .txt 文件
 2. **LLM 能力边界**（v2.2.17 澄清）：主控 LLM 不能直接计算 sha256 二进制哈希 → 主控用 `read` 读全文 + 推理验证「文件非空」+ 列文件名 +修改时间。**重要：以下占位符机制是论衡默认设计，不是 bug**。
+   - **DSH 例外（v2.5.2-dsh.0 反哺，教训：论艺术中的丑 sha256 占位符形同虚设）**：DSH 下主控有 `pwsh` 工具，**可直接计算 sha256 回填**，不必留占位符——`Get-FileHash -Algorithm SHA256 final\证据包\*.md` 由主控执行并写实值入「证据包指纹」段。仅在主控决定不跑 shell（严格零 exec 场景）时才降级为 `[SHA256-PENDING:HOST-VERIFY]` 占位符。
 3. **生成 sha256 占位**（v2.2.17 明确占位符机制）：在 final/交付说明.md「证据包指纹」段写出（由主控 LLM 写入，纯文本占位符）：
    ```
    ## 证据包指纹（v2.2.17）
