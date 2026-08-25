@@ -1,6 +1,6 @@
 # 使用流程
 
-论衡把一篇深度长文/论文的生产拆成 8 张角色卡、6 个阶段，由主控按协议派发子代理协作完成。
+论衡把一篇深度长文/论文的生产拆成 9 张角色卡、6 个阶段，由主控按协议派发子代理协作完成。
 
 ## 阶段
 
@@ -11,10 +11,11 @@
 | 2 分析 | T4 分析员（含 T2.5 完整性门通过后） | `analysis/分析大纲.md` |
 | 2.5 大纲确认 | 主人过目（人在环） | — |
 | 3 写作 | T5 写手 | `drafts/初稿-v1.md` |
-| 3.6 批判 | T6 批判伙伴（C1-C5 反方攻击，轻量档可跳过） | `analysis/批判报告-vN.md` |
-| 4 审计 | T7 审计员（G0-G13，只审不改） | `audits/审计报告-vN.md` |
+| 3.6 批判 | T6 批判伙伴（C1-C7 反方攻击，轻量档可跳过） | `analysis/批判报告-vN.md` |
+| 4 审计 | T7 审计员（G0-G14，只审不改） | `audits/审计报告-vN.md` |
 | 4.2 修订 | 写手修订 ≤2 轮（独立写手执行） | `修订说明` + `v2/v3` |
-| 5 终检 | 主控 M 门终检（T7.5 完整性门通过后；M-Form 6+7 / M-Exist 3 / M-Integrity 2） | `final/定稿.md` + 图件 + 证据包 + 交付说明 |
+| 4.5 审稿 | T9 同行评审（可选，学术/行业分析默认开）+ G14 中文 AI 痕迹闸 | `audits/审稿报告-vN.md` + `G14-检测报告-vN.md` |
+| 5 终检 | 主控 M 门终检（T7.5 完整性门通过后；M-Form 8 / M-Exist 3 / M-Integrity 2） | `final/定稿.md` + 图件 + 证据包 + 交付说明 |
 
 ## 项目目录结构
 
@@ -41,8 +42,8 @@ Phase 0（定题）、Phase 2.5（大纲）、Phase 3.5（洞察补充）、Phas
 | 工具 | 角色 | 能力定位 | 默认 provider/model（可覆盖） |
 |---|---|---|---|
 | `subagent_retrieval` | T1 文献 / T2 数据 / T3 案例 | 便宜快 | `deepseek-official` / `deepseek-v4-flash` |
-| `subagent_strong` | T4 分析 / T5 写作 / T6 批判 | 推理强 | `deepseek-official` / `deepseek-v4-pro` |
-| `subagent_audit` | T7 审计 | 顶配防漏判 | `deepseek-official` / `deepseek-v4-pro` |
+| `subagent_strong` | T4 分析 / T5 写作 / T6 批判 / T9 审稿 | 推理强 | `deepseek-official` / `deepseek-v4-pro` |
+| `subagent_audit` | T7 审计 / G14 检测 | 顶配防漏判 | `deepseek-official` / `deepseek-v4-pro` |
 
 - 覆盖环境变量：`LUNHENG_{RETRIEVAL,STRONG,AUDIT}_PROVIDER`（provider 名）+ `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_MODEL`（裸模型 id）——**两者分离，跨 provider 必须同时指定**；
 - 安装与切换见 `docs/installation.md` 的「分档预设」一节；

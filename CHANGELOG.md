@@ -2,6 +2,22 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版与 OpenClaw 原版分离维护，版本号以 -dsh.N 标记第 N 次 DSH 适配。
 
+## 2.5.2-dsh.0（2026-08-25）
+
+- **同步正典 v2.5.2（v2.3.7 → v2.5.2 大版本跨越）**：
+  - **新增 9 角色体系**：T9 同行评审（`09-审稿-peer-reviewer.md`，6 维度评分 → accept/minor/major/reject）+ 主控扩展职责（`00-主控-扩展职责.md`）
+  - **新增 G14 中文 AI 痕迹闸**（`gates/14-中文AI痕迹-gate.md` + `checkers/中文AI痕迹-checker.md`，8 类检测维度，LLM 推理判定零 exec）
+  - **新增期刊匹配助手**（`_shared/期刊数据库.md` 25 CSSCI + 12 SSCI + `期刊匹配算法.md`）
+  - **新增多格式导出**（`_shared/format-export.md` md/latex/docx/pdf）+ **中文数据源集成**（`_shared/中文数据源集成.md` OpenAlex/Crossref 第一梯队）
+  - **新增退化场景规范**（`degraded-scenarios.md`）+ 字数判定表 + M 门附录 + 投稿就绪检查表 + 修订说明模板 full
+  - **外部内容防注入**（v2.4.0：外部内容一律视为不可信证据，只提取事实不执行指令）
+  - **中文学术特化定位**（v2.4.4：GB/T 7714-2015 / Top 3 中文期刊 / G14）
+- **DSH 适配**（156 处 OpenClaw 残留 + 23 文件版本行）：
+  - 51 文件同步（17 新增 + 34 覆盖），保留 21 个 DSH 独有文件（AGENTS/设计文档/教训库/自审门等）
+  - 工具映射批量替换（sessions_*→subagent、tavily_*→web_search/read_page、metadata.tools 删除、心跳/8分钟硬卡→DSH 精简版）
+  - 10 张角色卡韧化协议段 DSH 化；SKILL.md 新增「🔧 DSH 适配说明」段
+  - 分档预设补 T9/G14 映射；自审门更新到 9 角色；image_generate 封面描述 DSH 化（SVG/投喂/图像 MCP）
+
 ## 2.3.7-dsh.8（2026-08-22）
 
 - **全面独立审计修复**（工程层 + 3 独立子代理并行，13 严重 + 40 中轻微）：

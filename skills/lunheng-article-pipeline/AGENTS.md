@@ -1,6 +1,6 @@
 # AGENTS.md — 论文流水线操作手册
 
-> **DSH 适配**：本手册由 OpenClaw 版移植（对应正典 v2.3.7）。工具映射（`sessions_spawn`→`subagent`、`sessions_yield`→等完成通知、`sessions_history/list`→`list_agents`、`tavily_search`→`web_search`、`update_plan`→`todo_write`、`image_generate`→SVG/投喂、`exec`→`pwsh`/`bash`）与结构性差异见 `SKILL.md` 的「🔧 DSH 适配说明」章节。
+> **DSH 适配**：本手册由 OpenClaw 版移植（对应正典 v2.5.2）。工具映射（`sessions_spawn`→`subagent`、`sessions_yield`→等完成通知、`sessions_history/list`→`list_agents`、`tavily_search/extract`→`web_search`/`read_page`、`update_plan`→`todo_write`、`image_generate`→SVG/投喂/图像 MCP、`exec`→`pwsh`/`bash`）与结构性差异见 `SKILL.md` 的「🔧 DSH 适配说明」章节。
 
 ## 启动时必读
 1. `references/pipeline-readme.md` — 流水线运行手册（含复制即用的派发话术）
@@ -18,8 +18,9 @@ Phase 2.5 大纲确认 → 主人过目 → 三角验证 [L]+[D]+[C] 缺角补�
 Phase 3 写作     → spawn T5 写手 → drafts/初稿-v1.md
 Phase 3.5 洞察补充 → 主人深度洞察补充（人在环）→ 写手 v2 融入
 Phase 3.6 批判   → spawn T6 批判伙伴（C1-C7 反方攻击 v2，轻量档可跳）→ analysis/批判报告-vN.md
-Phase 4 审计     → spawn T7 审计员 → audits/审计报告-vN.md（G0-G13 全项检查）
+Phase 4 审计     → spawn T7 审计员 → audits/审计报告-vN.md（G0-G14 全项检查，v2.4.0 加 G14 中文 AI 痕迹闸，与 T6 并行）
                  → 打回修订 ≤2 轮（必须 spawn 独立写手）；仍不过 → 升级决策 / Acknowledged Limitations 模式
+Phase 4.5 审稿   → spawn T9 同行评审（可选，行业分析/学术默认开启）→ audits/审稿报告-vN.md（6 维度评分 + 期刊匹配助手 Top 3）
 [🔒 T7.5 完整性门] 审计报告最新版 + P0/P1 清单 + M 门全 exit 0 + 隔离 → 通过才终检
 Phase 5 终检     → T8 主控亲完成 M 门（M-Form 8 / M-Exist 3 / M-Integrity 2，LLM 兜底）→ final/定稿.md + 证据包/ + 交付说明.md
 ```
@@ -27,13 +28,15 @@ Phase 5 终检     → T8 主控亲完成 M 门（M-Form 8 / M-Exist 3 / M-Integ
 ## 关键规则
 - **派发话术**：直接从 `references/pipeline-readme.md` 复制，改项目名即可
 - **每个项目一个目录**：`run/<项目名>/`，产物路径见任务简报
-- **角色编号（v2.3.0 重构）**：T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / **T8 终检 = 主控亲完成**（编号 = 流水线 Phase 顺序）
-- **模型分配（DSH 通用自适应，v2.3.7-dsh.6）**：`subagent` 默认继承会话模型（**单模型配置零配置可用**），路由由 DSH `settings.yaml` 决定。配了多模型想按角色分档 → 装「分档预设」（三档工具 `subagent_retrieval`/`subagent_strong`/`subagent_audit`，默认检索 `deepseek-v4-flash`、分析写作批判/审计 `deepseek-v4-pro`，均可经 `LUNHENG_*_PROVIDER`（provider 名）+ `LUNHENG_*_MODEL`（裸模型 id）覆盖——**provider 与 model 分离，跨 provider 必须同时指定两者**，否则 dsh-llm 报 NO_ADAPTER）；未挂载对应工具时回退 `subagent`（任何模型配置都能跑）
+- **角色编号（v2.3.0 重构，v2.5.2 延续）**：T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / **T8 终检 = 主控亲完成** / **T9 同行评审（可选）**（编号 = 流水线 Phase 顺序）
+- **模型分配（DSH 通用自适应）**：`subagent` 默认继承会话模型（**单模型配置零配置可用**），路由由 DSH `settings.yaml` 决定。配了多模型想按角色分档 → 装「分档预设」（三档工具 `subagent_retrieval`/`subagent_strong`/`subagent_audit`，默认检索 `deepseek-v4-flash`、分析写作批判审稿/审计 `deepseek-v4-pro`，均可经 `LUNHENG_*_PROVIDER`（provider 名）+ `LUNHENG_*_MODEL`（裸模型 id）覆盖——**provider 与 model 分离，跨 provider 必须同时指定两者**，否则 dsh-llm 报 NO_ADAPTER）；未挂载对应工具时回退 `subagent`（任何模型配置都能跑）
 - **子代理产出必须交交接报告**：六要素缺一不可（做了什么/产物在哪/怎么验证/已知问题/下一步 + status.md 更新），长时间无产出则主控用 `list_agents` 查看并介入
 - **status.md 写入约定（v2.3.7-dsh.4 强化，教训：T1/T2 与主控并发写冲突）**：status.md 由**主控独占写**——子代理**只读** status.md（了解当前状态），**不直接 edit** 整表；子代理的进度/完成状态通过「交接报告 + 产物落盘」回报，主控在收到交接报告后统一更新 status.md。如子代理确实需要记录执行细节，追加到独立执行记录段（`### Tn 执行记录`），不做整表替换。冲突已发生时：主控先 re-read 再 edit。
-- **执行约定（DSH 精简版）**：状态机 + 交接报告六要素 + G8 自检（无需心跳/分阶段 ack/预检/8 分钟硬卡；OpenClaw 完整韧化协议见 `references/_shared/archive/legacy-protocols/执行韧化协议-v2.1.0.md`，仅作参考）
+- **执行约定（DSH 精简版）**：状态机 + 交接报告六要素 + G8 自检（无需心跳/分阶段 ack/预检/8 分钟硬卡；OpenClaw 完整韧化协议见 `references/_shared/执行韧化协议-v2.1.0.md`，仅作参考）
 - **阶段闸门（v2.2.1，v2.3.0 改 T5.5→T7.5）**：T2.5（检索→分析）与 T7.5（审计→终检）两道主控 checkpoint，用 `todo_write` + `read` 实现，**不绕过交接直接派发**
 - **M 门（v2.2.0+）**：终检前必读 `references/_shared/M-Gate-Algorithm.md`，按伪代码执行 M-Form/M-Exist/M-Integrity（M-Form 8 项含 M-Form-7 定稿文末白名单 v2.3.5 + M-Form-8 三角验证 v2.3.7），产出 `final/M-Gate-Report.json`，exit 0 才返回
+- **G14 中文 AI 痕迹闸（v2.4.0+）**：Phase 4.5 与 T6 并行触发（LLM 推理判定，零 exec），8 类检测维度，0-2 类 Pass / 3-4 类 Warning 触发 T5 修订 1 轮 / 5+ 类 Fail 触发 2 轮；主人在 Phase 0 可显式关闭。闸门定义 `references/gates/14-中文AI痕迹-gate.md`，检测器 `references/checkers/中文AI痕迹-checker.md`
+- **T9 同行评审 + 期刊匹配（v2.4.0+/v2.5.0）**：Phase 4.5 终稿前可选触发（行业分析/学术默认开启），6 维度评分 → accept/minor/major/reject；学术模式输出 Top 3 推荐期刊（`references/_shared/期刊数据库.md` + `期刊匹配算法.md`）
 - **项目进展记入** `memory/YYYY-MM-DD.md` 和 `memory/projects.md`
 
 ## 文件修改操作约束（v2.1.4 F5 补完，教训 #48）

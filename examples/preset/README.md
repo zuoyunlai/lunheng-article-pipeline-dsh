@@ -7,8 +7,8 @@
 | 工具 | 角色 | 能力定位 | 默认 provider/model（可覆盖） |
 |---|---|---|---|
 | `subagent_retrieval` | T1 文献 / T2 数据 / T3 案例 | 便宜快（抽取+分类） | `deepseek-official` / `deepseek-v4-flash` |
-| `subagent_strong` | T4 分析 / T5 写作 / T6 批判 | 推理强（分析/成文/批判） | `deepseek-official` / `deepseek-v4-pro` |
-| `subagent_audit` | T7 审计 | 顶配防漏判 | `deepseek-official` / `deepseek-v4-pro` |
+| `subagent_strong` | T4 分析 / T5 写作 / T6 批判 / T9 审稿 | 推理强（分析/成文/批判/评审） | `deepseek-official` / `deepseek-v4-pro` |
+| `subagent_audit` | T7 审计 / G14 检测 | 顶配防漏判 | `deepseek-official` / `deepseek-v4-pro` |
 
 ## 安装
 
@@ -30,11 +30,11 @@ $DSH_HOME/.agent-presets/lunheng/preset.yml
 $env:LUNHENG_RETRIEVAL_PROVIDER = "minimax"
 $env:LUNHENG_RETRIEVAL_MODEL    = "MiniMax-M2.7"
 
-# 强档：分析/写作/批判用推理强模型
+# 强档：分析/写作/批判/审稿用推理强模型
 $env:LUNHENG_STRONG_PROVIDER    = "deepseek-official"
 $env:LUNHENG_STRONG_MODEL       = "deepseek-v4-pro"
 
-# 审计档：顶配防漏判
+# 审计档：顶配防漏判（T7 审计 + G14 中文 AI 痕迹检测）
 $env:LUNHENG_AUDIT_PROVIDER     = "minimax"
 $env:LUNHENG_AUDIT_MODEL        = "MiniMax-M3"
 

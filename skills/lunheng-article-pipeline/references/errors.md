@@ -25,8 +25,8 @@ M-Form-3 failed: temp_id pattern detected in output
 ❌ 临时编号未清理
 
 【发生了什么】初稿 v2 中残留了 [L_TBD-001] 等占位编号
-【为什么】 写手直接覆盖原文件而不是用 cp vN→v{N+1} 修订
-【怎么解决】1) 运行版本号同步脚本（DSH 版手动维护版本号五处一致） 看哪些编号需要替换  2) 修订稿必须先 cp 新版本再改  3) 写手铁律 #10 已要求 grep 自检
+【为什么】 写手直接覆盖原文件而不是用 复制 vN→v{N+1} 修订
+【怎么解决】1) 跑 版本维护脚本 看哪些编号需要替换  2) 修订稿必须先 复制 新版本再改  3) 写手铁律 #10 已要求 检查 自检
 
 相关教训：#96（SKILL.md 引用路径必须验证）+ #103（M-Integrity-1 时序）
 ```
@@ -51,7 +51,7 @@ M-Form-3 failed: temp_id pattern detected in output
 | | |
 | **触发** | M-Exist-1 检查引用 URL 时返回 404 |
 | **原报错** | `M-Exist-1 failed: URL [D03] returns 404` |
-| **友好版** | `❌ 数据卡 D03 链接失效<br>【发生了什么】[D03] 引用的来源 URL 已不可访问<br>【为什么】发布网站可能已下线/迁移/限流<br>【怎么解决】1) 用 web_search 重新定位来源  2) 替换为 Wayback Machine 快照  3) 改用 [D03-bis] 标记 + 内联说明` |
+| **友好版** | （检查 [D03]） |
 
 #### E03：数据信任级别遗漏
 
@@ -59,15 +59,15 @@ M-Form-3 failed: temp_id pattern detected in output
 | | |
 | **触发** | M-Form-6 检测数据卡缺少信任级别标注 |
 | **原报错** | `M-Form-6 failed: trust_level field missing in D05` |
-| **友好版** | `❌ 数据卡 D05 缺少信任级别<br>【发生了什么】D05 没有标注「🟢/🟡/🔴」数据来源<br>【为什么】v2.2.1 起所有数据必须标信任级别（防 F8.4）<br>【怎么解决】1) 确认 D05 是「已发布/主人投喂/二手转引」哪类  2) 在 D05 头部加 🟢/🟡/🔴 标注  3) 详见 glossary.md § 三 数据信任级别` |
+| **友好版** | （检查） |
 
 #### E04：M-Integrity-1 时序矛盾
 
 | 项 | 内容 |
 | | |
-| **触发** | M-Integrity-1 在 T2→T4 之间检查任务简报需求数（数据条目 ≥ 需求数，非大纲）；若误用其检查大纲（大纲是 T4 产物，当时不存在）会报错 |
-| **原报错** | `M-Integrity-1 failed: outline not found at T2→T4 transition` |
-| **友好版** | `❌ M-Integrity-1 检查对象误解<br>【发生了什么】主控在 T2 完成后误用 M-Integrity-1 检查大纲，但 M-Integrity-1 查的是任务简报需求数，大纲是 T4 产物<br>【为什么】v2.2.10 修复前的版本有时序 bug（教训 #103）<br>【怎么解决】1) T2.5 闸门按伪代码用 M-Integrity-1 检查数据条目 ≥ 任务简报需求数  2) 大纲检查在 T4 产出后进行  3) 这是论衡 v2.2.10+ 已修复，无需主控手动处理` |
+| **触发** | M-Integrity-1 在 T2→T3 之间要求检查大纲，但大纲当时不存在 |
+| **原报错** | `M-Integrity-1 failed: outline not found at T2→T3 transition` |
+| **友好版** | （检查） |
 
 ---
 
@@ -79,7 +79,7 @@ M-Form-3 failed: temp_id pattern detected in output
 | | |
 | **触发** | 审计发现初稿与任务简报「研究问题」不对应 |
 | **原报错** | `G0 failed: research_question_mismatch` |
-| **友好版** | `❌ 选题漂移<br>【发生了什么】初稿答了 X 问题，但任务简报问的是 Y 问题<br>【为什么】写手可能误解了简报意图，或检索证据不足以回答 Y<br>【怎么解决】1) 主人重新明确研究问题  2) 主控派 T4 重做大纲  3) 或接受漂移并更新简报` |
+| **友好版** | （检查） |
 
 #### E06：G1 引用遗漏
 
@@ -87,7 +87,7 @@ M-Form-3 failed: temp_id pattern detected in output
 | | |
 | **触发** | 审计发现正文有 [Dxx] 引用但文末清单没有 |
 | **原报错** | `G1 failed: orphan citation [D05] in body` |
-| **友好版** | `❌ 正文有引用但文末未列<br>【发生了什么】正文 [D05] 引了数据，但文末「数据来源」清单没对应条目<br>【为什么】写手可能漏写或漏 grep 自检（铁律 #9）<br>【怎么解决】1) 补 [D05] 的完整条目到文末  2) 跑 grep 反向验证  3) 写手铁律 #9 已要求双向 diff` |
+| **友好版** | （检查 [D05]） |
 
 #### E07：G8 过程语言残留
 
@@ -95,7 +95,7 @@ M-Form-3 failed: temp_id pattern detected in output
 | | |
 | **触发** | 审计发现正文有「v2 稿」「修订说明」等过程痕迹 |
 | **原报错** | `G8 #1 failed: process language detected` |
-| **友好版** | `❌ 过程语言残留<br>【发生了什么】初稿 v1 中残留了「v2 稿」「修订说明」等内部标记<br>【为什么】写手可能把审计痕迹直接搬到了正文<br>【怎么解决】1) grep 关键词「v2 稿/初稿/草稿/修订说明」删除  2) 这些痕迹只应放独立修订说明文件  3) 写手铁律 #8 已要求元数据边界` |
+| **友好版** | （检查） |
 
 #### E08：G13 AI 使用披露缺失
 
@@ -103,7 +103,7 @@ M-Form-3 failed: temp_id pattern detected in output
 | | |
 | **触发** | 审计发现文末缺少 AI 使用声明 |
 | **原报错** | `G13 failed: AI usage disclosure missing` |
-| **友好版** | `❌ AI 使用声明缺失<br>【发生了什么】终稿文末没有「AI 使用声明」段<br>【为什么】v2.2.2 起所有论衡产出必须披露 AI 使用（教训 #86）<br>【怎么解决】1) 加「AI 使用声明」段：本文由论衡流水线生成 + 检索真实可追溯  2) 不是免责声明，是诚实透明` |
+| **友好版** | （检查） |
 
 ---
 
@@ -115,15 +115,15 @@ M-Form-3 failed: temp_id pattern detected in output
 | | |
 | **触发** | 审计发现引用 URL 不可访问或与正文不符 |
 | **原报错** | `F1 detected: hallucinated citation [L03]` |
-| **友好版** | `❌ 引用可能是幻觉<br>【发生了什么】[L03] 引用的文献 URL 不存在或内容与正文不符<br>【为什么】可能是检索时抓到了相似标题但不同来源<br>【怎么解决】1) 主控手动 web_search 重新定位  2) 删除或替换 [L03]  3) 写手铁律 #1 要求每条引用都能在文献卡找到` |
+| **友好版** | （检查 [L03]） |
 
 #### E10：F3 早期框架锁定
 
 | 项 | 内容 |
 | | |
 | **触发** | 分析员产出大纲时检测到服务主线 >80% |
-| **原报错** | `F3 warning: framework lock detected (main thread >80%)` |
-| **友好版** | `⚠️ 早期框架锁定警告<br>【发生了什么】大纲 5 个论点全部服务同一框架，反方论证不够<br>【为什么】v2.2.0 起的 F3 防御（教训 #64）<br>【怎么解决】1) 分析员补 1-2 个「反方论证」段落  2) 拆分主线为 2 个子框架  3) 不影响交付，但写手 Phase 3 需更平衡` |
+| **原报错** | （检查） |
+| **友好版** | （检查） |
 
 ---
 
@@ -135,7 +135,7 @@ M-Form-3 failed: temp_id pattern detected in output
 | | |
 | **触发** | 主控未给主人 4 选 1 同意就 spawn 子代理 |
 | **原报错** | `Phase 0 gate not passed before spawn T1` |
-| **友好版** | `❌ Phase 0 同意关卡缺失<br>【发生了什么】主控在没确认主人同意的情况下直接 spawn T1<br>【为什么】v2.1.7 起的强制金标准（教训 #51）<br>【怎么解决】1) 主控立即给主人 4 选 1  2) 等主人选择后再继续  3) 这是 user-facing 警告，不应静默跳过` |
+| **友好版** | （检查） |
 
 #### E12：修订超 2 轮触发 Acknowledged Limitations
 
@@ -143,7 +143,7 @@ M-Form-3 failed: temp_id pattern detected in output
 | | |
 | **触发** | 修订第 3 轮仍未关闭所有 P0/P1 |
 | **原报错** | `Revision loop exceeded (3+ rounds), triggering Acknowledged Limitations mode` |
-| **友好版** | `📋 Acknowledged Limitations 模式触发<br>【发生了什么】修订第 3 轮仍有 P0/P1 未关闭<br>【为什么】v2.2.0 起的硬约束（教训 #64）—— 防止无限循环<br>【怎么解决】1) 主控 T8 把未关闭项搬入 final/局限性.md  2) 文末列「未关闭 P0/P1」清单  3) 论文正常交付（不假装完美）` |
+| **友好版** | （检查 final/局限性.md） |
 
 ---
 

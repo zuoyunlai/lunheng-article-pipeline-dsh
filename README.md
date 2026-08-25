@@ -2,9 +2,9 @@
 
 多 Agent 深度长文流水线技能包，**DeepSeek Harness（dsh）bundle 插件版**。
 
-把一篇深度文章/论文的生产拆成 **8 张角色卡**（T0 主控 + T1-T3 检索 + T4 分析 + T5 写作 + T6 批判 + T7 审计，T8 终检 = 主控亲完成）：Phase 1 三检索员（T1 文献 ∥ T2 数据 ∥ T3 案例）**三方真并行、互不干涉**，T3 **任何量级必 spawn**（含 0 条场景空卡协议）；T6 批判伙伴从反方攻击论证；G0-G13 独立审计 + M 门机械化终检（M-Form 6+7 / M-Exist 3 / M-Integrity 2）。用 dsh `subagent` 子代理编排，产出有**证据底座、反方论证、独立审计、人工核验节点**的交付物。
+把一篇深度文章/论文的生产拆成 **9 张角色卡**（T0 主控 + T1-T3 检索 + T4 分析 + T5 写作 + T6 批判 + T7 审计 + T9 审稿，T8 终检 = 主控亲完成）：Phase 1 三检索员（T1 文献 ∥ T2 数据 ∥ T3 案例）**三方真并行、互不干涉**，T3 **任何量级必 spawn**（含 0 条场景空卡协议）；T6 批判伙伴从反方攻击论证；T9 同行评审 + 期刊匹配；G0-G14 独立审计（含 G14 中文 AI 痕迹闸）+ M 门机械化终检（M-Form 8 / M-Exist 3 / M-Integrity 2）。用 dsh `subagent` 子代理编排，产出有**证据底座、反方论证、独立审计、人工核验节点**的交付物。
 
-> 版本：v2.3.7-dsh.8（DSH 适配版，对应正典 v2.3.7）。
+> 版本：v2.5.2-dsh.0（DSH 适配版，对应正典 v2.5.2）。
 
 ## 安装（在目标机器上）
 
@@ -23,7 +23,7 @@ dsh plugin --profile web add lunheng-article-pipeline
 
 ## 内容
 
-- `skills/lunheng-article-pipeline/` — 技能本体（`SKILL.md` + `AGENTS.md` + `references/`：8 张角色卡 + 7 个模板 + `_shared/` 共享机制（M 门/F 模式/韧化协议）+ 运行手册 + 设计文档）
+- `skills/lunheng-article-pipeline/` — 技能本体（`SKILL.md` + `AGENTS.md` + `references/`：9 张角色卡 + 模板 + `_shared/` 共享机制（M 门/F 模式/韧化协议/期刊匹配/G14 闸）+ 运行手册 + 设计文档）
 - `cordis.patch.yml` — bundle 补丁：注册指向包内 `skills/` 的 filesystem 技能提供者
 
 ## 按角色分模型（可选，通用化）
@@ -33,8 +33,8 @@ dsh plugin --profile web add lunheng-article-pipeline
 | 工具 | 角色 | 能力定位 | 默认 provider/model（可覆盖） |
 |---|---|---|---|
 | `subagent_retrieval` | T1 文献 / T2 数据 / T3 案例 | 便宜快 | `deepseek-official` / `deepseek-v4-flash` |
-| `subagent_strong` | T4 分析 / T5 写作 / T6 批判 | 推理强 | `deepseek-official` / `deepseek-v4-pro` |
-| `subagent_audit` | T7 审计 | 顶配防漏判 | `deepseek-official` / `deepseek-v4-pro` |
+| `subagent_strong` | T4 分析 / T5 写作 / T6 批判 / T9 审稿 | 推理强 | `deepseek-official` / `deepseek-v4-pro` |
+| `subagent_audit` | T7 审计 / G14 检测 | 顶配防漏判 | `deepseek-official` / `deepseek-v4-pro` |
 
 ```sh
 # 1) 复制预设到用户预设根
@@ -69,7 +69,7 @@ npm publish   # 或 npm publish --access public
 
 - `docs/installation.md` — 安装与验证
 - `docs/usage.md` — 使用流程（阶段 + 产物结构）
-- `docs/architecture.md` — 架构（8 角色 + 三角验证 + G0-G13 审计 + M 门）
+- `docs/architecture.md` — 架构（9 角色 + 三角验证 + G0-G14 审计 + M 门）
 - `docs/introduction.md` — 插件介绍
 - `docs/faq.md` — 常见问题
 - `CHANGELOG.md` — 版本历史
