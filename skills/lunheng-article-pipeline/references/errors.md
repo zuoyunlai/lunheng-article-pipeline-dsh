@@ -59,7 +59,7 @@ M-Form-3 failed: temp_id pattern detected in output
 | | |
 | **触发** | M-Form-6 检测数据卡缺少信任级别标注 |
 | **原报错** | `M-Form-6 failed: trust_level field missing in D05` |
-| **友好版** | （检查） |
+| **友好版** | （命令已剥离·DSH 用 read 推理） |
 
 #### E04：M-Integrity-1 时序矛盾
 
@@ -67,7 +67,7 @@ M-Form-3 failed: temp_id pattern detected in output
 | | |
 | **触发** | M-Integrity-1 在 T2→T3 之间要求检查大纲，但大纲当时不存在 |
 | **原报错** | `M-Integrity-1 failed: outline not found at T2→T3 transition` |
-| **友好版** | （检查） |
+| **友好版** | （命令已剥离·DSH 用 read 推理） |
 
 ---
 
@@ -79,7 +79,7 @@ M-Form-3 failed: temp_id pattern detected in output
 | | |
 | **触发** | 审计发现初稿与任务简报「研究问题」不对应 |
 | **原报错** | `G0 failed: research_question_mismatch` |
-| **友好版** | （检查） |
+| **友好版** | （命令已剥离·DSH 用 read 推理） |
 
 #### E06：G1 引用遗漏
 
@@ -95,7 +95,7 @@ M-Form-3 failed: temp_id pattern detected in output
 | | |
 | **触发** | 审计发现正文有「v2 稿」「修订说明」等过程痕迹 |
 | **原报错** | `G8 #1 failed: process language detected` |
-| **友好版** | （检查） |
+| **友好版** | （命令已剥离·DSH 用 read 推理） |
 
 #### E08：G13 AI 使用披露缺失
 
@@ -103,7 +103,7 @@ M-Form-3 failed: temp_id pattern detected in output
 | | |
 | **触发** | 审计发现文末缺少 AI 使用声明 |
 | **原报错** | `G13 failed: AI usage disclosure missing` |
-| **友好版** | （检查） |
+| **友好版** | （命令已剥离·DSH 用 read 推理） |
 
 ---
 
@@ -122,8 +122,8 @@ M-Form-3 failed: temp_id pattern detected in output
 | 项 | 内容 |
 | | |
 | **触发** | 分析员产出大纲时检测到服务主线 >80% |
-| **原报错** | （检查） |
-| **友好版** | （检查） |
+| **原报错** | （命令已剥离·DSH 用 read 推理） |
+| **友好版** | （命令已剥离·DSH 用 read 推理） |
 
 ---
 
@@ -135,7 +135,7 @@ M-Form-3 failed: temp_id pattern detected in output
 | | |
 | **触发** | 主控未给主人 4 选 1 同意就 spawn 子代理 |
 | **原报错** | `Phase 0 gate not passed before spawn T1` |
-| **友好版** | （检查） |
+| **友好版** | （命令已剥离·DSH 用 read 推理） |
 
 #### E12：修订超 2 轮触发 Acknowledged Limitations
 

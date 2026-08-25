@@ -1,0 +1,16 @@
+name: consistency-check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  drift-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: 论衡一致性自检（P0-1 四类漂移）
+        run: node skills/lunheng-article-pipeline/scripts/consistency-check.mjs

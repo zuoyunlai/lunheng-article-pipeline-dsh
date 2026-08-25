@@ -32,7 +32,7 @@ Phase 5 终检     → T8 主控亲完成 M 门（M-Form 8 / M-Exist 3 / M-Integ
 - **模型分配（DSH 通用自适应）**：`subagent` 默认继承会话模型（**单模型配置零配置可用**），路由由 DSH `settings.yaml` 决定。配了多模型想按角色分档 → 装「分档预设」（三档工具 `subagent_retrieval`/`subagent_strong`/`subagent_audit`，默认检索 `deepseek-v4-flash`、分析写作批判审稿/审计 `deepseek-v4-pro`，均可经 `LUNHENG_*_PROVIDER`（provider 名）+ `LUNHENG_*_MODEL`（裸模型 id）覆盖——**provider 与 model 分离，跨 provider 必须同时指定两者**，否则 dsh-llm 报 NO_ADAPTER）；未挂载对应工具时回退 `subagent`（任何模型配置都能跑）
 - **子代理产出必须交交接报告**：六要素缺一不可（做了什么/产物在哪/怎么验证/已知问题/下一步 + status.md 更新），长时间无产出则主控用 `list_agents` 查看并介入
 - **status.md 写入约定（v2.3.7-dsh.4 强化，教训：T1/T2 与主控并发写冲突）**：status.md 由**主控独占写**——子代理**只读** status.md（了解当前状态），**不直接 edit** 整表；子代理的进度/完成状态通过「交接报告 + 产物落盘」回报，主控在收到交接报告后统一更新 status.md。如子代理确实需要记录执行细节，追加到独立执行记录段（`### Tn 执行记录`），不做整表替换。冲突已发生时：主控先 re-read 再 edit。
-- **执行约定（DSH 精简版）**：状态机 + 交接报告六要素 + G8 自检（无需心跳/分阶段 ack/预检/8 分钟硬卡；OpenClaw 完整韧化协议见 `references/_shared/执行韧化协议-v2.1.0.md`，仅作参考）
+- **执行约定（DSH 精简版）**：状态机 + 交接报告六要素 + G8 自检 + **进度播报三播报**（派发即播报 / 完成即转播 / 卡住即告警，防主人干等；无需心跳/分阶段 ack/预检/8 分钟硬卡；OpenClaw 完整韧化协议见 `references/_shared/执行韧化协议-v2.1.0.md`，仅作参考）
 - **阶段闸门（v2.2.1，v2.3.0 改 T5.5→T7.5）**：T2.5（检索→分析）与 T7.5（审计→终检）两道主控 checkpoint，用 `todo_write` + `read` 实现，**不绕过交接直接派发**
 - **M 门（v2.2.0+）**：终检前必读 `references/_shared/M-Gate-Algorithm.md`，按伪代码执行 M-Form/M-Exist/M-Integrity（M-Form 8 项含 M-Form-7 定稿文末白名单 v2.3.5 + M-Form-8 三角验证 v2.3.7），产出 `final/M-Gate-Report.json`，exit 0 才返回
 - **G14 中文 AI 痕迹闸（v2.4.0+）**：Phase 4.5 与 T6 并行触发（LLM 推理判定，零 exec），8 类检测维度，0-2 类 Pass / 3-4 类 Warning 触发 T5 修订 1 轮 / 5+ 类 Fail 触发 2 轮；主人在 Phase 0 可显式关闭。闸门定义 `references/gates/14-中文AI痕迹-gate.md`，检测器 `references/checkers/中文AI痕迹-checker.md`
@@ -47,7 +47,7 @@ Phase 5 终检     → T8 主控亲完成 M 门（M-Form 8 / M-Exist 3 / M-Integ
 2. **改中**：用 `edit` 工具（精确 oldText 匹配），**不用 sed/awk/perl 直接写回原文件**
 3. **改后**：`wc -l` 对比 + `diff <file> <备份目录>/<file>.bak` 验证（不一致立即从 .bak 恢复）
 4. **跨文件 sync**：用 `cp` 不带任何转换，直接覆盖（skill 副本同步是 `references/` 路径映射）
-5. **验证**：本修改走完后必 `grep` 关键词 + 结构性 grep（如本手册的「## 交接报告」所有角色卡齐整性）
+5. **验证**：本修改走完后必 `grep` 关键词 + 结构性 grep（如本手册的「## 交接报告」所有角色卡齐整性）；改论衡机制/文档后额外跑 `node scripts/consistency-check.mjs`（P0-1 四类漂移自动检测，exit 0 才提交）
 
 ## 记忆文件（运行时由主控在项目目录创建，非技能包内置）
 - `memory/YYYY-MM-DD.md` — 每日日志（记结论不记过程）
