@@ -1,4 +1,4 @@
-# lunheng-article-pipeline bundle patch（DSH 适配版 v2.5.2-dsh.0）
+# lunheng-article-pipeline bundle patch（DSH 适配版 v2.5.2-dsh.4）
 #
 # 注册一个只指向本包 skills/ 目录的 filesystem 技能提供者。
 # 注意：补丁层的普通行是按 id 覆盖已存在行；新增行必须用 `insert:` 列表。
@@ -15,4 +15,4 @@
         providerName: filesystem-lunheng
         includeDefaultRoots: false
         customSkillDirs:
-          - !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('node_modules/lunheng-article-pipeline/skills/', baseUrl))"
+          - !!js "process.getBuiltinModule?.('node:url')?.fileURLToPath(new URL('node_modules/lunheng-article-pipeline/skills/', baseUrl))"

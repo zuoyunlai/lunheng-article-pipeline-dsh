@@ -4,15 +4,17 @@
 
 把一篇深度文章/论文的生产拆成 **9 张角色卡**（T0 主控 + T1-T3 检索 + T4 分析 + T5 写作 + T6 批判 + T7 审计 + T9 审稿，T8 终检 = 主控亲完成）：Phase 1 三检索员（T1 文献 ∥ T2 数据 ∥ T3 案例）**三方真并行、互不干涉**，T3 **任何量级必 spawn**（含 0 条场景空卡协议）；T6 批判伙伴从反方攻击论证；T9 同行评审 + 期刊匹配；G0-G14 独立审计（含 G14 中文 AI 痕迹闸）+ M 门机械化终检（M-Form 8 / M-Exist 3 / M-Integrity 2）。用 dsh `subagent` 子代理编排，产出有**证据底座、反方论证、独立审计、人工核验节点**的交付物。
 
-> 版本：v2.5.2-dsh.0（DSH 适配版，对应正典 v2.5.2）。
+> 版本：v2.5.2-dsh.4（DSH 适配版，对应正典 v2.5.2）。
 
 ## 安装（在目标机器上）
 
 ```sh
-# 1) 装进 profile 的 node_modules
+# 1) 装进 profile（推荐）
 dsh plugin --profile web add lunheng-article-pipeline
+#    ✅ 新版 dsh（reconcilePlugins）会自动把声明了 dsh.bundle 的依赖加进
+#       dsh.profile.bundles，无需手动编辑——装完重启 dsh web 即可
 
-# 2) 把 bundle 加入 profile 清单
+# 2) 仅当用纯 npm/pnpm 直接安装（不经 dsh plugin）或旧版 dsh 时，才需手动加 bundle：
 #    $DSH_HOME/profiles/web/package.json
 #    "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "lunheng-article-pipeline"] } }
 
@@ -32,9 +34,9 @@ dsh plugin --profile web add lunheng-article-pipeline
 
 | 工具 | 角色 | 能力定位 | 默认 provider/model（可覆盖） |
 |---|---|---|---|
-| `subagent_retrieval` | T1 文献 / T2 数据 / T3 案例 | 便宜快 | `deepseek-official` / `deepseek-v4-flash` |
-| `subagent_strong` | T4 分析 / T5 写作 / T6 批判 / T9 审稿 | 推理强 | `deepseek-official` / `deepseek-v4-pro` |
-| `subagent_audit` | T7 审计 / G14 检测 | 顶配防漏判 | `deepseek-official` / `deepseek-v4-pro` |
+| `subagent_retrieval` | T1 文献 / T2 数据 / T3 案例 | 便宜快 | 继承父会话（设 `LUNHENG_RETRIEVAL_*` 才分档） |
+| `subagent_strong` | T4 分析 / T5 写作 / T6 批判 / T9 审稿 | 推理强 | 继承父会话（设 `LUNHENG_STRONG_*` 才分档） |
+| `subagent_audit` | T7 审计 / G14 检测 | 顶配防漏判 | 继承父会话（设 `LUNHENG_AUDIT_*` 才分档） |
 
 ```sh
 # 1) 复制预设到用户预设根

@@ -219,9 +219,9 @@
         provider: spawn
         toolName: subagent_retrieval
         backgroundMode: continuable
-        agentOptions:
-          provider: !!js process.env.LUNHENG_RETRIEVAL_PROVIDER ?? 'deepseek-official'
-          model: !!js process.env.LUNHENG_RETRIEVAL_MODEL ?? 'deepseek-v4-flash'
+        # v2.5.2-dsh.4 审计修订：未设 PROVIDER 时 agentOptions=undefined → 子代理继承父会话模型
+        #（任何模型配置都能跑，不再默认 deepseek-official 导致 NO_ADAPTER）；设了才分档。
+        agentOptions: !!js (process.env.LUNHENG_RETRIEVAL_PROVIDER ? { provider: process.env.LUNHENG_RETRIEVAL_PROVIDER, model: process.env.LUNHENG_RETRIEVAL_MODEL ?? 'deepseek-v4-flash' } : undefined)
 
     - id: tool-subagent-strong
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -229,9 +229,7 @@
         provider: spawn
         toolName: subagent_strong
         backgroundMode: continuable
-        agentOptions:
-          provider: !!js process.env.LUNHENG_STRONG_PROVIDER ?? 'deepseek-official'
-          model: !!js process.env.LUNHENG_STRONG_MODEL ?? 'deepseek-v4-pro'
+        agentOptions: !!js (process.env.LUNHENG_STRONG_PROVIDER ? { provider: process.env.LUNHENG_STRONG_PROVIDER, model: process.env.LUNHENG_STRONG_MODEL ?? 'deepseek-v4-pro' } : undefined)
 
     - id: tool-subagent-audit
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -239,9 +237,7 @@
         provider: spawn
         toolName: subagent_audit
         backgroundMode: continuable
-        agentOptions:
-          provider: !!js process.env.LUNHENG_AUDIT_PROVIDER ?? 'deepseek-official'
-          model: !!js process.env.LUNHENG_AUDIT_MODEL ?? 'deepseek-v4-pro'
+        agentOptions: !!js (process.env.LUNHENG_AUDIT_PROVIDER ? { provider: process.env.LUNHENG_AUDIT_PROVIDER, model: process.env.LUNHENG_AUDIT_MODEL ?? 'deepseek-v4-pro' } : undefined)
 
     # Product providers are host-plane singletons. Copy this preset, then
     # remove `disabled` from either ordinary tool row to expose that product

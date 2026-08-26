@@ -21,7 +21,7 @@ dsh plugin --profile web add lunheng-article-pipeline
    ```sh
    corepack enable && corepack prepare pnpm@latest --activate
    ```
-2. **`dsh plugin add` 不会自动加 bundles 清单**：它只把包装进 node_modules 并写进 `dependencies`，第 2 步（手动加 `dsh.profile.bundles`）是必须的——漏掉会导致 bundle 不生效。
+2. **`dsh plugin add` 会自动加 bundles 清单（新版 dsh）**：`reconcilePlugins` 会把声明了 `dsh.bundle` 的依赖自动追加进 `dsh.profile.bundles`（按依赖顺序），装完重启即可。仅当**绕过 `dsh plugin` 用纯 npm/pnpm 直接安装**、或使用**旧版 dsh** 时，才需要手动编辑第 2 步（把包名加进 `dsh.profile.bundles`）。
 3. **dshmarket 市场会显示「校验失败」误报**：它只认 JS 入口（`main`/`exports`/`index.js`），不认 `dsh.bundle.patch`，会把论衡误标「入口产物缺失」。**实际安装与使用不受影响**（见 `docs/faq.md`）。
 
 ## 验证
@@ -47,9 +47,9 @@ dsh --profile headless-lunheng-test "请调用 skill 工具列出你可见的技
 
 | 工具 | 角色 | 能力定位 | 默认 provider/model（可覆盖） |
 |---|---|---|---|
-| `subagent_retrieval` | T1 文献 / T2 数据 / T3 案例 | 便宜快 | `deepseek-official` / `deepseek-v4-flash` |
-| `subagent_strong` | T4 分析 / T5 写作 / T6 批判 / T9 审稿 | 推理强 | `deepseek-official` / `deepseek-v4-pro` |
-| `subagent_audit` | T7 审计 / G14 检测 | 顶配防漏判 | `deepseek-official` / `deepseek-v4-pro` |
+| `subagent_retrieval` | T1 文献 / T2 数据 / T3 案例 | 便宜快 | 继承父会话（设 `LUNHENG_RETRIEVAL_*` 才分档） |
+| `subagent_strong` | T4 分析 / T5 写作 / T6 批判 / T9 审稿 | 推理强 | 继承父会话（设 `LUNHENG_STRONG_*` 才分档） |
+| `subagent_audit` | T7 审计 / G14 检测 | 顶配防漏判 | 继承父会话（设 `LUNHENG_AUDIT_*` 才分档） |
 
 ```sh
 # 1) 复制预设到用户预设根（Windows 用 copy / xcopy 同理）
@@ -66,7 +66,7 @@ dsh web
 
 - 不装预设：技能回退到 `subagent`，所有角色继承会话模型（对多数场景够用）。
 - 模型在挂载期用 `!!js` 求值一次，改环境变量后**必须重启 dsh** 才生效。
-- 若某档未设环境变量，用上表默认值；**未配置 deepseek 模型的用户不要装预设**（默认值会 NO_ADAPTER），直接继承会话模型即可。
+- **v2.5.2-dsh.4 修订：未设 `LUNHENG_*_PROVIDER` 的档不覆盖模型（继承父会话）——任何模型配置都能安全装预设**；设了 PROVIDER 未设 MODEL 才用档位默认模型（retrieval=deepseek-v4-flash / strong·audit=deepseek-v4-pro）。
 - provider 名须是你 dsh 已注册的 LLM provider（查 `settings.yaml` 的 `agent-default-model.provider`）。
 - 完整说明见 `examples/preset/README.md`。
 

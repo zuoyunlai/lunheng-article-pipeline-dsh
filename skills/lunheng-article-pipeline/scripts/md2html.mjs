@@ -1,21 +1,31 @@
 // 论衡多格式导出降级路径（无 pandoc/LaTeX 环境）：Markdown → HTML（内嵌 SVG + 中文打印 CSS）
 // 用法：node md2html.mjs <定稿.md> <输出.html> [<SVG 文件路径，可选：替换正文 [图1] 图位>]
 // 配合：Chrome/Edge headless --print-to-pdf 生成 PDF（见 _shared/format-export.md 三-b）
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 
 const [, , mdPath, htmlPath, svgFile] = process.argv;
 if (!mdPath || !htmlPath) {
   console.error('用法: node md2html.mjs <md> <html> [svgFile]');
   process.exit(1);
 }
+if (!existsSync(mdPath)) { console.error(`Markdown 不存在: ${mdPath}`); process.exit(1); }
+if (mdPath === htmlPath) { console.error('输入输出不能是同一文件（会覆盖源文件）'); process.exit(1); }
+if (svgFile && !existsSync(svgFile)) { console.error(`SVG 文件不存在: ${svgFile}`); process.exit(1); }
 
 const md = readFileSync(mdPath, 'utf8');
 const svg = svgFile ? readFileSync(svgFile, 'utf8') : null;
 
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const inline = (s) => esc(s).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+// SVG 消毒：仅允许合法 SVG 标签，剥离 </script>/<script>/<foreignObject> 等潜在注入载体（v2.5.2-dsh.3 审计修订）
+const sanitizeSvg = (s) => s
+  .replace(/<script[\s\S]*?<\/script>/gi, '')
+  .replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, '')
+  .replace(/on\w+\s*=\s*"[^"]*"/gi, '')
+  .replace(/on\w+\s*=\s*'[^']*'/gi, '')
+  .replace(/javascript:/gi, '');
 
-const FIG = /^\[图1[:：][^\]]*\]\s*$/;
+const FIG = /^\[图(\d+)[:：][^\]]*\]\s*$/;
 const lines = md.split(/\r?\n/);
 let html = '';
 let inList = false;
@@ -23,12 +33,14 @@ const closeList = () => { if (inList) { html += '</ul>\n'; inList = false; } };
 
 for (const raw of lines) {
   const line = raw.trimEnd();
-  if (FIG.test(line.trim())) {
+  const figMatch = line.trim().match(FIG);
+  if (figMatch) {
     closeList();
+    const figNo = figMatch[1];
     if (svg) {
-      html += `<div class="figure">\n${svg}\n<div class="figcaption">图1（主控手写 SVG 内嵌）</div>\n</div>\n`;
+      html += `<div class="figure">\n${sanitizeSvg(svg)}\n<div class="figcaption">图${figNo}（主控手写 SVG 内嵌）</div>\n</div>\n`;
     } else {
-      html += `<p class="fig-missing">[图1]（SVG 未提供，未嵌入）</p>\n`;
+      html += `<p class="fig-missing">[图${figNo}]（SVG 未提供，未嵌入）</p>\n`;
     }
     continue;
   }
@@ -71,5 +83,6 @@ ${html}
 </body>
 </html>`;
 
+const out = Buffer.byteLength(page, 'utf8');
 writeFileSync(htmlPath, page, 'utf8');
-console.log('HTML written: ' + htmlPath + ' (' + page.length + ' bytes)');
+console.log(`HTML written: ${htmlPath} (${out} bytes / 约 ${Math.round(out / 3)} 汉字)`);

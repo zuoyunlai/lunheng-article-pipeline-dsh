@@ -24,11 +24,28 @@ jobs:
 
       # 仓库无 package-lock.json，用 npm install 而非 npm ci
       - name: 安装依赖
-        run: npm install --global-style --no-package-lock --ignore-scripts=false
+        run: npm install --global-style --no-package-lock
 
-      - name: 一致性自检（复用现有脚本，失败不阻断发布）
-        run: node skills/lunheng-article-pipeline/scripts/consistency-check.mjs || true
+      # 一致性自检（复用现有脚本，与 ci.yml 同门——发布前 P0 漂移必须阻断）
+      - name: 一致性自检
+        run: node skills/lunheng-article-pipeline/scripts/consistency-check.mjs
 
-      # OIDC 信任发布：无需 NPM_TOKEN，--provenance 附来源证明
+      # 防误发：git tag 名必须与 package.json version 一致（如 v2.5.2-dsh.3 → 2.5.2-dsh.3）
+      - name: 校验 tag 与版本一致
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VER="v$(node -p "require('./package.json').version")"
+          echo "tag=$TAG version=$VER"
+          if [ "$TAG" != "$VER" ]; then
+            echo "::error::git tag $TAG 与 package.json version ${VER#v} 不一致，拒绝发布（防版本超前误发）"
+            exit 1
+          fi
+
+      # OIDC 信任发布：无需 NPM_TOKEN，--provenance 附来源证明；
+      # 预发布版（-dsh.N）显式打 dsh tag，latest 留给未来稳定版
       - name: 发布到 npm
-        run: npm publish --access public --provenance
+        run: npm publish --access public --provenance --tag dsh
+
+      # 确保 @dsh 指向本次版本（首次或 dist-tag 漂移兜底）
+      - name: 确认 dist-tag
+        run: npm dist-tag add lunheng-article-pipeline@$(node -p "require('./package.json').version") dsh

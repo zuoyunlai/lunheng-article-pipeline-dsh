@@ -11,14 +11,20 @@ import os from 'node:os';
 
 const args = process.argv.slice(2);
 const opt = { dshHome: process.env.DSH_HOME || join(os.homedir(), '.dsh'), prices: { in: 0.28, cache: 0.028, out: 0.42 }, ids: null, tree: null };
+// 参数解析：尾随无值/非数字 → 明确报错而非静默 NaN（v2.5.2-dsh.3 审计修复）
 for (let i = 0; i < args.length; i++) {
   const a = args[i];
-  if (a === '--dsh-home') opt.dshHome = args[++i];
-  else if (a === '--price-in') opt.prices.in = Number(args[++i]);
-  else if (a === '--price-cache') opt.prices.cache = Number(args[++i]);
-  else if (a === '--price-out') opt.prices.out = Number(args[++i]);
-  else if (a === '--sessions') opt.ids = args[++i].split(',').map((s) => s.trim()).filter(Boolean);
-  else if (a === '--tree') opt.tree = args[++i];
+  const next = () => {
+    const v = args[++i];
+    if (v === undefined) { console.error(`参数 ${a} 缺少值`); process.exit(1); }
+    return v;
+  };
+  if (a === '--dsh-home') opt.dshHome = next();
+  else if (a === '--price-in') { const v = Number(next()); if (!Number.isFinite(v)) { console.error(`--price-in 需为数字，收到: ${args[i]}`); process.exit(1); } opt.prices.in = v; }
+  else if (a === '--price-cache') { const v = Number(next()); if (!Number.isFinite(v)) { console.error(`--price-cache 需为数字，收到: ${args[i]}`); process.exit(1); } opt.prices.cache = v; }
+  else if (a === '--price-out') { const v = Number(next()); if (!Number.isFinite(v)) { console.error(`--price-out 需为数字，收到: ${args[i]}`); process.exit(1); } opt.prices.out = v; }
+  else if (a === '--sessions') opt.ids = next().split(',').map((s) => s.trim()).filter(Boolean);
+  else if (a === '--tree') opt.tree = next();
 }
 
 const cachePath = join(opt.dshHome, 'storages', 'session_projcache.json');
@@ -28,7 +34,14 @@ const sessions = cache.tables?.sessions || {};
 
 // 树模式：扫描会话头 parentSession 建委托树
 if (opt.tree && !opt.ids) {
-  const { zstdDecompressSync } = await import('node:zlib');
+  let zstdDecompressSync;
+  try {
+    ({ zstdDecompressSync } = await import('node:zlib'));
+  } catch {}
+  if (typeof zstdDecompressSync !== 'function') {
+    console.error('tree 模式需要 Node.js >= 22.15（node:zlib.zstdDecompressSync 缺失）——当前环境不支持，请改用 --sessions 显式列表，或升级 Node');
+    process.exit(1);
+  }
   const { readdirSync, statSync } = await import('node:fs');
   const headers = {};
   const scan = (dir) => {
@@ -45,12 +58,21 @@ if (opt.tree && !opt.ids) {
     }
   };
   scan(join(opt.dshHome, 'sessions'));
-  const ids = new Set([opt.tree]);
+  // 前缀归一化：parentSession 可能带/不带 session- 前缀，统一去前缀比对（v2.5.2-dsh.3 审计修复）
+  const strip = (id) => (id || '').replace(/^session-/, '');
+  const root = strip(opt.tree);
+  const ids = new Set([root]);
   const collect = (pid) => {
-    for (const h of Object.values(headers)) if (h.parentSession === pid && !ids.has(h.id)) { ids.add(h.id); collect(h.id); }
+    for (const h of Object.values(headers)) {
+      if (strip(h.parentSession) === pid && !ids.has(strip(h.id))) { ids.add(strip(h.id)); collect(strip(h.id)); }
+    }
   };
-  collect(opt.tree);
+  collect(root);
   opt.ids = [...ids];
+  // 健全性断言：树模式至少应包含主会话自身（v2.5.2-dsh.3 审计修复：防静默缩成 1 个）
+  if (opt.ids.length === 1) {
+    console.error(`tree 模式警告：主会话 ${opt.tree} 未找到任何子代理会话（parentSession 链为空）——统计仅含主会话自身，结果可能不完整`);
+  }
 } else if (!opt.ids) {
   console.error('用法: node token-cost.mjs --sessions <id1,id2,...> 或 --tree <主会话ID>');
   process.exit(1);
@@ -67,10 +89,11 @@ for (const id of opt.ids) {
 }
 
 const totalTokens = totals.uncachedInputTokens + totals.cacheReadTokens + totals.cacheWriteTokens + totals.outputTokens;
+// cacheWriteTokens = 写入上下文缓存（cache miss 语义）→ 按未命中价（in）计；cacheReadTokens = 命中读取 → 按低价计（v2.5.2-dsh.3 审计修正）
 const costUsd =
   (totals.uncachedInputTokens / 1e6) * opt.prices.in +
   (totals.cacheReadTokens / 1e6) * opt.prices.cache +
-  (totals.cacheWriteTokens / 1e6) * opt.prices.cache +
+  (totals.cacheWriteTokens / 1e6) * opt.prices.in +
   (totals.outputTokens / 1e6) * opt.prices.out;
 
 console.log(JSON.stringify({
@@ -79,6 +102,6 @@ console.log(JSON.stringify({
   tokens: { uncachedInput: totals.uncachedInputTokens, cacheRead: totals.cacheReadTokens, cacheWrite: totals.cacheWriteTokens, output: totals.outputTokens, total: totalTokens },
   costEstimateUsd: Number(costUsd.toFixed(2)),
   pricesPerMillion: opt.prices,
-  note: '成本为估算（默认 DeepSeek 价，--price-* 可覆盖）；cacheRead = 上下文缓存命中读取，单价低于 uncached；主会话为运行中会话，总量为截至运行时刻。',
+  note: '成本为估算（默认 DeepSeek 价，--price-* 可覆盖）；uncachedInput 与 cacheWrite 按未命中价计，cacheRead 按命中价计（缓存写=miss 语义）；主会话为运行中会话，总量为截至运行时刻。',
   rows
 }, null, 2));

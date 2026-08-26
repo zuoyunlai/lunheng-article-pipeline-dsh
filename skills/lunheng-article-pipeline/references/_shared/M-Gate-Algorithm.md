@@ -1,4 +1,4 @@
-> 版本：v2.5.2-dsh.3（DSH 适配版，对应正典 v2.5.2，自动同步 2026-08-25）
+> 版本：v2.5.2-dsh.4（DSH 适配版，对应正典 v2.5.2，自动同步 2026-08-25）
 
 
 # M 门算法规约（论衡当前主流程完整版，v2.2.12 Phase D-1 合并）
@@ -26,7 +26,7 @@
 **M 门的执行方式**：
 1. 主控用 `read` 工具读取本算法文档
 2. 主控用 `read` 工具读取 `final/定稿.md` + `final/证据包/` 所有文件  
-3. 主控按下面的**伪代码推理判定**，产出 `M-Gate-Report-v2.2.12.json`
+3. 主控按下面的**伪代码推理判定**，产出 `M-Gate-Report.json`
 4. exit 0 才能返回，否则触发修订或补检索
 
 > **信任模型声明（v2.5.2-dsh 补丁，回应第三方评审 P0-2）**：「机械化」指**按固定规则逐项判定、不靠主观印象**，**不是机器代码执行**——M 门由主控 LLM 读文件后按伪代码**结构化推理**给出 exit code，是「结构化 + 可复核」而非「机器强制」。真正的正则/sha256 可由主人在 host shell 用本文 bash 示例手动复核（DSH 下主控也可用 `pwsh` 直接算 sha256 回填，见 M-Exist-2）。因此 M 门是**兜底防线**，不替代主人终审。
@@ -66,7 +66,7 @@
 1. ✅ **读取本规约全文**（用 `read` 工具读 `M-Gate-Algorithm.md`，**不再需要读 4 个历史版本**）
 2. ✅ **读取 final/定稿.md + final/证据包/所有文件**（用 `read` 工具）
 3. ✅ **依次执行 M-Form 8 项 + M-Exist 3 项 + M-Integrity 2 项**（按本规约伪代码推理，含 v2.2.1.2/v2.2.4 升级算法）
-4. ✅ **产出 M-Gate-Report-v2.2.12.json**（用 `write` 工具写入）
+4. ✅ **产出 M-Gate-Report.json**（用 `write` 工具写入）
 5. ✅ **判定 exit code 0 才允许 T8 返回**，否则触发 T5 修订（v2.3.0 改 T4→T5）或主控补检索
 
 **Phase 0 同意关卡**：本算法不调用任何外部服务（纯 LLM 推理 + 文件 I/O），无需主人额外同意。实战验证如需 shell 脚本（脚本版）跑 dry-run，需主人明示同意（教训 #51 金标准）。
@@ -575,7 +575,7 @@ return (all_pass, fail_reasons, sha256_pending)
 算法步骤（主控 LLM 兜底执行）：
 1. 检查审计报告最新版：列出 audits/审计报告-vN.md → N 取最大 → 必须存在
 2. P0/P1 清单已列：检查 -E '^- \*\*P0|^- \*\*P1' audits/审计报告-vN.md → 必须有 ≥1 条
-3. M 门（M-Form 8 项 + M-Exist 3 项）全部 exit 0：读 M-Gate-Report-v2.2.12.json → 全部 true
+3. M 门（M-Form 8 项 + M-Exist 3 项）全部 exit 0：读 M-Gate-Report.json → 全部 true
 4. 证据包 哈希指纹段存在：读 final/交付说明.md「证据包指纹」段 → 必须有 sha256 **占位符** `[哈希校验待主人回填]`（人类可选在 host shell 手动计算后回填真实哈希，占位符即视为通过——v2.2.17 改，agent 不执行 sha256，不把 sha256 作闸门强制项）
 5. 信任级别一致性：M-Exist-3 exit 0 → 通过
 6. 论文交付物 vs 操作员报告独立隔离：
@@ -591,7 +591,7 @@ return (all_pass, fail_reasons, sha256_pending)
 伪代码：
 audit_latest = get_latest_audit_report('audits/')
 p0_p1_listed = check_p0_p1_listed(audit_latest)
-m_gate_ok = check_m_gate_all_pass('final/M-Gate-Report-v2.2.12.json')
+m_gate_ok = check_m_gate_all_pass('final/M-Gate-Report.json')
 sha256_ok = check_evidence_sha256_placeholder('final/交付说明.md')  # v2.2.17 改：占位符 [哈希校验待主人回填] 即通过，人类可选回填
 trust_ok = check_M_Exist_3(...)
 isolation_ok = check_draft_vs_report_isolation('final/定稿.md', 'final/交付说明.md', 'audits/')

@@ -2,6 +2,46 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版与 OpenClaw 原版分离维护，版本号以 -dsh.N 标记第 N 次 DSH 适配。
 
+## 2.5.2-dsh.4（2026-08-26）
+
+- **第三方全量审计修复（6 维审计 + 交叉验证，P0/P1/P2/P3 四批 36 文件）**：
+  - **P0 版本治理**：版本统一 dsh.4（仓库级 README/introduction/skills-README/CHANGELOG 漂移清零）；SKILL.md「使用者发布版」声明与事实对齐（archive/CI 如实说明）
+  - **P0/P1 工程**：M-Gate-Report 文件名统一无后缀（含 JSON schema 值）；publish.yml 加 `--tag dsh` + tag/版本一致性校验 + 去掉 `|| true` 吞错；`process.getBuiltinModule?.()` 兜底 + `engines: >=20.6`
+  - **P1 安全**：注入防御下沉到 T1/T2/T3 检索角色卡铁律 + 派发话术（外部内容不可信原则从主控层落实到检索层）；「零 exec」声明如实修正（白名单脚本 + 有限 shell）；信任级别 ≠ 注入防御的认知修正
+  - **P1 机制**：分档预设接线（三档工具 subagent_retrieval/strong/audit 进入派发话术，从此实际生效）；修订回环双轨制定案；G 十五项 / M-Form 8 项 / T9·G14 默认开 口径统一
+  - **P1 脚本**：m-gate-check 补 `C-主` 引用 + 版本化归一化 + M-Form-5 估算标记豁免 + 缺目录友好报错；token-cost zstd 兼容（node<22.15 报错）+ tree 前缀归一化 + cacheWrite 按未命中价 + 参数校验
+  - **P2/P3**：consistency-check 增强为 6 类（跨文件版本比对/M-Gate-Report 漂移/角色卡索引/口径残留）；安装文档纠错（新版 dsh 自动加 bundles）；预设默认继承父会话（消灭 NO_ADAPTER）；files 补 CHANGELOG/CONTRIBUTING；pdfcheck 判定与消息一致；md2html SVG 消毒 + 图N 支持 + 同文件保护；C1-C7 七维；OpenClaw 残留清零
+- **门 V 增强**：M-Gate-Report 检查补 JSON schema 值盲区
+
+## 2.5.2-dsh.3（2026-08-25）
+
+- **token 优化 6 项 + 终检成本实取**：
+  - 卡片索引/分层加载：主控启动 ~35K 降本（启动速查表，glossary/pipeline-readme 按需查概念再读对应节）
+  - 注解聚合：角色卡/文档历史分层注解不再逐层堆叠，同主题合并为单行「v2.5.2-dsh 补丁，教训：…」格式（防文档随版本膨胀）
+  - M-Form 脚本化：M-Form-1/3/5/7 + M-Exist-2 由 `scripts/m-gate-check.mjs` 纯正则/哈希判定（零 LLM），T8 只判 M-Form-8 + 复核（省 ~12K token）
+  - 终检成本实取：`scripts/token-cost.mjs --sessions/--tree` 读会话投影缓存，实取 token 四类 + 估算成本
+  - 执行韧化协议压缩：DSH 精简版（状态机 + 交接报告六要素 + 三播报），完整版移作参考
+  - pdfcheck 入库：`scripts/pdfcheck.mjs` 原始字节校验 PDF（/Page /Font /ToUnicode /CIDFont）
+- **全量检查清理**：consistency-check 新增 2c「scripts/ 引用完整性」检查；写手卡精简段；M 门预检前置到 T7
+
+## 2.5.2-dsh.2（2026-08-22）
+
+- **第三方评审 P0-P2 全修复**：
+  - 一致性自检脚本 + CI：`scripts/consistency-check.mjs`（P0-1 四类漂移自动检测）+ `.github/workflows/ci.yml`（push/PR 自动跑，exit 0 才通过）
+  - 占位符标记：「（检查）」占位符净化剥离标记，SKILL.md/glossary.md 豁免
+  - 门数口径统一：M 门 13 项 / 自审门 21 门（含门 V）口径对齐；QUICKSTART 触发关键词收紧（8→4 核心 + 强制 Phase 0 确认）
+  - 启动清单与快速开始分层；M-Form-7 文末白名单 v2.3.5 + M-Form-8 三角验证 v2.3.7 归位
+
+## 2.5.2-dsh.1（2026-08-22）
+
+- **15 项实战反哺改进**：
+  - 写盘校验：subagent 完成事件早于写盘落盘 → 完成通知后 wait 30s + 双重 ls 再读（写盘延迟双重校验）；写手写盘后立即 read 验证非空 + 关键标题存在
+  - Phase 1.5 定向补检索：T4 大纲标「待复核 [Dxx]」或「缺口论点」→ 主控 spawn T1 补检索（关键二手数据定向回查 + 缺口论点补检索，Permanent Gap 标注）
+  - 字数层级：任务简报显式二选一写入 + Phase 2.5 主人拍板（v1-v3 全超 +3-9% 教训）
+  - 图号规则：图位编号 = 章节出现顺序（[图1]→[图2]→[图3] 连续，禁止断号，断号自动重排仅警告）
+  - 破折号自检前移（v1 落地前 grep「——」≤8 处）；跨学科理论概念核验（catharsis category error 教训）；洞察引导 3 具体问题；G14 与 T6 并行触发
+  - 分档预设补 T9/G14 映射；版本行全量统一
+
 ## 2.5.2-dsh.0（2026-08-25）
 
 - **同步正典 v2.5.2（v2.3.7 → v2.5.2 大版本跨越）**：

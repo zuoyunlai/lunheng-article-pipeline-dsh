@@ -1,6 +1,6 @@
 # 论衡（lunheng-article-pipeline）— 多 Agent 深度长文流水线
 
-> **DSH 适配版（v2.5.2-dsh.0）**：本仓库为 DSH bundle 插件（技能包）；工具映射与结构性差异见 `SKILL.md` 的「🔧 DSH 适配说明」章节。
+> **DSH 适配版（v2.5.2-dsh.4）**：本仓库为 DSH bundle 插件（技能包）；工具映射与结构性差异见 `SKILL.md` 的「🔧 DSH 适配说明」章节。
 
 把一篇深度文章 / 论文的生产拆成 **9 张角色卡 + 6 个阶段**（Phase 1 为 T1 文献 ∥ T2 数据 ∥ T3 案例 三检索员三方真并行互不干涉，T3 任何量级必 spawn 含 0 条空卡协议；T6 批判伙伴 + T7 审计 + T8 终检=主控亲完成 + T9 同行评审，v2.3.0 角色编号重构 + v2.4.0 加 T9），用 DSH 的 `subagent` 子代理编排，产出有**证据底座、反方论证、独立审计、人工核验节点**的交付物。
 
@@ -199,9 +199,9 @@ DSH 的模型路由由 `settings.yaml` 配置决定，`subagent` 默认继承会
 
 | 工具 | 角色 | 能力定位 | 默认 provider/model（可覆盖） |
 |---|---|---|---|
-| `subagent_retrieval` | T1 文献 / T2 数据 / T3 案例 | 便宜快 | `deepseek-official` / `deepseek-v4-flash` |
-| `subagent_strong` | T4 分析 / T5 写作 / T6 批判 | 推理强 | `deepseek-official` / `deepseek-v4-pro` |
-| `subagent_audit` | T7 审计 | 顶配防漏判 | `deepseek-official` / `deepseek-v4-pro` |
+| `subagent_retrieval` | T1 文献 / T2 数据 / T3 案例 | 便宜快 | 继承父会话（设 `LUNHENG_RETRIEVAL_*` 才分档） |
+| `subagent_strong` | T4 分析 / T5 写作 / T6 批判 / T9 审稿 | 推理强 | 继承父会话（设 `LUNHENG_STRONG_*` 才分档） |
+| `subagent_audit` | T7 审计 / G14 检测 | 顶配防漏判 | 继承父会话（设 `LUNHENG_AUDIT_*` 才分档） |
 
 覆盖环境变量：`LUNHENG_{RETRIEVAL,STRONG,AUDIT}_PROVIDER`（provider 名）+ `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_MODEL`（裸模型 id）——**两者分离，跨 provider 必须同时指定**。模型挂载期求值一次，改环境变量后须重启 dsh；未挂载对应工具或未装预设时自动回退 `subagent`（继承会话模型，任何模型配置都能跑）。
 

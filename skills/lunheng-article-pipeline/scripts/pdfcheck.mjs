@@ -28,12 +28,14 @@ while ((m = re.exec(latin)) !== null) {
 }
 const decompressedPageObjects = (dec.match(/\/Type\s*\/Page[^s]/g) || []).length;
 
+// ok 判定：多页 + 字体 + CIDFont（中文字体嵌入的核心证据）。
+// ToUnicode/Image 仅统计展示，不参与判定（v2.5.2-dsh.3 审计修订：verdict 只声称实际校验的项）
 const ok = header.startsWith('%PDF-') && eof && counts.Page >= 5 && counts.Font >= 1 && counts.CIDFont >= 1;
 console.log(JSON.stringify({
   pdf: pdfPath,
   header, eof,
   rawCounts: counts,
   streams, inflated, decompressedPageObjects,
-  verdict: ok ? 'OK：有效 PDF（多页 + 中文字体嵌入 ToUnicode/CIDFont + 图像对象）' : 'CHECK：结构异常（页数/字体/图像缺失）'
+  verdict: ok ? `OK：有效 PDF（多页 ${counts.Page} + 中文字体嵌入 CIDFont ${counts.CIDFont}；ToUnicode ${counts.ToUnicode}、图像 ${counts.Image} 仅统计不判定）` : 'CHECK：结构异常（页数/字体/图像缺失）'
 }, null, 2));
 process.exit(ok ? 0 : 1);
