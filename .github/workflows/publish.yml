@@ -17,13 +17,16 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Trusted Publishing 要求 Node >= 22.14 + npm >= 11.5.1（官方文档硬性要求）
+          node-version: 24
           registry-url: 'https://registry.npmjs.org'
           # 官方明确：发布构建不要缓存依赖（本包零依赖，无 package-lock）
 
-      # 仓库无 package-lock.json，用 npm install 而非 npm ci
+      # 仓库无 package-lock.json，用 npm install 而非 npm ci；显式升到最新 npm 保证 OIDC 交换可用
       - name: 安装依赖
-        run: npm install --global-style --no-package-lock
+        run: |
+          npm install --global-style --no-package-lock
+          npm install -g npm@latest
 
       # 一致性自检（复用现有脚本，与 ci.yml 同门——发布前 P0 漂移必须阻断）
       - name: 一致性自检
