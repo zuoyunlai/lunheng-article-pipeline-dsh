@@ -19,8 +19,7 @@ jobs:
         with:
           node-version: 20
           registry-url: 'https://registry.npmjs.org'
-          # 官方明确：发布构建不要缓存
-          package-manager-cache: false
+          # 官方明确：发布构建不要缓存依赖（本包零依赖，无 package-lock）
 
       # 仓库无 package-lock.json，用 npm install 而非 npm ci
       - name: 安装依赖
