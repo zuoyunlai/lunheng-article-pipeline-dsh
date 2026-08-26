@@ -51,9 +51,13 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         run: npm publish --access public --provenance --tag dsh
 
-      # 确保 dist-tag：dsh 与 latest 都指向本次版本（本包全为 dsh 预发布版，latest 始终跟随最新版，与历史一致）
-      # workflow_dispatch 手动触发时仅执行本步骤（补 tag）；npm dist-tag add 一次只能设一个 tag，分开执行
+      # 确保 dsh dist-tag 指向本次版本（OIDC 发布已打 dsh tag，此步为漂移兜底）。
+      # 注意：OIDC 令牌无权修改 dist-tag（npm 只授权 publish），设 latest 需 owner 的
+      # granular+bypass2FA token——故本步只在设置了 NPM_TOKEN secret 时才执行，否则跳过。
       - name: 确认 dist-tag
+        if: env.NPM_TOKEN != ''
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           VER="$(node -p "require('./package.json').version")"
           npm dist-tag add lunheng-article-pipeline@$VER dsh
