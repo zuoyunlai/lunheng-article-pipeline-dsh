@@ -2,6 +2,21 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版与 OpenClaw 原版分离维护，版本号以 -dsh.N 标记第 N 次 DSH 适配。
 
+## 2.5.2-dsh.5（2026-09-06）
+
+- **M 门 13 项全脚本化（M 门 14 项反思落地）**：`m-gate-check.mjs` 从 5 门（M-Form-1/3/5/7 + M-Exist-2）扩到 13 门（M-Form 1-8 + M-Exist 1-3 + M-Integrity-1），引入严重度 P0/P1/P2 分级 + exit code 分级（P0→2 / P1→1 / 仅 P2 或全过→0）
+  - M-Form-1 阈值提升 L≥3；M-Form-2/7 白名单统一 5 节；M-Form-4 黑名单转白名单（剥离引用/数字/机构后查内部代码）；M-Form-5 扩弱 AI 痕禁词；M-Form-6 双格式 + 描述字段交叉验证；M-Form-8 每论点强制含 L + coverage≥2
+  - **M-Form-8 前置段修复**：排除摘要/关键词/引言/结语（防无引用摘要/引言被误判「缺 L」恒定 P0——引言以 [先xx] 声明原创性差异点，非论点论证）
+  - **M-Integrity-1 正则兼容**：子问题编号兼容「子问题 A/B/C」∪「S1/S2」旧格式 + 「需找数据点≥N」占位符识别
+  - **tally 对齐**：soft（LLM 兜底）独立 bucket，total=pass+p0+p1+p2+soft+skips
+- **count-chars.mjs 新增**：字数统计（正文区/全文纯汉字双口径），替代 T5 LLM 估算（实测偏差 ~30%）
+- **DSH 架构优化**：`cordis.patch.yml` 重写为 4 段 insert（技能提供者 + 三档 subagent）；删除 `examples/preset/agent.cordis.yml`（standard 全量副本，防漂移）；preset.yml 重定位为说明
+- **status.md / agents-log.md 双文件写入约定**：status.md 主控独占写，agents-log.md 子代理追加写（防并发写冲突）
+- **repo↔.dsh 同步修复**：M 门修订回写仓库 + `.dsh` 技能目录清污染（整仓混入清干净）
+- **测试轮验证（gen-ai-academic-integrity 学术论文全链路）**：Phase 0-5 全闭环跑通，M 门 13 项 exit 0（P0×0/P1×0/P2×1）、T9 审稿 22/30 minor revision、G14 Pass；真实定稿压测暴露并修复 2 处脚本 bug：
+  - M-Form-6 正则 `信任级别[:：]` 未容忍 Markdown 加粗 `**信任级别**：` → 误判 P0，修为 `信任级别\**[:：]`
+  - M-Form-8 未排除「引言」段 → 误判 P0，已把「引言」加入排除清单
+
 ## 2.5.2-dsh.4（2026-08-26）
 
 - **第三方全量审计修复（6 维审计 + 交叉验证，P0/P1/P2/P3 四批 36 文件）**：

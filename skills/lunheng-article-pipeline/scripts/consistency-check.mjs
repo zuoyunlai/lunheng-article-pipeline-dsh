@@ -1,12 +1,15 @@
 // 论衡插件一致性自检脚本（DSH）— 发布/commit 前运行
 // 用法：node scripts/consistency-check.mjs
-// 覆盖六类漂移（v2.5.2-dsh.3 审计修订，口径统一为「6 类」）：
+// 覆盖九类漂移（v2.5.2-dsh.5 审计扩为「9 类」；.3 起为 6 类）：
 //   ① 跨文件版本一致性（package.json ↔ SKILL.md frontmatter ↔ 版本头行 ↔ 仓库级文档）
 //   ② 双头版本行 / M-Gate-Report 文件名漂移
 //   ③ 悬空引用（版本一致性检查旧名 / scripts/*.mjs 悬空 / 角色卡索引缺失）
 //   ④ 裸「（检查）」占位符残留
 //   ⑤ 8 分钟硬卡残留 / 硬编码 fallback 链
 //   ⑥ 已知口径残留（M-Form 6 项 / M-Gate-Report-v2.2.x / G 项数错标等）
+//   ⑦ 全量版本头一致性（防单文件版本头漏 bump）
+//   ⑧ cordis.patch.yml + examples/ 版本引用（防安装文档指向未发布版本）
+//   ⑨ .dsh 双写同步 + 污染校验（本地，CI 无该目录自动跳过）
 // 退出码 0 = 通过；1 = 有漂移（列在 stderr）
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative, dirname } from 'node:path';
@@ -133,6 +136,53 @@ for (const f of files) {
     if (/G0-G14 十四项/.test(text)) {
       errors.push(`[P1 口径残留 G 清单「十四项」（应为 15 项）] ${rel}`);
     }
+    // ⑦ 全量版本头一致性（v2.5.2-dsh.5 审计新增：防单个文件版本头漏 bump）
+    const headerLine = text.split('\n').find((l) => l.startsWith('> 版本：v'));
+    const headerVer = headerLine?.match(/v(\d+\.\d+\.\d+-dsh\.\d+)/)?.[1];
+    if (headerVer && normVer(headerVer) !== normVer(pkgVer)) {
+      errors.push(`[P0 版本头漂移] ${rel} 版本头 v${headerVer} ≠ package.json=${pkgVer}`);
+    }
+  }
+}
+
+// ⑧ cordis.patch.yml + examples/ 版本引用（v2.5.2-dsh.5 审计新增：防安装文档指向未发布版本）
+const patchPath = join(REPO_ROOT, 'cordis.patch.yml');
+if (existsSync(patchPath)) {
+  const pt = readFileSync(patchPath, 'utf8');
+  const pm = pt.match(/DSH 适配版\s*(v?\d+\.\d+\.\d+-dsh\.\d+)/);
+  if (pm && normVer(pm[1]) !== normVer(pkgVer)) {
+    errors.push(`[P0 版本引用] cordis.patch.yml 头写 ${pm[1]} ≠ package.json=${pkgVer}`);
+  }
+}
+const exDir = join(REPO_ROOT, 'examples');
+if (existsSync(exDir)) {
+  for (const f of walk(exDir)) {
+    const rel = 'examples/' + relative(exDir, f).replaceAll('\\', '/');
+    const t = readFileSync(f, 'utf8');
+    for (const m of t.matchAll(/v?(\d+\.\d+\.\d+-dsh\.\d+)/g)) {
+      if (normVer(m[1]) !== normVer(pkgVer)) {
+        errors.push(`[P0 版本引用] ${rel} 写 ${m[0]} ≠ package.json=${pkgVer}`);
+        break;
+      }
+    }
+  }
+}
+
+// ⑨ .dsh 双写同步 + 污染校验（v2.5.2-dsh.5 审计新增：仅当兄弟 .dsh 技能目录存在时生效，CI 无此目录自动跳过）
+const dshSkillDir = join(REPO_ROOT, '..', '.dsh', 'skills', 'lunheng-article-pipeline');
+if (existsSync(dshSkillDir)) {
+  for (const kf of ['SKILL.md', 'scripts/m-gate-check.mjs', 'scripts/count-chars.mjs', 'references/_shared/M-Gate-Algorithm.md']) {
+    const repoF = join(ROOT, kf), dshF = join(dshSkillDir, kf);
+    if (!existsSync(repoF) || !existsSync(dshF)) {
+      errors.push(`[P1 .dsh 同步] 文件缺失 ${kf} repo=${existsSync(repoF) ? '有' : '缺'} .dsh=${existsSync(dshF) ? '有' : '缺'}`);
+    } else if (statSync(repoF).size !== statSync(dshF).size) {
+      errors.push(`[P1 .dsh 同步] ${kf} 大小漂移 repo=${statSync(repoF).size}B .dsh=${statSync(dshF).size}B`);
+    }
+  }
+  for (const poll of ['package.json', 'cordis.patch.yml', 'docs', 'examples', '.git']) {
+    if (existsSync(join(dshSkillDir, poll))) {
+      errors.push(`[P1 .dsh 污染] 技能目录含仓库级条目 ${poll}（应只含技能包本体）`);
+    }
   }
 }
 
@@ -141,4 +191,4 @@ if (errors.length) {
   for (const e of errors) console.error('  - ' + e);
   process.exit(1);
 }
-console.log(`一致性自检通过：${files.length} 个 .md 文件（含跨文件版本比对），0 处漂移。`);
+console.log(`一致性自检通过：${files.length} 个 .md 文件 + cordis.patch.yml/examples/.dsh 同步，0 处漂移。`);

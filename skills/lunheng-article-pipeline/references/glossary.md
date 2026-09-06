@@ -1,4 +1,4 @@
-> 版本：v2.5.2-dsh.4（DSH 适配版，对应正典 v2.5.2，自动同步 2026-08-25）
+> 版本：v2.5.2-dsh.5（DSH 适配版，对应正典 v2.5.2，自动同步 2026-08-25）
 
 
 # 论衡核心概念词汇表
@@ -278,7 +278,7 @@
 - **Web 检索**：web_search / read_page
 - **子代理编排**：subagent（后台可续接）/ subagent_fork（继承上下文）/ list_agents
 - **规划**：todo_write
-- **命令执行**：pwsh（Windows）/ bash（Linux）——论衡主流程默认零 exec（LLM 推理判定），需跑命令时经主人同意
+- **命令执行**：pwsh（Windows）/ bash（Linux）——论衡主流程默认不执行任意 shell（LLM 推理判定），白名单例外：随包 6 个 `scripts/*.mjs` + 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等，主控执行、受沙箱约束），需其他命令时经主人同意（v2.5.2-dsh.5 审计修订：如实声明，非「零 exec」）
 
 ### ❌ 不使用的工具（DSH 下无对应或需另配）
 - **浏览器控制 / 定时任务 / 技能维护**：browser / cron / skill_workshop（无对应）
@@ -287,7 +287,7 @@
 
 ### ℹ️ 关键澄清
 - **M 门算法**：主控 LLM 通过 `read` 读取算法文档，按伪代码**推理判定**；机械判定项（M-Form-1/3/5/7 + M-Exist-2）走 `scripts/m-gate-check.mjs`
-- **shell 使用（v2.5.2-dsh.4 审计修订）**：论衡**不是零 exec**——主控按需执行随包 5 个 `scripts/*.mjs` + 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等）；算法文档中的 `grep`/`diff`/`sha256sum`/`wc` 等示例命令是给人类主人手动复核的参考，agent 优先用白名单脚本与 read 工具（正典 v2.5.2 净化版中的「（检查）」占位符同样按此处理）
+- **shell 使用（v2.5.2-dsh.4 审计修订）**：论衡**不是零 exec**——主控按需执行随包 6 个 `scripts/*.mjs` + 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等）；算法文档中的 `grep`/`diff`/`sha256sum`/`wc` 等示例命令是给人类主人手动复核的参考，agent 优先用白名单脚本与 read 工具（正典 v2.5.2 净化版中的「（检查）」占位符同样按此处理）
 - **主流程**：LLM 推理 + 文件读写 + Web 检索 + 白名单脚本；除白名单外默认不执行任意 shell 命令（经主人同意除外）
 
 ---

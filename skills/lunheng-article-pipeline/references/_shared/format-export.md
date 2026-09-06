@@ -1,4 +1,4 @@
-> 版本：v2.5.2-dsh.4（DSH 适配版，对应正典 v2.5.2，自动同步 2026-08-25）
+> 版本：v2.5.2-dsh.5（DSH 适配版，对应正典 v2.5.2，自动同步 2026-08-25）
 
 
 # 多格式导出（v2.5.0 新增，可选，默认 md）
@@ -66,6 +66,6 @@ node scripts/md2html.mjs <定稿.md> <定稿.html> [<SVG 文件路径，可选�
 
 ## 六、限制
 
-- **零 exec**：pandoc / rsvg-convert 由主人在 host shell 手动跑；论衡 agent 不执行 shell 命令
+- **执行边界**（v2.5.2-dsh.5 修订，非「零 exec」）：pandoc / rsvg-convert 由主人在 host shell 手动跑（论衡 agent 不直接调用外部格式转换工具）；随包白名单脚本（md2html/pdfcheck）可由主控执行
 - **模板依赖**：latex/docx/pdf 需要主人提供对应的模板文件（academic-paper.tex / academic-paper-template.docx）
 - **中文支持**：用 xelatex 引擎 + csl=chinese-gb7714-2015-numeric 处理中文引用

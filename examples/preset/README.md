@@ -1,53 +1,94 @@
-# 论衡分档预设（lunheng preset）
+# examples/preset/ — 论衡分档 preset 安装指南
 
-基于 `standard` 预设，额外挂载三档 subagent 工具，供论衡流水线按角色能力指派模型（检索便宜快 / 分析写作批判推理强 / 审计顶配）。
+> **v2.5.2-dsh.5 重大变更**：早期版本的 `agent.cordis.yml`（≈16KB standard 全量副本）**已删除**——
+> DSH 5.5.0+ 的 `cordis-plugin-include` 真正支持 `- insert:` 局部 patch 增量叠加，不再需要"凑出有效"副本
+> （凑副本有版本漂移风险：standard 一更新，副本就过期了）。
+>
+> 现在装分档只要：① 把 `cordis.patch.yml` 放到包根（已就位）② 用户的 profile 声明 `lunheng-article-pipeline` 为 bundle 依赖。
 
-> **通用性（v2.3.7-dsh.6）**：本预设是**可选优化**。只配了一个模型的用户**无需安装本预设**——论衡所有角色默认继承会话模型，任何模型配置都能跑。装预设只对「配了多个模型、想按角色能力分档」的用户有意义。
+## 1. 装论衡分档的 3 步（DSH 5.5.0+ 推荐路径）
 
-| 工具 | 角色 | 能力定位 | 默认 provider/model（可覆盖） |
-|---|---|---|---|
-| `subagent_retrieval` | T1 文献 / T2 数据 / T3 案例 | 便宜快（抽取+分类） | 继承父会话（未设环境变量时） |
-| `subagent_strong` | T4 分析 / T5 写作 / T6 批判 / T9 审稿 | 推理强（分析/成文/批判/评审） | 继承父会话（未设环境变量时） |
-| `subagent_audit` | T7 审计 / G14 检测 | 顶配防漏判 | 继承父会话（未设环境变量时） |
+```sh
+# 1. 在 profile package.json 声明 bundle 依赖
+#    （DSH 会读 dsh.bundle.patch 找到 cordis.patch.yml 加载）
+dsh plugin --profile web add lunheng-article-pipeline@2.5.2-dsh.5
 
-> **v2.5.2-dsh.4 审计修订**：未设任何 `LUNHENG_*` 环境变量时，三档工具不覆盖模型（继承父会话）——**任何模型配置都能安全安装本预设**；设了 `LUNHENG_*_PROVIDER` 才按角色分档（model 默认 `deepseek-v4-flash/pro`，可再覆盖）。
+# 2. 设三档 subagent 工具的 provider/model 环境变量
+#    （未设时各档抛错 → 必须显式声明，DSH 安装时提示授权）
+export LUNHENG_RETRIEVAL_PROVIDER=deepseek-official
+export LUNHENG_RETRIEVAL_MODEL=deepseek-v4-flash
+export LUNHENG_STRONG_PROVIDER=deepseek-official
+export LUNHENG_STRONG_MODEL=deepseek-v4-pro
+export LUNHENG_AUDIT_PROVIDER=deepseek-official
+export LUNHENG_AUDIT_MODEL=deepseek-v4-pro
 
-## 安装
-
-把本目录两个文件复制到用户预设根：
-
-```
-$DSH_HOME/.agent-presets/lunheng/agent.cordis.yml
-$DSH_HOME/.agent-presets/lunheng/preset.yml
-```
-
-然后新建会话时，在预设选择器里选「论衡分档」。
-
-## 切换模型（按角色覆盖）
-
-**provider 与 model 分离**（DSH 架构要求：model 是裸 id，provider 单独指定；跨 provider 必须同时设两者，否则 dsh-llm 报 NO_ADAPTER）：
-
-```powershell
-# 检索档：便宜快（例：换 minimax 便宜模型）
-$env:LUNHENG_RETRIEVAL_PROVIDER = "minimax"
-$env:LUNHENG_RETRIEVAL_MODEL    = "MiniMax-M2.7"
-
-# 强档：分析/写作/批判/审稿用推理强模型
-$env:LUNHENG_STRONG_PROVIDER    = "deepseek-official"
-$env:LUNHENG_STRONG_MODEL       = "deepseek-v4-pro"
-
-# 审计档：顶配防漏判（T7 审计 + G14 中文 AI 痕迹检测）
-$env:LUNHENG_AUDIT_PROVIDER     = "minimax"
-$env:LUNHENG_AUDIT_MODEL        = "MiniMax-M3"
-
-dsh web   # 重启生效（模型挂载期求值一次）
+# 3. 重启 dsh 进程
+dsh web  # 或 supervisor 自动拉起
 ```
 
-provider 名必须是你 dsh 已注册的 LLM provider（查 `settings.yaml` 的 `llm-pi-ai.providers` 或 `agent-default-model.provider`），model 是该 provider 下的裸模型 id。
+## 2. 验证
 
-## 注意
+```sh
+# 验证 patch 行进入组合树（4 段 insert 应全部命中）
+dsh --profile web --dump-config 2>&1 | grep -E "skill-filesystem-lunheng|tool-subagent-(retrieval|strong|audit)"
 
-- 模型在**挂载期求值一次**（`!!js`），改环境变量后必须重启 dsh 才生效；
-- 若某档未设 `LUNHENG_*_PROVIDER`，该档不覆盖模型（继承父会话）——单模型/未配 deepseek 的用户装本预设也安全，所有角色仍继承会话模型；
-- 设了 PROVIDER 而未设 MODEL 时，用档位默认模型（retrieval=`deepseek-v4-flash`、strong/audit=`deepseek-v4-pro`）；
-- 论衡技能本身只"建议"用哪个工具派发（见 pipeline-readme「DSH 分档预设接线」）；真正能否分模型取决于本预设是否挂载了对应工具。
+# 验证论衡技能可见
+dsh headless --profile web "列出当前可见的技能"
+# 预期：lunheng-article-pipeline
+```
+
+## 3. preset.yml 仅是分档说明文件
+
+`preset.yml` 不是 DSH 加载的 cordis 配置——它**只是给主人读的分档说明**。
+真要装分档行为，看 `../../cordis.patch.yml`（包根）里的 3 档 subagent 工具。
+
+```sh
+# preset.yml 的内容：
+# name: 论衡分档
+# description: 三档 subagent 工具按角色能力分模型
+#   - subagent_retrieval: T1/T2/T3 便宜快（默认 deepseek-v4-flash）
+#   - subagent_strong: T4/T5/T6/T9 推理强（默认 deepseek-v4-pro）
+#   - subagent_audit: T7 审计 + G14 顶配（默认 deepseek-v4-pro）
+#   - 模型经 LUNHENG_*_PROVIDER + LUNHENG_*_MODEL 环境变量覆盖
+```
+
+## 4. provider/model 分离原则（DSH 架构要求）
+
+DSH 的 subagent 工具 `agentOptions` 字段**要求** `provider`（注册名）+ `model`（裸 id）同时声明。
+本包 cordis.patch.yml 的 3 档 subagent 都用 `!!js` 求值环境变量：
+
+```yaml
+provider: !!js "process.env.LUNHENG_RETRIEVAL_PROVIDER || (() => { throw new Error('...未设置') })()"
+model: !!js "process.env.LUNHENG_RETRIEVAL_MODEL || 'deepseek-v4-flash'"
+```
+
+注意：v2.5.2-dsh.5 起**未设环境变量直接抛错**（旧版本会 silent fallback，可能配错 model 不知道）。
+如需 silent fallback 回退，把 `|| (() => { throw new Error(...) })()` 改成 `|| 'default-value'`。
+
+## 5. 与 skills/ 目录的 skill-filesystem provider
+
+cordis.patch.yml 第一段（id: `skill-filesystem-lunheng`）是 skill filesystem 提供者配置：
+
+```yaml
+- insert:
+    - id: skill-filesystem-lunheng
+      name: '@deepseek-ai/dsh-skill-filesystem'
+      config:
+        providerName: skill-filesystem-lunheng
+        includeDefaultRoots: false
+        customSkillDirs:
+          - !!js "process.getBuiltinModule?.('node:url')?.fileURLToPath(new URL('node_modules/lunheng-article-pipeline/skills/', baseUrl))"
+```
+
+要点：
+- `providerName: skill-filesystem-lunheng`（v2.5.2-dsh.5 命名规范以 `skill-filesystem-*` 前缀区分系统默认）——这是论衡自己的提供者 namespace，与 system 默认 `filesystem` 不冲突
+- `includeDefaultRoots: false`：本行只贡献本包的 `skills/`，不重复扫描项目/用户根（避免和系统技能根重复加载）
+- `customSkillDirs` 路径在挂载时由 `baseUrl` 解析为绝对路径——与 profile 安装位置无关，npm install 到哪都正确指向 `node_modules/lunheng-article-pipeline/skills/`
+
+## 6. 升级/降级/卸载
+
+```sh
+dsh plugin --profile web update lunheng-article-pipeline@2.5.2-dsh.5
+# 卸载后 subagent 工具和 skill provider 一起消失（因 cordis.patch.yml 整体 - insert 段）
+dsh plugin --profile web remove lunheng-article-pipeline
+```

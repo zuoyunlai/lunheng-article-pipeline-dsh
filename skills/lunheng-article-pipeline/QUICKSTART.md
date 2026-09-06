@@ -1,6 +1,6 @@
-> 版本：v2.5.2-dsh.4（DSH 适配版，对应正典 v2.5.2，自动同步 2026-08-25）
+> 版本：v2.5.2-dsh.5（DSH 适配版，对应正典 v2.5.2，自动同步 2026-08-25）
 
-# 论衡快速开始指南（v2.5.2-dsh.4）
+# 论衡快速开始指南（v2.5.2-dsh.5）
 
 > **v2.3.0 升级（2026-08-21）**：角色编号重构（教训 #116）—— T6 案例检索 → T3 案例检索（三方并行检索员连贯 T1∥T2∥T3），T3-T8 顺延 + T7/T8 交换位置（终检 → T8 主控亲完成、批判 → T6 独立早期攻击、审计 → T7 形式审查）。新增 Phase 3.6 批判（T6 攻击 v2 含主人洞察）。
 >
@@ -213,7 +213,7 @@
 
 ### Q1：论衡能不能执行 shell 命令？
 
-**答：有限执行（v2.5.2-dsh.4 审计修订，如实声明）。** 论衡主体是 LLM 推理 + 文件读写 + Web 检索流水线；主控/终检**按需执行随包白名单脚本**（`scripts/consistency-check.mjs` / `m-gate-check.mjs` / `md2html.mjs` / `pdfcheck.mjs` / `token-cost.mjs`）+ 有限验证命令（`ls`/`stat`/`wc`/`cp`/`diff`/`Get-FileHash` 等）。算法文档中的 `grep`/`diff`/`sha256sum`/`wc` 等命令示例，agent 优先用 read 推理判定或白名单脚本，**人类主人可随时在 host shell 手动复核**。除白名单外不执行任意 shell 命令。
+**答：有限执行（v2.5.2-dsh.4 审计修订，如实声明）。** 论衡主体是 LLM 推理 + 文件读写 + Web 检索流水线；主控/终检**按需执行随包白名单脚本**（`scripts/consistency-check.mjs` / `m-gate-check.mjs` / `md2html.mjs` / `pdfcheck.mjs` / `token-cost.mjs` / `count-chars.mjs`）+ 有限验证命令（`ls`/`stat`/`wc`/`cp`/`diff`/`Get-FileHash` 等）。算法文档中的 `grep`/`diff`/`sha256sum`/`wc` 等命令示例，agent 优先用 read 推理判定或白名单脚本，**人类主人可随时在 host shell 手动复核**。除白名单外不执行任意 shell 命令。
 
 ---
 

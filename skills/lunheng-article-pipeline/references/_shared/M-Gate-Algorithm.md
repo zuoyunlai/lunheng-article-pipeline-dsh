@@ -1,4 +1,19 @@
-> 版本：v2.5.2-dsh.4（DSH 适配版，对应正典 v2.5.2，自动同步 2026-08-25）
+> 版本：v2.5.2-dsh.5（DSH 适配版，对应正典 v2.5.2，自动同步 2026-08-26）
+
+> **v2.5.2-dsh.5 重大修订**（测试轮反哺 14 项问题落地）：
+> - **P0** #1 M-Form-2 与 M-Form-7 白名单统一（含 AI 使用声明）
+> - **P0** #2 M-Form-6 扩字段（双格式 + 描述字段交叉验证，P1/P2 分级）
+> - **P0** #3 M-Form-8 强制每论点含 L + coverage ≥ 2（防 L=0 通过）+ P0/P1 分级
+> - **P1** #4 M-Form-5 禁词清单扩（弱 AI 痕：据可靠来源/据悉/据了解/研究显示/专家表示）
+> - **P1** #7 M-Form-4 黑名单转白名单（v2.5.2-dsh.5 重大结构性修复）
+> - **P1** #10/2 模板强化（任务简报「需找数据点 ≥N」+ 数据卡「信任级别」独立段强制）
+> - **P1** #11 M-Exist-1 脚本化 + 严重度评级
+> - **P2** #6 M-Form-1 阈值提升（L ≥3）
+> - **P2** #9 M-Form-3 联动 M-Form-2 跳过（缺文末不误判全部 orphan）
+> - **P2** #12 算法 vs 实现 sync CI 校验（v2.6 计划）
+> - **P2** #14 M 门严重度评级（P0/P1/P2 + 可放行清单）
+> - **P3** #13 实战反例结构化（教训库）
+> - 全部 14 项反思见主控复盘报告（`E:\HERNESS\run\审计\论衡全量审计报告-2026-08-25.md`）
 
 
 # M 门算法规约（论衡当前主流程完整版，v2.2.12 Phase D-1 合并）
@@ -75,7 +90,7 @@
 
 ## M-Form 形式合规门（8 项，含 v2.2.1.2 + v2.3.5 + v2.3.7 升级）
 
-### M-Form-1: 引用标注完整性（v2.2.0 原版）
+### M-Form-1: 引用标注完整性（v2.2.0 原版 + v2.5.2-dsh.5 阈值提升）
 
 **伪代码**（主控 LLM 推理执行）：
 ```python
@@ -87,28 +102,38 @@ import re
 references = re.findall(r'\[(?:D|C|C-主|L|先)\d+\]', draft_text)
 references_unique = sorted(set(references))
 
-# 判定
-if len(references_unique) > 0:
-    return {"通过": True, "引用数": len(references_unique)}
-else:
+# === v2.5.2-dsh.5 修订：阈值提升（原 ≥1 即过 → 学术深度论文基线 L≥3）===
+# 防 L=0 通过（v2.3.7 §四 P4 实战反例：L=0 D=22 C=3 旧阈值过）
+L_count = len(re.findall(r'\[L\d+\]', draft_text))
+min_L = 3  # 学术深度论文基线（公众号/商业评论可降为 1，行业分析降为 2）
+if len(references_unique) == 0:
     return {"通过": False, "失败原因": "正文无任何引用标注"}
+elif L_count < min_L:
+    return {"通过": False, "优先级": "P0",
+            "失败原因": f"学术深度论文文献 [Lxx] < {min_L}（实测 L={L_count}），需补检索加固文献三角",
+            "修订建议": "M-Form-8 联动：L=0 必触发打回（P0）；L<3 也必触发（P0）"}
+elif len(references_unique) > 0:
+    return {"通过": True, "引用数": len(references_unique), "L 数": L_count, "阈值": f"≥{min_L}"}
 ```
+
+**v2.5.2-dsh.5 修订理由**：v2.3.7 §四 P4 实战反例暴露——L=0 D=22 C=3 旧阈值（≥1 即过）通过。修订 = a) 阈值提升到 L≥3（学术深度论文基线，公众号/商业评论模板可调）；b) 与 M-Form-8 联动（L=0 必 P0 触发打回）；c) 输出失败原因含 L 实际计数便于主控定位。
 
 **人类验证示例**（可选，主人手动复核用）：
 
-### M-Form-2: 文末四节存在性（v2.2.0 原版）
+### M-Form-2: 文末白名单节存在性（v2.5.2-dsh.5 修订：与 M-Form-7 统一为 5 节）
 
-**伪代码**（主控 LLM 推理执行）：
+**伪代码**（主控 LLM 推理执行；v2.5.2-dsh.5 起 `scripts/m-gate-check.mjs` 机械化执行）：
 ```python
 # 读取定稿全文
 draft_text = read("final/定稿.md")
 
-# 检查四节
+# 检查 5 节白名单（与 M-Form-7 一致；v2.5.2-dsh.5 修订：原 4 节漏 AI 使用声明，测试轮 v3 修 AI 声明前 M-Form-2 一直判过但 T7 打回——前后不一致，修订统一）
 required_sections = [
     "## 数据来源",
-    "## 案例来源", 
+    "## 案例来源",
     "## 参考文献",
-    "## 先行者文献"
+    "## 先行者文献",
+    "## AI 使用声明",
 ]
 
 missing = [s for s in required_sections if s not in draft_text]
@@ -119,7 +144,9 @@ else:
     return {"通过": False, "缺失章节": missing}
 ```
 
-### M-Form-3: 临时编号残留（v2.2.1.2 升级版，教训 #79）
+**v2.5.2-dsh.5 修订理由**：原 v2.2.0 算法只检查 4 节，但 v2.5.0 起 M-Form-7 白名单扩为 5 节（含 AI 使用声明），导致 M-Form-2 与 M-Form-7 范围不一致——AI 使用声明缺失时 M-Form-2 通过、M-Form-7 也通过（都过），但实际漏了关键合规节（v3 测试轮 T7 打回 P1 即源于此）。统一为 5 节，**两个 M-Form 都过 → 真正合规**。
+
+### M-Form-3: 临时编号残留（v2.2.1.2 升级版，教训 #79 + v2.5.2-dsh.5 联动 M-Form-2）
 
 **v2.2.0 算法**（**有 bug**）：简单 检查 段落中 [L/D/Cxx] → 误判合规内联引用为「残留」。
 
@@ -129,6 +156,12 @@ else:
 ```python
 # 读取定稿
 draft_text = read("final/定稿.md")
+
+# === v2.5.2-dsh.5 修订：联动 M-Form-2 跳过（缺文末不误判全部 orphan）===
+required_sections = ["## 数据来源", "## 案例来源", "## 参考文献", "## 先行者文献", "## AI 使用声明"]
+if not any(s in draft_text for s in required_sections):
+    # 文末缺失 → 跳过 M-Form-3（M-Form-2 失败优先；防 extract_body 取全文 vs extract_endnote 取空 → 所有引用被误判 orphan）
+    return {"通过": "SKIP", "原因": "文末缺失，M-Form-2 失败优先"}
 
 # 辅助函数：提取正文部分（排除文末四节）
 def extract_body(text):
@@ -170,26 +203,79 @@ else:
 - 实战 5（教师场域孤岛）：v2.2.0 算法 38 条命中（误判）→ v2.2.1.2 算法 0 命中（合规内联引用）✅
 - 实战 4（品牌一致性）：v2.2.0 算法 14 条命中（误判）→ v2.2.1.2 算法 0 命中 ✅
 
-### M-Form-4: 角色元数据泄露（v2.2.0 原版）
+### M-Form-4: 角色元数据泄露（v2.5.2-dsh.5 重大修订：黑名单转白名单）
 
-**伪代码**（主控 LLM 推理执行）：
+**v2.2.0 原版**（**黑名单模式，已废弃**）：只查 16 个具体词，漏网多；黑名单永远补不全。
+
+**v2.5.2-dsh.5 新版**（**白名单模式，结构性修复**）：列出**论衡白名单内容**（[Lxx]/[Dxx]/[Cxx]/[C-主xx]/[先xx] 引用 + 公开出版人名/机构名 + 通用学术术语 + 时间锚点 + 数字事实 + 通用标点），白名单外所有「流水线/论衡专属」标识都判定为元数据泄露。**白名单列举**：
+- ✅ 允许：[L01]-[L12] 类引用编号 / [D01]-[D18] / [C01]-[C06] / [C-主01] 等主人洞察引用 / [先01]-[先05] 等先行者引用
+- ✅ 允许：公开出版的人名（如「庄语滋」「Sadasivan」「Wittenberg」）、机构名（「欧盟」「信通院」「Stanford」）、法律法规名（「欧盟 AI Act」「中国标识办法」）
+- ✅ 允许：通用学术术语（三角验证/引文/反方论证/数据卡/案例卡 等论衡通用词——但「角色卡 04-分析」等带编号的元数据禁止）
+- ✅ 允许：时间锚点（年份/日期/世纪）、数字事实（百分点/数量）、通用标点
+- ❌ 禁止：角色编号 T0-T9 + 角色名（主控/文献检索员/数据检索员/分析员/写手/批判伙伴/审计员/审稿人/案例检索员）——「T5 写手」「主控亲完成」等
+- ❌ 禁止：论衡专属元数据（论衡 agent/流水线/技能/角色卡 N-M + 角色名/任务书/六要素/交接报告/反哺报告/教训/N/Phase 0-5/批 v2/v3/初稿/草稿/vN 稿）
+- ❌ 禁止：内部路径与代号（输入材料/输出材料/任务简报第 X 行/修订说明-vN/m-gate-check.mjs/scripts/）
+- ❌ 禁止：DSH 平台内部词（subagent/foreground/background 等——非论文交付物自然不用）
+
+**伪代码**（v2.5.2-dsh.5 + v2.6 预告；主控 LLM 推理执行 + 起 m-gate-check.mjs 机械化执行）：
 ```python
+import re
+
 # 读取定稿
 draft_text = read("final/定稿.md")
 
-# 元数据泄露检查词
-metadata_leaks = [
-    "T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8",
-    "交接报告", "六要素", "论衡主控", "子代理", "反哺报告", "角色卡"
-]
+# === v2.5.2-dsh.5 白名单：先提取白名单段（标注段+引文段）剥离出禁止检测区 ===
+# 剥离"## 参考文献/数据来源/案例来源/先行者文献"四节（白名单参考段+AI 使用声明可保留扫描）
+forbidden_scope_end = len(draft_text)
+for marker in ["## 参考文献", "## 数据来源", "## 案例来源", "## 先行者文献"]:
+    idx = draft_text.find(marker)
+    if idx >= 0 and idx < forbidden_scope_end:
+        forbidden_scope_end = idx
+scanned_text = draft_text[:forbidden_scope_end]
 
-found = [word for word in metadata_leaks if word in draft_text]
+# === 白名单匹配（剥离区扫 [L/D/C/先xx] 引用 + 保留人名/机构名/通用术语/数字/标点）===
+# 白名单正则：引用编号 / 公开机构名 / 数字 / 时间锚点
+whitelist_patterns = [
+    r'\[(?:L|D|C-主|C|先)\d+\]',         # 论衡引用编号
+    r'\d{4}年|\d{1,2}月\d{1,2}日',     # 时间锚点
+    r'\d+\.?\d*%|\d+\.?\d*\s*(?:万|亿|个|条|项|位|倍|元|倍|成)',  # 数字事实
+    r'[\u4e00-\u9fff]+(?:大学|学院|研究院|政府|机构|组织|部|委|局|司|办)',  # 通用机构
+    r'AI Act|标识办法|GPT-?\d*|OpenAI|Claude',  # 通用技术/法规名
+]
+# 白名单匹配后剥离（剩下的就是要查的禁止区）
+for_pattern_text = scanned_text
+for pat in whitelist_patterns:
+    for_pattern_text = re.sub(pat, '', for_pattern_text)
+
+# === 黑名单检测（在白名单剥离后的残留区查）===
+forbidden_patterns = [
+    # 角色编号 + 角色名
+    r'T[0-9] (主控|文献|数据|分析|写手|审计|案例|批判|审稿)',
+    r'(主控|文献检索员|数据检索员|分析员|写手|批判伙伴|审计员|审稿人|案例检索员)',
+    # 论衡专属元数据
+    r'论衡 (agent|流水线|技能|主控|测试轮)',
+    r'角色卡|任务书|六要素|交接报告|反哺报告|教训 #?\d+|Phase [0-9.]+',
+    r'批 v?\d+ 稿|初稿|草稿|定稿',
+    # 内部路径/代号
+    r'输入材料|输出材料|任务简报第 ?\d+ ?行|修订说明-?v?\d+|scripts/',
+    r'm-gate-check\.mjs|consistency-check\.mjs|count-chars\.mjs',
+    # DSH 平台内部
+    r'\bsubagent\b|\bforeground\b|\bbackground\b|\bsubagent_fork\b',
+]
+found = []
+for pat in forbidden_patterns:
+    matches = re.findall(pat, for_pattern_text)
+    if matches:
+        found.extend(matches if isinstance(matches[0], str) else [m[0] for m in matches])
 
 if len(found) == 0:
-    return {"通过": True}
+    return {"通过": True, "扫描区": "白名单剥离后残留区"}
 else:
-    return {"通过": False, "泄露词": found, "优先级": "P0"}
+    return {"通过": False, "P1": f"元数据泄露 {len(found)} 处", "命中": list(set(found))[:5],
+            "修订建议": "v2.5.2-dsh.5 起白名单模式：只允许 [Lxx]/[Dxx]/[Cxx]/[先xx]/公开人名/机构/通用术语/数字/时间锚点；其他都是泄露"}
 ```
+
+**v2.5.2-dsh.5 修订理由**：v2.2.0 黑名单 16 词永远补不全（v2.5.2-dsh.4 测试轮已加 5 类仍漏 7 类）。结构性改白名单：剥离 [Lxx]/[Dxx] 等引用段+人名+机构+数字+时间锚点后查禁止词。v2.6 计划：全白名单 + 内置合规词库（学术/政策/媒体常用人名/机构名录）。
 
 **注意**：M-Form-4 是 P0 优先级，角色元数据泄露 = 读者看到论衡内部代码 = 失去学术严肃性。
 
@@ -202,14 +288,20 @@ draft_text = read("final/定稿.md")
 
 import re
 
-# 过程语言检查
+# 过程语言检查（v2.5.2-dsh.5 扩禁词清单：防无据断言的弱 AI 痕）
 process_patterns = [
     r'v[0-9] 稿',
     r'初稿',
     r'草稿',
     r'修订说明',
     r'上一版',
-    r'下一版'
+    r'下一版',
+    # === v2.5.2-dsh.5 扩：弱 AI 痕（无据断言）===
+    r'据可靠来源',         # 缺数据卡/文献卡支撑的"权威感"措辞
+    r'据悉',              # 同上
+    r'据了解',             # 同上
+    r'研究显示',           # 缺 [Lxx] 时为弱 AI 痕
+    r'专家表示',           # 同上
 ]
 
 found = []
@@ -232,48 +324,61 @@ else:
     return {"通过": False, "残留词": found}
 ```
 
-**注意**："据行业经验估算" 是 v2.1.1 引入的「合法估算标记」。段落开头标 `[行业估算，非数据卡]` → G6 论据类型自标（合法）；无标记直接用 → P1 残留。
+**注意**：
+- 「据行业经验估算」是 v2.1.1 引入的「合法估算标记」。段落开头标 `[行业估算，非数据卡]` → G6 论据类型自标（合法）；无标记直接用 → P1 残留。
+- **v2.5.2-dsh.5 扩禁词清单**（「据可靠来源/据悉/据了解/研究显示/专家表示」）：v2.5.2-dsh.5 起视为「无据断言」弱 AI 痕；判定逻辑 = 出现任一禁词 + 上下文 200 字符内无 [Lxx]/[Dxx]/[Cxx] 支撑 → P1 残留（防无据权威感）。**误判豁免**：若上下文有 `[来源/二手转引/已发布]` 标记且与 [Dxx] 对应 → 通过。
 
-### M-Form-6: 信任级别标注完整性（v2.2.1.2 双格式升级版，教训 #83 + #84）
+### M-Form-6: 信任级别标注完整性（v2.2.1.2 双格式升级版，v2.5.2-dsh.5 扩字段）
 
 **v2.2.1 算法**：仅支持标准 [Dxx] 格式。
 
-**v2.2.1.2 新算法**（双格式支持）：
+**v2.2.1.2 算法**（双格式支持）：
 
-**伪代码**（主控 LLM 推理执行）：
+**伪代码**（主控 LLM 推理执行；v2.5.2-dsh.5 起 `scripts/m-gate-check.mjs` 机械化执行）：
 ```python
 # 读取数据卡
 data_card_text = read("final/证据包/数据卡.md")
 
 import re
 
-# 标准格式检查（[Dxx] 编号）
+# === 1. 标准格式（**[Dxx]** 编号 + **信任级别**独立段）===
 d_entries_std = re.findall(r'^\*\*\[D\d+\]', data_card_text, re.MULTILINE)
 trust_std = re.findall(r'信任级别：(已发布|主人投喂|二手转引)', data_card_text)
 
-# 表格 fallback 检查（1.x 表格格式）
+# === 2. 表格 fallback（1.x 格式）===
 d_entries_table = re.findall(r'^\| \d+\.\d+ \|', data_card_text, re.MULTILINE)
 trust_table = re.findall(r'\|\s*(已发布|主人投喂|二手转引)\s*\|', data_card_text)
 
-# 判定
-std_pass = (len(d_entries_std) == len(trust_std))
-table_pass = (len(d_entries_table) == len(trust_table))
+# === 3. v2.5.2-dsh.5 新增：描述字段交叉验证（防 T2 将信任级别写在描述里漏检）===
+# 每条 Dxx 卡片条目（到下一条 ## 前）的文本块里搜信任级别
+section_starts = list(re.finditer(r'##\s*\[D\d+\]', data_card_text))
+trust_in_section = 0
+for i, m in enumerate(section_starts):
+    end = section_starts[i+1].start() if i+1 < len(section_starts) else len(data_card_text)
+    section = data_card_text[m.start():end]
+    if re.search(r'信任级别[:：]|已发布|主人投喂|二手转引', section):
+        trust_in_section += 1
 
-if std_pass and table_pass:
-    return {
-        "通过": True,
-        "标准格式": {"条目": len(d_entries_std), "信任级别": len(trust_std)},
-        "表格格式": {"条目": len(d_entries_table), "信任级别": len(trust_table)}
-    }
+# === 判定（v2.5.2-dsh.5 修订：双轨制避免误判）===
+# 标准格式：必须有独立「信任级别：xxx」段（规范要求）
+# 描述字段：补充交叉验证，但不能替代独立段（一致性声明）
+std_pass = (len(d_entries_std) == len(trust_std))
+desc_pass = (len(d_entries_std) <= trust_in_section)
+# 两者都过 → 通过；任一不过 → 标"需补独立段"P1
+if std_pass and desc_pass:
+    return {"通过": True, "标准格式": {"条目": len(d_entries_std), "信任级别段": len(trust_std)}}
+elif not std_pass:
+    return {"通过": False, "P1": f"标准格式 [Dxx] {len(d_entries_std)} 条 vs 独立信任级别段 {len(trust_std)} 条", "建议": "每条 [Dxx] 卡片必须用独立「信任级别：xxx」段（v2.5.2-dsh.5 模板强制）", "实测": "v3 测试轮 12 条 Dxx 缺独立段（T7 兜底才打回 P1）"}
 else:
-    return {"通过": False, "详情": {"标准格式通过": std_pass, "表格格式通过": table_pass}}
+    return {"通过": False, "P2": f"描述字段有信任级别提及 {trust_in_section} 次但独立段 {len(trust_std)} 条", "建议": "统一迁移到独立「信任级别：xxx」段（防描述改写后失锚）"}
 ```
 
-**人类验证示例**（可选）：
+**v2.5.2-dsh.5 修订理由**：测试轮 v3 数据卡暴露 12 条 [Dxx] 把"信任级别"信息写在了**条目描述字段**而非独立段（教训：算法盲区 + 模板不强制）。修订 = a) 算法增加描述字段交叉验证（防 T2 写法漂移漏检）；b) 数据卡模板强制「信任级别」独立段字段（v2.5.2-dsh.5 同步修订模板）；c) 失败时给出 P1/P2 分级与具体建议。
 
 **实战验证**：
 - 实战 5（教师场域孤岛）：标准格式 47 条 D + 0 信任级别 → 失败
 - 实战 4（品牌一致性）：表格格式 35 行 + 0 信任级别 → v2.2.1.2 能识别为表格格式
+- **v2.5.2-dsh.5 实战（AI 内容标注）**：12 条 Dxx 描述字段有「已发布/二手转引」但无独立段 → v2.2.1.2 旧算法判失败（lucky catch），v2.5.2-dsh.5 新算法给出 P2+建议 → 模板修订后下次走通
 
 ### M-Form-7: 定稿文末节标题白名单纯净（v2.3.5 新增，教训 #139）
 
@@ -318,13 +423,13 @@ else:
 
 **判定铁律**：M-Form-7 是 **P0 优先级**。文末混入操作员报告节 = 读者看到论衡内部代码 = 失去「论文是给读者的，报告是给主人的」边界。**T8 在 M-Form-7 exit 0 之前，禁止在签字块写「交付边界纯净」四个字**（教训 #139）。
 
-### M-Form-8: 三角验证覆盖率检查（v2.3.7 论文三实战升级，P1-4）
+### M-Form-8: 三角验证覆盖率检查（v2.3.7 论文三实战升级 + v2.5.2-dsh.5 按论点逐一核）
 
 **背景**：v2.3.7 论文三实战 §四 P4 一直缺 [Lxx]（L=0 D=22 C=3），直到 T7 fallback 审计才发现（v3→v4 加了 [L06] [L12]）。**毛在才不出现**——主控「三角验证把关」职责未机制化，写手 v1 落地前没自动跑 [Lxx]+[Dxx]+[Cxx] 三维 检查。
 
-**三角验证原理**（论衡核心机制）：任何论点必须能映射到文献卡[Lxx]+数据卡[Dxx]+案例卡[Cxx]（涉企业行为/事件者必须配案例卡，至少两项齐全）。检索不到就标缺口，严禁编造。主角控「三角验证把关」职责（2026-08-13 原创性保证增）原本是主控手动检查，v2.3.7 P1-4 升级为**写手 v1 落地前机械化自动跑**。
+**三角验证原理**（论衡核心机制）：任何论点必须能映射到文献卡[Lxx]+数据卡[Dxx]+案例卡[Cxx]（涉企业行为/事件者必须配案例卡）。检索不到就标缺口，严禁编造。主角控「三角验证把关」职责（2026-08-13 原创性保证增）原本是主控手动检查，v2.3.7 P1-4 升级为**写手 v1 落地前机械化自动跑**。
 
-**伪代码**（主控 LLM 推理执行，写手 v1 落地前跑）：
+**伪代码**（主控 LLM 推理执行 + v2.5.2-dsh.5 起 m-gate-check.mjs 产出每论点三轨清单，写手 v1 落地前跑）：
 ```python
 import re
 
@@ -342,37 +447,43 @@ l_refs = re.findall(r'\[L\d+\]', draft_text)
 d_refs = re.findall(r'\[(?:D-?基?-?\w*-?\d+)\]', draft_text)
 c_refs = re.findall(r'\[C\d+\]', draft_text)
 
-# 对每个论点检查三角验证：拆初稿为按论点的段落（按章节切分）
+# 拆初稿为按章节的段落
 sections = re.split(r'^## ', draft_text, flags=re.MULTILINE)
 
+# === v2.5.2-dsh.5 修订：每论点必含 [Lxx]（防 L=0 通过） + 至少 2 项齐全 ===
 violations = []
 for claim in claims:
     # 找包含该论点的章节
     section_for_claim = next((s for s in sections if claim in s), "")
-    # 检查三角验证覆盖率
     has_l = bool(re.search(r'\[L\d+\]', section_for_claim))
     has_d = bool(re.search(r'\[(?:D-?基?-?\w*-?\d+)\]', section_for_claim))
     has_c = bool(re.search(r'\[C\d+\]', section_for_claim))
-    # 三角验证：至少 2 项齐全（不必须 3 项）
     coverage = sum([has_l, has_d, has_c])
-    if coverage < 2:
+    # === 修订前：coverage < 2 即通过 → L=0 D=22 C=3 也过（v2.3.7 §四 P4 漏检根因） ===
+    # === 修订后：coverage < 2 失败 + 必须含 L（has_l 单独条件） ===
+    has_l_required = has_l  # 强制要求
+    if coverage < 2 or not has_l_required:
         violations.append({
             "claim": claim,
             "section": section_for_claim[:50],
             "has_L": has_l,
             "has_D": has_d,
             "has_C": has_c,
-            "coverage": f"{coverage}/3"
+            "coverage": f"{coverage}/3",
+            "必含 L 缺": not has_l,
+            "优先级": "P0" if not has_l else "P1"  # 必含 L 缺=P0，仅 2 项不齐全=P1
         })
 
 if len(violations) == 0:
     return {"通过": True, "论点数": len(claims)}
 else:
-    return {"通过": False, "优先级": "P0",
-            "未复核论点数": len(violations),
-            "违规详情": violations,
-            "失败原因": "写手 v1 未补齐三角验证覆盖（<2 类引用），需补检索或降级为「观点」"}
+    p0_count = sum(1 for v in violations if v["必含 L 缺"])
+    p1_count = len(violations) - p0_count
+    return {"通过": False, "P0 违规（必含 L 缺）": p0_count, "P1 违规（<2 类齐全）": p1_count, "违规详情": violations,
+            "失败原因": f"{p0_count} 个论点缺 [Lxx] 必含引用（L=0 通过是 v2.3.7 §四 P4 漏检根因），{p1_count} 个论点三角覆盖 < 2 类", "v2.5.2-dsh.5 修订": "每论点强制含 L（防 L=0 通过）"}
 ```
+
+**v2.5.2-dsh.5 修订理由**：v2.3.7 §四 P4 实战反例暴露——L=0 D=22 C=3 → 旧算法 coverage=2/3 通过，**实际上 P4 论点完全无文献支撑**。修订 = 每论点强制含 L（has_l 必须为真）+ coverage ≥ 2 双条件 + 失败按 P0/P1 分级（必含 L 缺 = P0；<2 类齐全 = P1）。
 
 **触发时机**：
 1. **写手 v1 落地后**（v1 写手产物已落盘）→ T4 分析员或主控跑 M-Form-8 预检 → 不通过 → 打回 v2 重写（计入修订轮）
@@ -386,7 +497,7 @@ else:
 
 ## M-Exist 存在性合规门（3 项，含 v2.2.1.2 + v2.2.4 升级算法）
 
-### M-Exist-1: 文末四节双向 对比（v2.2.1.2 + v2.2.4 升级版）
+### M-Exist-1: 文末四节双向 对比（v2.2.1.2 + v2.2.4 升级版 + v2.5.2-dsh.5 严重度评级）
 
 **v2.2.0 算法**（**有 bug**）：提取 严格匹配 4 个标准文末节 → 对「## 附」段误判。
 
@@ -420,6 +531,11 @@ leaked = sorted(set(intext) - set(endnote))
 orphan = sorted(set(endnote) - set(intext))
 return (len(leaked) == 0 and len(orphan) == 0, leaked, orphan)
 ```
+
+**v2.5.2-dsh.5 脚本化 + 严重度评级**：
+- 脚本化：`scripts/m-gate-check.mjs` 第 4 项「M-Exist-1 引用双向」实装（v2.5.2-dsh.5 增强版），扫描正文引用 vs 文末节引用集合，差集报告漏引 [Lxx]/[Dxx]/[Cxx]
+- 严重度评级：漏引/孤儿 ≤ 3 处 → P2（可放行，由 T8 终检时主控复核）；> 3 处 → P1（必须修订）；> 10 处 → P0（重检索）
+- 实测：v3 测试轮 0 漏引 0 孤儿（P2 范围内，主控复核通过）✅
 
 **v2.2.4 补检索回填校验分支**（当流水线发生过补检索时触发）：
 
@@ -506,7 +622,7 @@ return (len(leaked) == 0 and len(orphan) == 0, leaked, orphan)
    - 标准格式：每条 [Dxx] 对应数据卡信任级别非空
    - 表格格式：每行 [1.x] 表格的「信任级别」列非空
 
-5. 判定：所有 对比 空 + 信任级别全填 → 通过；任一非空 → 失败
+5. 判定：所有 对比 空 + 信任级别全填 → 通过；任一非空 → 失败（v2.5.2-dsh.5 严重度评级：漏标 ≤2 → P2 可放行，>2 → P1）
 
 伪代码：
 intext_d = sorted(set(re.findall(r'\[D\d+\]', draft_text)))
@@ -550,6 +666,7 @@ return (all_pass, leaked, orphan, missing_trust)
    实际计数：步骤 2 的双格式并集 dedupe
    不一致 → 标 Failed（防 T2 未自检 + T4 人工 检查 才发现的延后问题）
 9. 判定：7 项全通过 → T2.5 ✅ 派发 T4；任一失败 → T2.5 ❌ 不派发 T4
+    **v2.5.2-dsh.5 严重度评级**：单子项失败 P0（信任级别缺失/数据条目不足）→ 整体闸门 P0；单子项失败 P1 → 整体 P1（可放行 + 主人签收）。**v2.5.2-dsh.5 修订**：T2.5 失败时可放行的 P1 子项必须显式记录在 01-任务简报.md「已知风险」段，主控 T8 终检时优先复核。
    **v2.3.2 删「主人签字 Phase 1」（教训 #136）**：T2.5 是纯机械化闸门，主人签字只在 Phase 0（4 选 1 同意关卡）/ Phase 2.5（大纲确认）/ Phase 5（终稿）三节点；检索完成→T4 之间**不应**打断主人（v2.3.1 实战暴露「T2/T3 完成后分别询问主人 4 选 1」的过度打断）
 
 伪代码：
@@ -587,6 +704,7 @@ return (all_pass, fail_reasons, sha256_pending)
    - 若发现主控代执行 → 打回修订轮，强制 spawn 独立写手
    - 例外：主控直接 edit 定点修复（<5 处纯校对类，v2.1.3 允许）不视为违反
 9. 判定：7 项全通过 → T7.5 ✅ 派发 T8；任一失败 → T7.5 ❌ 不派发 T8
+    **v2.5.2-dsh.5 严重度评级**：单子项失败 P0（M 门 fail / P0 缺）→ 整体 P0（不派发 T8，必须修订重审）；单子项失败 P1 → 整体 P1（可放行 + T8 复核时显式列原因）。
 
 伪代码：
 audit_latest = get_latest_audit_report('audits/')

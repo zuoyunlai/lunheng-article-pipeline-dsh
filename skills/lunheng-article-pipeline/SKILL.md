@@ -1,10 +1,10 @@
 ---
 name: "lunheng-article-pipeline"
-version: "2.5.2-dsh.4"
+version: "2.5.2-dsh.5"
 description: "严肃长文流水线（学术论文/商业评论/行业分析/公众号深度长文）——多 Agent 子代理编排（DSH 适配版，对应正典 v2.5.2）。9 张角色卡（T0 主控 + T1-T3 检索 + T4 分析 + T5 写作 + T6 批判 + T7 审计 + T9 审稿，T8 终检=主控亲完成）。三角验证 + M 机械化硬门 + F 失败模式防御 + 数据信任 3 档 + 修订回环 ≤2 轮 + G14 中文 AI 痕迹闸 + 期刊匹配助手。**不适用于** <2000 字短文/即时问答/文学创作。完整变更历史见原仓库 git log。"
 ---
 
-> 版本：v2.5.2-dsh.4（DSH 适配版，对应正典 v2.5.2，自动同步 2026-08-25）
+> 版本：v2.5.2-dsh.5（DSH 适配版，对应正典 v2.5.2，自动同步 2026-08-25）
 
 # 多 Agent 深度长文流水线（论文/深度文章生产）
 
@@ -53,7 +53,7 @@ description: "严肃长文流水线（学术论文/商业评论/行业分析/公
 
 **论衡技能的工具边界（DSH）**：
 - ✅ **可调用**：当前会话预设提供的工具（standard 预设含 read / write / edit / web_search / read_page / todo_write / subagent / list_agents / pwsh / bash 等）——DSH 无技能级白名单，工具集由 Agent 预设决定
-- ✅ **随包脚本白名单（v2.5.2-dsh.4 审计修订，如实声明）**：主控/终检按需执行随包 5 个 `scripts/*.mjs`（consistency-check / m-gate-check / md2html / pdfcheck / token-cost）+ 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等）——这是**受限 shell 使用**，不是「零 exec」；任何其他 shell/命令须经主人同意
+- ✅ **随包脚本白名单（v2.5.2-dsh.4 审计修订，如实声明）**：主控/终检按需执行随包 6 个 `scripts/*.mjs`（consistency-check / m-gate-check / md2html / pdfcheck / token-cost / count-chars）+ 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等）——这是**受限 shell 使用**，不是「零 exec」；任何其他 shell/命令须经主人同意
 - ❌ **不做**：凭据访问 / 浏览器自动化 / 定时任务（DSH 无技能级 denied——靠预设与主人授权约束；除上述白名单脚本与验证命令外，主控默认不执行任意 shell 命令，LLM 推理判定）
 - ℹ️  **M 门算法**：主控 LLM 通过 `read` 读取算法文档后**推理判定**（纯 LLM 判定项），**不执行任意 shell**；算法文档中的 bash 示例是给人类主人手动复核的参考命令；机械判定项（M-Form-1/3/5/7 + M-Exist-2）走 `scripts/m-gate-check.mjs`
 - ℹ️  **建议运行环境**：standard 预设即可（含 pwsh/bash）；按需限制主控/子代理的 shell 权限（论衡主流程除白名单脚本外默认零 exec）
@@ -89,7 +89,7 @@ description: "严肃长文流水线（学术论文/商业评论/行业分析/公
 
 ## ⚡ 启动速查表（v2.5.2-dsh 补丁）
 
-- 版本：v2.5.2-dsh.4（对应正典 v2.5.2）｜角色：T0 主控 / T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / **T8 终检=主控亲完成** / T9 审稿（可选）
+- 版本：v2.5.2-dsh.5（对应正典 v2.5.2）｜角色：T0 主控 / T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / **T8 终检=主控亲完成** / T9 审稿（可选）
 - Phase：0 定题 → 1 检索(T1∥T2∥T3) → 2 分析 → 2.5 大纲(人) → 3 写作 → 3.5 洞察(人) → 3.6 批判 → 4 审计 → 4.5 审稿+G14 → 5 终检(人)
 - 工具：subagent=派发（装分档预设时按角色选 subagent_retrieval/strong/audit，见 pipeline-readme「DSH 分档预设接线」）/ list_agents=查看 / todo_write=计划 / web_search=检索 / read_page=读页 / pwsh=命令 / edit|write=文件
 - 闸门：T2.5（检索→分析）/ T7.5（审计→终检）；M 门 13 项 exit 0（`scripts/m-gate-check.mjs` 预检）；修订回环双轨制
