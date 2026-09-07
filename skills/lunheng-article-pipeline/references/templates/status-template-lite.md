@@ -11,7 +11,7 @@
 ## 当前状态
 
 - 🔄 In Progress / ✅ Done / ❌ Failed
-- 角色: T1 / T2 / T3 案例 / T4 分析 / T5 写手 / T6 批判 / T7 审计 / T9 审稿（可选）/ T8 终检主控亲完成
+- 角色: T1 / T2 / T3 案例 / T4 分析 / T5 写手 / T6 批判 / T7 审计 / T9 审稿（可选默认选中，学术必选）/ T8 终检（独立角色，主控执行）
 - 启动时间: YYYY-MM-DD HH:MM
 - 当前模型: deepseek-v4-pro（或 LUNHENG_* 分档）
 

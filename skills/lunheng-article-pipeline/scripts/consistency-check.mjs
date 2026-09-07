@@ -101,7 +101,7 @@ for (const f of files) {
     }
   }
 
-  // ③d 角色卡索引完整性：SKILL.md/README 声称的 9 张角色卡必须全部存在
+  // ③d 角色卡索引完整性：SKILL.md/README 声称的 10 张卡（00 主控 + 9 独立角色 01-09）必须全部存在
   if (rel === 'README.md') {
     for (const [label, fn] of [
       ['00-主控-coordinator', '00-主控-coordinator.md'],
@@ -112,6 +112,7 @@ for (const f of files) {
       ['05-写作', '05-写作-writer.md'],
       ['06-批判', '06-批判-critical-companion.md'],
       ['07-审计', '07-审计-auditor.md'],
+      ['08-终检', '08-终检-finalizer.md'],
       ['09-审稿', '09-审稿-peer-reviewer.md'],
     ]) {
       if (!existsSync(join(ROOT, 'references', 'agents', fn))) {
