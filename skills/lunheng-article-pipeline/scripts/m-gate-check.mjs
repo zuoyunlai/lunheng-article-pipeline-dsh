@@ -1,15 +1,19 @@
 // 论衡 M 门机械化预检脚本（v2.5.2-dsh 补丁 + v2.5.2-dsh.5 重大增强）
 //   v2.5.2-dsh:   M-Form-1/3/5/7 + M-Exist-2 纯正则/哈希判定
 //   v2.5.2-dsh.5: 13 项 M 门全脚本化（T8 仅复核 M-Form-8 承重墙质量 + M-Integrity 跨文件判断）
-// 用法: node m-gate-check.mjs <final/定稿.md> <final/证据包目录>
+// 用法: node m-gate-check.mjs <final/定稿.md> <final/证据包目录> [--summary]
+//   --summary：仅输出聚合统计（total/pass/p0/p1/p2/soft/skips）+ 硬失败项；省略通过项 details[]（省 ~80% 输出字节，机器可读友好）
 // 配套：M-Gate-Algorithm.md「机械化脚本化」段
 // 严重度评级（v2.5.2-dsh.5 引入）：gate fail 时按 P0/P1/P2 分级；单子项失败子项数 ≤2 → P2 可放行
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-const [, , draftPath, evDir] = process.argv;
+const args = process.argv.slice(2);
+const wantSummary = args.includes('--summary');
+const draftPath = args.find((a, i) => !a.startsWith('--') && i === 0);
+const evDir = args.find((a, i) => !a.startsWith('--') && i === 1);
 if (!draftPath || !evDir) {
-  console.error('用法: node m-gate-check.mjs <定稿.md> <证据包目录>');
+  console.error('用法: node m-gate-check.mjs <定稿.md> <证据包目录> [--summary]');
   process.exit(1);
 }
 if (!existsSync(draftPath)) {
@@ -316,7 +320,7 @@ console.log(JSON.stringify({
   date: new Date().toISOString().slice(0, 10),
   total: results.length,
   pass, p0, p1, p2, soft, skips,
-  results,
+  results: wantSummary ? results.filter((r) => !r.pass && r.severity !== 'LLM 兜底') : results,  // --summary 仅保留硬失败项，省 token
   exit: p0 > 0 ? 2 : (p1 > 0 ? 1 : 0),
 }, null, 2));
 process.exit(p0 > 0 ? 2 : (p1 > 0 ? 1 : 0));
