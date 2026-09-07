@@ -118,6 +118,27 @@
 
 ---
 
+
+
+## v2.5.2-dsh.7 一键终检指引（主控 T8 推荐用法）
+
+Phase 5 终检前，主控 T8 状态行写完「Done」前，**必须**先跑：
+
+`node scripts/final-check.mjs <run/项目名> [--no-summary] [--json] [--report <path>]`
+
+- 默认串联 3 脚本：count-chars.mjs（字数）+ m-gate-check.mjs（M 门 12 项）+ build-evidence-bundle.mjs --summary（证据包 + 审计视图）
+- 同时产出 audits/final-check-v0.json，含 summary.hanChars + summary.mGate + summary.recommendation
+- m-gate-check 非零退出（即有 P0 残留）**中止终检**，打回 T5/T7
+- --no-summary：跳过第 3 步（已生成过审计视图时复用）
+- --json：仅输出 JSON 总报告，不显示子脚本输出
+- 报告写入：默认 audits/final-check-v0.json（--report PATH 可覆盖）
+
+主控 T8 拿 final-check.json 看 summary.recommendation：
+- '✅ 终检通过，可交付主人终审' → status.md T8 行 Done
+- '⚠️ 终检存在 P1 残留' → 主控可触发 T5 修订一轮
+- '❌ 终检存在 P0 致命问题' → 禁止标记 Done，主控反馈修复
+
+
 ## 维护说明（v2.4.0 新增）
 
 - **方法论足迹**每阶段自动更新，无需主人手动维护

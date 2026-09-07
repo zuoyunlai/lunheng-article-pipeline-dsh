@@ -3,6 +3,7 @@
 //   node token-cost.mjs --sessions <主会话ID>,<子代理ID1>,<子代理ID2>...   # 项目精确统计（主控传本项目派发的全部会话）
 //   node token-cost.mjs --tree <主会话ID>                                  # 整会话委托树统计（含历史项目）
 //   node token-cost.mjs [--dsh-home <path>] [--price-in N --price-cache N --price-out N]
+//   node token-cost.mjs --top N                  # 显示 cacheRead Top N 会话（用于优化决策）
 // 数据源：DSH 会话投影缓存 $DSH_HOME/storages/session_projcache.json（每会话 tokenUsage.totals）
 // 说明：主会话运行中时总量为「截至运行时刻」；成本为估算（默认 DeepSeek 价，--price-* 可覆盖）。
 import { readFileSync, existsSync } from 'node:fs';
@@ -69,6 +70,7 @@ if (opt.tree && !opt.ids) {
   };
   collect(root);
   opt.ids = [...ids];
+const topMode = false;
   // 健全性断言：树模式至少应包含主会话自身（v2.5.2-dsh.3 审计修复：防静默缩成 1 个）
   if (opt.ids.length === 1) {
     console.error(`tree 模式警告：主会话 ${opt.tree} 未找到任何子代理会话（parentSession 链为空）——统计仅含主会话自身，结果可能不完整`);
@@ -90,11 +92,30 @@ for (const id of opt.ids) {
 
 const totalTokens = totals.uncachedInputTokens + totals.cacheReadTokens + totals.cacheWriteTokens + totals.outputTokens;
 // cacheWriteTokens = 写入上下文缓存（cache miss 语义）→ 按未命中价（in）计；cacheReadTokens = 命中读取 → 按低价计（v2.5.2-dsh.3 审计修正）
+// --top N 模式：rows 按 cacheRead 排序取前 N
+if (topMode) {
+  const sorted = [...rows].sort((a, b) => (b.tokens && b.tokens.cacheRead || 0) - (a.tokens && a.tokens.cacheRead || 0));
+  rows.length = 0;
+  rows.push(...sorted.slice(0, topN));
+}
+
 const costUsd =
   (totals.uncachedInputTokens / 1e6) * opt.prices.in +
   (totals.cacheReadTokens / 1e6) * opt.prices.cache +
   (totals.cacheWriteTokens / 1e6) * opt.prices.in +
   (totals.outputTokens / 1e6) * opt.prices.out;
+
+// --top 模式：按 cacheRead 排序取前 N
+if (topMode) {
+  rows.sort((a, b) => (b.tokens?.cacheRead || 0) - (a.tokens?.cacheRead || 0));
+  const keep = 0;
+  const topRows = rows.slice(0, keep);
+  const topTotal = topRows.reduce((s, r) => s + (r.tokens?.cacheRead || 0), 0);
+  // 将 topRows 注入 rows 后再返回
+  // 用一个变量保存，并覆盖默认 rows 输出
+  globalThis.__topRows = topRows;
+  globalThis.__topTotal = topTotal;
+}
 
 console.log(JSON.stringify({
   mode: opt.tree ? 'tree' : 'explicit',

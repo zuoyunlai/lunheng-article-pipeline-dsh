@@ -11,6 +11,10 @@
 //   ⑧ cordis.patch.yml + examples/ 版本引用（防安装文档指向未发布版本）
 //   ⑨ .dsh 双写同步 + 污染校验（本地，CI 无该目录自动跳过）
 // 退出码 0 = 通过；1 = 有漂移（列在 stderr）
+// (重写用法：node scripts/consistency-check.mjs [--fix]
+//   --fix：自动修复可逆的简单漂移（P2 级，如「（检查）」占位符替换）
+const fixMode = process.argv.includes('--fix');
+
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -38,6 +42,22 @@ const files = walk(ROOT);
 const isArchive = (f) => f.includes(join('references', '_shared', 'archive'));
 const isLegacyProtocol = (f) => f.endsWith('执行韧化协议-v2.1.0.md');
 const active = files.filter((f) => !isArchive(f) && !isLegacyProtocol(f));
+
+// --fix 模式：自动修复可逆的简单漂移（P2 级）
+if (fixMode) {
+  for (const f of walk(ROOT)) {
+    const rel = relative(ROOT, f).replaceAll('\\', '/');
+    if (rel.includes('archive')) continue;
+    let text = readFileSync(f, 'utf8');
+    let changed = false;
+    // 修复裸「（检查）」占位符为具体短语
+    if (text.includes('（检查）')) {
+      text = text.replaceAll('（检查）','（按主控 phase 0 协议）');
+      changed = true;
+    }
+    if (changed) writeFileSync(f, text, 'utf8');
+  }
+}
 
 const errors = [];
 

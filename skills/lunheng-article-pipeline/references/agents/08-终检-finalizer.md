@@ -30,5 +30,24 @@
 5. **M 门 exit 0 是硬门**：任何一项不过都不得标记「终检完成」，必须修复或如实报告主人
 6. **不编造**：终检发现缺数据/缺引用 → 标 `[待补]` 打回 T5/T7，不自行补
 
+
+
+## v2.5.2-dsh.7 完整指引（一次性整合）
+
+### 1. trigger 字段读取（与主控 + 任务简报 + T4 + T5 + T6 + T7 + T9 一致）
+Phase 0 任务简报.md 的「Phase 1.5 补检索触发条件」字段，T8 终检时**直接 read 01-任务简报.md + final/证据包/M-Gate-Report.json**：
+- trigger=true：final/证据包 含 Phase 1.5 补检索产出物（如 [D24+] 新数据卡），T8 复核该产物 M 门 + 编号闭环
+- trigger=false：缺口论点已标 Permanent Gap，T8 检查 [G6] 元数据完整性
+- 字段为空：回退 LLM 副产物判断
+
+### 2. final-check.mjs 用法（v2.5.2-dsh.7 推荐一键脚本）
+`node scripts/final-check.mjs <run/项目名>` 自动串联 3 脚本：count-chars.mjs + m-gate-check.mjs + build-evidence-bundle.mjs --summary。输出 audits/final-check-v0.json 含 exit + recommendation。**m-gate 非零退出即中止终检**。选项：
+- --no-summary：跳过第 3 步（已生成审计视图时复用）
+- --json：机器可读输出（final-check.json 已含 hanChars/mGate/recommendation）
+- --report <path>：覆盖默认报告路径
+
+### 3. 审计视图 + 素材卡全集（深度摘要）
+audits/审计视图-v0.md 含：定稿章节结构 + 纯汉字数 + 素材卡（L/D/C）数量 + 信任级别分布 + M 门 13 项状态 + 引用闭环 + 报告存在性 + 6 项待主人确认。生成方式：`node scripts/build-evidence-bundle.mjs <项目> --deep-summary` 含 L/D/C 前 30 条标题 + 信任级别 + DOI（深度摘要，T8 一次看完全部素材卡无需逐文件 grep）。
+
 ## 交接报告
 做了什么 / 产物路径（final/ 清单）/ 怎么验证（M 门 exit 码 + count-chars 权威值 + sha256）/ 已知问题（未关闭 P0/P1 + 局限性）/ 下一步（主人终审建议）
