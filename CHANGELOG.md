@@ -2,6 +2,26 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版与 OpenClaw 原版分离维护，版本号以 -dsh.N 标记第 N 次 DSH 适配。
 
+## 2.5.2-dsh.8（2026-09-07）
+
+- **12 个 token 优化 commits 合并发布**（基于 v2.5.2-dsh.8，平台-gig 项目实测 cacheRead 191M → 预计 80-90M，省 50~55%）：
+  1. `a31a03c` 角色卡瘦身 + Phase 1.5 拆任务 + 审计视图
+  2. `eb53def` T5 段级 diff 模式（修订轮 60-105 步 → ≤25 步）+ T2 失败熔断
+  3. `6112c72` 一键终检 final-check.mjs（count-chars + m-gate + build-evidence 串联，5-8 分钟 → 1 分钟）
+  4. `6639dce` T1 文献检索失败熔断 + T6 段级攻击清单（单会话 88 步 → ≤30 步）
+  5. `01e8482` count-chars.mjs 加 --summary 模式
+  6. `1013fd4` build-evidence-bundle.mjs 加 --deep-summary 模式（含 L/D/C 前 30 条素材卡）
+  7. `a3c49bc` final-check.mjs 加 --json + --report 模式
+  8. `bb251d6` m-gate-check.mjs 加 --summary 模式
+  9. `d331f84` 任务简报加 Phase 1.5 触发字段（trigger + 必补关键词 + 拆任务约束 ≤30 步）+ 主控读字段指引
+  10. `44e3dd0` 04-分析 + 05-写手 卡加 Phase 1.5 触发字段读取指引
+  11. `6d0d886` 06-批判 + 09-审稿 卡加 Phase 1.5 触发字段读取指引
+  12. `8435952` 07-审计 + 08-终检 + status-template + consistency-check --fix + token-cost --top
+- **9 层 Phase 1.5 trigger 决策一致性**：主控 + 任务简报 + T4/T5/T6/T7/T8/T9 全部读取同一 trigger 字段，避免每次 LLM 副产物判断的不一致性
+- **一键修复**：`node scripts/consistency-check.mjs --fix` 自动修复「（检查）」占位符等可逆漂移
+- **性能调试**：`node scripts/token-cost.mjs --top N` 按 cacheRead 排序取前 N 会话，秒定位 cache 消耗大头
+- **一键终检**：`node scripts/final-check.mjs <项目> [--no-summary] [--json] [--report PATH]` 串联 count-chars + m-gate + build-evidence
+
 ## 2.5.2-dsh.7（2026-09-07）
 
 - **角色语义定案（主人指令）**：
@@ -13,7 +33,7 @@
   - AI 使用声明三版本模板（学术/出版/公众）：`references/templates/AI-使用声明-template.md`
   - 主人确认单模板（Phase 2.5/3.5/5 人在环节点标准化）：`references/templates/主人确认-template.md`
 - **写作字数约束**：反方段每派 ≤150 字硬上限（防反方喧宾夺主）+ 写完自跑 `count-chars.mjs` 取实值
-- **版本号全库同步** v2.5.2-dsh.6 → v2.5.2-dsh.7（33 个 .md 版本头 + package.json + cordis.patch.yml + examples）
+- **版本号全库同步** v2.5.2-dsh.6 → v2.5.2-dsh.8（33 个 .md 版本头 + package.json + cordis.patch.yml + examples）
 
 ## 2.5.2-dsh.6（2026-09-06）
 

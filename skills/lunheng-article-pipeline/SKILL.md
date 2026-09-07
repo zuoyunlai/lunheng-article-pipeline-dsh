@@ -1,11 +1,11 @@
 ---
 name: "lunheng-article-pipeline"
-version: "2.5.2-dsh.7"
+version: "2.5.2-dsh.8"
 description: "严肃长文流水线（学术论文/商业评论/行业分析/公众号深度长文）——多 Agent 子代理编排（DSH 适配版，对应正典 v2.5.2）。**9 个独立角色 T1-T9（文献/数据/案例/分析/写作/批判/审计/终检/审稿）互不可替代**；主控 = T0 调度 + T8 终检亲完成（T8 是独立角色，执行者由主控担任，不 spawn 子代理）；**T9 审稿可选但默认选中，学术论文必选**。三角验证 + M 机械化硬门 + F 失败模式防御 + 数据信任 3 档 + 修订回环 ≤2 轮 + G14 中文 AI 痕迹闸 + 期刊匹配助手。**不适用于** <2000 字短文/即时问答/文学创作。完整变更历史见原仓库 git log。"
 ---
 
-> 版本：v2.5.2-dsh.7（DSH 适配版，对应正典 v2.5.2，自动同步 2026-08-25）
-> **v2.5.2-dsh.7 角色语义定案（主人指令）**：**9 个角色 T1-T9 各自独立、不可相互替代**——T8 终检不是「主控兼做的杂活」而是独立角色（有独立角色卡），只是执行者由主控担任（**主控 = T0 调度 + T8 终检执行双重身份**），不 spawn 子代理；**T9 审稿可选、默认选中、学术论文必选**。
+> 版本：v2.5.2-dsh.8（DSH 适配版，对应正典 v2.5.2，自动同步 2026-08-25）
+> **v2.5.2-dsh.8 角色语义定案（主人指令）**：**9 个角色 T1-T9 各自独立、不可相互替代**——T8 终检不是「主控兼做的杂活」而是独立角色（有独立角色卡），只是执行者由主控担任（**主控 = T0 调度 + T8 终检执行双重身份**），不 spawn 子代理；**T9 审稿可选、默认选中、学术论文必选**。
 
 # 多 Agent 深度长文流水线（论文/深度文章生产）
 
@@ -41,7 +41,7 @@ description: "严肃长文流水线（学术论文/商业评论/行业分析/公
    - **未装预设或未挂载对应工具 → 全部回退 `subagent`（继承会话模型）**，流水线照常运行——这是通用性兜底：无论用户 dsh 配了什么模型、装没装预设，论衡都能跑。
 3. **执行韧化协议在 DSH 精简为「执行约定」**：OpenClaw 的 30 秒心跳/分阶段 ack/模型健康度预检/8 分钟硬卡在 DSH 下移除，改为——状态机（status.md 由主控独占写）+ 交接报告六要素 + G8 自检 + 超时介入（主控用 `list_agents` 查看子代理，长时间无产出即介入）。
 4. **「（检查）」占位符**：正典 v2.5.2 为「使用者发布版」，正文中若干 shell 命令示例被净化剥离为「（检查）」占位符。DSH 下这些位置一律按「人类 host shell 验证示例」处理（主控用 `read` 读全文 + LLM 推理模拟判定，不实际执行 shell；真实 sha256/字数统计由主人在 host shell 手动执行回填）。
-5. **角色体系（v2.3.0 重构，v2.5.2 延续，v2.5.2-dsh.7 语义定案）**：**9 个独立角色 T1-T9（文献/数据/案例/分析/写作/批判/审计/终检/审稿），各自独立、不可相互替代**——编号 = 流水线 Phase 顺序（T1-T3 检索 / T4-T5 加工 / T6-T9 防御）。T8 终检是独立角色，执行者由主控担任（主控 = T0 调度 + T8 终检执行双重身份）；T9 审稿可选但**默认选中**（学术论文**必选**）。
+5. **角色体系（v2.3.0 重构，v2.5.2 延续，v2.5.2-dsh.8 语义定案）**：**9 个独立角色 T1-T9（文献/数据/案例/分析/写作/批判/审计/终检/审稿），各自独立、不可相互替代**——编号 = 流水线 Phase 顺序（T1-T3 检索 / T4-T5 加工 / T6-T9 防御）。T8 终检是独立角色，执行者由主控担任（主控 = T0 调度 + T8 终检执行双重身份）；T9 审稿可选但**默认选中**（学术论文**必选**）。
 
 > **🌟 快速开始**：读 [`QUICKSTART.md`](QUICKSTART.md)。**核心概念**：[`references/glossary.md`](references/glossary.md)（单一真源）。
 
@@ -54,7 +54,7 @@ description: "严肃长文流水线（学术论文/商业评论/行业分析/公
 
 **论衡技能的工具边界（DSH）**：
 - ✅ **可调用**：当前会话预设提供的工具（standard 预设含 read / write / edit / web_search / read_page / todo_write / subagent / list_agents / pwsh / bash 等）——DSH 无技能级白名单，工具集由 Agent 预设决定
-- ✅ **随包脚本白名单（v2.5.2-dsh.4 审计修订，v2.5.2-dsh.7 扩为 7 个，如实声明）**：主控/终检按需执行随包 7 个 `scripts/*.mjs`（consistency-check / m-gate-check / md2html / pdfcheck / token-cost / count-chars / build-evidence-bundle）+ 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等）——这是**受限 shell 使用**，不是「零 exec」；任何其他 shell/命令须经主人同意
+- ✅ **随包脚本白名单（v2.5.2-dsh.4 审计修订，v2.5.2-dsh.8 扩为 7 个，如实声明）**：主控/终检按需执行随包 7 个 `scripts/*.mjs`（consistency-check / m-gate-check / md2html / pdfcheck / token-cost / count-chars / build-evidence-bundle）+ 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等）——这是**受限 shell 使用**，不是「零 exec」；任何其他 shell/命令须经主人同意
 - ❌ **不做**：凭据访问 / 浏览器自动化 / 定时任务（DSH 无技能级 denied——靠预设与主人授权约束；除上述白名单脚本与验证命令外，主控默认不执行任意 shell 命令，LLM 推理判定）
 - ℹ️  **M 门算法**：主控 LLM 通过 `read` 读取算法文档后**推理判定**（纯 LLM 判定项），**不执行任意 shell**；算法文档中的 bash 示例是给人类主人手动复核的参考命令；机械判定项（M-Form-1/3/5/7 + M-Exist-2）走 `scripts/m-gate-check.mjs`
 - ℹ️  **建议运行环境**：standard 预设即可（含 pwsh/bash）；按需限制主控/子代理的 shell 权限（论衡主流程除白名单脚本外默认零 exec）
@@ -90,7 +90,7 @@ description: "严肃长文流水线（学术论文/商业评论/行业分析/公
 
 ## ⚡ 启动速查表（v2.5.2-dsh 补丁）
 
-- 版本：v2.5.2-dsh.7（对应正典 v2.5.2）｜角色：T0 主控（= T8 终检执行者）｜9 个独立角色 T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / **T8 终检（独立角色，主控亲执行）** / T9 审稿（可选，默认选中，学术必选）
+- 版本：v2.5.2-dsh.8（对应正典 v2.5.2）｜角色：T0 主控（= T8 终检执行者）｜9 个独立角色 T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / **T8 终检（独立角色，主控亲执行）** / T9 审稿（可选，默认选中，学术必选）
 - Phase：0 定题 → 1 检索(T1∥T2∥T3) → 2 分析 → 2.5 大纲(人) → 3 写作 → 3.5 洞察(人) → 3.6 批判 → 4 审计 → 4.5 审稿+G14 → 5 终检(人)
 - 工具：subagent=派发（装分档预设时按角色选 subagent_retrieval/strong/audit，见 pipeline-readme「DSH 分档预设接线」）/ list_agents=查看 / todo_write=计划 / web_search=检索 / read_page=读页 / pwsh=命令 / edit|write=文件
 - 闸门：T2.5（检索→分析）/ T7.5（审计→终检）；M 门 13 项 exit 0（`scripts/m-gate-check.mjs` 预检）；修订回环双轨制
@@ -267,8 +267,8 @@ description: "严肃长文流水线（学术论文/商业评论/行业分析/公
 
 ## 角色卡与模板（完整版）
 
-- **9 个独立角色卡（T1-T9 互不可替代）**：`references/agents/01~09`（T3 案例检索员任何量级必 spawn 含 0 条空卡协议，T6 批判伙伴 v2.2.2 新增，**T9 同行评审 v2.4.0 新增、可选但默认选中、学术论文必选**；**T8 终检 v2.5.2-dsh.7 有独立角色卡 08-终检-finalizer.md，由主控 T0 亲执行、不 spawn 子代理**；00 主控卡 = 主控 = T0 调度 + T8 终检执行双重身份）
-- 7 类模板（任务简报 / status状态机 / 交接报告 / 文献卡 / 数据卡 / 案例卡 / 先行者清单，每类含 lite精简版 + full完整版）：`references/templates/`（**v2.4.0 新增 G14检测报告-template.md + 审稿报告-template.md**；**v2.5.2-dsh.7 新增 主人确认-template.md + AI-使用声明-template.md**）
+- **9 个独立角色卡（T1-T9 互不可替代）**：`references/agents/01~09`（T3 案例检索员任何量级必 spawn 含 0 条空卡协议，T6 批判伙伴 v2.2.2 新增，**T9 同行评审 v2.4.0 新增、可选但默认选中、学术论文必选**；**T8 终检 v2.5.2-dsh.8 有独立角色卡 08-终检-finalizer.md，由主控 T0 亲执行、不 spawn 子代理**；00 主控卡 = 主控 = T0 调度 + T8 终检执行双重身份）
+- 7 类模板（任务简报 / status状态机 / 交接报告 / 文献卡 / 数据卡 / 案例卡 / 先行者清单，每类含 lite精简版 + full完整版）：`references/templates/`（**v2.4.0 新增 G14检测报告-template.md + 审稿报告-template.md**；**v2.5.2-dsh.8 新增 主人确认-template.md + AI-使用声明-template.md**）
 - 流水线运行手册（含 8 个 spawn 角色完整派发话术 T1/T2/T3/T4/T5/T6/T7/T9 + M 门 + F 模式 + AI 使用披露，T8 终检不 spawn 由主控执行）：`references/pipeline-readme.md`
 - **v2.4.6 / v2.5.0 新增文档**：
   - 字数判定表（T7+T8 共用，单一真源）：`references/_shared/字数判定表.md`
@@ -279,7 +279,7 @@ description: "严肃长文流水线（学术论文/商业评论/行业分析/公
   - 中文数据源集成（v2.5.1 修订：OpenAlex/Crossref 第一梯队默认推荐，无需 Key）：`references/_shared/中文数据源集成.md`
   - 多格式导出（v2.5.0，可选，--format md/latex/docx/pdf）：`references/_shared/format-export.md`
 - 实战案例库（商业热点 / 品牌一致性 / 原创性悖论 + 教训沉淀）：`references/case-studies.md`
-- **T9 同行评审（v2.4.0 新增，v2.5.2-dsh.7 语义定案：可选但默认选中，学术论文必选）**：论文投稿前的「预演审稿人」，6 维度评分（原创性 / 方法论 / 证据强度 / 论证结构 / 写作质量 / 引文规范，每维度 1-5 分，总分 30），26-30 accept / 21-25 minor / 16-20 major / <16 reject。**默认选中；学术论文必选（不可关）；行业分析/商业评论/公众号默认选中、主人 Phase 0 可取消**（v2.4.6 旧口径「公众号默认关闭」废止）。**v2.5.0 期刊匹配助手**：基于 T9 评分 + 主题关键词，从 [_shared/期刊数据库.md](references/_shared/期刊数据库.md)（25 中文 CSSCI/北大核心 + 12 英文 SSCI）+ [_shared/期刊匹配算法.md](references/_shared/期刊匹配算法.md)（主题契合 50% + 风格匹配 30% + T9 评分 20%），输出 Top 3 期刊 + 综合匹配度。详见 [`references/agents/09-审稿-peer-reviewer.md`](references/agents/09-审稿-peer-reviewer.md) + [`references/templates/审稿报告-template.md`](references/templates/审稿报告-template.md)。
+- **T9 同行评审（v2.4.0 新增，v2.5.2-dsh.8 语义定案：可选但默认选中，学术论文必选）**：论文投稿前的「预演审稿人」，6 维度评分（原创性 / 方法论 / 证据强度 / 论证结构 / 写作质量 / 引文规范，每维度 1-5 分，总分 30），26-30 accept / 21-25 minor / 16-20 major / <16 reject。**默认选中；学术论文必选（不可关）；行业分析/商业评论/公众号默认选中、主人 Phase 0 可取消**（v2.4.6 旧口径「公众号默认关闭」废止）。**v2.5.0 期刊匹配助手**：基于 T9 评分 + 主题关键词，从 [_shared/期刊数据库.md](references/_shared/期刊数据库.md)（25 中文 CSSCI/北大核心 + 12 英文 SSCI）+ [_shared/期刊匹配算法.md](references/_shared/期刊匹配算法.md)（主题契合 50% + 风格匹配 30% + T9 评分 20%），输出 Top 3 期刊 + 综合匹配度。详见 [`references/agents/09-审稿-peer-reviewer.md`](references/agents/09-审稿-peer-reviewer.md) + [`references/templates/审稿报告-template.md`](references/templates/审稿报告-template.md)。
 - **G14 中文 AI 痕迹深度检测闸（v2.4.0 新增）**：Phase 4.5 触发，T6 批判伙伴并行调用。8 类检测维度（学术模板语 / 句式同质化 / 学术套话高频 / 破折号滥用 / 三项排比 / 人称错位 / 个人辨识度缺失 / 党报话语堆砌），**LLM 推理判定**（零 exec 依赖）。0-2 类 Pass / 3-4 类 Warning 触发 T5 修订 1 轮 / 5+ 类 Fail 触发 T5 修订 2 轮。详见 [`references/gates/14-中文AI痕迹-gate.md`](references/gates/14-中文AI痕迹-gate.md)。**主人在 Phase 0 可显式关闭 G14**。
 - **方法论实时可见面板（v2.4.0 新增）**：借鉴 deep-research-pro 的方法论透明（论衡化）。在 `status.md` 加「方法论足迹」段，含当前阶段 / 证据强度 / 已触发闸门 / 下一步预测 / 不确定性 / 模型健康度 6 个字段。详见 [`references/templates/status-template.md`](references/templates/status-template.md)「方法论足迹」段。**主人在 Phase 0 可显式关闭方法论足迹**。
 
