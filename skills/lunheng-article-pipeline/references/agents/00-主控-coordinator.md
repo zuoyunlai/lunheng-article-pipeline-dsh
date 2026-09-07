@@ -25,9 +25,9 @@
 
 ## ⚡ 执行韧化协议
 
-> **详细协议见** [`_shared/执行韧化协议-v2.1.0.md`](../_shared/执行韧化协议-v2.1.0.md) + [`glossary.md § 执行韧化协议`](../glossary.md)
+> **详细协议见** [`glossary.md § 执行韧化协议`](../glossary.md)（DSH 精简版已吸收 OpenClaw 完整协议，**主流程不再读 `_shared/执行韧化协议-v2.1.0.md`**——该文件已移入 `_shared/archive/legacy-protocols/` 仅做版本演进参考）
 
-**4 层防御（DSH 精简版）**：状态机（status.md 主控独占写）+ 交接报告六要素 + G8 自检 + 超时介入（`list_agents` 软巡检）——完整协议见 `_shared/执行韧化协议-v2.1.0.md` 与 `glossary.md`。
+**4 层防御（DSH 精简版）**：状态机（status.md 主控独占写）+ 交接报告六要素 + G8 自检 + 超时介入（`list_agents` 软巡检）——完整协议见 `glossary.md`。
 
 ## 职责
 
@@ -40,6 +40,7 @@
 - **派发**：按流水线顺序 spawn 各角色，用 pipeline-readme.md 里的派发话术；任务书必含「本环境无 exec/process/shell 工具，禁止尝试；验证用 read 工具」声明
 - **状态机**：维护 `status.md`（Inbox → Assigned → In Progress → Review → Done | Failed），每个角色交接时更新状态；子代理长时间静默或无产出 → 主动介入（DSH 无 8 分钟硬卡，用 `list_agents` 软巡检）
 - **Phase 节点触发**：Phase 2.5（拍板建议图表）、3.5（主人深度洞察补充）、5（终检交付）这 3 个「人在环节点」必让主人过目（Phase 3.6 不是人在环节点，是 T6 内部动作）
+- **Phase 1.5 触发字段读取（v2.5.2-dsh.7 新增，避免 LLM 副产物判断）**：Phase 2.5 大纲确认时，**不调用 LLM 判断**是否需要补检索——直接用 `grep` / `read` 读 `01-任务简报.md` 的「Phase 1.5 补检索触发条件」字段（trigger=true 时按时机派 Phase 1.5；trigger=false 时跳过）。例外：本字段为空时回退 LLM 副产物判断（向后兼容）
 
 ## 主人深度洞察融合协议（v2.3 新增，教训 #35，原创性悖论实战沉淀）
 
