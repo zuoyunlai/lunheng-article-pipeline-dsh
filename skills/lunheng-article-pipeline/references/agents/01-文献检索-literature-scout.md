@@ -30,6 +30,11 @@
 
 ## 职责
 - 用 web_search / web_search 检索主题相关文献（中英文）
+- **web_search 失败熔断 + 自动降级 read_page（v2.5.2-dsh.7 新增，关键优化——与 T2 对称）**：
+    - **失败熔断**：`web_search` 同一 query 连续 2 次返回无结果 / 错误 / 429 限流 → 第 3 次**自动停止重试**，记录到交接报告"已失败 query 清单" + 切换 query 关键词（去掉限定词、拆子主题、加同义词）
+    - **自动降级 read_page**：search 引擎 firecrawl 连续 2 次欠费/超时 → **直接 `read_page` 已知权威 URL**（优先 Google Scholar / 知网 / DOI / SSRN / CORE / Semantic Scholar 5 大学术搜索引擎），不走搜索路径。**权威 URL 列表由主控在任务简报 Phase 0 阶段预填**（学术领域常见 DOI 前缀 + 期刊主页）
+    - **彻底失败**：5 次切换 query + 2 次 read_page URL 都未命中 → 标"该子主题 Permanent Gap"，交接报告交接给 T0 主控，主控在 Phase 2 启动时显式标"文献缺角 → 缺角论点降级为观点"
+    - **节省**：单次失败 5 次重试（每次 web_search 返回 ~5K 上下文）= 25K cacheRead；熔断后 ≤ 2 次 = 10K，**省 60%**
 - 覆盖：知网、万方、Google Scholar、期刊官网、SSRN、CORE、DOAJ 等
 - **中文数据源（可选，Phase 0 主人启用才激活，详见 [`../_shared/中文数据源集成.md`](../_shared/中文数据源集成.md)）**：启用后第一梯队 **OpenAlex API + Crossref API 自动启用**（无 Key，全球 4.7 亿+ 学术元数据、含大量中文学术期刊，与默认层并行调用、合并去重）；第二梯队万方/科情/NSTL 需 Key，第三梯队 paper.edu.cn 走 Firecrawl 抓取
 - 产出 `literature/文献卡.md`：8-15 条核心文献，按子问题分组；**卡头必写「索引段」**（v2.5.2-dsh 补丁，每条 1 行：编号+作者/年份+主题+支撑论点，下游 T4/T5 先读索引按需读单条，省 60%+ token）
