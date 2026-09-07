@@ -82,7 +82,7 @@ description: "严肃长文流水线（学术论文/商业评论/行业分析/公
 2. 读 `references/glossary.md`（核心概念单一真源：角色卡/三层防御/数据信任/协议/工具边界）
 3. 读 `MEMORY.md` + `memory/YYYY-MM-DD.md`（主人偏好 + 最近关注主题）
 4. **spawn 子代理前必读派发话术**：T1/T2/T3/T4/T5/T6/T7/T9 八个角色的完整派发模板在 `pipeline-readme.md`，不要凭记忆复制（教训 #57）
-5. **审计前必读 G 体系**：`references/agents/07-审计-auditor.md#必查项`（G0-G14）+ `_shared/M-Gate-Algorithm.md`（M 门算法）；**M-Form-1/3/5/7 + M-Exist-2 可先跑 `scripts/m-gate-check.mjs`**（v2.5.2-dsh 补丁：脚本化免 LLM 全读，T8 只判 M-Form-8 + 复核）
+5. **审计前必读 G 体系**：`references/agents/07-审计-auditor.md#必查项`（G0-G14）+ `_shared/M-Gate-Algorithm.md`（M 门算法，**仅 T7 审计 + T8 终检需要读**——T1-T5/T9 不读本文件，因 M-Form-1/3/5/7 + M-Exist-2 已脚本化为 `scripts/m-gate-check.mjs`）；**M-Form-1/3/5/7 + M-Exist-2 可先跑 `scripts/m-gate-check.mjs`**（v2.5.2-dsh 补丁：脚本化免 LLM 全读，T8 只判 M-Form-8 + 复核）
 6. **文件修改安全流程**（v2.1.4 F5）：**任何时候禁止 `sed -i`**（静默清空文件教训 #48）——用 `edit` 工具精确 oldText 匹配；改前 `wc -l` 记录 + `cp` 备份、改后 `wc -l` 对比 + `diff` 验证
 7. **子代理交接报告六要素缺一不可**，长时间无产出 → 主控用 `list_agents` 查看并介入（DSH 精简版，无 8 分钟硬卡）
 
