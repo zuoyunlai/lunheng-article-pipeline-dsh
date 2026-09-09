@@ -5,7 +5,7 @@
 ## 2.5.2-dsh.10（2026-09-08）
 
 - **独立化为 DSH 原生插件（脱离历史外部生态定位）**：
-  1. 全库清除历史外部生态表述（工具名映射 / 净化发布 / 版本线引用 / 适配版等措辞），覆盖 SKILL/AGENTS/角色卡/glossary/pipeline-readme/docs/README/CHANGELOG/package.json/cordis/示例
+  1. 全库清除历史外部生态表述（工具名映射 / 净化发布 / 版本线引用 / 历史适配类措辞），覆盖 SKILL/AGENTS/角色卡/glossary/pipeline-readme/docs/README/CHANGELOG/package.json/cordis/示例
   2. SKILL「DSH 环境说明」改写为 DSH 原生（删除旧工具映射表与移植叙述）；AGENTS/CONTRIBUTING/FAQ 独立重写
   3. 版本头措辞统一为「（DSH 原生插件，自动同步 …）」；consistency-check 版本头正则同步放宽
   4. 清理冗余：删除 `references/_shared/archive/`（legacy-docs/legacy-protocols/M-Gate 历史版）、`版本升级自审门-v2.3.0.md`、`执行韧化协议-v2.1.0.md`、仓库内 `.dsh/adapt-backup` 快照；历史演进以 git log 为准
