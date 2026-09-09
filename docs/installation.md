@@ -1,16 +1,18 @@
 # 安装与验证
 
+> profile 名以你机器的实际配置为准：本机 profile 位于 `$DSH_HOME/profiles/` 下（例如 `desktop`、`web` 或自定义名），下面示例统一写作 `<profile>`，请替换成实际目录名（如 `--profile desktop`）。
+
 ## 安装（dsh）
 
 ```sh
 # 1) 装进 profile 的 node_modules
-dsh plugin --profile web add lunheng-article-pipeline
+dsh plugin --profile <profile> add lunheng-article-pipeline
 
 # 2) 把 bundle 加入 profile 清单
-#    $DSH_HOME/profiles/web/package.json
+#    $DSH_HOME/profiles/<profile>/package.json
 #    "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "lunheng-article-pipeline"] } }
 
-# 3) 重启 dsh web
+# 3) 重启 dsh
 ```
 
 安装后技能自动出现在会话的 `skill` 工具目录，无需手动复制到技能根。
@@ -28,7 +30,7 @@ dsh plugin --profile web add lunheng-article-pipeline
 
 ```sh
 # bundle 行应出现在组合树中
-dsh --profile web --dump-config
+dsh --profile <profile> --dump-config
 #   预期看到：  # == lunheng-article-pipeline
 #              - id: skill-filesystem-lunheng
 ```
@@ -37,7 +39,7 @@ dsh --profile web --dump-config
 
 ```sh
 mkdir -p /tmp/empty-cwd && cd /tmp/empty-cwd
-dsh --profile headless-lunheng-test "请调用 skill 工具列出你可见的技能名称"
+dsh --profile <headless-profile> "请调用 skill 工具列出你可见的技能名称"
 # 预期输出包含：lunheng-article-pipeline
 ```
 
@@ -61,7 +63,7 @@ cp -r examples/preset "$DSH_HOME/.agent-presets/lunheng"
 #    ⚠️ provider 与 model 分离：model 是裸 id，provider 必须单独指定
 export LUNHENG_AUDIT_PROVIDER=minimax
 export LUNHENG_AUDIT_MODEL=MiniMax-M3
-dsh web
+dsh --profile <profile>
 ```
 
 - 不装预设：技能回退到 `subagent`，所有角色继承会话模型（对多数场景够用）。

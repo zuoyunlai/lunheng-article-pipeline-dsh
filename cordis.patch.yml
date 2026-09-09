@@ -31,8 +31,8 @@
         toolName: subagent_retrieval
         backgroundMode: continuable
         agentOptions:
-          provider: !!js "process.env.LUNHENG_RETRIEVAL_PROVIDER || (() => { throw new Error('LUNHENG_RETRIEVAL_PROVIDER 未设置') })()"
-          model: !!js "process.env.LUNHENG_RETRIEVAL_MODEL || 'deepseek-v4-flash'"
+          provider: !!js "process.env.LUNHENG_RETRIEVAL_PROVIDER || undefined"
+          model: !!js "(process.env.LUNHENG_RETRIEVAL_PROVIDER ? (process.env.LUNHENG_RETRIEVAL_MODEL || 'deepseek-v4-flash') : undefined)"
 
 # ── 3. 强推理档 subagent（T4/T5/T6+T9 推理强）─────────────────────────────
 - insert:
@@ -43,8 +43,8 @@
         toolName: subagent_strong
         backgroundMode: continuable
         agentOptions:
-          provider: !!js "process.env.LUNHENG_STRONG_PROVIDER || (() => { throw new Error('LUNHENG_STRONG_PROVIDER 未设置') })()"
-          model: !!js "process.env.LUNHENG_STRONG_MODEL || 'deepseek-v4-pro'"
+          provider: !!js "process.env.LUNHENG_STRONG_PROVIDER || undefined"
+          model: !!js "(process.env.LUNHENG_STRONG_PROVIDER ? (process.env.LUNHENG_STRONG_MODEL || 'deepseek-v4-pro') : undefined)"
 
 # ── 4. 顶配档 subagent（T7 审计 + G14 检测）────────────────────────────────
 - insert:
@@ -55,8 +55,8 @@
         toolName: subagent_audit
         backgroundMode: continuable
         agentOptions:
-          provider: !!js "process.env.LUNHENG_AUDIT_PROVIDER || (() => { throw new Error('LUNHENG_AUDIT_PROVIDER 未设置') })()"
-          model: !!js "process.env.LUNHENG_AUDIT_MODEL || 'deepseek-v4-pro'"
+          provider: !!js "process.env.LUNHENG_AUDIT_PROVIDER || undefined"
+          model: !!js "(process.env.LUNHENG_AUDIT_PROVIDER ? (process.env.LUNHENG_AUDIT_MODEL || 'deepseek-v4-pro') : undefined)"
 
 # ── 5. 标准（DSH 默认）— 论衡示例预设（v2.5.2-dsh.10 实测 OK）──────────────
 # DSH 默认包含 dsh-base / dsh-web-app / dsh-agent-presets/standard；

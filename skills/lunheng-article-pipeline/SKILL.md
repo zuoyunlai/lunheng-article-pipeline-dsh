@@ -48,7 +48,7 @@ description: "严肃长文流水线（学术论文/商业评论/行业分析/公
 
 **论衡技能的工具边界（DSH）**：
 - ✅ **可调用**：当前会话预设提供的工具（standard 预设含 read / write / edit / web_search / read_page / todo_write / subagent / list_agents / pwsh / bash 等）——DSH 无技能级白名单，工具集由 Agent 预设决定
-- ✅ **随包脚本白名单（v2.5.2-dsh.4 审计修订，v2.5.2-dsh.8 扩为 7 个，如实声明）**：主控/终检按需执行随包 7 个 `scripts/*.mjs`（consistency-check / m-gate-check / md2html / pdfcheck / token-cost / count-chars / build-evidence-bundle）+ 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等）——这是**受限 shell 使用**，不是「零 exec」；任何其他 shell/命令须经主人同意
+- ✅ **随包脚本白名单（v2.5.2-dsh.10 复核为 8 个，如实声明）**：主控/终检按需执行随包 8 个 `scripts/*.mjs`（consistency-check / m-gate-check / md2html / pdfcheck / token-cost / count-chars / build-evidence-bundle / final-check）+ 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等）——这是**受限 shell 使用**，不是「零 exec」；任何其他 shell/命令须经主人同意
 - ❌ **不做**：凭据访问 / 浏览器自动化 / 定时任务（DSH 无技能级 denied——靠预设与主人授权约束；除上述白名单脚本与验证命令外，主控默认不执行任意 shell 命令，LLM 推理判定）
 - ℹ️  **M 门算法**：主控 LLM 通过 `read` 读取算法文档后**推理判定**（纯 LLM 判定项），**不执行任意 shell**；算法文档中的 bash 示例是给人类主人手动复核的参考命令；机械判定项（M-Form-1/3/5/7 + M-Exist-2）走 `scripts/m-gate-check.mjs`
 - ℹ️  **建议运行环境**：standard 预设即可（含 pwsh/bash）；按需限制主控/子代理的 shell 权限（论衡主流程除白名单脚本外默认零 exec）
