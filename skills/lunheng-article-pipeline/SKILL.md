@@ -1,36 +1,30 @@
 ---
 name: "lunheng-article-pipeline"
-version: "2.5.2-dsh.9"
-description: "严肃长文流水线（学术论文/商业评论/行业分析/公众号深度长文）——多 Agent 子代理编排（DSH 适配版，对应正典 v2.5.2）。**9 个独立角色 T1-T9（文献/数据/案例/分析/写作/批判/审计/终检/审稿）互不可替代**；主控 = T0 调度 + T8 终检亲完成（T8 是独立角色，执行者由主控担任，不 spawn 子代理）；**T9 审稿可选但默认选中，学术论文必选**。三角验证 + M 机械化硬门 + F 失败模式防御 + 数据信任 3 档 + 修订回环 ≤2 轮 + G14 中文 AI 痕迹闸 + 期刊匹配助手。**不适用于** <2000 字短文/即时问答/文学创作。完整变更历史见原仓库 git log。"
+version: "2.5.2-dsh.10"
+description: "严肃长文流水线（学术论文/商业评论/行业分析/公众号深度长文）——多 Agent 子代理编排（DSH 原生插件）。**9 个独立角色 T1-T9（文献/数据/案例/分析/写作/批判/审计/终检/审稿）互不可替代**；主控 = T0 调度 + T8 终检亲完成（T8 是独立角色，执行者由主控担任，不 spawn 子代理）；**T9 审稿可选但默认选中，学术论文必选**。三角验证 + M 机械化硬门 + F 失败模式防御 + 数据信任 3 档 + 修订回环 ≤2 轮 + G14 中文 AI 痕迹闸 + 期刊匹配助手。**不适用于** <2000 字短文/即时问答/文学创作。完整变更历史见原仓库 git log。"
 ---
 
-> 版本：v2.5.2-dsh.9（DSH 适配版，对应正典 v2.5.2，自动同步 2026-08-25）
+> 版本：v2.5.2-dsh.10（DSH 原生插件，自动同步 2026-08-25）
 > **v2.5.2-dsh.8 角色语义定案（主人指令）**：**9 个角色 T1-T9 各自独立、不可相互替代**——T8 终检不是「主控兼做的杂活」而是独立角色（有独立角色卡），只是执行者由主控担任（**主控 = T0 调度 + T8 终检执行双重身份**），不 spawn 子代理；**T9 审稿可选、默认选中、学术论文必选**。
 
 # 多 Agent 深度长文流水线（论文/深度文章生产）
 
-## 🔧 DSH 适配说明（v2.5.2-dsh.0 — 从 OpenClaw v2.5.2 移植到 DeepSeek Harness）
+## 🔧 DSH 环境说明（v2.5.2-dsh.10 起为 DSH 原生技能）
 
-本技能原为 OpenClaw 编写。在 DeepSeek Harness（dsh web，standard 预设）环境下，工具映射如下：
+本技能为 DeepSeek Harness（dsh）**原生实现**，直接使用当前会话提供的 DSH 工具：
 
-| OpenClaw 工具 | DSH 对应 | 说明 |
+| 能力 | DSH 原生工具 | 说明 |
 |---|---|---|
-| `sessions_spawn` | `subagent` | 派发子代理（后台、可续接）；`subagent_fork` 可继承本会话上下文 |
-| `sessions_yield` | `subagent` 默认后台 + 完成通知 | 并行派发后等待各子代理的完成通知，不要空转轮询 |
-| `sessions_history` / `sessions_list` | `list_agents` | 查看/续接子代理 |
-| `update_plan` | `todo_write` | 计划与任务跟踪 |
-| `web_search` | `web_search` | 已内置；搜索提供方按 DSH 配置 |
-| `web_fetch` | （默认关闭） | standard 预设 `fetch: false`；需抓取时经主人开启，或改用 `pwsh`/`bash`、`read_page` |
-| `tavily_search` / `tavily_extract` | 无内置 → 用 `web_search` / `read_page` | 如需 Tavily 可另配 Tavily MCP（`dsh-mcp-client`） |
-| `memory_get` / `memory_search` | 无内置记忆工具 → 用文件 | 沿用本技能 `memory/*.md` 约定，读写文件即可（或 `gm_search`/`gm_record` 图记忆） |
-| `image_generate`（封面/插图） | 无内置图像生成工具 | 降级：SVG 矢量风（程序化，本地）或主人投喂图片；如需文生图可另配图像生成 MCP（如 MiniMax `image-01`） |
-| `exec` / `process` | `bash`（Linux）/ `pwsh`（Windows） | 本机为 Windows，用 `pwsh`；论衡主流程默认零 exec（LLM 推理判定），需跑命令时经主人同意 |
-| `apply_patch` | `edit` / `str_replace_editor` | |
-| `browser` / `cron` / `skill_workshop` / `tts` 等 | 无对应 | 不适用 |
+| 子代理编排 | `subagent` / `subagent_fork` / `list_agents` | 后台派发、可续接；`subagent_fork` 继承本会话上下文 |
+| 计划与任务 | `todo_write` | 计划与任务跟踪 |
+| 检索与抓取 | `web_search` / `read_page` | 引擎与可用性按 DSH 会话配置 |
+| 文件读写 | `read` / `write` / `edit` | 结构化文件操作 |
+| 命令/脚本 | `pwsh` / `bash` | 本机 Windows 用 `pwsh`；论衡主流程默认零 exec（白名单脚本见「执行能力边界」） |
+| 图像生成 | 无内置 → SVG 矢量风 / 主人投喂 | 可另配图像生成 MCP（如 MiniMax `image-01`） |
 
-**结构性差异（重要，覆盖正文中所有残留的 OpenClaw 表述）**：
+**结构性要点（DSH 原生）**：
 
-1. **技能级工具白名单/denied 在 DSH 无效**：工具集由 Agent 预设决定，技能声明不了也禁不了工具；正文中「15 项工具」「exec 被 deny」等段落仅为原 OpenClaw 环境的残留说明，DSH 下模型可用工具以当前会话预设为准（standard 预设含 `pwsh`/`bash`，可按需给主控/子代理使用）。
+1. **技能级工具白名单/denied 在 DSH 无效**：工具集由 Agent 预设决定，技能声明不了也禁不了工具；文档中提到的工具以当前会话预设为准（standard 预设含 read / write / edit / web_search / read_page / todo_write / subagent / list_agents / pwsh / bash 等）。
 2. **模型分配（通用自适应）**：DSH 的模型路由由 `settings.yaml` / LLM 适配器配置决定，`subagent` 默认继承会话模型。论衡 v2.5.2 的「能力档 + 候选池」在 DSH 下落实为分档预设：
    - **只配了一个模型** → **什么都不用做**：不装分档预设，所有角色用 `subagent` 继承会话模型，流水线照常运行；
    - **配了多个模型** → 装本包「分档预设」（`examples/preset/`，会话预设选「论衡分档」）按角色能力分档：`subagent_retrieval`（T1/T2/T3 检索：便宜快）/ `subagent_strong`（T4/T5/T6/T9 分析写作批判审稿：推理强）/ `subagent_audit`（T7 审计 + G14：顶配防漏判）；
@@ -39,8 +33,8 @@ description: "严肃长文流水线（学术论文/商业评论/行业分析/公
      - `LUNHENG_STRONG_PROVIDER` + `LUNHENG_STRONG_MODEL`（T4/T5/T6/T9）
      - `LUNHENG_AUDIT_PROVIDER` + `LUNHENG_AUDIT_MODEL`（T7/G14）
    - **未装预设或未挂载对应工具 → 全部回退 `subagent`（继承会话模型）**，流水线照常运行——这是通用性兜底：无论用户 dsh 配了什么模型、装没装预设，论衡都能跑。
-3. **执行韧化协议在 DSH 精简为「执行约定」**：OpenClaw 的 30 秒心跳/分阶段 ack/模型健康度预检/8 分钟硬卡在 DSH 下移除，改为——状态机（status.md 由主控独占写）+ 交接报告六要素 + G8 自检 + 超时介入（主控用 `list_agents` 查看子代理，长时间无产出即介入）。
-4. **「（检查）」占位符**：正典 v2.5.2 为「使用者发布版」，正文中若干 shell 命令示例被净化剥离为「（检查）」占位符。DSH 下这些位置一律按「人类 host shell 验证示例」处理（主控用 `read` 读全文 + LLM 推理模拟判定，不实际执行 shell；真实 sha256/字数统计由主人在 host shell 手动执行回填）。
+3. **执行约定**：状态机（status.md 由主控独占写）+ 交接报告六要素 + G8 自检 + 超时介入（主控用 `list_agents` 查看子代理，长时间无产出即介入）；**无心跳/分阶段 ack/8 分钟硬卡**（旧版完整韧化协议已移出仓库，历史见 git log）。
+4. **「（检查）」占位符**：发布包中若干 shell 命令示例被净化剥离为「（检查）」占位符——一律按「人类 host shell 验证示例」处理（主控用 `read` 读全文 + LLM 推理模拟判定，不实际执行 shell；真实 sha256/字数统计由主人在 host shell 手动执行回填）。
 5. **角色体系（v2.3.0 重构，v2.5.2 延续，v2.5.2-dsh.8 语义定案）**：**9 个独立角色 T1-T9（文献/数据/案例/分析/写作/批判/审计/终检/审稿），各自独立、不可相互替代**——编号 = 流水线 Phase 顺序（T1-T3 检索 / T4-T5 加工 / T6-T9 防御）。T8 终检是独立角色，执行者由主控担任（主控 = T0 调度 + T8 终检执行双重身份）；T9 审稿可选但**默认选中**（学术论文**必选**）。
 
 > **🌟 快速开始**：读 [`QUICKSTART.md`](QUICKSTART.md)。**核心概念**：[`references/glossary.md`](references/glossary.md)（单一真源）。
@@ -90,7 +84,7 @@ description: "严肃长文流水线（学术论文/商业评论/行业分析/公
 
 ## ⚡ 启动速查表（v2.5.2-dsh 补丁）
 
-- 版本：v2.5.2-dsh.8（对应正典 v2.5.2）｜角色：T0 主控（= T8 终检执行者）｜9 个独立角色 T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / **T8 终检（独立角色，主控亲执行）** / T9 审稿（可选，默认选中，学术必选）
+- 版本：v2.5.2-dsh.8（版本基线 v2.5.2）｜角色：T0 主控（= T8 终检执行者）｜9 个独立角色 T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / **T8 终检（独立角色，主控亲执行）** / T9 审稿（可选，默认选中，学术必选）
 - Phase：0 定题 → 1 检索(T1∥T2∥T3) → 2 分析 → 2.5 大纲(人) → 3 写作 → 3.5 洞察(人) → 3.6 批判 → 4 审计 → 4.5 审稿+G14 → 5 终检(人)
 - 工具：subagent=派发（装分档预设时按角色选 subagent_retrieval/strong/audit，见 pipeline-readme「DSH 分档预设接线」）/ list_agents=查看 / todo_write=计划 / web_search=检索 / read_page=读页 / pwsh=命令 / edit|write=文件
 - 闸门：T2.5（检索→分析）/ T7.5（审计→终检）；M 门 13 项 exit 0（`scripts/m-gate-check.mjs` 预检）；修订回环双轨制
@@ -154,7 +148,7 @@ description: "严肃长文流水线（学术论文/商业评论/行业分析/公
 - ⚠️ **一手原始数据采集**：实验设计 / 调查问卷投放 / 用户访谈 / 田野调查 → 主人亲自调研，原始数据投喂为「数据源」
 - ⚠️ **统计分析**（SPSS/R/Python）：论衡可以引用统计结果，但**不执行统计计算**。如需跑回归/聚类/因子分析，请主人用专门工具，结论以「数据 + 方法描述 + 结果」形式投喂
 - ⚠️ **图表原始数据采集**：论衡生成的是**数据可视化**（matplotlib/SVG），数据本身需主人提供。如需爬虫/OCR/语音转文字，请主人用专门工具，原始数据投喂后论衡制作图表
-- ⚠️ **原创图片 / 视频生成**：DSH 无内置文生图（原 OpenClaw `image_generate` 不可用）——封面/插图降级为 **SVG 矢量风（程序化，本地零外发）或主人投喂图片**，或另配图像生成 MCP（如 MiniMax `image-01`）；**不能拍摄实物照片 / 录制视频**。如需实物素材，请主人拍摄后投喂文件路径，论衡可在文末引用
+- ⚠️ **原创图片 / 视频生成**：DSH 无内置文生图（无内置图像生成能力）——封面/插图降级为 **SVG 矢量风（程序化，本地零外发）或主人投喂图片**，或另配图像生成 MCP（如 MiniMax `image-01`）；**不能拍摄实物照片 / 录制视频**。如需实物素材，请主人拍摄后投喂文件路径，论衡可在文末引用
 - ⚠️ **代码执行**：`exec` 工具不在 15 项白名单内（denied）。如需跑代码验证论据，请主人用专门环境执行，结果投喂为证据
 
 **判断口诀**：问「这个证据是**已发布**的数据 / 文献 / 案例吗」——是，论衡主动采集；不是（是一手原始数据 / 自己拍的素材 / 自己跑的计算），主人投喂后再用。
@@ -178,7 +172,7 @@ description: "严肃长文流水线（学术论文/商业评论/行业分析/公
 
 **失败回滚**：任一 Phase 失败，已写入的文件保留在 `run/<项目名>/` 供人工清理，不会自动删除。
 
-**重要隐私提示**（v2.3.9 补强，回应 ClawHub Finding 8/9）：
+**重要隐私提示**（v2.3.9 补强，回应 外部审计项 8/9）：
 - **敏感信息**：主人提供的【项目名】、【主题】、【论文纲要】可能含敏感信息（如未公开研究 / 商业机密）——这些会通过下节列出的外部服务发出。**如敏感请用脱敏措辞 + 改 SVG 封面 + 本地 Ollama 推理**。
 - **主人投喂的一手材料**（访谈记录 / 田野调查数据 / 内部文档 / 客户信息）属个人 / 机密 / 受监管数据：投喂前主人需确认已取得被访谈者 / 数据主体的知情同意（consent），且投喂时必须**脱敏**（人名 / 机构名 / 可识别信息替换为代号）；论衡对投喂材料的存储 / 引用 / 传播不承担合规责任，**主人是数据处理的责任方**。
 - **图像生成外发披露（DSH，回应 Finding 9）**：DSH 无内置文生图，封面默认 **SVG 矢量风（程序化生成，本地零外发）** 或主人投喂；仅当主人勾选「启用封面生成」并配图像生成 MCP 时，prompt 才发往该 MCP 的第三方 vendor（如 MiniMax `image-01`）——各 vendor 的数据留存/隐私/合规政策不同，主人勾选即表示已知悉并同意。如不愿外发，请用 SVG 矢量风。
@@ -293,7 +287,7 @@ description: "严肃长文流水线（学术论文/商业评论/行业分析/公
 
 本技能以 **MIT License** 发布 — Copyright (c) 2026 左运来 (zuoyunlai)。
 
-完整文本见 [`LICENSE`](LICENSE)。允许商业使用、修改、分发，需保留版权声明。论衡 v2.5.2 起固化为双视图发布架构（本地真源 + ClawHub 净化包），受 MIT License 约束。
+完整文本见 [`LICENSE`](LICENSE)。允许商业使用、修改、分发，需保留版权声明。论衡 v2.5.2 起固化为双视图发布架构（本地真源 + 发布包），受 MIT License 约束。
 
 ---
 
@@ -301,6 +295,6 @@ description: "严肃长文流水线（学术论文/商业评论/行业分析/公
 
 > 此版本是从论衡「完整开发版」剥离开发者维护工具的净化发布包。
 > - 已移除：git 发布指令 / 版本同步脚本（仓库级 bump 由发布脚本完成）/ 历史审计记录的逐层保留
-> - 保留作参考：`references/_shared/archive/`（历史规约归档 19 文件，仅参考不执行）；`scripts/`（5 个运行时脚本：consistency-check / m-gate-check / md2html / pdfcheck / token-cost，由主控按需调用）；`.github/workflows/`（CI 一致性自检 + OIDC 发布）
+> - 历史规约已移出仓库（见 git log）；`scripts/`（运行时脚本：consistency-check / m-gate-check / md2html / pdfcheck / token-cost / count-chars / build-evidence-bundle，由主控按需调用）；`.github/workflows/`（CI 一致性自检 + OIDC 发布）
 > - 已澄清：教训沉淀为「建议待主人 review」，不自动写入共享状态
 > - 论衡完整设计（含自我维护机制）见 GitHub 仓库：https://github.com/zuoyunlai/lunheng-article-pipeline

@@ -1,7 +1,7 @@
 # 论衡教训库（references/memory/lessons.md）
 
-> 论衡特定教训（paperwriter-specific lessons，仅论衡技能用）。DSH 适配版，对应正典 v2.3.7。
-> 编号继承正典（#1–#141 已用），本次起续编。主控侧通用教训（DSH agent general）见主控侧 `memory/lessons.md`。
+> 论衡特定教训（paperwriter-specific lessons，仅论衡技能用）。DSH 原生插件。
+> 编号沿袭版本线（#1–#141 已用），本次起续编。主控侧通用教训（DSH agent general）见主控侧 `memory/lessons.md`。
 > 教训格式：现象 / 根因 / 解决 / 判据（是否论衡特定）。
 
 ---

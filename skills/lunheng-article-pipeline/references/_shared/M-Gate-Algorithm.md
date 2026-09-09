@@ -1,4 +1,4 @@
-> 版本：v2.5.2-dsh.9（DSH 适配版，对应正典 v2.5.2，自动同步 2026-08-26）
+> 版本：v2.5.2-dsh.10（DSH 原生插件，自动同步 2026-08-26）
 
 > **v2.5.2-dsh.5 重大修订**（测试轮反哺 14 项问题落地）：
 > - **P0** #1 M-Form-2 与 M-Form-7 白名单统一（含 AI 使用声明）
@@ -22,7 +22,7 @@
 >
 > **v2.2.8 Phase D-1 重大变更**：本规约从「**4 个增量版本并存**」（v2.2.0/v2.2.1/v2.2.1.2/v2.2.4 共 15.4K tokens）合并为「**1 个完整版**」（本文件约 12K tokens，主流程只读这一份）。
 >
-> 完整版包含 v2.2.0 基础 + v2.2.1 扩展（M-Form-6 + M-Exist-3 + M-Integrity-1/2）+ v2.2.1.2 算法升级（M-Form-3 + M-Exist-1 + M-Form-6 + M-Exist-3 双格式）+ v2.2.4 内联引用 + 补检索回填 + 修订轮流程约束。**3 个历史版本已归档到 `_shared/archive/M-Gate-Algorithm-legacy/`（仅做版本演进参考，不需主流程读取）**。
+> 完整版包含 v2.2.0 基础 + v2.2.1 扩展（M-Form-6 + M-Exist-3 + M-Integrity-1/2）+ v2.2.1.2 算法升级（M-Form-3 + M-Exist-1 + M-Form-6 + M-Exist-3 双格式）+ v2.2.4 内联引用 + 补检索回填 + 修订轮流程约束。**历史版本演进见 git log；主流程只读本完整版**。
 >
 > **执行前置**：「同时读取 4 个版本」改为「**读取本完整版**」。节省 ~10K tokens 主流程加载。
 
@@ -573,7 +573,7 @@ return (len(leaked) == 0 and len(orphan) == 0, leaked, orphan)
 ### M-Exist-2: 证据包文件完整性 sha256（v2.2.0 原版 + v2.2.10 跨平台等价命令 + v2.2.11 能力边界修正）
 
 ```
-算法步骤（v2.2.17 修订，回应 ClawHub scanner v2.2.16 finding F03+F05 94%/92%）：
+算法步骤（v2.2.17 修订，回应 外部扫描器 v2.2.16 finding F03+F05 94%/92%）：
 1. 读取 final/证据包/ 目录下所有 .md 和 .txt 文件
 2. **LLM 能力边界**（v2.2.17 澄清）：主控 LLM 不能直接计算 sha256 二进制哈希 → 主控用 `read` 读全文 + 推理验证「文件非空」+ 列文件名 +修改时间。**重要：以下占位符机制是论衡默认设计，不是 bug**。
    - **DSH 例外（v2.5.2-dsh.0 反哺，教训：论艺术中的丑 sha256 占位符形同虚设）**：DSH 下主控有 `pwsh` 工具，**可直接计算 sha256 回填**，不必留占位符——`Get-FileHash -Algorithm SHA256 final\证据包\*.md` 由主控执行并写实值入「证据包指纹」段。仅在主控决定不跑 shell（严格零 exec 场景）时才降级为 `[SHA256-PENDING:HOST-VERIFY]` 占位符。
@@ -603,7 +603,7 @@ return (len(leaked) == 0 and len(orphan) == 0, leaked, orphan)
 
 
 
-**v2.2.11 能力边界澄清**（回应 ClawHub scanner finding #4 98%）：
+**v2.2.11 能力边界澄清**（回应 外部扫描器 finding #4 98%）：
 - 论衡 agent **不能** 直接计算 sha256（不在 15 项白名单内）
 - 主控 LLM 能用 `read` 读全文做「文件非空/有内容」验证（**这是 LLM 推理，不是 sha256**）
 - 真正 sha256 由人类主人在 host shell **手动计算后回填**到「证据包指纹」段
@@ -739,6 +739,6 @@ return (all_pass, fail_reasons)
 - **M-Gate-Report v2.2.4 输出格式**（JSON schema）：[`references/_shared/M-Gate-Algorithm-appendix.md §1`](M-Gate-Algorithm-appendix.md#1-m-gate-report-v224-输出格式4-版本合并最终版)
 - **论衡哲学化**（4 版本合并）：[`references/_shared/M-Gate-Algorithm-appendix.md §2`](M-Gate-Algorithm-appendix.md#2-论衡哲学化4-版本合并)
 - **教训沉淀（v2.2.0 ~ v2.2.4）**：[`references/_shared/M-Gate-Algorithm-appendix.md §3`](M-Gate-Algorithm-appendix.md#3-教训沉淀v220--v224-全部)
-- **历史版本归档（v2.2.8 Phase D-1）**：3 文件已归档到 `_shared/archive/M-Gate-Algorithm-legacy/`（README 已说明）。**主流程只读本完整版**，归档版仅做版本演进参考。
+- **历史版本归档（v2.2.8 Phase D-1）**：**主流程只读本完整版**；历史版本演进见 git log。
 
 > **拆分理由（v2.5.2）**：主文件从 780 行降至 635 行（-19%），超 PERF-SIZE-004 800 行临界 145 行的缓冲。附录按需加载，主流程只读「13 个 M门规则 + 触发条件 + 伪代码」。

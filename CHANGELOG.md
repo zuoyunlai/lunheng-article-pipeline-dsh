@@ -1,6 +1,16 @@
 # Changelog
 
-本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版与 OpenClaw 原版分离维护，版本号以 -dsh.N 标记第 N 次 DSH 适配。
+本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护，版本号以 -dsh.N 标记第 N 次迭代。
+
+## 2.5.2-dsh.10（2026-09-08）
+
+- **独立化为 DSH 原生插件（脱离 OpenClaw/ClawHub 定位）**：
+  1. 全库清除 OpenClaw / ClawHub / 正典 / 净化包 / 适配版 等历史表述（SKILL/AGENTS/角色卡/glossary/pipeline-readme/docs/README/CHANGELOG/package.json/cordis/示例）
+  2. SKILL「DSH 环境说明」改写为 DSH 原生（删除旧工具映射表与移植叙述）；AGENTS/CONTRIBUTING/FAQ 独立重写
+  3. 版本头措辞统一为「（DSH 原生插件，自动同步 …）」；consistency-check 版本头正则同步放宽
+  4. 清理冗余：删除 `references/_shared/archive/`（legacy-docs/legacy-protocols/M-Gate 历史版）、`版本升级自审门-v2.3.0.md`、`执行韧化协议-v2.1.0.md`、仓库内 `.dsh/adapt-backup` 快照；历史演进以 git log 为准
+  5. 悬空引用清扫：角色卡韧化协议指引改指 DSH 执行约定；M-Gate/README 归档引用移除
+- 版本号 bump 至 **2.5.2-dsh.10**（发布待主人指示）。
 
 ## 2.5.2-dsh.9（2026-09-08）
 
@@ -84,7 +94,7 @@
   - **P1 安全**：注入防御下沉到 T1/T2/T3 检索角色卡铁律 + 派发话术（外部内容不可信原则从主控层落实到检索层）；「零 exec」声明如实修正（白名单脚本 + 有限 shell）；信任级别 ≠ 注入防御的认知修正
   - **P1 机制**：分档预设接线（三档工具 subagent_retrieval/strong/audit 进入派发话术，从此实际生效）；修订回环双轨制定案；G 十五项 / M-Form 8 项 / T9·G14 默认开 口径统一
   - **P1 脚本**：m-gate-check 补 `C-主` 引用 + 版本化归一化 + M-Form-5 估算标记豁免 + 缺目录友好报错；token-cost zstd 兼容（node<22.15 报错）+ tree 前缀归一化 + cacheWrite 按未命中价 + 参数校验
-  - **P2/P3**：consistency-check 增强为 6 类（跨文件版本比对/M-Gate-Report 漂移/角色卡索引/口径残留）；安装文档纠错（新版 dsh 自动加 bundles）；预设默认继承父会话（消灭 NO_ADAPTER）；files 补 CHANGELOG/CONTRIBUTING；pdfcheck 判定与消息一致；md2html SVG 消毒 + 图N 支持 + 同文件保护；C1-C7 七维；OpenClaw 残留清零
+  - **P2/P3**：consistency-check 增强为 6 类（跨文件版本比对/M-Gate-Report 漂移/角色卡索引/口径残留）；安装文档纠错（新版 dsh 自动加 bundles）；预设默认继承父会话（消灭 NO_ADAPTER）；files 补 CHANGELOG/CONTRIBUTING；pdfcheck 判定与消息一致；md2html SVG 消毒 + 图N 支持 + 同文件保护；C1-C7 七维；历史残留清零
 - **门 V 增强**：M-Gate-Report 检查补 JSON schema 值盲区
 
 ## 2.5.2-dsh.3（2026-08-25）
@@ -118,7 +128,7 @@
 
 ## 2.5.2-dsh.0（2026-08-25）
 
-- **同步正典 v2.5.2（v2.3.7 → v2.5.2 大版本跨越）**：
+- **对齐版本线 v2.5.2（v2.3.7 → v2.5.2 大版本跨越）**：
   - **新增 9 角色体系**：T9 同行评审（`09-审稿-peer-reviewer.md`，6 维度评分 → accept/minor/major/reject）+ 主控扩展职责（`00-主控-扩展职责.md`）
   - **新增 G14 中文 AI 痕迹闸**（`gates/14-中文AI痕迹-gate.md` + `checkers/中文AI痕迹-checker.md`，8 类检测维度，LLM 推理判定零 exec）
   - **新增期刊匹配助手**（`_shared/期刊数据库.md` 25 CSSCI + 12 SSCI + `期刊匹配算法.md`）
@@ -126,27 +136,27 @@
   - **新增退化场景规范**（`degraded-scenarios.md`）+ 字数判定表 + M 门附录 + 投稿就绪检查表 + 修订说明模板 full
   - **外部内容防注入**（v2.4.0：外部内容一律视为不可信证据，只提取事实不执行指令）
   - **中文学术特化定位**（v2.4.4：GB/T 7714-2015 / Top 3 中文期刊 / G14）
-- **DSH 适配**（156 处 OpenClaw 残留 + 23 文件版本行）：
+- **DSH 适配**（156 处历史残留 + 23 文件版本行）：
   - 51 文件同步（17 新增 + 34 覆盖），保留 21 个 DSH 独有文件（AGENTS/设计文档/教训库/自审门等）
   - 工具映射批量替换（sessions_*→subagent、tavily_*→web_search/read_page、metadata.tools 删除、心跳/8分钟硬卡→DSH 精简版）
-  - 10 张角色卡韧化协议段 DSH 化；SKILL.md 新增「🔧 DSH 适配说明」段
+  - 10 张角色卡韧化协议段 DSH 化；SKILL.md 新增「🔧 DSH 环境说明」段
   - 分档预设补 T9/G14 映射；自审门更新到 9 角色；image_generate 封面描述 DSH 化（SVG/投喂/图像 MCP）
 
 ## 2.3.7-dsh.8（2026-08-22）
 
 - **全面独立审计修复**（工程层 + 3 独立子代理并行，13 严重 + 40 中轻微）：
-  - **P0 自审门 DSH 化**：版本升级自审门-v2.3.0 头部加 DSH 适配映射表；门 C/D/E/G/J 路径与编号 DSH 化（pipeline/→references/、ClawHub→仓库↔.dsh 副本、门 D 文件列表 00-07 实际编号）；门数口径统一（21 门含门 V）
+  - **P0 自审门 DSH 化**：版本升级自审门-v2.3.0 头部加 DSH 适配映射表；门 C/D/E/G/J 路径与编号 DSH 化（pipeline/→references/、外部审计→仓库↔.dsh 副本、门 D 文件列表 00-07 实际编号）；门数口径统一（21 门含门 V）
   - **P0 执行层歧义清零**：M 门项数统一「M-Form 8 + M-Exist 3 + M-Integrity 2 = 13 项」（原 6/7/11 混用）；修订回环**定案为审计独立 2 轮预算**（v1→v2 洞察 + v2→v3 批判不计入）；G/F 清单 glossary 重写对齐执行真源；渐进式验证标注未启用；M-Gate-Report 文件名统一（去版本后缀）；批判维度统一 C1-C7；终检必查项 15 项；六要素第 6 条统一状态机更新
-  - **P1 元数据/残留**：package.json 补 repository/homepage/bugs/author；cordis 注释 dsh.8；preset.yml 补 PROVIDER；版本残留（faq/introduction/skills README 的 dsh.1、三处 dsh.6 标注）清零；m_exist_1_diff.sh 归档；glossary §七 ClawHub 第 5 层删除改 DSH 3 层真源
+  - **P1 元数据/残留**：package.json 补 repository/homepage/bugs/author；cordis 注释 dsh.8；preset.yml 补 PROVIDER；版本残留（faq/introduction/skills README 的 dsh.1、三处 dsh.6 标注）清零；m_exist_1_diff.sh 归档；glossary §七 外部发布层删除改 DSH 3 层真源
   - **P1 中轻微项**：operations 禁做#3、任务简报 M-Form-4/T3.5、errors 三处旧编号、架构篇 Phase 3.6/6 阶段、数据卡残字符/测算者、侦查→检索、案例封顶矛盾、status 8 分钟硬卡、SKILL 重复行、损坏链接、死锚点等 40 处
   - **P2 门 V 固化**：自审门新增「门 V：DSH 口径一致性」，机械化检查 M 门项数/Report 文件名/C1-C7/修订回环语义/旧编号，防本轮问题复发
 
 ## 2.3.7-dsh.7（2026-08-22）
 
 - **角色卡模型设定去硬编码（通用化收尾，v2.3.7-dsh.6 的延续）**：
-  - `07-审计-auditor.md`：删「主模型 claude-opus-5（kkaiapi 接口）」+ OpenClaw fallback 链 → 「审计档定位顶配防漏判，不写死具体模型名；超时换档重派」
+  - `07-审计-auditor.md`：删「主模型 claude-opus-5（kkaiapi 接口）」+ 历史 fallback 链 → 「审计档定位顶配防漏判，不写死具体模型名；超时换档重派」
   - `pipeline-readme.md`：删「claude-opus-5 → deepseek-v4-pro → minimax-M3 fallback 链」→ 「DSH 无脚本级 fallback 链，换档重派」
-  - `operations.md`：模型建议表「如 deepseek-v4-flash/minimax-m3」示例 → 纯能力定位（便宜快/推理强/顶配）；删 OpenClaw fallback 链 4 档
+  - `operations.md`：模型建议表「如 deepseek-v4-flash/minimax-m3」示例 → 纯能力定位（便宜快/推理强/顶配）；删历史 fallback 链 4 档
   - `status-template-lite.md`：模板写死「当前模型: deepseek-v4-pro」→ 「继承会话模型或分档指定」
   - `00-主控-coordinator.md`：删「自动兑底路径：模型路由顺序（deepseek-v4-pro → minimax-M3 → ...）」→ 「换档重派路径（DSH 版）」；命名隔离示例 `06-v2-attack.deepseek-v4-pro.md` → `<模型名>`
   - `SKILL.md` 核心原则 5：模型分工示例名 → 纯能力描述（不写死具体模型名）
@@ -185,7 +195,7 @@
 ## 2.3.7-dsh.3（2026-08-22）
 
 - **文档深度清理（第二轮独立审计）**：净 -447 行
-  - **OpenClaw 专属机制归档**：`执行韧化协议-v2.1.0.md` + `通用韧化块-v2.1.0.md` 移入 `references/_shared/archive/legacy-protocols/`（心跳/分阶段 ack/模型预检/8 分钟硬卡/`subagents(action=list)` 伪代码均为 OpenClaw 机制，DSH 用不上）；8 张角色卡 + AGENTS.md 引用改指 DSH 执行约定
+  - **历史专属机制归档**：`执行韧化协议-v2.1.0.md` + `通用韧化块-v2.1.0.md` 移入 `references/_shared/archive/legacy-protocols/`（心跳/分阶段 ack/模型预检/8 分钟硬卡/`subagents(action=list)` 伪代码均为历史机制，DSH 用不上）；8 张角色卡 + AGENTS.md 引用改指 DSH 执行约定
   - **DSH 事实矛盾修复**：`image_generate`/OpenAI gpt-image-2→gemini→minimax fallback 链 → SVG 矢量风/主人投喂/图像 MCP；`exec 被 deny` → DSH standard 预设含 `pwsh`/`bash`；Tavily/Ollama fallback → DSH web provider/本地模型；`~/.DSH/agents/*.trajectory.jsonl` 诊断 → `list_agents`
   - **冗余清理**：16 个文件头部 12-13 行自动同步版本行堆叠压缩为 1 行 DSH 版本；SKILL.md 重复 T8 行/重复工具条目；status 模板心跳/ack/降级记录段精简
   - 涉及 SKILL.md / AGENTS.md / QUICKSTART.md / pipeline-readme.md / glossary.md / 8 张角色卡 / 4 个模板 / 3 份设计文档，共 27 文件
@@ -196,13 +206,13 @@
 
 ## 2.3.7-dsh.1（2026-08-22）
 
-- **同步 OpenClaw 正典 v2.3.7 全量升级**（43 提交 / 60 文件 +6996 行）：
+- **对齐 v2.3.7 版本线全量升级**（43 提交 / 60 文件 +6996 行）：
   - **角色编号重构（v2.3.0）**：T1 文献 / T2 数据 / T3 案例（原 T6）/ T4 分析（原 T3）/ T5 写作（原 T4）/ T6 批判（原 T8）/ T7 审计（原 T5）/ T8 终检=主控亲完成——编号 = 流水线 Phase 顺序
   - **M-Form-7 定稿文末白名单硬门**（v2.3.5）+ **渐进式 M 门验证**（v2.2.15）+ 阶段闸门 T2.5/T7.5
   - **lite 模板族**（7 类 × full+lite）+ 图表-SVG 模板 + 版本号自动化（scripts/check-version.sh）
   - **新文档**：glossary.md（单一真源词汇表）/ errors.md（错误友好化）/ 设计文档-哲学/架构拆分 / QUICKSTART.md
   - **人在环纠偏**：Phase 3.6 批判非人在环节点（教训 #138）；删 T2.5 主人签字（教训 #136/#137）
-- **DSH 适配**：8 张角色卡全部 DSH 化（执行约定精简 + 分档预设 T3 案例→retrieval/T6 批判→strong/T7 审计→audit）；机械替换 + 深度审计修复（workflow 3 组 × 全文件，修复旧编号残留/OpenClaw 现行机制/坏引用/矛盾 100+ 处）
+- **DSH 适配**：8 张角色卡全部 DSH 化（执行约定精简 + 分档预设 T3 案例→retrieval/T6 批判→strong/T7 审计→audit）；机械替换 + 深度审计修复（workflow 3 组 × 全文件，修复旧编号残留/历史遗留机制/坏引用/矛盾 100+ 处）
 
 ## 2.2.8-dsh.3（2026-08-19）
 
@@ -221,14 +231,14 @@
 ## 2.2.8-dsh.2（2026-08-18）
 
 - **深入质量审计修复**（workflow 5 组并行 × 36 文件 × 6 维度，~130 处问题）：
-  - **去除 DSH 用不上的 OpenClaw 残留**：删除 `m_exist_1_diff.sh`；fallback 链 / `include_domains` / `session-kill` / 15 项白名单 / `fc-list`/`ls -la`/`sha256sum` 等 bash 命令改 DSH 等价；`/tmp` 路径适配 Windows
-  - **修复 8 处 SOUL.md 坏引用**（正典已删）→ `failure-modes.md` / 设计文档；README/scripts/lessons.md/workspace-paperwriter 等无效引用修正
+  - **去除 DSH 用不上的历史残留**：删除 `m_exist_1_diff.sh`；fallback 链 / `include_domains` / `session-kill` / 15 项白名单 / `fc-list`/`ls -la`/`sha256sum` 等 bash 命令改 DSH 等价；`/tmp` 路径适配 Windows
+  - **修复 8 处 SOUL.md 坏引用**（上游旧档已删）→ `failure-modes.md` / 设计文档；README/scripts/lessons.md/workspace-paperwriter 等无效引用修正
   - **统一口径**：M 门 6+3+2、M-Gate-Report-v2.2.4.json、T6 任何量级必 spawn、T8 可跳过、G0-G13、终检必查 13 项、交接报告六要素（5 卡补齐）
   - **版本升级自审门 DSH 化**（门 C/D/E 改为仓库/活动副本/npm 路径）
 
 ## 2.2.8-dsh.1（2026-08-18）
 
-- **同步 OpenClaw 正典 v2.2.8 全量升级**（41 文件重构基线）：
+- **对齐 v2.2.8 版本线全量升级**（41 文件重构基线）：
   - **8 角色**：新增 T8 批判伙伴（C1-C5 反方攻击，Phase 3.6，轻量档可跳过）
   - **审计 G0-G13**（新增 G11 时效告警 / G12 信任级别一致性 / G13 AI 使用披露）+ **M 门**（M-Form 6 + M-Exist 3 + M-Integrity 2，LLM 兜底执行，零 exec 依赖）
   - **T2.5 / T5.5 阶段闸门**（主控 checkpoint）+ 修订回环 ≤2 轮硬约束 + Acknowledged Limitations 模式
@@ -236,7 +246,7 @@
   - 文档分层：SKILL.md 瘦身，机制详情进 `references/`（设计文档 / deliverables / operations / case-studies / `_shared/`）
   - 模板拆分为 7 个（新增文献卡 / 数据卡 / 先行者清单模板）
 - **DSH 适配**：8 张角色卡全部 DSH 化（执行约定精简版：状态机 + 交接报告六要素 + G8 自检 + 超时介入 `list_agents`，移除心跳/ack/预检/8 分钟硬卡）；工具映射 subagent/web_search/todo_write/list_agents/SVG 降级；分档预设新增 T8 归 strong 档
-- **删除**：SOUL.md（正典 v2.2.8 已移除，内容并入 SKILL.md）
+- **删除**：SOUL.md（历史上游 v2.2.8 已移除，内容并入 SKILL.md）
 
 ## 2.1.8-dsh.3（2026-08-18）
 

@@ -24,7 +24,7 @@ const ROOT = join(__dirname, '..'); // skills/lunheng-article-pipeline
 const REPO_ROOT = join(ROOT, '..', '..'); // lunheng-article-pipeline-dsh
 
 // ① 版本真源 = package.json；版本头行任意 -dsh.N（v2.5.2-dsh.3 修订：不再硬编码 v2.5.2，防 bump 到 v2.6.0 后失效）
-const VER_HEADER_RE = /^> 版本：v\d+\.\d+\.\d+-dsh\.\d+（DSH 适配版/;
+const VER_HEADER_RE = /^> 版本：v\d+\.\d+\.\d+-dsh\.\d+（DSH/;
 const VER_ANY_RE = /v\d+\.\d+\.\d+-dsh\.\d+/;
 
 function walk(dir, acc = []) {
@@ -38,7 +38,7 @@ function walk(dir, acc = []) {
 }
 
 const files = walk(ROOT);
-// 排除 OpenClaw 历史归档 + 执行韧化协议（属完整协议参考，非 DSH 现行规则）
+// 排除历史归档 / 旧版协议参考文件（v2.5.2-dsh.10 独立性重构后已移出仓库，规则保留兜底）
 const isArchive = (f) => f.includes(join('references', '_shared', 'archive'));
 const isLegacyProtocol = (f) => f.endsWith('执行韧化协议-v2.1.0.md');
 const active = files.filter((f) => !isArchive(f) && !isLegacyProtocol(f));
@@ -97,13 +97,12 @@ for (const f of files) {
   const verCount = text.split('\n').filter((l) => VER_HEADER_RE.test(l)).length;
   if (verCount > 1) errors.push(`[P0-1d 双头版本行 x${verCount}] ${rel}`);
 
-  // ②b M-Gate-Report 文件名/标识漂移（v2.5.2-dsh.3 审计：门 V 已明令无版本后缀，含 JSON "schema" 字段值；
-  //    版本升级自审门-v2.3.0.md 的 L15 迁移表（旧→新映射说明）豁免）
-  if (!isArchive(f) && !rel.includes('版本升级自审门') && /M-Gate-Report-v2\.2\.(4|12)(\.json|")/.test(text)) {
+  // ②b M-Gate-Report 文件名/标识漂移（v2.5.2-dsh.3 审计：门 V 已明令无版本后缀，含 JSON "schema" 字段值）
+  if (!isArchive(f) && /M-Gate-Report-v2\.2\.(4|12)(\.json|")/.test(text)) {
     errors.push(`[P1 M-Gate-Report 文件名/标识漂移（应为 M-Gate-Report.json）] ${rel}`);
   }
 
-  // ③a 悬空引用：版本一致性检查旧名 → 应为 版本升级自审门
+  // ③a 悬空引用：旧名「版本一致性检查-v2.3.0.md」残留（独立性重构后该旧机制已删除，发现即清理）
   if (text.includes('版本一致性检查-v2.3.0.md')) {
     errors.push(`[P0-1a 悬空引用「版本一致性检查-v2.3.0.md」] ${rel}`);
   }
@@ -170,7 +169,7 @@ for (const f of files) {
 const patchPath = join(REPO_ROOT, 'cordis.patch.yml');
 if (existsSync(patchPath)) {
   const pt = readFileSync(patchPath, 'utf8');
-  const pm = pt.match(/DSH 适配版\s*(v?\d+\.\d+\.\d+-dsh\.\d+)/);
+  const pm = pt.match(/(v?\d+\.\d+\.\d+-dsh\.\d+)/);
   if (pm && normVer(pm[1]) !== normVer(pkgVer)) {
     errors.push(`[P0 版本引用] cordis.patch.yml 头写 ${pm[1]} ≠ package.json=${pkgVer}`);
   }

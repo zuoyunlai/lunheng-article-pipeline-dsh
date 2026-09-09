@@ -2,7 +2,7 @@
 
 > **论衡（lunheng-article-pipeline）** 是一个多 Agent 深度长文生产流水线，DeepSeek Harness（dsh）bundle 插件。它不是让一个 AI 直接写文章，而是让一支 **9 个 AI 角色组成的"论文生产小队"** 按既定协议协作：定题 → 三线并行检索 → 分析 → 写作 → 批判 → 审计 → 审稿 → 终检。每一步都有明确产出物、交接报告与质量闸门，最终交付**有证据底座、有反方论证、有独立审计、有人工核验节点**的文章。
 
-> 适用：公众号深度长文、研究报告、学术论文、商业评论、行业分析——任何"要站得住脚"的长内容。当前版本 **v2.5.2-dsh.9**（对应 OpenClaw 正典 v2.5.2）。
+> 适用：公众号深度长文、研究报告、学术论文、商业评论、行业分析——任何"要站得住脚"的长内容。当前版本 **v2.5.2-dsh.10**（DSH 独立版本）。
 
 ---
 
@@ -96,7 +96,7 @@ Phase 1 一次性并行派出 **T1 文献 ∥ T2 数据 ∥ T3 案例** 三个�
 
 ## DSH 适配（开箱即用）
 
-| 原 OpenClaw 工具 | DSH 对应 |
+| 原环境工具 | DSH 对应 |
 |---|---|
 | `sessions_spawn` | `subagent`（后台、可续接） |
 | `tavily_search` / `tavily_extract` | `web_search` / `read_page` |
@@ -107,7 +107,7 @@ Phase 1 一次性并行派出 **T1 文献 ∥ T2 数据 ∥ T3 案例** 三个�
 
 DSH 下的三个关键适配：
 
-1. **执行约定精简**：OpenClaw 的心跳/分阶段 ack/8 分钟硬卡在 DSH 下移除，改为「状态机 + 交接报告六要素 + G8 自检 + 超时介入（`list_agents`）」——贴合 DSH 的子代理机制，不空转轮询。
+1. **执行约定精简**：历史机制（心跳/分阶段 ack/8 分钟硬卡）在 DSH 下移除，改为「状态机 + 交接报告六要素 + G8 自检 + 超时介入（`list_agents`）」——贴合 DSH 的子代理机制，不空转轮询。
 2. **分档预设（按角色分模型）**：装「论衡分档」会话预设后，检索角色走 `subagent_retrieval`（默认 `deepseek-v4-flash`，便宜快）、分析/写作/批判/审稿走 `subagent_strong`、审计/G14 检测走 `subagent_audit`，模型经 `LUNHENG_*_PROVIDER` + `LUNHENG_*_MODEL` 环境变量覆盖（provider 与 model 分离）；未装预设则全部继承会话模型，流水线照常运行——**任何模型配置都能跑**。
 3. **子代理异常兜底**：failed 通知时主控按「验产物 → 验 status → 验口径」三步处理，不默认重跑；静默/循环自动检测 + 换档重派（实战沉淀）。
 
@@ -152,13 +152,13 @@ dsh plugin --profile web add lunheng-article-pipeline
 
 | 版本 | 内容 |
 |---|---|
-| **v2.5.2-dsh.0** | 同步正典 v2.5.2：T9 审稿 + G14 中文 AI 痕迹闸 + 期刊匹配助手 + 多格式导出 + 中文数据源集成 + 外部内容防注入；全包 DSH 适配（9 角色/工具映射/版本行统一） |
+| **v2.5.2-dsh.0** | 对齐版本线 v2.5.2：T9 审稿 + G14 中文 AI 痕迹闸 + 期刊匹配助手 + 多格式导出 + 中文数据源集成 + 外部内容防注入；全包 DSH 适配（9 角色/工具映射/版本行统一） |
 | **v2.3.7-dsh.8** | M 门 13 项统一单文件算法 + 修订回环语义定案（审计独立预算 ≤2 轮）+ 三角验证机械化（M-Form-8）+ 反哺 merge 闭环 |
 | **v2.3.7-dsh.4~7** | status.md 主控独占写（防并发冲突）、审计数字级/存在性两档核验、修订复核带「关闭✅/未关闭❌」、分档预设通用化（provider/model 分离） |
-| **v2.3.0-dsh.1~3** | 同步正典 v2.3.0 角色编号重构（T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / T8 终检=主控亲完成）+ C1-C7 批判 + T2.5/T7.5 闸门 |
+| **v2.3.0-dsh.1~3** | 对齐版本线 v2.3.0 角色编号重构（T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / T8 终检=主控亲完成）+ C1-C7 批判 + T2.5/T7.5 闸门 |
 | **v2.2.8-dsh.3** | 实跑反馈 10 项改进（T2.5 门逻辑修正、子代理异常兜底、数据卡计数自检、文献作者必核、分档预设推荐等） |
-| **v2.2.8-dsh.2** | 深度质量审计修复（去除 DSH 用不上的 OpenClaw 残留、修坏引用、统一口径） |
-| **v2.2.8-dsh.1** | 同步 OpenClaw 正典 v2.2.8（8 角色 + T8 批判 + G0-G13 + M 门 + 阶段闸门 + 字数分层） |
+| **v2.2.8-dsh.2** | 深度质量审计修复（去除 DSH 用不上的历史残留、修坏引用、统一口径） |
+| **v2.2.8-dsh.1** | 对齐 v2.2.8 版本线（8 角色 + T8 批判 + G0-G13 + M 门 + 阶段闸门 + 字数分层） |
 | v2.1.8-dsh.1~3 | 首个 DSH bundle 发布；三检索员并行；分档预设 |
 
 ---
@@ -167,7 +167,7 @@ dsh plugin --profile web add lunheng-article-pipeline
 
 - **GitHub（DSH bundle）**：https://github.com/zuoyunlai/lunheng-article-pipeline-dsh
 - **npm**：`lunheng-article-pipeline@2.5.2-dsh.7`（`npm i lunheng-article-pipeline@dsh`）
-- **OpenClaw 原版**：https://github.com/zuoyunlai/lunheng-article-pipeline
+- **历史版本线（独立化前）**：https://github.com/zuoyunlai/lunheng-article-pipeline
 
 ---
 

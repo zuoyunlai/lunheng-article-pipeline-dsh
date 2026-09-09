@@ -1,8 +1,8 @@
 # 论衡（lunheng-article-pipeline）— 多 Agent 深度长文流水线
 
-> **DSH 适配版（v2.5.2-dsh.9）**：本仓库为 DSH bundle 插件（技能包）；工具映射与结构性差异见 `SKILL.md` 的「🔧 DSH 适配说明」章节。
+> **DSH 原生插件（v2.5.2-dsh.10）**：本仓库为 DSH bundle 技能包；结构性差异见 `SKILL.md` 的「🔧 DSH 环境说明」章节。
 
-把一篇深度文章 / 论文的生产拆成 **9 个独立角色 T1-T9 + 6 个阶段**（v2.5.2-dsh.9 定案：T1-T9 互不可替代；Phase 1 为 T1 文献 ∥ T2 数据 ∥ T3 案例 三检索员三方真并行互不干涉，T3 任何量级必 spawn 含 0 条空卡协议；T6 批判伙伴 + T7 审计 + **T8 终检独立角色由主控 T0 亲执行** + T9 同行评审可选默认选中学术必选，v2.3.0 角色编号重构 + v2.4.0 加 T9），用 DSH 的 `subagent` 子代理编排，产出有**证据底座、反方论证、独立审计、人工核验节点**的交付物。
+把一篇深度文章 / 论文的生产拆成 **9 个独立角色 T1-T9 + 6 个阶段**（v2.5.2-dsh.10 定案：T1-T9 互不可替代；Phase 1 为 T1 文献 ∥ T2 数据 ∥ T3 案例 三检索员三方真并行互不干涉，T3 任何量级必 spawn 含 0 条空卡协议；T6 批判伙伴 + T7 审计 + **T8 终检独立角色由主控 T0 亲执行** + T9 同行评审可选默认选中学术必选，v2.3.0 角色编号重构 + v2.4.0 加 T9），用 DSH 的 `subagent` 子代理编排，产出有**证据底座、反方论证、独立审计、人工核验节点**的交付物。
 
 > 适用：公众号深度文章、研究报告、学术论文、商业评论、行业分析。经验证：一篇 7650 字/8 节/2 图/52 文献/60 数据点的深度文，全流程约 2 小时完成。
 
@@ -27,7 +27,7 @@
 - ❌ **一手原始数据采集** —— 实验 / 调查 / 访谈 / 田野调查 → 主人调研后投喂
 - ❌ **统计分析**（SPSS / R / Python）—— 论衡可引用结果，**不执行计算**
 - ❌ **图表原始数据采集** —— 论衡做**数据可视化**，爬虫 / OCR / 语音转文字需主人用专门工具
-- ❌ **原创图片 / 视频生成** —— DSH 无内置文生图（原 OpenClaw 的 `image_generate` 不可用）：封面/插图降级为 SVG 矢量风或主人投喂，或另配图像生成 MCP（如 MiniMax `image-01`）
+- ❌ **原创图片 / 视频生成** —— DSH 无内置文生图（无内置文生图能力）：封面/插图降级为 SVG 矢量风或主人投喂，或另配图像生成 MCP（如 MiniMax `image-01`）
 - ❌ **代码执行** —— 本技能默认不主动跑代码；DSH 下可经主人同意后用 `pwsh`/`bash` 执行
 
 **判断口诀**：问「这个证据是**已发布**的数据 / 文献 / 案例吗」—— 是，论衡主动采集；不是，主人投喂后再用。详见 `references/pipeline-readme.md` 的「🚫 不适用场景」段。
@@ -135,7 +135,7 @@ lunheng-article-pipeline/                    # npm 包（DSH bundle）
 ├── LICENSE
 ├── README.md                                # 本文件（包说明）
 └── skills/lunheng-article-pipeline/         # 技能本体
-    ├── SKILL.md                             # 技能入口（含 DSH 适配说明）
+    ├── SKILL.md                             # 技能入口（含 DSH 环境说明）
     ├── AGENTS.md                            # 操作手册
     ├── QUICKSTART.md                        # 5 分钟快速开始
     └── references/
@@ -148,22 +148,17 @@ lunheng-article-pipeline/                    # npm 包（DSH bundle）
         │   ├── 05-写作-writer.md
         │   ├── 06-批判-critical-companion.md
         │   ├── 07-审计-auditor.md
-        │   ├── 08-终检-finalizer.md          # T8 终检（独立角色，主控 T0 亲执行，v2.5.2-dsh.9 新增独立卡）
+        │   ├── 08-终检-finalizer.md          # T8 终检（独立角色，主控 T0 亲执行，v2.5.2-dsh.10 新增独立卡）
         │   └── 09-审稿-peer-reviewer.md      # T9 同行评审（可选默认选中，学术必选）
         ├── templates/                       # 7 类模板 × (full + lite) + 图表-SVG 模板
-        ├── _shared/                         # M 门 / F 模式 / 韧化协议 / 自审门
+        ├── _shared/                         # M 门 / F 模式 / 期刊匹配等共享机制
         │   ├── M-Gate-Algorithm.md          # M 门算法（M-Form 8 / M-Exist 3 / M-Integrity 2）
         │   ├── M-Gate-Algorithm-appendix.md # M 门附录
         │   ├── audit-checklist-quickref.md  # G0-G14 速查
         │   ├── failure-modes.md             # F1-F9 失败模式
-        │   ├── 版本升级自审门-v2.3.0.md      # 版本升级 17+ 门自审
-        │   ├── 执行韧化协议-v2.1.0.md        # OpenClaw 完整协议（DSH 仅参考）
         │   ├── 期刊数据库.md + 期刊匹配算法.md # 期刊匹配助手
         │   ├── format-export.md + 中文数据源集成.md + degraded-scenarios.md + 字数判定表.md
-        │   └── archive/                     # 归档（历史版本 + 遗留协议，仅参考）
-        │       ├── M-Gate-Algorithm-legacy/ # M 门 4 历史版本
-        │       ├── legacy-protocols/        # 过期协议
-        │       └── legacy-docs/             # 历史文档（设计文档/v2.2.6 自审门/M-Gate 渐进式/立项）
+        │   └── （历史归档已移出仓库，演进记录见 git log）
         ├── pipeline-readme.md               # 完整运行手册（含 9 角色派发话术 + M 门 + F 模式）
         ├── glossary.md                      # 核心概念词汇表（单一真源）
         ├── errors.md                        # 错误信息友好化（12 类）

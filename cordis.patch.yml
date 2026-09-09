@@ -1,4 +1,4 @@
-# lunheng-article-pipeline bundle patch（DSH 适配版 v2.5.2-dsh.9）
+# lunheng-article-pipeline bundle patch（DSH 原生插件 v2.5.2-dsh.10）
 #
 # 本文件用 DSH cordis-plugin-include 的 `- insert:` 列表语法在 standard 组合树之上叠加 4 类 patch：
 #   1. 技能 filesystem 提供者（consumer，注入 ctx.skills）：挂载本包 skills/ 目录
@@ -58,7 +58,7 @@
           provider: !!js "process.env.LUNHENG_AUDIT_PROVIDER || (() => { throw new Error('LUNHENG_AUDIT_PROVIDER 未设置') })()"
           model: !!js "process.env.LUNHENG_AUDIT_MODEL || 'deepseek-v4-pro'"
 
-# ── 5. 标准（DSH 默认）— 论衡示例预设（v2.5.2-dsh.9 实测 OK）──────────────
+# ── 5. 标准（DSH 默认）— 论衡示例预设（v2.5.2-dsh.10 实测 OK）──────────────
 # DSH 默认包含 dsh-base / dsh-web-app / dsh-agent-presets/standard；
 # 论衡不重写 standard 全部内容，只通过上述 insert: 列表叠加分档 subagent 工具。
 # examples/preset/ 目录只保留 preset.yml（分档说明）+ README.md（安装指南）；

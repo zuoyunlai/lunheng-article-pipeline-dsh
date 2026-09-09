@@ -1,26 +1,20 @@
 # Contributing / 维护指南
 
-## 仓库关系
+## 仓库定位
 
-本仓库是「论衡」的 **DeepSeek Harness（dsh）bundle 端口**。OpenClaw 原版在独立仓库维护：
+本仓库是「论衡」的 **DeepSeek Harness（dsh）独立 bundle 技能包**——技能本体位于 `skills/lunheng-article-pipeline/`，机制文档、脚本、示例与发布均在本仓库内独立维护，不依赖外部上游仓库。
 
-- OpenClaw 原版（正典）：`github.com/zuoyunlai/lunheng-article-pipeline`
-- DSH bundle（本仓库）：`github.com/zuoyunlai/lunheng-article-pipeline-dsh`
+## 版本号约定
 
-版本号约定：正典 `X.Y.Z` → DSH bundle `X.Y.Z-dsh.N`（`-dsh.N` 标记第 N 次 DSH 适配）。
+主版本沿用语义化版本基线 `2.5.2`，DSH 迭代以 `-dsh.N` 后缀递增——`-dsh.N` 标记第 N 次 DSH 迭代发布。
 
-## 升级流程
+## 升级流程（发布新版本时）
 
-1. 更新 OpenClaw 原版（正典）并升版本；
-2. 将正典的变更**翻译成 DSH 表述**合并进本仓库的 `skills/lunheng-article-pipeline/`：
-   - `sessions_spawn` → `subagent`；`sessions_yield` → 等完成通知；`sessions_history/list` → `list_agents`
-   - `tavily_search/extract` → `web_search`（`site:` 限定站点）
-   - `update_plan` → `todo_write`；`image_generate` → SVG 矢量风 / 投喂
-   - `exec`/`apply_patch` → `pwsh`/`bash` / `edit`；`pipeline/README.md` → `references/pipeline-readme.md`
-   - 「五要素」→「六要素」；「G0-G10」→「G0-G11」
-3. 同步 `package.json` / `SKILL.md` 的版本号；
-4. `dsh --profile web --dump-config` 验证 bundle 行生效；
-5. 提交并打 tag `vX.Y.Z-dsh.N`。
+1. 在 `skills/lunheng-article-pipeline/` 下完成机制/角色卡/脚本的修改；
+2. 同步版本号：`package.json` 的 `version` 与 `SKILL.md`（frontmatter `version` + 首部版本行）必须一致；
+3. 在技能包根运行一致性检查：`node scripts/consistency-check.mjs`，**exit 0 才可提交**；
+4. 更新 `CHANGELOG.md`，记录本次迭代要点；
+5. 提交并打 tag `vX.Y.Z-dsh.N`，推送仓库。
 
 ## 发布
 

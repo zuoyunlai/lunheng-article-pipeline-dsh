@@ -6,11 +6,7 @@
 
 ## 版本号为什么是 2.5.2-dsh.N？
 
-`-dsh.N` 标记第 N 次 DSH 适配，对应 OpenClaw 正典 2.5.2。DSH 版与 OpenClaw 版分离维护，版本号不共享；正典升级时 DSH 版跟随同步（见 `CONTRIBUTING.md`）。
-
-## 和 OpenClaw 原版的关系？
-
-OpenClaw 原版在 `github.com/zuoyunlai/lunheng-article-pipeline`，本仓库（`lunheng-article-pipeline-dsh`）是其 DSH 端口。维护与同步流程见 `CONTRIBUTING.md`。
+`-dsh.N` 标记第 N 次 DSH 迭代发布。DSH 版独立维护、独立版本线，版本号不与任何外部版本线共享。
 
 ## 封面为什么没有文生图？
 

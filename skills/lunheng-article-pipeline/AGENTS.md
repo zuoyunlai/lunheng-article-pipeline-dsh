@@ -1,6 +1,6 @@
 # AGENTS.md — 论文流水线操作手册
 
-> **DSH 适配**：本手册由 OpenClaw 版移植（对应正典 v2.5.2）。工具映射（`sessions_spawn`→`subagent`、`sessions_yield`→等完成通知、`sessions_history/list`→`list_agents`、`tavily_search/extract`→`web_search`/`read_page`、`update_plan`→`todo_write`、`image_generate`→SVG/投喂/图像 MCP、`exec`→`pwsh`/`bash`）与结构性差异见 `SKILL.md` 的「🔧 DSH 适配说明」章节。
+> **DSH 说明**：本手册为 DSH 原生手册。所用 DSH 工具：subagent / list_agents / send_message / web_search / read_page / todo_write / pwsh / edit / write 等；结构性差异见 `SKILL.md` 的「🔧 DSH 环境说明」章节。
 
 ## 启动时必读
 1. `references/pipeline-readme.md` — 流水线运行手册（含复制即用的派发话术）
@@ -33,7 +33,7 @@ Phase 5 终检     → T8 终检（独立角色，主控 T0 以 T8 身份亲完�
 - **子代理产出必须交交接报告**：六要素缺一不可（做了什么/产物在哪/怎么验证/已知问题/下一步 + 状态更新），长时间无产出则主控用 `list_agents` 查看并介入
 - **子代理失败三段式处理（v2.5.2-dsh.6 修订，教训：测试轮三检索员全失败 + T5 两次结算异常）**：① **落盘校验**——子代理 settle 后主控必跑 `read`/`ls` 检查关键产物是否存在+非空+结构完整，区分「写盘前失败」vs「写盘后失败」vs「任务完成」；② **产物完整 → `send_message` 续接原子代理**（DSH continuable，让它读已落盘产物确认后继续，**不是整任务重派**）；③ **产物缺失 → 才 spawn 新子代理重派**。**连续失败**：先查 DSH 环境（`list_agents` 看是否 `[ready]` 可续接；全失败可能 = DSH 进程状态问题，重启 dsh web 再试）。
 - **status.md / agents-log.md 分文件写入约定（v2.5.2-dsh.5 修订，教训：T1/T2 与主控并发写冲突）**：**状态文件分两层**——① `status.md` 由**主控独占写**（纯状态机表，不允许子代理直接 edit）；② `agents-log.md`（v2.5.2-dsh.5 新增，项目根目录）由**子代理追加写**（每完成一个角色任务追加一段 `### Tn 执行记录` 节）。子代理的进度/完成状态通过「交接报告 + 产物落盘」回报，主控在收到交接报告后统一更新 status.md。**两文件分离目的**：避免子代理追加触发主控 edit status.md 报「file changed since it was read」（测试轮多次遇到的小摩擦）。冲突已发生时：主控先 re-read 再 edit。
-- **执行约定（DSH 精简版）**：状态机 + 交接报告六要素 + G8 自检 + **进度播报三播报**（派发即播报 / 完成即转播 / 卡住即告警，防主人干等；无需心跳/分阶段 ack/预检/8 分钟硬卡；OpenClaw 完整韧化协议见 `references/_shared/执行韧化协议-v2.1.0.md`，仅作参考）
+- **执行约定（DSH 精简版）**：状态机 + 交接报告六要素 + G8 自检 + **进度播报三播报**（派发即播报 / 完成即转播 / 卡住即告警，防主人干等；无需心跳/分阶段 ack/预检/8 分钟硬卡；旧版完整韧化协议已移出仓库（历史见 git log），现行规则即本执行约定）
 - **阶段闸门（v2.2.1，v2.3.0 改 T5.5→T7.5）**：T2.5（检索→分析）与 T7.5（审计→终检）两道主控 checkpoint，用 `todo_write` + `read` 实现，**不绕过交接直接派发**
 - **M 门（v2.2.0+）**：终检前必读 `references/_shared/M-Gate-Algorithm.md`（**仅 T7/T8 读**——T1-T5/T9 不读，因 M-Form-1/3/5/7 + M-Exist-2 已脚本化为 `scripts/m-gate-check.mjs`，LLM 只判 M-Form-8 三角验证等不可脚本化项），按伪代码执行 M-Form/M-Exist/M-Integrity（M-Form 8 项含 M-Form-7 定稿文末白名单 v2.3.5 + M-Form-8 三角验证 v2.3.7），产出 `final/M-Gate-Report.json`，exit 0 才返回
 - **G14 中文 AI 痕迹闸（v2.4.0+）**：Phase 4.5 与 T6 并行触发（LLM 推理判定，零 exec），8 类检测维度，0-2 类 Pass / 3-4 类 Warning 触发 T5 修订 1 轮 / 5+ 类 Fail 触发 2 轮；主人在 Phase 0 可显式关闭。闸门定义 `references/gates/14-中文AI痕迹-gate.md`，检测器 `references/checkers/中文AI痕迹-checker.md`

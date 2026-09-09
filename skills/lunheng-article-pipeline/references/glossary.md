@@ -1,4 +1,4 @@
-> 版本：v2.5.2-dsh.9（DSH 适配版，对应正典 v2.5.2，自动同步 2026-08-25）
+> 版本：v2.5.2-dsh.10（DSH 原生插件，自动同步 2026-08-25）
 
 
 # 论衡核心概念词汇表
@@ -71,7 +71,7 @@
 - **判定**：26-30 accept / 21-25 minor revision / 16-20 major revision / <16 reject
 - **与 T6/T7 的边界**：T6 攻击论证强度（不评分）/ T7 核验形式/事实（不评分）/ **T9 评分**（不做形式核验）
 - **开关**（v2.5.2-dsh.8 定案）：默认选中；**学术论文 = 必选不可关**；行业分析/商业评论/公众号默认选中，主人 Phase 0 可取消（v2.4.6 旧口径「公众号默认关闭」废止——主人指令明确 T9 默认选中）
-- **借鉴**：academic-paper-reviewer（ClawHub 竞品，v2.4.0 论衡哲学化）
+- **借鉴**：academic-paper-reviewer（第三方同类插件，v2.4.0 论衡哲学化）
 - **不替代真实审稿**：仅 pre-submission 模拟，论文投稿后还需真实审稿人审稿
 
 ### T8 - 终检（独立角色，主控亲执行）
@@ -264,7 +264,7 @@
 3. **G8 自检**：完成后 grep「v2 稿/初稿/草稿/修订说明/据行业经验估算」有命中立即删除
 4. **超时介入（DSH 精简版）**：主控用 `list_agents` 查看子代理，长时间无产出即介入（无心跳/分阶段 ack/8 分钟硬卡）
 
-> OpenClaw 完整协议（心跳/分阶段 ack/模型健康度预检/8 分钟硬卡）见 `_shared/执行韧化协议-v2.1.0.md`，DSH 下仅作参考。
+> 旧版完整韧化协议已移出仓库（历史见 git log）；现行规则 = DSH 执行约定（状态机 + 交接报告六要素 + G8 自检 + 超时介入）。
 
 **模型分档（DSH）**：模型由 `settings.yaml` / 分档预设路由（`LUNHENG_*_PROVIDER` + `LUNHENG_*_MODEL` 覆盖），`subagent` 默认继承会话模型（单模型配置零配置可用）；未装预设全部回退 `subagent`，任何模型配置都能跑。
 
@@ -272,7 +272,7 @@
 
 ## 五、工具能力边界（DSH：v2.5.2-dsh.0 前置声明）
 
-> **DSH 说明**：DSH **无技能级工具白名单**——工具集由 Agent 预设（组合文件）决定，技能声明不了也禁不了工具。本节列项为原 OpenClaw 环境的对照说明，DSH 下模型可用工具以当前会话预设为准（standard 预设含 read/write/edit/web_search/read_page/todo_write/subagent/list_agents/pwsh/bash 等）。
+> **DSH 说明**：DSH **无技能级工具白名单**——工具集由 Agent 预设（组合文件）决定，技能声明不了也禁不了工具。本节列项为历史环境的对照说明，DSH 下模型可用工具以当前会话预设为准（standard 预设含 read/write/edit/web_search/read_page/todo_write/subagent/list_agents/pwsh/bash 等）。
 
 ### ✅ 可以使用的工具（DSH standard 预设）
 - **文件操作**：read / write / edit
@@ -288,7 +288,7 @@
 
 ### ℹ️ 关键澄清
 - **M 门算法**：主控 LLM 通过 `read` 读取算法文档，按伪代码**推理判定**；机械判定项（M-Form-1/3/5/7 + M-Exist-2）走 `scripts/m-gate-check.mjs`
-- **shell 使用（v2.5.2-dsh.4 审计修订）**：论衡**不是零 exec**——主控按需执行随包 7 个 `scripts/*.mjs` + 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等）；算法文档中的 `grep`/`diff`/`sha256sum`/`wc` 等示例命令是给人类主人手动复核的参考，agent 优先用白名单脚本与 read 工具（正典 v2.5.2 净化版中的「（检查）」占位符同样按此处理）
+- **shell 使用（v2.5.2-dsh.4 审计修订）**：论衡**不是零 exec**——主控按需执行随包 7 个 `scripts/*.mjs` + 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等）；算法文档中的 `grep`/`diff`/`sha256sum`/`wc` 等示例命令是给人类主人手动复核的参考，agent 优先用白名单脚本与 read 工具（版本基线发布版中的「（检查）」占位符同样按此处理）
 - **主流程**：LLM 推理 + 文件读写 + Web 检索 + 白名单脚本；除白名单外默认不执行任意 shell 命令（经主人同意除外）
 
 ---
@@ -298,7 +298,7 @@
 ### 教训编号规则
 - **编号不可回收**：即使教训过时，编号永久保留
 - **当前总数**：#1-#144（v2.3.14）
-- **存储位置**：``<OpenClaw数据目录>``
+- **存储位置**：``<DSH 数据目录>``
 
 ### 教训分类（待实施 P1-2）
 - **A 类：架构设计**（#56, #60, #102 等）
@@ -312,7 +312,7 @@
 ## 七、版本号管理（5 层发布同步）
 
 > **真源唯一（v2.3.15 澄清）**：论衡只有一个真源——skill 目录 `references/`（见 §十一「真源 vs 副本」）。本节的「4 层」是**发布同步的 4 个目标**，不是 4 个真源。
-> **v2.4.0 更新**：原「5 层」→「4 层」——skill 化（v2.3.13）后论衡不再依赖 OpenClaw 配置（openclaw.json），原第 3 层取消。
+> **v2.4.0 更新**：原「5 层」→「4 层」——skill 化（v2.3.13）后论衡不再依赖外部 agent 配置，原第 3 层取消。
 
 ### 第 1 层：Git（真源版本控制）
 - **Commit**：`（维护由开发者完成，使用者无需 git 操作）
@@ -326,8 +326,8 @@
 - **GitHub Releases**：每版必建 `gh release create`（教训：v2.3.11 曾漏建）
 - repo description：`gh repo edit`（含版本号）
 
-### 第 4 层：ClawHub（净化包 + 扫描）
-- `clawhub publish` 上传 + security scan
+### 第 4 层：外部审计（发布包 + 扫描）
+- `外部审计 publish` 上传 + security scan
 
 ---
 
@@ -409,7 +409,7 @@
 
 ### 真源 vs 副本
 - **真源**：论衡 skill 目录 `references/`（本 skill 的流水线真源）
-- **副本**：ClawHub skill ZIP / GitHub 仓库
+- **副本**：发布渠道 ZIP / GitHub 仓库
 
 ### 蒸馏 vs 压缩
 - **蒸馏**（Distillation）：从日记忆提炼长期记忆（有损压缩）
