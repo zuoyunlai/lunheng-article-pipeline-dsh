@@ -67,9 +67,11 @@
 3. 主会话另行累计 input≈3.0M / cacheRead≈117.6M——主体为本超长会话的轮次/工具往返，与论文单次运行关系弱，未计入论文口径。
 4. 瘦身后 SKILL（33→16.9KB）与「读取纪律」已在本轮实际执行；精确的“同题对照降幅”需在 dsh.10 优化与旧版间做同题 A/B（待后续轮）。
 
-**工具问题（新增 P2 待修）**：
-- `scripts/token-cost.mjs` 假设旧版单文件 `storages/session_projcache.json`，新版为目录式每会话文件 → 需适配（或改用 `session_projcache/sessions/*.json`）；
-- `scripts/final-check.mjs` 向 count-chars 传目录导致 EISDIR、m-gate 参数不匹配 → 需适配新存储/路径约定。
+**工具适配（2026-09-09 已修，未发布）**：
+- `token-cost.mjs`：兼容新版目录式投影缓存（`storages/session_projcache/sessions/*.json`，保留旧单文件回退）并清理 `topMode` 死代码 —— 实测与手工读数一致；
+- `m-gate-check.mjs`：修复 M-Form-4/5 子串误报（`自主控制`/`板卡级别` 用负向前瞻）与 M-Form-8 编号章节标题豁免（去 `七、` 前缀后比对，结论/展望入豁免表）；
+- `final-check.mjs`：依赖上述两脚本 + `final/定稿.md` 与 `final/证据包/`（build-evidence-bundle 生成），test-paper-02 复跑 **exit 0**；
+- 附带约定：任务简报需含 `子问题 A/B/…` 与 `需找数据点 ≥N 条`（M-Integrity-1 机器可读）。
 
 ## 验收标准
 - 实测：同主题论文总 cacheRead/token 较优化前降幅可量化；

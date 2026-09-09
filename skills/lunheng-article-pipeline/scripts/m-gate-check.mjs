@@ -104,7 +104,7 @@ if (firstIdx === -1) {
 }
 
 // === M-Form-5 过程语言残留（v2.5.2-dsh.5 扩禁词清单：弱 AI 痕；v2.5.2-dsh.9 扩内部流程词）===
-const bannedBanned = /v\d+ 稿|初稿|草稿|修订说明|上一版|下一版|卡级|修卡|承重墙|承重案例|批注|待回查|审计环节|流水线|将在[^，。\n]{0,8}订正/g;
+const bannedBanned = /v\d+ 稿|初稿|草稿|修订说明|上一版|下一版|(?<!板)卡级|修卡|承重墙|承重案例|批注|待回查|审计环节|流水线|将在[^，。\n]{0,8}订正/g;
 const estRe = /据行业经验估算/g;
 const weakAITrend = /据可靠来源|据悉|据了解|研究显示|专家表示/g;
 const hits = (body.match(bannedBanned) || []);
@@ -140,7 +140,7 @@ const forPatternText = (() => {
 })();
 const forbiddenPatterns = [
   /T[0-9] (主控|文献|数据|分析|写手|审计|案例|批判|审稿)/g,
-  /(主控|文献检索员|数据检索员|分析员|写手|批判伙伴|审计员|审稿人|案例检索员)/g,
+  /((?<!自)主控|文献检索员|数据检索员|分析员|写手|批判伙伴|审计员|审稿人|案例检索员)/g,
   /论衡 (agent|流水线|技能|主控|测试轮)/g,
   /角色卡|任务书|六要素|交接报告|反哺报告|教训 #?\d+|Phase [0-9.]+/g,
   /批 v?\d+ 稿|初稿|草稿|定稿/g,
@@ -208,12 +208,13 @@ let mform8Findings = { L_missing: 0, weak: 0, total: 0, details: [] };
 try {
   // v2.5.2-dsh.5 修复：排除前置/收尾非论点段（摘要/关键词/引言/结语）——摘要与引言天然不引 [Lxx]
   // （引言以 [先xx] 声明原创性差异点，属论衡原创性机制而非论点论证），之前把「摘要」当正文段查 [Lxx] 导致恒 P0 误报。
-  const FRONT_BACK = ['摘要', '关键词', '引言', '结语'];
+  const FRONT_BACK = ['摘要', '关键词', '引言', '结语', '结论', '展望'];
   const sections = body.split(/^##\s+/m).filter((s) => s.trim().length > 0);
   for (const sec of sections.slice(0, 20)) {
     if (sec.length < 100) continue;
     const secTitle = sec.split('\n')[0].trim();
-    if (FRONT_BACK.some((t) => secTitle === t || secTitle.startsWith(t))) continue;
+    const titleNorm = secTitle.replace(/^[0-9一二三四五六七八九十]+\s*[、.．:：\s]+/u, '').replace(/[：:].*$/u, '').trim();
+    if (FRONT_BACK.some((t) => titleNorm === t || titleNorm.startsWith(t) || titleNorm.includes(t))) continue;
     mform8Findings.total++;
     const hasL = /\[L\d+\]/.test(sec);
     const hasD = /\[D\d+\]/.test(sec);
