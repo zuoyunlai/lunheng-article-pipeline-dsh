@@ -2,6 +2,16 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护，版本号以 -dsh.N 标记第 N 次迭代。
 
+## 2.5.2-dsh.11（2026-09-09）
+
+- **token/终检工具适配新版 DSH 存储 + 读取纪律落地**：
+  1. `token-cost.mjs`：兼容目录式投影缓存（`storages/session_projcache/sessions/*.json`，保留旧单文件回退），清理 `topMode` 死代码；
+  2. `m-gate-check.mjs`：修复 M-Form-4/5 子串误报（`自主控制`/`板卡级别` 负向前瞻）与 M-Form-8 编号章节标题豁免（结论/展望入豁免）；`final-check` test-paper-02 复跑 exit 0；
+  3. 任务简报约定：含 `子问题 A/B/…` 与 `需找数据点 ≥N 条`（M-Integrity-1 机器可读）；
+  4. 新增 `references/dispatch-cards.md`（T1-T9/G14 派发开工卡）并写入 pipeline-readme「共享读取纪律」：spawn prompt ≤800 字、禁复制角色卡全文；
+  5. SKILL.md 已拆分为入口精简版（33KB→16.9KB，前置于 dsh.10/dsh.11 发布内容）。
+- 版本号 **2.5.2-dsh.11**（npm tag `dsh` 与 `latest`）。
+
 ## 2.5.2-dsh.10（2026-09-08）
 
 - **独立化为 DSH 原生插件（脱离历史外部生态定位）**：
