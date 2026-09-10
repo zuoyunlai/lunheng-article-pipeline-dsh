@@ -5,12 +5,25 @@ on:
   pull_request:
 
 jobs:
+  # DSH 运行时下限为 Node 22.19+/24+（与 package.json 的 engines.node 一致）
   drift-check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '22.19'
       - name: 论衡一致性自检（P0-1 四类漂移）
         run: node skills/lunheng-article-pipeline/scripts/consistency-check.mjs
+
+  # 打包面检查：cordis.patch.yml 合法性 / 行 id 唯一 / dsh.bundle.patch 指向 /
+  # package.json 元数据 / 工程红线（与上面的 .md 漂移检查互补，互不重叠）
+  plugin-surface:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.19'
+      - name: 打包面检查（dsh-plugin-dev check，含纯 skill bundle 豁免）
+        run: node scripts/plugin-surface-check.mjs

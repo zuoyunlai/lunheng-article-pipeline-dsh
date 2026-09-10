@@ -2,6 +2,16 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护，版本号以 -dsh.N 标记第 N 次迭代。
 
+## 未发布（下次版本 bump 时定名）
+
+- **仓库级打包面检查接入 CI + engines 对齐 DSH 运行时下限**：
+  1. `package.json`：`engines.node` `>=20.6` → **`^22.19.0 || >=24.0.0`**（对齐 DSH 官方运行时下限 22.19+/24+；原范围还含不受支持的 21.x/23.x 分支）
+  2. CI：`node-version` 20 → `'22.19'`（与 engines 声明一致）；新增 `plugin-surface` job
+  3. 新增仓库根 `scripts/plugin-surface-check.mjs`（**CI 专用**：不在 `files` 发布白名单内、不入发布包，也不属于技能「随包脚本白名单」——它会 `npx -y` 拉取 `dsh-plugin-guide` 并执行外部包，不应扩大免授权执行面）：包装 `dsh-plugin-dev check`，把 cordis.patch.yml 合法性 / 行 id 唯一 / `dsh.bundle.patch` 指向 / package.json 元数据（engines、peers、files）/ 工程红线纳入门禁
+  4. 对纯 skill bundle 的两条「代码插件」模板假设（无 `main`、无 `lib`/`dist` 产物）声明**精确到子条件**的豁免：patch 文件或入口缺失等真实回归仍拦截（已用注入回归的对抗测试验证——豁免不掩盖回归，退出码 1）
+  5. 与 `consistency-check.mjs` 互补、互不重叠：后者覆盖技能内 .md 漂移，前者覆盖打包面与工程红线；CI 两道门并行
+  6. **待上游修复（`dsh-plugin-dev` v0.3.7 实测）**：① 复用真实 `DSH_HOME` 的 `compat` profile 并钉住上一轮临时 tarball 绝对路径 → 二次运行必然 ENOENT（与文档「干净临时 DSH_HOME」不符）；② 安装步骤超时中止后 CLI 自身挂起不退出。另：新建 profile 的 `allowBuilds` 五项为占位符字符串，需先填 `true` 原生构建才会执行
+
 ## 2.5.2-dsh.11（2026-09-09）
 
 - **token/终检工具适配新版 DSH 存储 + 读取纪律落地**：

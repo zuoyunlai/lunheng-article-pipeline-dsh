@@ -49,7 +49,7 @@ Phase 5 终检     → T8 终检（独立角色，主控 T0 以 T8 身份亲完�
 2. **改中**：用 `edit` 工具（精确 oldText 匹配），**不用 sed/awk/perl 直接写回原文件**
 3. **改后**：`wc -l` 对比 + `diff <file> <备份目录>/<file>.bak` 验证（不一致立即从 .bak 恢复）
 4. **跨文件 sync**：用 `cp` 不带任何转换，直接覆盖（skill 副本同步是 `references/` 路径映射）
-5. **验证**：本修改走完后必 `grep` 关键词 + 结构性 grep（如本手册的「## 交接报告」所有角色卡齐整性）；改论衡机制/文档后额外跑 `node scripts/consistency-check.mjs`（P0-1 四类漂移自动检测，exit 0 才提交）
+5. **验证**：本修改走完后必 `grep` 关键词 + 结构性 grep（如本手册的「## 交接报告」所有角色卡齐整性）；改论衡机制/文档后额外跑 `node scripts/consistency-check.mjs`（P0-1 四类漂移自动检测，exit 0 才提交）；**仓库级打包面检查**（cordis.patch.yml 合法性 / 行 id 唯一 / `dsh.bundle.patch` 指向 / package.json 元数据 / 工程红线，含纯 skill bundle 的两条已声明豁免）由 CI 的 `plugin-surface` job 承担，本地复现命令见 `.github/workflows/ci.yml` 与 CHANGELOG 同名条目
 
 ## 记忆文件（运行时由主控在项目目录创建，非技能包内置）
 - `memory/YYYY-MM-DD.md` — 每日日志（记结论不记过程）
