@@ -22,7 +22,15 @@
  *   node scripts/plugin-surface-check.mjs --json     # 额外打印原始 JSON 报告
  *   DSH_PLUGIN_DEV_SPEC=dsh-plugin-guide@latest node scripts/plugin-surface-check.mjs
  *
- * 失败即失败（fail-closed）：CLI 无法运行 / 输出不是合法 JSON → 退出码 1，不静默放行。
+ * CLI 获取策略（按序尝试，任一可用即止）：`DSH_PLUGIN_DEV_CLI` 环境变量 → 本地
+ * node_modules → `pnpm dlx` → `npx -y`。为什么不止一种：**npm 10.9.3（Node 22.19 自带）
+ * 无法安装本包**——dsh-plugin-guide 声明了 optional peerDependency
+ * （`@deepseek-ai/dsh`, `optional: true`），npm 10 的 arborist 在 #loadPeerSet 读取
+ * `edgesOut` 时崩溃，导致 npx / npm install 全部不可用；pnpm 的解析器不受影响。
+ * （CI 在 Node 22.19 上因此失败过一次，详见 CHANGELOG。）
+ *
+ * 失败即失败（fail-closed）：所有策略都拿不到合法 JSON → 退出码 1，不静默放行；同时输出
+ * GitHub Actions annotation（`::error::`），无需翻日志即可在 UI/API 看到失败原因。
  */
 
 import { spawnSync } from 'node:child_process'
@@ -51,16 +59,39 @@ const WAIVERS = [
 ]
 
 const wantJson = process.argv.includes('--json')
+const isCI = Boolean(process.env.GITHUB_ACTIONS)
+
+/** 输出 GitHub Actions annotation（让 CI 失败原因在 UI 与 API 可见，不必翻日志）。 */
+function annotate(level, message) {
+  if (!isCI) return
+  const one = String(message).replace(/\r?\n/g, ' ').trim()
+  if (one) console.log(`::${level}::${one.slice(0, 900)}`)
+}
 
 /** Windows 下 spawn 无法直接执行 .cmd，需要 shell，故自行加引号。 */
 function quote(s) {
   return /[\s"]/.test(s) ? `"${String(s).replace(/"/g, '\\"')}"` : s
 }
 
-function runCli() {
-  const cmd = ['npx', '-y', '-p', CLI_SPEC, 'dsh-plugin-dev', 'check', '--json', '--cwd', ROOT]
-    .map(quote)
-    .join(' ')
+/**
+ * CLI 获取策略（按序尝试）。pnpm 优先于 npx：见文件头对 npm 10.9.3 缺陷的说明。
+ * @returns {Array<{label: string, cmd: string}>}
+ */
+function strategies() {
+  const base = []
+  const explicit = process.env.DSH_PLUGIN_DEV_CLI
+  if (explicit) base.push({ label: 'DSH_PLUGIN_DEV_CLI', argv: ['node', quote(explicit)] })
+  const local = path.join(ROOT, 'node_modules', 'dsh-plugin-guide', 'bin', 'dsh-plugin-dev.js')
+  if (existsSync(local)) base.push({ label: '本地 node_modules', argv: ['node', quote(local)] })
+  base.push({ label: `pnpm dlx ${CLI_SPEC}`, argv: ['pnpm', 'dlx', CLI_SPEC] })
+  base.push({ label: `npx -y ${CLI_SPEC}`, argv: ['npx', '-y', CLI_SPEC] })
+  return base.map((s) => ({
+    label: s.label,
+    cmd: [...s.argv, 'check', '--json', '--cwd', quote(ROOT)].join(' '),
+  }))
+}
+
+function runCommand(cmd) {
   return spawnSync(cmd, {
     shell: true,
     cwd: ROOT,
@@ -68,6 +99,42 @@ function runCli() {
     timeout: TIMEOUT_MS,
     maxBuffer: 32 * 1024 * 1024,
   })
+}
+
+/** 依次尝试各获取策略，直到拿到可解析的报告；全败则 fail-closed。 */
+function resolveReport() {
+  const tried = []
+  for (const s of strategies()) {
+    const res = runCommand(s.cmd)
+    if (res.error) {
+      tried.push(`${s.label} → 无法执行：${res.error.message}`)
+      continue
+    }
+    const stdout = res.stdout ?? ''
+    const start = stdout.indexOf('{')
+    if (start < 0) {
+      const tail = String(res.stderr || stdout).trim().split('\n').slice(-2).join(' / ')
+      tried.push(`${s.label} → 未输出 JSON（退出码 ${res.status}）：${tail}`)
+      continue
+    }
+    let report
+    try {
+      report = JSON.parse(stdout.slice(start))
+    }
+    catch (err) {
+      tried.push(`${s.label} → JSON 解析失败：${err.message}`)
+      continue
+    }
+    if (!Array.isArray(report?.checks) || report.checks.length === 0) {
+      tried.push(`${s.label} → 报告里没有检查项（CLI 版本不兼容？）`)
+      continue
+    }
+    if (tried.length > 0) console.log(`（已跳过 ${tried.length} 个不可用策略，改用：${s.label}）\n`)
+    return { report, label: s.label }
+  }
+  annotate('error', '打包面检查无法完成：所有 CLI 获取策略均失败')
+  for (const t of tried) annotate('error', t)
+  fail('所有 CLI 获取策略均失败', tried.join('\n'))
 }
 
 /** 一个检查项的「有效问题」：有 detail 用 detail，否则用 message。 */
@@ -87,6 +154,7 @@ function blockingProblems(check) {
 }
 
 function fail(msg, extra) {
+  annotate('error', `打包面检查无法完成：${msg}`)
   console.error(`\n✗ 打包面检查无法完成：${msg}`)
   if (extra) console.error(String(extra).trim().split('\n').slice(-15).join('\n'))
   console.error('  （fail-closed：不因工具异常而静默放行）')
@@ -95,28 +163,14 @@ function fail(msg, extra) {
 
 if (!existsSync(path.join(ROOT, 'package.json'))) fail(`仓库根未找到 package.json：${ROOT}`)
 
-const res = runCli()
-if (res.error) fail(`无法执行 npx（${CLI_SPEC}）：${res.error.message}`)
+const { report, label } = resolveReport()
 
-const stdout = res.stdout ?? ''
-const start = stdout.indexOf('{')
-if (start < 0) fail(`CLI 输出不是 JSON（退出码 ${res.status}）`, res.stderr || stdout)
-
-let report
-try {
-  report = JSON.parse(stdout.slice(start))
-}
-catch (err) {
-  fail(`JSON 解析失败：${err.message}`, stdout.slice(0, 800))
-}
-
-const checks = Array.isArray(report?.checks) ? report.checks : []
-if (checks.length === 0) fail('报告里没有任何检查项（CLI 版本不兼容？）', stdout.slice(0, 400))
+const checks = report.checks
 
 if (wantJson) console.log(JSON.stringify(report, null, 2))
 
 const SYMBOL = { pass: '✓', fail: '✗', warn: '!', skip: '-' }
-console.log(`\n论衡打包面检查（dsh-plugin-dev via ${CLI_SPEC}）· 目标：${ROOT}\n`)
+console.log(`\n论衡打包面检查（dsh-plugin-dev via ${label}）· 目标：${ROOT}\n`)
 
 const blocking = []
 const waivedUsed = new Set()
@@ -148,6 +202,8 @@ const warned = checks.filter((c) => c.status === 'warn').length
 if (blocking.length > 0) {
   console.log(`\n✗ 打包面检查未通过：${blocking.length} 个未豁免问题（fail ${failed} / pass ${passed} / warn ${warned}）`)
   for (const b of blocking) console.log(`  - ${b}`)
+  annotate('error', `打包面检查未通过：${blocking.length} 个未豁免问题`)
+  for (const b of blocking.slice(0, 5)) annotate('error', b)
   process.exit(1)
 }
 

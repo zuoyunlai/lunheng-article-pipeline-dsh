@@ -18,12 +18,15 @@ jobs:
 
   # 打包面检查：cordis.patch.yml 合法性 / 行 id 唯一 / dsh.bundle.patch 指向 /
   # package.json 元数据 / 工程红线（与上面的 .md 漂移检查互补，互不重叠）
+  # node-version 用 24 而非 22.19：Node 22.19 自带的 npm 10.9.3 无法安装本检查所用的
+  # dsh-plugin-guide（该包声明 optional peerDependency，npm 10 的 arborist 崩）——
+  # 运行时下限仍由上面的 drift-check（22.19）覆盖；脚本自身另走 pnpm dlx 优先的多策略。
   plugin-surface:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22.19'
+          node-version: '24'
       - name: 打包面检查（dsh-plugin-dev check，含纯 skill bundle 豁免）
         run: node scripts/plugin-surface-check.mjs

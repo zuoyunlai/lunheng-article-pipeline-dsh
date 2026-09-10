@@ -12,6 +12,7 @@
   5. 与 `consistency-check.mjs` 互补、互不重叠：后者覆盖技能内 .md 漂移，前者覆盖打包面与工程红线；CI 两道门并行
   6. **待上游修复（`dsh-plugin-dev` v0.3.7 实测）**：① 复用真实 `DSH_HOME` 的 `compat` profile 并钉住上一轮临时 tarball 绝对路径 → 二次运行必然 ENOENT（与文档「干净临时 DSH_HOME」不符）；② 安装步骤超时中止后 CLI 自身挂起不退出。另：新建 profile 的 `allowBuilds` 五项为占位符字符串，需先填 `true` 原生构建才会执行
   7. **修复 dsh.12 遗留**：SKILL.md「随包脚本白名单」8 → 9（补列 `normalize-trust-level`，复核版本标为 dsh.12）——该脚本 dsh.12 已随包却未入白名单，按白名单语义主控本需请示才能调用；`.dsh` 镜像 SKILL.md 同步（17076 B 逐字节一致）
+  8. **CI 首跑失败与修复（真实根因：npm 10 的可选 peer 缺陷，与论衡无关）**：`plugin-surface` job 在 Node 22.19 上 5 秒即败（`Process completed with exit code 1`，job 日志下载需 admin 权限，只能靠 annotation 排障）。排查链：干净克隆 + 冷缓存本地通过 → 排除工作区/缓存；本机下载 Node 22.19 复现 → 定位 **npm 10.9.3 无法安装 `dsh-plugin-guide@0.3.7`**：该包声明 optional peerDependency（`@deepseek-ai/dsh`，`optional: true`），npm 10 的 arborist 在 `#loadPeerSet` 读 `edgesOut` 崩溃；同为 npm 10 时装 `lodash` 正常 → 属该包 peer 图特有，npx / `npm install` 全不可用。修复：① 脚本改**多策略获取 CLI**（`DSH_PLUGIN_DEV_CLI` → 本地 node_modules → `pnpm dlx` 优先（pnpm 解析器不受影响）→ `npx -y`），并在失败时打印 GitHub annotation `::error::`（失败原因无需下载日志即可见）；② `plugin-surface` job 改用 Node 24（npm 11/12 正常），运行时下限仍由 `drift-check`（22.19）覆盖。本地实测：Node 24 ✅、Node 22.19 ✅（走 pnpm dlx）、全策略失败 ✅（fail-closed 退出码 1）
 
 ## 2.5.2-dsh.12（2026-09-09）
 
