@@ -37,7 +37,7 @@ description: "论衡：DSH 原生多 Agent 深度长文流水线（学术论文/
 
 **论衡技能的工具边界（DSH）**：
 - ✅ **可调用**：当前会话预设提供的工具（standard 预设含 read / write / edit / web_search / read_page / todo_write / subagent / list_agents / pwsh / bash 等）——DSH 无技能级白名单，工具集由 Agent 预设决定。
-- ✅ **随包脚本白名单（v2.5.2-dsh.10 复核为 8 个）**：`scripts/*.mjs` = consistency-check / m-gate-check / md2html / pdfcheck / token-cost / count-chars / build-evidence-bundle / final-check + 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等）——**受限 shell 使用**，非「零 exec」；其余命令须经主人同意。
+- ✅ **随包脚本白名单（v2.5.2-dsh.12 复核为 9 个）**：`scripts/*.mjs` = consistency-check / m-gate-check / md2html / pdfcheck / token-cost / count-chars / build-evidence-bundle / final-check / normalize-trust-level + 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等）——**受限 shell 使用**，非「零 exec」；其余命令须经主人同意。
 - ❌ **不做**：凭据访问 / 浏览器自动化 / 定时任务（除白名单脚本与验证命令外，主控默认不执行任意 shell，LLM 推理判定）。
 - ℹ️ **M 门**：机械项（M-Form-1/3/5/7 + M-Exist-2）走 `scripts/m-gate-check.mjs`；不可脚本化项（如 M-Form-8 三角验证）由主控 LLM 用 `read` 读算法文档推理判定（文档内 shell 示例仅供人类复核）。
 

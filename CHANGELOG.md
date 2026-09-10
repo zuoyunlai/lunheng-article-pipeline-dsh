@@ -11,6 +11,18 @@
   4. 对纯 skill bundle 的两条「代码插件」模板假设（无 `main`、无 `lib`/`dist` 产物）声明**精确到子条件**的豁免：patch 文件或入口缺失等真实回归仍拦截（已用注入回归的对抗测试验证——豁免不掩盖回归，退出码 1）
   5. 与 `consistency-check.mjs` 互补、互不重叠：后者覆盖技能内 .md 漂移，前者覆盖打包面与工程红线；CI 两道门并行
   6. **待上游修复（`dsh-plugin-dev` v0.3.7 实测）**：① 复用真实 `DSH_HOME` 的 `compat` profile 并钉住上一轮临时 tarball 绝对路径 → 二次运行必然 ENOENT（与文档「干净临时 DSH_HOME」不符）；② 安装步骤超时中止后 CLI 自身挂起不退出。另：新建 profile 的 `allowBuilds` 五项为占位符字符串，需先填 `true` 原生构建才会执行
+  7. **修复 dsh.12 遗留**：SKILL.md「随包脚本白名单」8 → 9（补列 `normalize-trust-level`，复核版本标为 dsh.12）——该脚本 dsh.12 已随包却未入白名单，按白名单语义主控本需请示才能调用；`.dsh` 镜像 SKILL.md 同步（17076 B 逐字节一致）
+
+## 2.5.2-dsh.12（2026-09-09）
+
+> 本节为**事后补记**：发布时的 bump 提交标题声称含 CHANGELOG，但 `git show --stat 0d2e64c` 显示 41 个文件里并无 CHANGELOG.md——段落实为缺失，现按提交事实补齐。
+
+- **数据卡信任级别规范化工具 + 版本发布**：
+  1. 新增 `scripts/normalize-trust-level.mjs`（34 行）：与 M 门 M-Form-6 同款切块（`cardRe`）为每条 `[Dxx]` 追加独立行 `信任级别：<已发布|主人投喂|二手转引>（备注）`；已合规条目跳过，块内无 token 时回退「已发布」
+  2. 配套迁移 test-paper-01/02 数据卡信任级别为独立行 → **M-Form-6 清零**（数据卡在工作区侧，未入库；该提交仅含新增脚本 1 个文件）
+  3. 版本头/日期措辞统一：41 个文件（README / cordis.patch.yml / docs / examples / QUICKSTART / SKILL / references 等）纯版本发布改动，49 insertions / 49 deletions
+- 版本号 **2.5.2-dsh.12**
+- **遗留（已在本文件「未发布」段修复）**：SKILL.md「随包脚本白名单」未随新增脚本同步——仍写「8 个」且不含 `normalize-trust-level`
 
 ## 2.5.2-dsh.11（2026-09-09）
 
