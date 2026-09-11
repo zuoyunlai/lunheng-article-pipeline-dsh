@@ -210,6 +210,14 @@
 
 **本次未做（如实记录）**：① 「平台-gig 191M → 80-90M 省 50-55%」的**同题 A/B** 仍未做（需旧版复跑同题，成本高），该数字属**预测**；② `token-budget.mjs` 的 token 仍是**估算区间**（未内置 tokenizer）——要计费值请用 `token-cost.mjs` 读真实 `tokenUsage`。
 
+### 发布运维（v2.5.2-dsh.17 发布实测，2026-09-11）
+
+- **已发布**：`2.5.2-dsh.17` —— GitHub Actions **trustedPublisher（OIDC）** 发布、**含 provenance**（SLSA v1 attestation）、`gitHead = 179725d`（与 tag 提交 `v2.5.2-dsh.17` 一致）、**99 个文件**（较 dsh.16 的 89 个**新增 10 个**：`references/_shared/模型路由.md` + 7 个模板（`素材加载清单` / `闸门记录` / `交付说明` / `模型路由表` / `进展-主人版` / `主人投喂清单` / `style-baseline`）+ `scripts/model-routing.mjs` + `scripts/token-budget.mjs`）、`dist-tags.dsh → 2.5.2-dsh.17` ✓。
+- **发布后审计窗口经验证有效**：本次 registry 元数据传播用了 **13 次轮询（≈3 分钟）**才取到 `gitHead`，且与 HEAD **完全一致** ✓ —— dsh.16 首跑时 120s 窗口不够导致误报红灯，当时把窗口改为 30×15s（≈7.5 分钟）的判断在本版得到验证。
+- **`latest` dist-tag 待维护者手工同步**（OIDC 令牌**无权**重写 `latest`）：当前 `dist-tags = { latest: 2.5.2-dsh.16, dsh: 2.5.2-dsh.17 }`。执行一次
+  `npm dist-tag add lunheng-article-pipeline@2.5.2-dsh.17 latest` 即可让裸包名与 `@latest` 解析到本版。**仍建议**配置 `NPM_TOKEN` secret 让 publish.yml 的 dist-tag 步骤自动接管，否则每次发版都要手工补一步。
+- **安装面验证**（发布后实拉）：`npm pack lunheng-article-pipeline@2.5.2-dsh.17` → **99 文件**、`scripts/` **11 个入口**（含新增的 `token-budget.mjs`）✓。
+
 ## 2.5.2-dsh.16（2026-09-11）— SVG 图件链路：从「有机制无门」到可验证
 
 **背景**：一次图件链路专项审计（问题：「论衡生成 SVG 数据图表的功能是否运行有效？」）的结论是——**能生成，但不「有效」**：机制齐全（模板 5 图型 + 图位 + 主控手写 SVG + 导出路径），但**校验层几乎为零**，唯一触及 SVG 的脚本对多图会产出静默错误，且这条链路**从未在真实运行中被验证过**（仓库内无任何产出记录）。本版把这条链路补成「有机制、有机械门、有实测记录」。
