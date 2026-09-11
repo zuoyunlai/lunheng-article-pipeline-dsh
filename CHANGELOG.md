@@ -6,7 +6,7 @@
 
 - **dsh.15 发布后遗留（属随包脚本改动，须下次 bump 才能发布，故不在 dsh.15 内改）**：
   1. `token-cost.mjs`：本版新增的「未知参数一律 exit 1」让 `--help` 报 `未知参数: --help`（旧版是静默忽略、随后走用法提示）——改进方向：报错时**附带打印用法行**，或显式支持 `-h/--help`。
-- **运维待办（非代码）**：`latest` dist-tag 仍指 `2.5.2-dsh.13`（OIDC 令牌无权重写 `latest`）——维护者手工执行 `npm dist-tag add lunheng-article-pipeline@2.5.2-dsh.15 latest`，或配置 `NPM_TOKEN` secret 让 publish.yml 的 dist-tag 步骤接管。
+- **运维待办 → 已完成（2026-09-11，维护者手工执行）**：`dist-tags = { latest: 2.5.2-dsh.15, dsh: 2.5.2-dsh.15 }` ✓ —— 裸包名 `npm i lunheng-article-pipeline` 现在也拿到 dsh.15（`npm view lunheng-article-pipeline version` → `2.5.2-dsh.15`），`gitHead = f3c4c1c` 与 tag 提交一致、含 provenance。**仍建议**配置 `NPM_TOKEN` secret 让 publish.yml 的 dist-tag 步骤自动接管（OIDC 令牌无权重写 `latest`，否则每次发版都要手工补一步）。
 
 ## 2.5.2-dsh.15（2026-09-11）— 执行效率 / 人在环 / token 可观测修订
 
