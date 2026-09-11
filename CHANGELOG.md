@@ -2,6 +2,13 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护，版本号以 -dsh.N 标记第 N 次迭代。
 
+## 未发布（下次版本 bump 时定名）
+
+- **发布流水线运维（dsh.14 发布实测反哺，两处均为 CI-only 变更、不影响已发布产物）**：
+  1. **`2.5.2-dsh.14` 已发布**（2026-09-11T01:34Z）：`_npmUser = GitHub Actions` + `trustedPublisher`、**含 provenance**、`gitHead = 020e60a`（与 tag 提交一致）、88 个文件（较 dsh.13 多 `README.en.md` 与 `SECURITY.md`）、`dist-tags.dsh → 2.5.2-dsh.14` ✓。
+  2. **修正「发布后审计」的过急断言**：registry 元数据有传播延迟——publish 刚成功就 `npm view gitHead` 会拿到空值，旧写法误判「产物与 tag 不对应」并红灯（dsh.14 首跑即如此，事后核验 gitHead 完全正确）。现改为**轮询等待（≤120s）**，并区分「取不到」与「取到但不一致」。
+- **待办**：`latest` dist-tag 同步至 dsh.14（需维护者 granular token 或手工 `npm dist-tag add lunheng-article-pipeline@2.5.2-dsh.14 latest`）。
+
 ## 2.5.2-dsh.14（2026-09-11）
 
 - **发布运维（v2.5.2-dsh.13 发布实测反哺）**：

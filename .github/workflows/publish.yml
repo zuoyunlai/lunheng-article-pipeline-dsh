@@ -96,20 +96,33 @@ jobs:
           fi
           npm view "$PKG" dist-tags --json
 
-      # 发布后审计（v2.5.2-dsh.13 新增）：核对 npm 上该版本的 gitHead 与本次提交一致、dist-tag 指向本版本
-      # `always()` 确保即使中间某步失败（如缺 token 的告警步）也仍执行审计——但只在**发布本身成功**时才有意义
+      # 发布后审计：核对 npm 上该版本的 gitHead 与本次提交一致、dist-tag 指向本版本。
+      # v2.5.2-dsh.14 修（实测教训）：**registry 元数据有传播延迟**——publish 步骤刚成功就 `npm view gitHead`
+      # 会拿到空值，旧写法因此误判「产物与 tag 不对应」并红灯（dsh.14 首跑即如此，事后核验 gitHead 其实完全正确）。
+      # 现改为**轮询等待**（最多 120s），并把「取不到」与「取到但不一致」区分开。
+      # `always()` 确保即使中间某步失败（如缺 token 的告警步）也仍执行审计——但只在**发布本身成功**时才有意义。
       - name: 发布后审计（gitHead / dist-tags 断言）
         if: always() && startsWith(github.ref, 'refs/tags/') && steps.guard.outputs.skip == 'false' && steps.publish.outcome == 'success'
         run: |
           VER="$(node -p "require('./package.json').version")"
           HEAD="$(git rev-parse HEAD)"
-          GITHEAD="$(npm view "$PKG@$VER" gitHead)"
+          GITHEAD=""
+          for i in $(seq 1 12); do
+            GITHEAD="$(npm view "$PKG@$VER" gitHead 2>/dev/null | tr -d '[:space:]')"
+            [ -n "$GITHEAD" ] && break
+            echo "registry 元数据尚未就绪，等待中（第 $i/12 次，每次 10s）…"
+            sleep 10
+          done
           echo "npm gitHead=$GITHEAD  repo HEAD=$HEAD"
+          if [ -z "$GITHEAD" ]; then
+            echo "::error::120s 内未取到 npm 上 $VER 的 gitHead —— registry 元数据缺失（发布本身已成功，请人工核对）"
+            exit 1
+          fi
           if [ "$GITHEAD" != "$HEAD" ]; then
             echo "::error::npm 上 $VER 的 gitHead($GITHEAD) ≠ 本次提交($HEAD) —— 发布产物与 tag 不对应"
             exit 1
           fi
-          DSH_TAG="$(npm view "$PKG" dist-tags.dsh)"
+          DSH_TAG="$(npm view "$PKG" dist-tags.dsh 2>/dev/null | tr -d '[:space:]')"
           echo "dist-tags.dsh=$DSH_TAG"
           if [ "$DSH_TAG" != "$VER" ]; then
             echo "::warning::dist-tags.dsh=$DSH_TAG ≠ $VER（若已配置 NPM_TOKEN 则不应发生）"
