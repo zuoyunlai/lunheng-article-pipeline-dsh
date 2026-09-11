@@ -1,7 +1,10 @@
-// 论衡 M 门机械化预检脚本（v2.5.2-dsh 补丁 + v2.5.2-dsh.5 重大增强 + v2.5.2-dsh.16 加图件闭环）
+// 论衡 M 门机械化预检脚本（v2.5.2-dsh 补丁 + v2.5.2-dsh.5 重大增强 + v2.5.2-dsh.16 加图件闭环 + v2.5.2-dsh.17 加 4 项）
 //   v2.5.2-dsh:   M-Form-1/3/5/7 + M-Exist-2 纯正则/哈希判定
 //   v2.5.2-dsh.5: M 门全脚本化（T8 仅复核 M-Form-8 承重墙质量 + M-Integrity 跨文件判断）
-//   v2.5.2-dsh.16: 新增 M-Form-9 图件闭环（[图N] ↔ final/图件/ ↔ 图上数字）→ M 门 16 项（脚本 13 项 + M-Integrity-2 主控）
+//   v2.5.2-dsh.16: 新增 M-Form-9 图件闭环（[图N] ↔ final/图件/ ↔ 图上数字）
+//   v2.5.2-dsh.17: 新增 M-Form-10 索引段完整性 / M-Form-11 素材按需加载闭环 /
+//                  M-Exist-4 审计条目闭环 / M-Exist-5 阶段闸门记录表 /
+//                  M-Exist-6 审稿报告与期刊匹配 / M-Exist-7 交付说明字段齐备 → M 门 20 项（脚本 19 项 + M-Integrity-2 主控）
 // 用法: node m-gate-check.mjs <final/定稿.md> <final/证据包目录> [--summary] [--fig-dir <图件目录>] [--report <path>]
 //   --summary：仅输出聚合统计（total/pass/p0/p1/p2/soft/skips）+ 硬失败项；省略通过项 details[]（省 ~80% 输出字节，机器可读友好）
 //   --fig-dir：图件目录（缺省自动推 <定稿目录>/图件）
@@ -9,10 +12,15 @@
 // 严重度评级（v2.5.2-dsh.5 引入）：gate fail 时按 P0/P1/P2 分级；单子项失败子项数 ≤2 → P2 可放行
 import { readFileSync, readdirSync, statSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { refsOf, dataCardIds } from './_lib/refs.mjs';                 // 引用编号口径真源
 import { TRUST_COMPLIANT_RE, TRUST_LOOSE_RE } from './_lib/trust.mjs'; // 信任级别口径真源
 import { splitCard } from './_lib/cards.mjs';                          // 卡片切块口径真源
 import { analyzeSvg, svgTextNumbers, figureNoOf, figurePlaceholders } from './_lib/svg.mjs'; // SVG 图件口径真源
+
+// 本脚本自身所在目录（用于读取技能包内的真源，如闸门记录模板 / 期刊数据库；v2.5.2-dsh.17）
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const skillRoot = join(scriptDir, '..');
 
 const args = process.argv.slice(2);
 const wantSummary = args.includes('--summary');
@@ -420,6 +428,106 @@ try {
   results.push({ gate: 'M-Form-10 索引段完整性', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
 }
 
+// === M-Form-11 素材按需加载闭环（v2.5.2-dsh.17 新增）===
+// 依据：05 卡要求 T5「先读各卡索引段 → 按大纲映射表**只读相关条目、不读全文**」，这条 token 优化的
+//   收益此前**完全靠写手自述**——「按需加载」与「整卡通读」在产物上完全同形，无从核对（整卡通读
+//   正是 T5 cacheRead 占子代理总量 76% 的成因）。本项用一份便宜留痕（`analysis/素材加载清单.md`）
+//   把「到底加载了哪些编号」变成事实，三层判定：
+//     ① 定稿正文引用的编号必须都在「## 已加载」集 → 否则「引了没读 = 引用不可信」（硬）
+//     ② 「已加载」的编号必须在卡片正文条目里有对应 → 否则「幽灵编号 = 清单编造」（硬）
+//     ③ 软提示：「读了不用」的编号（浪费上下文）/ 加载率 >90%（选择性不足，疑似整卡通读）
+try {
+  const projDir11 = dirname(dirname(draftPath));
+  const listPath11 = [
+    join(projDir11, 'analysis', '素材加载清单.md'),
+    join(evDir, '素材加载清单.md'),
+  ].find((p) => existsSync(p)) || null;
+  const cited11 = new Set(
+    [...refsOf(body, 'L'), ...refsOf(body, 'D'), ...refsOf(body, 'C')].map(norm),
+  );
+  // 卡片侧真源：正文条目编号（幽灵判定）+ 索引段编号（选择性判定）
+  const cardEntryIds = new Set();
+  const cardIndexIds = new Set();
+  for (const [name, rel] of [['文献卡.md', 'literature/文献卡.md'], ['数据卡.md', 'data/数据卡.md'], ['案例卡.md', 'cases/案例卡.md']]) {
+    let p = join(evDir, name);
+    if (!existsSync(p)) { const alt = join(projDir11, rel); p = existsSync(alt) ? alt : null; }
+    if (!p) continue;
+    const t = readFileSync(p, 'utf8');
+    for (const m of t.matchAll(/^#{2,4}\s*\[([LDC])(\d+)\]/gm)) cardEntryIds.add(`[${m[1]}${m[2]}]`);
+    const ls = t.split('\n');
+    const si = ls.findIndex((l) => /^##\s*📇\s*索引段/.test(l));
+    if (si !== -1) {
+      let ei = ls.findIndex((l, i) => i > si && /^##\s/.test(l));
+      if (ei === -1) ei = ls.length;
+      for (const m of ls.slice(si + 1, ei).join('\n').matchAll(/\[([LDC])(\d+)\]/g)) cardIndexIds.add(`[${m[1]}${m[2]}]`);
+    }
+  }
+  const findings11 = [];
+  const soft11 = [];
+  if (!listPath11) {
+    if (cited11.size === 0) {
+      results.push({ gate: 'M-Form-11 素材按需加载闭环', pass: true, detail: 'N/A：正文无素材引用且无加载清单（尚未进入写作阶段）', severity: '通过' });
+    } else {
+      findings11.push(`正文引用 ${cited11.size} 个素材编号，却无 analysis/素材加载清单.md——「按需加载」无留痕，无法区分「按需」与「整卡通读」`);
+      results.push({
+        gate: 'M-Form-11 素材按需加载闭环',
+        pass: false,
+        detail: findings11.join('；'),
+        severity: 'P1',
+      });
+    }
+  } else {
+    const lt = readFileSync(listPath11, 'utf8');
+    const ls2 = lt.split('\n');
+    // 只取「## 已加载」段内的编号（「已跳过」等其它段不计入加载集，允许写编号解释为何不读）
+    const hIdx11 = ls2.findIndex((l) => /^#{2,4}\s*已加载/.test(l));
+    let loadedSeg;
+    if (hIdx11 === -1) {
+      findings11.push('加载清单缺「## 已加载」段标题（机检无从定位加载集）');
+      loadedSeg = lt;
+    } else {
+      let e11 = ls2.findIndex((l, i) => i > hIdx11 && /^#{2,4}\s/.test(l));
+      if (e11 === -1) e11 = ls2.length;
+      loadedSeg = ls2.slice(hIdx11 + 1, e11).join('\n');
+    }
+    const loaded11 = new Set([...loadedSeg.matchAll(/\[([LDC])(\d+)\]/g)].map((m) => `[${m[1]}${m[2]}]`));
+    const notLoaded = [...cited11].filter((x) => !loaded11.has(x));
+    const ghost = [...loaded11].filter((x) => cardEntryIds.size > 0 && !cardEntryIds.has(x));
+    const unused = [...loaded11].filter((x) => !cited11.has(x));
+    if (notLoaded.length) findings11.push(`正文引用但清单未记「已加载」：${notLoaded.slice(0, 6).join(',')}（引了没读 = 引用不可信）`);
+    if (ghost.length) findings11.push(`清单里的编号在卡片中无对应条目：${ghost.slice(0, 6).join(',')}（清单与素材卡不一致）`);
+    if (unused.length) soft11.push(`${unused.length} 个编号「读了但正文未引用」（${unused.slice(0, 5).join(',')}）——白读即为上下文浪费`);
+    if (cardIndexIds.size >= 20 && loaded11.size / cardIndexIds.size > 0.9) {
+      soft11.push(`已加载 ${loaded11.size} / 索引 ${cardIndexIds.size} 条（>90%）——选择性不足，疑似整卡通读（该条优化即为此设）`);
+    }
+    const ver11 = lt.match(/对应(?:正文)?版本[：:]\s*v?(\d+)/);
+    if (ver11) {
+      try {
+        const draftsDir = join(projDir11, 'drafts');
+        const newestDraft = existsSync(draftsDir)
+          ? Math.max(0, ...readdirSync(draftsDir).map((f) => Number((f.match(/^初稿-v(\d+)\.md$/) || [])[1]) || 0))
+          : 0;
+        if (newestDraft && Number(ver11[1]) < newestDraft) {
+          soft11.push(`清单标注「对应正文版本 v${ver11[1]}」落后于最新初稿 v${newestDraft}——留痕未随修订轮刷新`);
+        }
+      } catch { /* best-effort */ }
+    }
+    const hard11 = findings11.length > 0;
+    results.push({
+      gate: 'M-Form-11 素材按需加载闭环',
+      pass: !hard11 && soft11.length === 0,
+      detail: [
+        `已加载 ${loaded11.size} 条 / 正文引用 ${cited11.size} 个`,
+        hard11 ? `硬问题：${findings11.slice(0, 3).join('；')}` : '引用 ⊆ 已加载，加载集有卡片支撑',
+        soft11.length ? `软提示：${soft11.slice(0, 2).join('；')}` : '',
+      ].filter(Boolean).join(' ｜ '),
+      severity: hard11 ? (notLoaded.length + ghost.length > 3 ? 'P0' : 'P1') : (soft11.length ? 'P2' : '通过'),
+    });
+  }
+} catch (e) {
+  results.push({ gate: 'M-Form-11 素材按需加载闭环', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
+}
+
 // === M-Exist-4 审计条目闭环（v2.5.2-dsh.17 新增）===
 // 依据：07 卡早已规定「打回修订必须附结构化修订任务书（编号/严重度/位置/动作/验收标准/关闭状态）」，
 //   但**没有任何脚本校验**；且 dsh.17 引入复核报告后出现「关闭状态」**双真源**（审计报告表列 ↔ 复核报告）。
@@ -509,6 +617,296 @@ try {
   }
 } catch (e) {
   results.push({ gate: 'M-Exist-4 审计条目闭环', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
+}
+
+// === M-Exist-5 阶段闸门记录表（v2.5.2-dsh.17 新增）===
+// 依据：两道主控闸门（T2.5 / T7.5）此前只有「主控 LLM 兜底执行」的伪代码，**没有任何落盘表单**——
+//   闸门过没过、依据是什么，只留在会话里；M-Integrity-2 的 8 步判定也没有可核对的输入。
+//   本项把闸门变成结构化记录（`audits/闸门记录-T2.5.md` / `audits/闸门记录-T7.5.md`，
+//   真源 = `references/templates/闸门记录-template.md`，本节要求的检查项**从模板派生**，不写死）：
+//     · 每道闸门的模板检查项都必须有对应行（漏项 = 闸门形同虚设）
+//     · 「实据」列必须是**路径 / exit code / 命令**，不接受「已检查」这类自述（闸门留机械证据）
+//     · 结论词固定（✓ / ✗ / N/A）；判 ✗ 的行必须写失败原因
+//     · T7.5 另与 final/M-Gate-Report.json 对账：全 ✓ 却报告 exit≠0 = 自相矛盾（P0）
+// 触发条件：项目已进入 Phase 4（audits/审计报告-*.md 存在）→ 两表单必须有；否则 N/A。
+try {
+  const projDir5 = dirname(dirname(draftPath));
+  const auditsDir5 = [join(projDir5, 'audits'), join(dirname(draftPath), 'audits')].find((d) => existsSync(d)) || null;
+  const hasAudit5 = !!auditsDir5 && readdirSync(auditsDir5).some((f) => /^审计报告-v\d+\.md$/.test(f));
+  const tplPath5 = join(skillRoot, 'references', 'templates', '闸门记录-template.md');
+  if (!hasAudit5) {
+    results.push({ gate: 'M-Exist-5 阶段闸门记录表', pass: true, detail: 'N/A：尚无审计报告（未进入 Phase 4，闸门记录留待 T7.5）', severity: '通过' });
+  } else if (!auditsDir5) {
+    results.push({ gate: 'M-Exist-5 阶段闸门记录表', pass: false, detail: '找不到 audits/ 目录，无法定位闸门记录', severity: 'P1' });
+  } else {
+    const tplItems = { 'T2.5': [], 'T7.5': [] };
+    const normLabel = (s) => String(s).replace(/[\s*`（）()【】\[\]：:、，,。.／/\-—_|]/g, '');
+    // 模板表格首列 = 必需检查项（真源在模板；表格之外的行不计入 —— 防图例/说明表被当成检查项）
+    if (existsSync(tplPath5)) {
+      const tl = readFileSync(tplPath5, 'utf8').split('\n');
+      let cur5 = null;
+      let inTable5 = false;
+      for (const l of tl) {
+        const h = l.match(/^#{2,4}\s*(T2\.5|T7\.5)\b/);
+        if (h) { cur5 = h[1]; inTable5 = false; continue; }
+        if (/^#{2,4}\s/.test(l)) { cur5 = null; inTable5 = false; continue; }   // 进入下一节 → 停止收集
+        if (!cur5) continue;
+        if (!/^\s*\|/.test(l)) { if (inTable5) break; continue; }               // 表格结束后不再收集
+        inTable5 = true;
+        const c = l.split('|').slice(1, -1).map((x) => x.trim());
+        if (!c.length || c.every((x) => /^:?-{2,}:?$/.test(x) || x === '')) continue;
+        if (/检查项|^检查$/.test(c[0])) continue;                               // 表头
+        if (c[0]) tplItems[cur5].push(c[0]);
+      }
+    }
+    const findings5 = [];
+    const soft5 = [];
+    const detailBits = [];
+    let contradict5 = false;   // 闸门结论 ↔ M 门报告自相矛盾 = 单独定为 P0（不随条数降级）
+    for (const gateId of ['T2.5', 'T7.5']) {
+      const fp = join(auditsDir5, `闸门记录-${gateId}.md`);
+      if (!existsSync(fp)) {
+        findings5.push(`缺 audits/闸门记录-${gateId}.md（${gateId === 'T2.5' ? 'T2 数据检索 → T4 前' : 'T7 审计 → T8 终检前'}的闸门无落盘留痕）`);
+        continue;
+      }
+      const ls5 = readFileSync(fp, 'utf8').split('\n');
+      const hIdx5 = ls5.findIndex((l) => /^\s*\|/.test(l) && /检查项/.test(l));
+      if (hIdx5 === -1) { findings5.push(`闸门记录-${gateId}.md 缺「检查项」表格（表头须含 检查项 / 实据 / 结论）`); continue; }
+      const header5 = ls5[hIdx5].split('|').slice(1, -1).map((x) => x.trim());
+      const ci5 = (kw) => header5.findIndex((h) => kw.test(h));
+      const iItem = ci5(/检查项/), iEv = ci5(/实据|证据|依据/), iRes = ci5(/结论|判定/), iWhy = ci5(/失败原因|原因|备注/);
+      if (iEv === -1 || iRes === -1) { findings5.push(`闸门记录-${gateId}.md 表头须含「实据」「结论」列（现有：${header5.join(' / ')}）`); continue; }
+      const rows5 = [];
+      for (let i = hIdx5 + 1; i < ls5.length; i++) {
+        const l = ls5[i];
+        if (/^#{2,4}\s/.test(l)) break;
+        if (!/^\s*\|/.test(l)) continue;
+        const c = l.split('|').slice(1, -1).map((x) => x.trim());
+        if (c.every((x) => /^:?-{2,}:?$/.test(x) || x === '')) continue;
+        rows5.push(c);
+      }
+      const seen = rows5.map((r) => normLabel(r[iItem] || ''));
+      for (const need of tplItems[gateId]) {
+        const nn = normLabel(need);
+        const hit = seen.some((s) => s && (s.includes(nn) || nn.includes(s)));
+        if (!hit) findings5.push(`${gateId} 检查项缺「${need}」（模板为真源，逐项都要有行）`);
+      }
+      let resPass = 0;
+      for (const r of rows5) {
+        const item = (r[iItem] || '').trim();
+        if (!item) continue;
+        const ev = (r[iEv] || '').replace(/<[^>]*>/g, '').trim();   // 去掉 <…> 模板占位符：未填 = 不是证据
+        const res = (r[iRes] || '').trim();
+        // 实据必须是机械证据：路径 / exit code / 命令 / 哈希；纯自述不接受
+        const evLooksReal = /[\\/]|exit|node\s|m-gate|sha256|\.json|\.md|\.svg|\d/.test(ev) && !/^(已|未)?(检查|核对|确认|自查)(完)?(毕|过)?$/.test(ev.replace(/\s/g, ''));
+        if (ev.replace(/[\s.。…-]/g, '').length < 3 || !evLooksReal) {
+          findings5.push(`${gateId}「${item}」的实据列不是机械证据（须写路径 / exit code / 命令，而非「已检查」自述）：现为「${ev.slice(0, 24)}」`);
+        }
+        if (!/^(✓|✅|通过|✗|❌|失败|不通过|N\/A|N／A|-)$/.test(res)) {
+          soft5.push(`${gateId}「${item}」结论词「${res.slice(0, 12)}」非固定词（应为 ✓ / ✗ / N/A）`);
+        } else if (/^(✓|✅|通过)$/.test(res)) {
+          resPass++;
+        } else if (/^(✗|❌|失败|不通过)$/.test(res)) {
+          if (iWhy === -1 || (r[iWhy] || '').trim().length < 4) findings5.push(`${gateId}「${item}」判 ✗ 但未写失败原因`);
+        }
+      }
+      if (rows5.length === 0) findings5.push(`闸门记录-${gateId}.md 表格无有效行`);
+      detailBits.push(`${gateId} ${rows5.length} 行（✓ ${resPass}）`);
+      // T7.5 ↔ M-Gate-Report.json 对账（自相矛盾即 P0）
+      if (gateId === 'T7.5' && rows5.length > 0 && resPass === rows5.length) {
+        const repPath5 = [join(dirname(draftPath), 'M-Gate-Report.json'), join(projDir5, 'final', 'M-Gate-Report.json')].find((p) => existsSync(p));
+        if (repPath5) {
+          try {
+            const rj = JSON.parse(readFileSync(repPath5, 'utf8'));
+            if (typeof rj.exit === 'number' && rj.exit !== 0) {
+              contradict5 = true;
+              findings5.push(`闸门记录-T7.5 全判 ✓，但 M-Gate-Report.json 的 exit = ${rj.exit}（非 0）——闸门结论与 M 门报告自相矛盾（P0）`);
+            }
+          } catch { soft5.push('M-Gate-Report.json 无法解析，未做闸门↔报告对账'); }
+        }
+      }
+    }
+    if (!existsSync(tplPath5)) soft5.push('未找到 references/templates/闸门记录-template.md（检查项清单降级为仅结构校验）');
+    const hard5 = findings5.length > 0;
+    results.push({
+      gate: 'M-Exist-5 阶段闸门记录表',
+      pass: !hard5 && soft5.length === 0,
+      detail: [
+        detailBits.join(' / ') || '两表单均缺失',
+        hard5 ? `硬问题：${findings5.slice(0, 3).join('；')}` : '闸门记录齐备且实据为机械证据',
+        soft5.length ? `软提示：${soft5.slice(0, 2).join('；')}` : '',
+      ].filter(Boolean).join(' ｜ '),
+      severity: hard5 ? (contradict5 || findings5.length > 3 ? 'P0' : 'P1') : (soft5.length ? 'P2' : '通过'),
+    });
+  }
+} catch (e) {
+  results.push({ gate: 'M-Exist-5 阶段闸门记录表', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
+}
+
+// === M-Exist-6 审稿报告与期刊匹配（v2.5.2-dsh.17 新增）===
+// 依据：T9 审稿报告的 6 维度评分 + 建议词 + 期刊匹配表此前**零机械校验**——总评分可以是 6 个维度
+//   凑不出来的数，期刊推荐可以是《期刊数据库》里根本不存在的刊名，综合匹配度可以不由公式得出。
+//   本项做三件事：① 总分 == 6 维之和（算术自洽）；② 建议词与总分区间一致；③ 期刊匹配表**可复算**
+//   （综合 = 0.5×主题 + 0.3×风格 + 0.2×归一化，容差 ±1.5）且刊名出自 `期刊数据库.md`。
+// 触发条件：存在 audits/审稿报告-vN.md（T9 可选，未启用 → N/A）。
+try {
+  const projDir6 = dirname(dirname(draftPath));
+  const auditsDir6 = [join(projDir6, 'audits'), join(dirname(draftPath), 'audits')].find((d) => existsSync(d)) || null;
+  const latest6 = (() => {
+    if (!auditsDir6) return null;
+    const c = readdirSync(auditsDir6)
+      .map((f) => ({ f, m: f.match(/^审稿报告-v(\d+)\.md$/) }))
+      .filter((x) => x.m).map((x) => ({ f: x.f, n: Number(x.m[1]) }))
+      .sort((a, b) => b.n - a.n);
+    return c.length ? join(auditsDir6, c[0].f) : null;
+  })();
+  if (!latest6) {
+    results.push({ gate: 'M-Exist-6 审稿报告与期刊匹配', pass: true, detail: 'N/A：无审稿报告（T9 未启用或未到 Phase 4.5）', severity: '通过' });
+  } else {
+    const rt = readFileSync(latest6, 'utf8');
+    const findings6 = [];
+    const soft6 = [];
+    const DIMS = ['原创性', '方法论', '证据强度', '论证结构', '写作质量', '引文规范'];
+    const dimScores = [];
+    for (const d of DIMS) {
+      const m = rt.match(new RegExp(`${d}[^\\n]*?(\\d)\\s*/\\s*5`)) || rt.match(new RegExp(`${d}\\s*\\|\\s*(\\d)\\s*/\\s*5`));
+      if (!m) soft6.push(`未找到「${d}」的 x/5 评分（模板 6 维须齐全）`);
+      else dimScores.push(Number(m[1]));
+    }
+    const total6 = rt.match(/总评分[^\d]{0,8}(\d{1,2})\s*\/\s*30/) || rt.match(/总分[^\d]{0,12}(\d{1,2})\s*\/\s*30/);
+    const declaredTotal = total6 ? Number(total6[1]) : null;
+    if (declaredTotal === null) findings6.push('审稿报告缺「总评分 XX/30」');
+    else if (dimScores.length === 6) {
+      const sum = dimScores.reduce((a, b) => a + b, 0);
+      if (sum !== declaredTotal) findings6.push(`总评分 ${declaredTotal}/30 ≠ 6 维之和 ${sum}（${DIMS.map((d, i) => `${d}${dimScores[i]}`).join('+')}）——评分表与总分自相矛盾`);
+    }
+    if (declaredTotal !== null) {
+      const expect = declaredTotal >= 26 ? /accept/i : declaredTotal >= 21 ? /minor/i : declaredTotal >= 16 ? /major/i : /reject/i;
+      if (!expect.test(rt)) soft6.push(`总分 ${declaredTotal} 对应的建议词（${expect.source.replace(/[/i]/g, '')}）在报告中未出现——建议与区间可能不一致`);
+    }
+    // 期刊匹配表
+    const jLines = rt.split('\n');
+    const jHead = jLines.findIndex((l) => /^\s*\|/.test(l) && /综合匹配度/.test(l));
+    let jRows = [];
+    if (jHead !== -1) {
+      for (let i = jHead + 1; i < jLines.length; i++) {
+        const l = jLines[i];
+        if (!/^\s*\|/.test(l)) break;
+        const c = l.split('|').slice(1, -1).map((x) => x.trim());
+        if (c.every((x) => /^:?-{2,}:?$/.test(x) || x === '')) continue;
+        jRows.push(c);
+      }
+    }
+    const wantJournal = /启用期刊匹配|期刊匹配助手/.test(rt) || (() => {
+      try { return /启用期刊匹配/.test(readFileSync(join(projDir6, '01-任务简报.md'), 'utf8')); } catch { return false; }
+    })();
+    if (jHead === -1) {
+      if (wantJournal) findings6.push('任务简报已启用期刊匹配，但审稿报告无「综合匹配度」表（Top 3 缺失）');
+    } else {
+      if (jRows.length !== 3) soft6.push(`期刊匹配表 ${jRows.length} 行（应为 Top 3）`);
+      if (jRows.length === 0) findings6.push('期刊匹配表存在表头但无数据行');
+      const head6 = jLines[jHead].split('|').slice(1, -1).map((x) => x.trim());
+      const col6 = (kw) => head6.findIndex((h) => kw.test(h));
+      const iComp = col6(/综合/), iTheme = col6(/主题/), iStyle = col6(/风格/), iCycle = col6(/审稿周期/), iWhy2 = col6(/推荐理由|理由/);
+      let dbText = '';
+      try { dbText = readFileSync(join(skillRoot, 'references', '_shared', '期刊数据库.md'), 'utf8'); } catch { /* 降级 */ }
+      const pct = (s) => { const m = String(s || '').match(/(\d+(?:\.\d+)?)\s*%/); return m ? Number(m[1]) : null; };
+      for (const r of jRows) {
+        const name = (r[0] || '').replace(/[*《》\s]/g, '');
+        if (!name) { findings6.push('期刊匹配表有行缺刊名'); continue; }
+        if (dbText && !dbText.includes(name.slice(0, Math.max(2, name.length - 1)))) {
+          soft6.push(`「${r[0]}」在 期刊数据库.md 中查不到（疑似杜撰刊名，须以数据库为准）`);
+        }
+        const comp = pct(r[iComp]), theme = pct(r[iTheme]), style = pct(r[iStyle]);
+        if (comp === null || theme === null || style === null) {
+          findings6.push(`「${r[0]}」匹配度列缺百分比（综合/主题/风格都要有）`);
+        } else if (declaredTotal !== null) {
+          const normScore = Math.max(0, Math.min(1, (declaredTotal - 16) / 14));
+          const expectComp = 0.5 * theme + 0.3 * style + 0.2 * normScore * 100;
+          if (Math.abs(comp - expectComp) > 1.5) {
+            findings6.push(`「${r[0]}」综合匹配度 ${comp}% ≠ 复算值 ${expectComp.toFixed(1)}%（=0.5×${theme} + 0.3×${style} + 0.2×${(normScore * 100).toFixed(1)}）——数字不可复算`);
+          }
+        }
+        if (iCycle !== -1 && !/[0-9]/.test(r[iCycle] || '')) soft6.push(`「${r[0]}」审稿周期为空或无数值`);
+        if (iWhy2 !== -1 && (r[iWhy2] || '').replace(/[\s.。…-]/g, '').length < 6) soft6.push(`「${r[0]}」推荐理由过短（须含主题契合 + 风格契合 + 周期依据）`);
+      }
+    }
+    const hard6 = findings6.length > 0;
+    results.push({
+      gate: 'M-Exist-6 审稿报告与期刊匹配',
+      pass: !hard6 && soft6.length === 0,
+      detail: [
+        `${latest6.split(/[\\/]/).pop()}｜6 维 ${dimScores.length}/6｜总评分 ${declaredTotal ?? '缺失'}${jHead !== -1 ? `｜期刊表 ${jRows.length} 行` : ''}`,
+        hard6 ? `硬问题：${findings6.slice(0, 3).join('；')}` : '评分自洽、期刊匹配可复算',
+        soft6.length ? `软提示：${soft6.slice(0, 2).join('；')}` : '',
+      ].filter(Boolean).join(' ｜ '),
+      severity: hard6 ? (findings6.length > 2 ? 'P0' : 'P1') : (soft6.length ? 'P2' : '通过'),
+    });
+  }
+} catch (e) {
+  results.push({ gate: 'M-Exist-6 审稿报告与期刊匹配', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
+}
+
+// === M-Exist-7 交付说明字段齐备（v2.5.2-dsh.17 新增）===
+// 依据：`deliverables.md` 定义了 `final/交付说明.md` 的 **11 个固定字段**（T8 终检时机械填充），
+//   但既无模板也无机检——每个项目的交付说明字段名与齐备程度全凭主控临场发挥，主人复核时
+//   缺项不可发现（「固定字段」名不副实）。本项逐字段核验：存在 + 非空 + 证据包指纹占位符 +
+//   主人决策记录覆盖四门（缺回填须显式标注「未留痕」，不得静默省略）。
+// 触发条件：final/交付说明.md 存在（T8 已开始交付）；不存在 → N/A。
+try {
+  const ddPath = join(dirname(draftPath), '交付说明.md');
+  const FIELD_KEYWORDS = [
+    ['路径', /路径/], ['图件清单', /图件清单/], ['遗留风险', /遗留风险/],
+    ['人工核验项', /人工核验/], ['数据溯源', /数据溯源/], ['成本指标', /成本指标/],
+    ['反哺清单', /反哺清单|待 merge|待merge/], ['AI 使用披露', /AI 使用披露/],
+    ['终检结论', /终检结论/], ['投稿就绪', /投稿就绪/], ['主人决策记录', /主人决策记录/],
+  ];
+  if (!existsSync(ddPath)) {
+    results.push({ gate: 'M-Exist-7 交付说明字段齐备', pass: true, detail: 'N/A：尚无 final/交付说明.md（T8 尚未开始交付）', severity: '通过' });
+  } else {
+    const dt = readFileSync(ddPath, 'utf8');
+    const dl = dt.split('\n');
+    const findings7 = [];
+    const soft7 = [];
+    for (const [label, re] of FIELD_KEYWORDS) {
+      const i = dl.findIndex((l) => /^#{1,6}\s|^\s*\*\*|^\s*\|/.test(l) && re.test(l));
+      if (i === -1) { findings7.push(`缺固定字段「${label}」（deliverables.md 定为必填）`); continue; }
+      // 字段正文 = 到下一个标题/表头行为止
+      let j = dl.length;
+      for (let k = i + 1; k < dl.length; k++) { if (/^#{1,6}\s/.test(dl[k])) { j = k; break; } }
+      const raw7 = dl.slice(i + 1, j).join('\n');
+      const bodyTxt = raw7.replace(/<[^>]*>/g, '').replace(/[|\s\-—–:：]/g, '');
+      // ① 仍含 <…> 模板占位符 → 该字段没填（模板明确要求不得留占位符）
+      // ② 去掉占位符后为空 → 阈值 1（允许「无」「未启用」这类**合法的一句话答复**）
+      if (/<[^>]{1,60}>/.test(raw7)) findings7.push(`字段「${label}」仍含模板占位符（<…> 未填）`);
+      else if (bodyTxt.length < 1) findings7.push(`字段「${label}」为空（仅标题无内容）`);
+    }
+    if (!/\[哈希校验待主人回填\]|sha256\s*[:：]?\s*[0-9a-f]{16,}/i.test(dt)) {
+      findings7.push('缺「证据包指纹」段或 sha256 占位符 `[哈希校验待主人回填]`（M-Integrity-2 步骤 4 的输入）');
+    }
+    const dec = dl.findIndex((l) => /主人决策记录/.test(l));
+    if (dec !== -1) {
+      let dj = dl.length;
+      for (let k = dec + 1; k < dl.length; k++) { if (/^#{1,6}\s/.test(dl[k])) { dj = k; break; } }
+      const decTxt = dl.slice(dec, dj).join('\n');
+      const missingGate = ['Phase 0', '2.5', '3.5', 'Phase 5'].filter((g) => !decTxt.includes(g));
+      if (missingGate.length) findings7.push(`主人决策记录未覆盖：${missingGate.join(' / ')}（缺回填的门须显式标注「未留痕」，不得省略）`);
+      else if (!/未留痕|通过|驳回/.test(decTxt)) soft7.push('主人决策记录既无决策词也无「未留痕」标注');
+    }
+    const hard7 = findings7.length > 0;
+    results.push({
+      gate: 'M-Exist-7 交付说明字段齐备',
+      pass: !hard7 && soft7.length === 0,
+      detail: [
+        `12 固定字段（11 字段 + 证据包指纹）实到 ${FIELD_KEYWORDS.length - findings7.filter((x) => x.startsWith('缺固定字段')).length}/11${/\[哈希校验待主人回填\]|sha256\s*[:：]?\s*[0-9a-f]{16,}/i.test(dt) ? ' + 指纹✓' : ' + 指纹✗'}`,
+        hard7 ? `硬问题：${findings7.slice(0, 3).join('；')}` : '固定字段齐备且有内容',
+        soft7.length ? `软提示：${soft7.slice(0, 2).join('；')}` : '',
+      ].filter(Boolean).join(' ｜ '),
+      severity: hard7 ? (findings7.length > 3 ? 'P0' : 'P1') : (soft7.length ? 'P2' : '通过'),
+    });
+  }
+} catch (e) {
+  results.push({ gate: 'M-Exist-7 交付说明字段齐备', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
 }
 
 // === M-Exist-2 证据包完整性 ===

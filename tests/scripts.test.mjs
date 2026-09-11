@@ -322,7 +322,7 @@ test('m-gate-check M-Form-9：未启用配图记 N/A 不算失败（配图默认
   assert.ok(item, '应存在 M-Form-9 项')
   assert.equal(item.pass, true, '无图位无图件 → N/A pass')
   assert.match(item.detail, /N\/A/)
-  assert.equal(j.total, 15, '脚本机械项应为 15 项（M-Form 1-10 + M-Exist 1-4 + M-Integrity-1）')
+  assert.equal(j.total, 19, '脚本机械项应为 19 项（M-Form 1-11 + M-Exist 1-7 + M-Integrity-1）')
   rmSync(d, { recursive: true, force: true })
 })
 
@@ -385,9 +385,9 @@ test('consistency-check ⑱：图件路径口径与「宣称的图件门」必�
   // ① 旧图件路径口径
   const t8 = join(R, 'references', 'agents', '08-终检-finalizer.md')
   writeFileSync(t8, readFileSync(t8, 'utf8') + '\n> 图件落在 `final/图N-标题.svg`。\n')
-  // ② M 门计数漂移（把 14 项写回 13 项）
+  // ② M 门计数漂移（把 20 项写回 13 项）
   const gl = join(R, 'references', 'glossary.md')
-  writeFileSync(gl, readFileSync(gl, 'utf8').replace('M 门 16 项复核', 'M 门 13 项复核'))
+  writeFileSync(gl, readFileSync(gl, 'utf8').replace('M 门 20 项复核', 'M 门 13 项复核'))
   const r = run([join(R, 'scripts', 'consistency-check.mjs')])
   assert.equal(r.code, 1, '注入漂移后必须 exit 1')
   assert.match(r.out, /图件路径口径漂移/, '⑱ 必须捕获旧图件路径')
@@ -472,33 +472,46 @@ test('consistency-check ⑳+⑥b：M 门文档节头项数 / 编号跳号 / 文�
   }
   const GA = ['references', '_shared', 'M-Gate-Algorithm.md']
 
-  // ① 已知漂移形态：节头括注写 9 项，节内已 10 个 ### 子节，且括注带「，含 …」说明
+  // ① 已知漂移形态：节头括注写 10 项，节内已 11 个 ### 子节，且括注带「，含 …」说明
   //    ——这正是 ⑥b 首版正则（要求「项」紧跟右括号）静默漏检、⑳ 必须抓住的形态
   {
     const { d, R } = mkRepo()
     const p = join(R, ...GA)
-    writeFileSync(p, readFileSync(p, 'utf8').replace('## M-Form 形式合规门（10 项，含', '## M-Form 形式合规门（9 项，含'))
+    writeFileSync(p, readFileSync(p, 'utf8').replace('## M-Form 形式合规门（11 项，含', '## M-Form 形式合规门（10 项，含'))
     const r = run([join(R, 'scripts', 'consistency-check.mjs')])
     assert.equal(r.code, 1, '节头项数过期必须 exit 1')
     assert.match(r.out, /M 门文档自洽/, '⑳ 必须按节内 ### 子节数抓出节头过期')
     assert.match(r.out, /括注项数/, '⑥b 放宽后的中文括注规则也必须命中带说明的写法')
     rmSync(d, { recursive: true, force: true })
   }
-  // ② 编号跳号（把 M-Exist-3 改名成 M-Exist-5 → 1,2,5,4 非连续）
+  // ①b dsh.17 三次收紧的写法：「M 门 N 项中 M 项已脚本化」与「**N 项**：M-Form 1-」
+  {
+    const { d, R } = mkRepo()
+    const ag = join(R, 'AGENTS.md')
+    writeFileSync(ag, readFileSync(ag, 'utf8').replace('M 门 20 项中 19 项已脚本化', 'M 门 20 项中 14 项已脚本化'))
+    const fin = join(R, 'references', 'agents', '08-终检-finalizer.md')
+    writeFileSync(fin, readFileSync(fin, 'utf8').replace('（**19 项**：M-Form 1-', '（**15 项**：M-Form 1-'))
+    const r = run([join(R, 'scripts', 'consistency-check.mjs')])
+    assert.equal(r.code, 1, '旧写法漂移必须 exit 1')
+    assert.match(r.out, /已脚本化项数/, '⑥b 必须捕获「N 项中 M 项已脚本化」写法')
+    assert.match(r.out, /「\*\*N 项\*\*：M-Form 1-」写法/, '⑥b 必须捕获「**N 项**：M-Form 1-」写法')
+    rmSync(d, { recursive: true, force: true })
+  }
+  // ② 编号跳号（把 M-Exist-3 改名成 M-Exist-9 → 1,2,9,4,5,6,7 非连续）
   {
     const { d, R } = mkRepo()
     const p = join(R, ...GA)
-    writeFileSync(p, readFileSync(p, 'utf8').replace('### M-Exist-3:', '### M-Exist-5:'))
+    writeFileSync(p, readFileSync(p, 'utf8').replace('### M-Exist-3:', '### M-Exist-9:'))
     const r = run([join(R, 'scripts', 'consistency-check.mjs')])
     assert.equal(r.code, 1, '编号跳号必须 exit 1')
     assert.match(r.out, /M 门编号跳号/, '⑳ 必须抓出子节编号不连续')
     rmSync(d, { recursive: true, force: true })
   }
-  // ③ 文档与脚本加项不同步（文档删掉 M-Form-10 节体标题 → 文档 9 ≠ 脚本 10）
+  // ③ 文档与脚本加项不同步（文档删掉 M-Form-11 节体标题 → 文档 10 ≠ 脚本 11）
   {
     const { d, R } = mkRepo()
     const p = join(R, ...GA)
-    writeFileSync(p, readFileSync(p, 'utf8').replace('### M-Form-10: 索引段完整性（v2.5.2-dsh.17 新增）', '### 索引段完整性（v2.5.2-dsh.17 新增）'))
+    writeFileSync(p, readFileSync(p, 'utf8').replace('### M-Form-11: 素材按需加载闭环（v2.5.2-dsh.17 新增）', '### 素材按需加载闭环（v2.5.2-dsh.17 新增）'))
     const r = run([join(R, 'scripts', 'consistency-check.mjs')])
     assert.equal(r.code, 1, '文档↔脚本不同步必须 exit 1')
     assert.match(r.out, /M 门文档↔脚本不一致/, '⑳ 必须抓出「文档项数 ≠ 脚本 gate 标签数」')
@@ -517,7 +530,7 @@ test('consistency-check ⑳+⑥b：M 门文档节头项数 / 编号跳号 / 文�
   }
 })
 
-test('consistency-check ⑳：真源仓库自身必须自洽（M-Form 10 / M-Exist 4 / M-Integrity 2 == 节内子节数）', () => {
+test('consistency-check ⑳：真源仓库自身必须自洽（M-Form 11 / M-Exist 7 / M-Integrity 2 == 节内子节数）', () => {
   const SK = join(ROOT, 'skills', 'lunheng-article-pipeline')
   const ga = readFileSync(join(SK, 'references', '_shared', 'M-Gate-Algorithm.md'), 'utf8')
   const secs = {}
@@ -528,12 +541,272 @@ test('consistency-check ⑳：真源仓库自身必须自洽（M-Form 10 / M-Exi
     const s = l.match(/^### M-(?:Form|Exist|Integrity)-\d+:/)
     if (s && cur) secs[cur].subs.push(s[0])
   }
-  assert.equal(secs.Form.declared, 10, 'M-Form 节头应写 10 项')
-  assert.equal(secs.Form.subs.length, 10, 'M-Form 应有 10 个 ### 子节')
-  assert.equal(secs.Exist.declared, 4, 'M-Exist 节头应写 4 项')
-  assert.equal(secs.Exist.subs.length, 4, 'M-Exist 应有 4 个 ### 子节')
+  assert.equal(secs.Form.declared, 11, 'M-Form 节头应写 11 项')
+  assert.equal(secs.Form.subs.length, 11, 'M-Form 应有 11 个 ### 子节')
+  assert.equal(secs.Exist.declared, 7, 'M-Exist 节头应写 7 项')
+  assert.equal(secs.Exist.subs.length, 7, 'M-Exist 应有 7 个 ### 子节')
   assert.equal(secs.Integrity.declared, 2, 'M-Integrity 节头应写 2 项')
   assert.equal(secs.Integrity.subs.length, 2, 'M-Integrity 应有 2 个 ### 子节')
+})
+
+test('m-gate-check M-Form-11：素材按需加载闭环（引了没读 / 幽灵编号 / 无留痕必须报；齐备则过）', () => {
+  const d = tmp()
+  const proj = join(d, 'run', 'proj')
+  const fin = join(proj, 'final')
+  const ev = join(fin, '证据包')
+  mkdirSync(ev, { recursive: true })
+  mkdirSync(join(proj, 'analysis'), { recursive: true })
+  mkdirSync(join(proj, 'drafts'), { recursive: true })
+  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01] 与 [L02]。\n\n## 参考文献\n\n[L01] x\n[L02] y\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
+  writeFileSync(join(ev, '文献卡.md'), '# 文献卡\n\n## 📇 索引段\n\n[L01] a ｜ 主题 ｜ 论点1\n[L02] b ｜ 主题 ｜ 论点1\n\n## 正文\n\n### [L01] a\n信任级别：已发布\n\n### [L02] b\n信任级别：已发布\n')
+  writeFileSync(join(proj, 'drafts', '初稿-v2.md'), '# 初稿 v2\n')
+  const LIST = join(proj, 'analysis', '素材加载清单.md')
+  const item = () => {
+    const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])
+    return parseJson(r).results.find((x) => x.gate.startsWith('M-Form-11'))
+  }
+  // ① 正文有引用但无留痕 → P1（「按需加载」无从核对）
+  let it = item()
+  assert.equal(it.pass, false, '缺加载清单必须报')
+  assert.equal(it.severity, 'P1')
+  assert.match(it.detail, /无 analysis\/素材加载清单\.md|无.*加载清单/)
+
+  // ② 留痕只记了 L01 → L02 属「引了没读」→ 硬问题
+  writeFileSync(LIST, '# 素材加载清单\n\n- **对应正文版本**：v2\n\n## 已加载\n\n| 编号 | 支撑位置 |\n|---|---|\n| [L01] | §1 |\n')
+  it = item()
+  assert.equal(it.pass, false, '引了没读必须报')
+  assert.match(it.detail, /引了没读|未记「已加载」/)
+  assert.match(it.detail, /\[L02\]/)
+
+  // ③ 清单里有卡片查不到的编号（幽灵）→ 硬问题
+  writeFileSync(LIST, '# 素材加载清单\n\n- **对应正文版本**：v2\n\n## 已加载\n\n| 编号 | 支撑位置 |\n|---|---|\n| [L01] | §1 |\n| [L02] | §1 |\n| [L09] | §2 |\n')
+  it = item()
+  assert.equal(it.pass, false, '幽灵编号必须报')
+  assert.match(it.detail, /无对应条目/)
+  assert.match(it.detail, /\[L09\]/)
+
+  // ④ 齐备 → 通过（读了不用只算软提示；「已跳过」段的编号不计入加载集）
+  writeFileSync(LIST, '# 素材加载清单\n\n- **对应正文版本**：v2\n\n## 已加载\n\n| 编号 | 支撑位置 |\n|---|---|\n| [L01] | §1 |\n| [L02] | §1 |\n\n## 已跳过\n\n| 编号 | 理由 |\n|---|---|\n| [L07] | 口径不符 |\n')
+  it = item()
+  assert.equal(it.pass, true, '留痕齐备应通过：' + it.detail)
+  assert.match(it.detail, /引用 ⊆ 已加载/)
+
+  // ⑤ 「已加载」段标题缺失 → 硬问题（机检无从定位加载集）
+  writeFileSync(LIST, '# 素材加载清单\n\n| 编号 | 支撑位置 |\n|---|---|\n| [L01] | §1 |\n')
+  it = item()
+  assert.equal(it.pass, false, '缺「## 已加载」段必须报')
+  assert.match(it.detail, /已加载.*段标题|缺「## 已加载」/)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('m-gate-check M-Exist-5：闸门记录表（漏项 / 自述当实据 / ✗ 无原因 / 与 M 门报告矛盾必须报）', () => {
+  const d = tmp()
+  const proj = join(d, 'run', 'proj')
+  const fin = join(proj, 'final')
+  const ev = join(fin, '证据包')
+  const aud = join(proj, 'audits')
+  mkdirSync(ev, { recursive: true })
+  mkdirSync(aud, { recursive: true })
+  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
+  writeFileSync(join(aud, '审计报告-v1.md'), '# 审计报告 v1\n\n结论：通过 ✅\n')
+  const SK = join(ROOT, 'skills', 'lunheng-article-pipeline')
+  const tpl = readFileSync(join(SK, 'references', 'templates', '闸门记录-template.md'), 'utf8')
+  const itemsOf = (gate) => {
+    const seg = tpl.split(new RegExp(`^## ${gate.replace('.', '\\.')}`, 'm'))[1].split(/^## /m)[0]
+    return seg.split('\n').filter((l) => /^\s*\|/.test(l)).slice(2).map((l) => l.split('|')[1].trim()).filter(Boolean)
+  }
+  const build = (gate, evTxt = 'final/证据包/数据卡.md', res = '✓', why = '') =>
+    `# 闸门记录 ${gate}\n\n| 检查项 | 实据（路径 / exit code） | 结论 | 失败原因 |\n|---|---|---|---|\n`
+    + itemsOf(gate).map((i) => `| ${i} | ${evTxt} | ${res} | ${why} |`).join('\n') + '\n'
+  const item = () => {
+    const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])
+    return parseJson(r).results.find((x) => x.gate.startsWith('M-Exist-5'))
+  }
+  // ① 两表单齐备 + 实据为路径 → 通过
+  writeFileSync(join(aud, '闸门记录-T2.5.md'), build('T2.5'))
+  writeFileSync(join(aud, '闸门记录-T7.5.md'), build('T7.5'))
+  let it = item()
+  assert.equal(it.pass, true, '闸门记录齐备应通过：' + it.detail)
+  assert.match(it.detail, /T2\.5 \d+ 行|T7\.5 \d+ 行/)
+
+  // ② 漏检查项（删掉模板里的第一项那行）→ 硬问题
+  const bad = build('T2.5').split('\n').filter((l) => !l.includes(itemsOf('T2.5')[0])).join('\n')
+  writeFileSync(join(aud, '闸门记录-T2.5.md'), bad + '\n')
+  it = item()
+  assert.equal(it.pass, false, '漏检查项必须报')
+  assert.match(it.detail, /检查项缺「/)
+
+  // ③ 实据写「已检查」自述 → 硬问题（闸门留机械证据）
+  writeFileSync(join(aud, '闸门记录-T2.5.md'), build('T2.5', '已检查'))
+  it = item()
+  assert.equal(it.pass, false, '自述当实据必须报')
+  assert.match(it.detail, /不是机械证据/)
+
+  // ④ 判 ✗ 但没写失败原因 → 硬问题
+  writeFileSync(join(aud, '闸门记录-T2.5.md'), build('T2.5', 'final/证据包/数据卡.md', '✗', ''))
+  it = item()
+  assert.equal(it.pass, false, '✗ 无原因必须报')
+  assert.match(it.detail, /未写失败原因/)
+
+  // ⑤ T7.5 全判 ✓，但 M-Gate-Report.json exit=2 → P0 自相矛盾
+  writeFileSync(join(aud, '闸门记录-T2.5.md'), build('T2.5'))
+  writeFileSync(join(fin, 'M-Gate-Report.json'), JSON.stringify({ exit: 2, total: 19 }))
+  it = item()
+  assert.equal(it.severity, 'P0', '闸门与报告矛盾应 P0：' + it.detail)
+  assert.match(it.detail, /自相矛盾/)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('m-gate-check M-Exist-6：审稿报告评分与期刊匹配（总分≠分项和 / 综合不可复算 / 杜撰刊名）', () => {
+  const d = tmp()
+  const proj = join(d, 'run', 'proj')
+  const fin = join(proj, 'final')
+  const ev = join(fin, '证据包')
+  const aud = join(proj, 'audits')
+  mkdirSync(ev, { recursive: true })
+  mkdirSync(aud, { recursive: true })
+  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
+  writeFileSync(join(proj, '01-任务简报.md'), '# 简报\n\n启用期刊匹配\n')
+  const REP = join(aud, '审稿报告-v2.md')
+  const mk = (total, dims, rows) => `# 同行评审报告\n\n> **总评分**：${total}/30\n> **建议**：minor revision\n\n`
+    + '| 维度 | 得分 | 一句话评价 |\n|------|------|-----------|\n'
+    + ['原创性', '方法论', '证据强度', '论证结构', '写作质量', '引文规范'].map((x, i) => `| ${x} | ${dims[i]}/5 | 好 |`).join('\n')
+    + `\n| **总分** | **${total}/30** | **minor revision** |\n\n判定：minor revision\n\n`
+    + '| 目标方向 | 综合匹配度 | 主题契合 | 风格契合 | 审稿周期 | 推荐理由 |\n|---------|-----------|---------|---------|---------|---------|\n' + rows + '\n'
+  const item = () => {
+    const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])
+    return parseJson(r).results.find((x) => x.gate.startsWith('M-Exist-6'))
+  }
+  // ① 无审稿报告 → N/A
+  let it = item()
+  assert.equal(it.pass, true, '无审稿报告应记 N/A')
+  assert.match(it.detail, /N\/A/)
+
+  // ② 总分 = 分项和（24）+ 综合按公式复算（0.5×90+0.3×80+0.2×57.14 = 80.43 → 80）→ 通过
+  writeFileSync(REP, mk(24, [4, 4, 4, 4, 4, 4], [
+    '| 《管理世界》 | 80% | 90% | 80% | 3-6 月 | 主题契合高 + 风格偏实证 + 周期可控 |',
+    '| 《中国工业经济》 | 78% | 85% | 80% | 4-8 月 | 主题契合同类 + 风格一致 + 周期适中 |',
+    '| 《南开管理评论》 | 77% | 80% | 85% | 3-6 月 | 风格贴近 + 主题部分契合 + 周期友好 |',
+  ].join('\n')))
+  it = item()
+  assert.equal(it.pass, true, '评分自洽 + 期刊可复算应通过：' + it.detail)
+  assert.match(it.detail, /期刊表 3 行/)
+
+  // ③ 总分 ≠ 分项之和 → 硬问题（评分表与总分自相矛盾）
+  writeFileSync(REP, mk(27, [4, 4, 4, 4, 4, 4], '| 《管理世界》 | 84% | 90% | 80% | 3-6 月 | 主题契合高 + 风格偏实证 + 周期可控 |'))
+  it = item()
+  assert.equal(it.pass, false, '总分与分项和不符必须报')
+  assert.match(it.detail, /≠ 6 维之和/)
+
+  // ④ 综合匹配度不可复算 → 硬问题
+  writeFileSync(REP, mk(24, [4, 4, 4, 4, 4, 4], '| 《管理世界》 | 95% | 90% | 80% | 3-6 月 | 主题契合高 + 风格偏实证 + 周期可控 |'))
+  it = item()
+  assert.equal(it.pass, false, '数字不可复算必须报')
+  assert.match(it.detail, /不可复算/)
+
+  // ⑤ 杜撰刊名（不在 期刊数据库.md 中）→ 软提示
+  writeFileSync(REP, mk(24, [4, 4, 4, 4, 4, 4], '| 《某虚构学报》 | 80% | 90% | 80% | 3-6 月 | 主题契合高 + 风格偏实证 + 周期可控 |'))
+  it = item()
+  assert.match(it.detail, /查不到|杜撰/)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('m-gate-check M-Exist-7：交付说明 12 固定字段（缺字段 / 空字段 / 缺指纹 / 决策记录漏门必须报）', () => {
+  const d = tmp()
+  const proj = join(d, 'run', 'proj')
+  const fin = join(proj, 'final')
+  const ev = join(fin, '证据包')
+  mkdirSync(ev, { recursive: true })
+  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
+  const DD = join(fin, '交付说明.md')
+  const GOOD = `# 交付说明
+
+## 1. 路径
+
+| 项 | 路径 |
+|----|------|
+| 定稿 | final/定稿.md |
+
+## 2. 图件清单
+
+| 图号 | 标题 | 来源 |
+|------|------|------|
+| 图1 | 趋势 | [D01] |
+
+## 3. 遗留风险
+
+- 无
+
+## 4. 人工核验项
+
+- 无
+
+## 5. 数据溯源 check-list
+
+- [ ] 付费墙文献：无
+
+## 6. 成本指标
+
+- token：1.2M
+
+## 7. 建议 merge 的反哺清单
+
+- [ ] 反哺规则 A → 05 卡
+
+## 8. AI 使用披露（完整版）
+
+- AI 生成段：全文初稿
+
+## 9. 证据包指纹
+
+- sha256：\`[哈希校验待主人回填]\`
+
+## 10. 投稿就绪检查表
+
+- 推荐期刊：见审稿报告
+
+## 11. 主人决策记录
+
+- 四门时间线：Phase 0 09:12 通过｜Phase 2.5 10:05 通过｜Phase 3.5 10:40 通过｜Phase 5 11:20 通过
+
+## 12. 终检结论
+
+- M 门 exit = 0
+`
+  const item = () => {
+    const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])
+    return parseJson(r).results.find((x) => x.gate.startsWith('M-Exist-7'))
+  }
+  // ① 无交付说明 → N/A
+  let it = item()
+  assert.equal(it.pass, true, '无交付说明应记 N/A')
+  assert.match(it.detail, /N\/A/)
+
+  // ② 12 字段齐备 → 通过
+  writeFileSync(DD, GOOD)
+  it = item()
+  assert.equal(it.pass, true, '字段齐备应通过：' + it.detail)
+  assert.match(it.detail, /11\/11/)
+  assert.match(it.detail, /指纹✓/)
+
+  // ③ 缺「成本指标」字段 → 硬问题
+  writeFileSync(DD, GOOD.replace('## 6. 成本指标\n\n- token：1.2M\n\n', ''))
+  it = item()
+  assert.equal(it.pass, false, '缺固定字段必须报')
+  assert.match(it.detail, /缺固定字段「成本指标」/)
+
+  // ④ 字段只剩模板占位符 → 硬问题
+  writeFileSync(DD, GOOD.replace('- token：1.2M', '- token：<待填>'))
+  it = item()
+  assert.equal(it.pass, false, '占位符未填必须报')
+  assert.match(it.detail, /占位符/)
+
+  // ⑤ 主人决策记录漏 Phase 3.5 → 硬问题（缺回填须显式标「未留痕」）
+  writeFileSync(DD, GOOD.replace('Phase 0 09:12 通过｜Phase 2.5 10:05 通过｜Phase 3.5 10:40 通过｜Phase 5 11:20 通过', 'Phase 0 09:12 通过｜Phase 2.5 10:05 通过｜Phase 5 11:20 通过'))
+  it = item()
+  assert.equal(it.pass, false, '决策记录漏门必须报')
+  assert.match(it.detail, /未覆盖/)
+  rmSync(d, { recursive: true, force: true })
 })
 
 test('cordis.patch.yml：三档 agentOptions 表达式形态正确（未设=undefined，只给 model 亦生效，含一键退路）', () => {

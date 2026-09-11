@@ -53,6 +53,7 @@ const RULES = [
   ['data/数据卡.md', '数据卡.md'],
   ['cases/案例卡.md', '案例卡.md'],
   ['analysis/分析大纲.md', '分析大纲.md'],
+  ['analysis/素材加载清单.md', '素材加载清单.md'],   // v2.5.2-dsh.17：M-Form-11 的判定依据，须随证据包给 T7/T8 可见
   ['01-任务简报.md', '01-任务简报.md'],
   ['status.md', 'status.md'],
 ];

@@ -77,11 +77,15 @@ function checkGateCounts(text, rel) {
   // 中文括注写法（v2.5.2-dsh.17 加：如「M-Form 形式合规门（10 项）」——旧规则只认紧邻数字，漏检过 T7 速查表）
   //   dsh.17 二次收紧：首版正则要求「项」紧跟右括号，于是「（9 项，含 v2.2.1.2 + …）」这类**带说明的括注
   //   依旧静默漏检**——实测漏掉了 M-Gate-Algorithm.md 的两个节头（M-Form 写 9 项、M-Exist 写 3 项，
-  //   而节内 ### 子节已是 10 / 4）。现允许「项」后接 [，、；] + ≤80 字说明，并补上 M-Integrity 括注。
-  const parenCount = (pre) => new RegExp(`${pre}[^\\n（]{0,18}（(\\d+)\\s*项(?:[，、；][^）\\n]{0,80})?）`);
+  //   现允许「项」后接 [，、；] + 同行任意说明（说明可能很长：实测节头括注达 120+ 字，故不再设长度上限）
+  const parenCount = (pre) => new RegExp(`${pre}[^\\n（]{0,18}（(\\d+)\\s*项(?:[，、；][^）\\n]*)?）`);
   check(parenCount('M-Form'), 1, form, ' M-Form 括注项数');
   check(parenCount('M-Exist'), 1, exist, ' M-Exist 括注项数');
   check(parenCount('M-Integrity'), 1, integ + 1, ' M-Integrity 括注项数');   // + M-Integrity-2（主控 T7.5 人工门，未脚本化）
+  // dsh.17 三次收紧：又两种写法此前漏检过（实测 AGENTS.md「M 门 20 项中 14 项已脚本化」与 08 卡「**15 项**：M-Form 1-…」）
+  check(/M\s*门\s*(\d+)\s*项中\s*(\d+)\s*项已脚本化/, 1, total, '总项数（「N 项中 M 项已脚本化」写法）');
+  check(/M\s*门\s*(\d+)\s*项中\s*(\d+)\s*项已脚本化/, 2, mech, '已脚本化项数');
+  check(/\*\*(\d+)\s*项\*\*：M-Form\s*1-/, 1, mech, '机械化项数（「**N 项**：M-Form 1-」写法）');
   check(/M-Form\s*(\d+)\s*\/\s*M-Exist\s*(\d+)\s*\/\s*M-Integrity\s*(\d+)/, 1, form, ' 分工（Form）');
   check(/M-Form\s*(\d+)\s*\/\s*M-Exist\s*(\d+)\s*\/\s*M-Integrity\s*(\d+)/, 2, exist, ' 分工（Exist）');
   check(/M-Form\s*(\d+)\s*项\s*\+\s*M-Exist\s*(\d+)\s*项/, 1, form, ' 分项（Form）');
@@ -450,6 +454,10 @@ const CONTRACTS = [
   ['主人投喂清单', '00-主控-扩展职责.md', ['数据卡-template.md', 'pipeline-readme.md']],
   ['style-baseline', '00-主控-扩展职责.md', ['05-写作-writer.md', '06-批判-critical-companion.md']],
   ['模型路由表', '00-主控-coordinator.md', ['pipeline-readme.md']],
+  // v2.5.2-dsh.17 续（第二批）：素材按需加载留痕 / 闸门记录表 / 交付说明
+  ['素材加载清单', '05-写作-writer.md', ['07-审计-auditor.md', '04-分析-analyst.md', 'build-evidence-bundle.mjs']],
+  ['闸门记录-', '00-主控-扩展职责.md', ['pipeline-readme.md', '00-主控-coordinator.md']],
+  ['交付说明', '08-终检-finalizer.md', ['build-evidence-bundle.mjs', '00-主控-扩展职责.md']],
 ];
 {
   const readLazy = (() => {
