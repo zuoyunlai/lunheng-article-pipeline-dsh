@@ -394,3 +394,69 @@ test('consistency-check ⑱：图件路径口径与「宣称的图件门」必�
   assert.match(r.out, /口径残留 M 门总项数/, '⑥b 必须捕获 M 门计数漂移')
   rmSync(d, { recursive: true, force: true })
 })
+
+// ===== v2.5.2-dsh.17：交接契约 / 占位符 / 版本化报告 =====
+
+test('build-evidence-bundle：版本化报告取最大版本（旧版硬编码 -v1.md → 修订轮报告不进证据包）', () => {
+  const d = tmp()
+  const proj = join(d, 'run', 'proj')
+  mkdirSync(join(proj, 'analysis'), { recursive: true })
+  mkdirSync(join(proj, 'audits'), { recursive: true })
+  mkdirSync(join(proj, 'drafts'), { recursive: true })
+  mkdirSync(join(proj, 'final'), { recursive: true })
+  writeFileSync(join(proj, 'final', '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01][D01]。\n')
+  // 只放 v2（不放 v1）——旧版会全部漏收
+  writeFileSync(join(proj, 'analysis', '批判报告-v2.md'), '# 批判报告 v2\n')
+  writeFileSync(join(proj, 'audits', '审计报告-v2.md'), '# 审计报告 v2\n')
+  writeFileSync(join(proj, 'audits', '复核报告-v2.md'), '# 复核报告 v2\n')
+  writeFileSync(join(proj, 'audits', 'G14-检测报告-v2.md'), '# G14 v2\n')
+  writeFileSync(join(proj, 'drafts', '修订说明-v2.md'), '# 修订说明 v2\n')
+  const r = run([join(SCRIPTS, 'build-evidence-bundle.mjs'), proj, '--summary'])
+  assert.equal(r.code, 0)
+  for (const f of ['批判报告-v2.md', '审计报告-v2.md', '复核报告-v2.md', 'G14-检测报告-v2.md', '修订说明-v2.md']) {
+    assert.ok(existsSync(join(proj, 'final', '证据包', f)), `证据包应收到 ${f}（取最大版本）`)
+  }
+  const view = readFileSync(join(proj, 'audits', '审计视图-v0.md'), 'utf8')
+  assert.match(view, /审计报告v2✓/, '视图应显示实际版本号')
+  assert.match(view, /G14-检测报告v2✓/, 'G14 报告应被收录并显示')
+  // 有多个版本时取最大（不取 v1）
+  writeFileSync(join(proj, 'audits', '审计报告-v1.md'), '# 审计报告 v1（旧）\n')
+  run([join(SCRIPTS, 'build-evidence-bundle.mjs'), proj, '--summary'])
+  assert.ok(existsSync(join(proj, 'final', '证据包', '审计报告-v2.md')), '存在 v1 时仍应取 v2')
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('build-evidence-bundle：无修订轮时复核报告标 N/A 而非虚假 ✗（旧版恒定虚假告警）', () => {
+  const d = tmp()
+  const proj = join(d, 'run', 'proj')
+  mkdirSync(join(proj, 'final'), { recursive: true })
+  writeFileSync(join(proj, 'final', '定稿.md'), '# 标题\n\n## 摘要\n\n正文。\n')
+  run([join(SCRIPTS, 'build-evidence-bundle.mjs'), proj, '--summary'])
+  const view = readFileSync(join(proj, 'audits', '审计视图-v0.md'), 'utf8')
+  assert.match(view, /复核报告: N\/A\(无修订轮\)/, '无修订轮应标 N/A（不报 ✗）')
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('consistency-check ④b+⑲：占位符残留 / 版本硬编码 / 契约表断链都必须报（注入验证）', () => {
+  const d = tmp()
+  const repo = join(d, 'repo')
+  mkdirSync(repo, { recursive: true })
+  cpSync(join(ROOT, 'skills'), join(repo, 'skills'), { recursive: true })
+  for (const f of ['package.json', 'CHANGELOG.md', 'cordis.patch.yml']) cpSync(join(ROOT, f), join(repo, f))
+  const R = join(repo, 'skills', 'lunheng-article-pipeline')
+  // ① 占位符残留
+  const t5 = join(R, 'references', 'agents', '05-写作-writer.md')
+  writeFileSync(t5, readFileSync(t5, 'utf8') + '\n> 校验方式：（命令已剥离·DSH 用 read 推理）\n')
+  // ② 版本化报告写死 -v1.md
+  const be = join(R, 'scripts', 'build-evidence-bundle.mjs')
+  writeFileSync(be, readFileSync(be, 'utf8').replace('const LATEST_REPORTS = [', "const LEGACY = ['audits/审计报告-v1.md'];\nconst LATEST_REPORTS = ["))
+  // ③ 契约表：产出者不再声明复核报告
+  const t7 = join(R, 'references', 'agents', '07-审计-auditor.md')
+  writeFileSync(t7, readFileSync(t7, 'utf8').replaceAll('复核报告', 'X报告'))
+  const r = run([join(R, 'scripts', 'consistency-check.mjs')])
+  assert.equal(r.code, 1, '注入后必须 exit 1')
+  assert.match(r.out, /占位符残留/, '④b 必须捕获「命令已剥离」残留')
+  assert.match(r.out, /版本硬编码/, '⑲ 必须捕获 -v1.md 硬编码')
+  assert.match(r.out, /契约表：产出者未声明/, '⑲ 必须捕获产出者未声明')
+  rmSync(d, { recursive: true, force: true })
+})

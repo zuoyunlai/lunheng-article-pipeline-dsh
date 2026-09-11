@@ -51,7 +51,7 @@ M-Form-3 failed: temp_id pattern detected in output
 | | |
 | **触发** | M-Exist-1 检查引用 URL 时返回 404 |
 | **原报错** | `M-Exist-1 failed: URL [D03] returns 404` |
-| **友好版** | （检查 [D03]） |
+| **友好版** | 数据卡 D03 引用的 URL 已 404：请替换可访问来源、或降级标注（C 级不得伪装学术来源），并同步更新卡内 URL。 |
 
 #### E03：数据信任级别遗漏
 
@@ -59,7 +59,7 @@ M-Form-3 failed: temp_id pattern detected in output
 | | |
 | **触发** | M-Form-6 检测数据卡缺少信任级别标注 |
 | **原报错** | `M-Form-6 failed: trust_level field missing in D05` |
-| **友好版** | （命令已剥离·DSH 用 read 推理） |
+| **友好版** | 数据卡 D05 缺「信任级别」段：请在该卡内**单独加一行** `信任级别：已发布 / 主人投喂 / 二手转引`（三档之一必填；M-Form-6 要求独立段，描述里顺带一提不算）。 |
 
 #### E04：M-Integrity-1 时序矛盾
 
@@ -67,7 +67,7 @@ M-Form-3 failed: temp_id pattern detected in output
 | | |
 | **触发** | M-Integrity-1 在 T2→T3 之间要求检查大纲，但大纲当时不存在 |
 | **原报错** | `M-Integrity-1 failed: outline not found at T2→T3 transition` |
-| **友好版** | （命令已剥离·DSH 用 read 推理） |
+| **友好版** | 完整性门在 T2→T4 之间要校验 `analysis/分析大纲.md`，但大纲此刻还不存在：请把该检查挪到 T4 之后（属流程顺序问题），或先让 T4 产出大纲。 |
 
 ---
 
@@ -79,7 +79,7 @@ M-Form-3 failed: temp_id pattern detected in output
 | | |
 | **触发** | 审计发现初稿与任务简报「研究问题」不对应 |
 | **原报错** | `G0 failed: research_question_mismatch` |
-| **友好版** | （命令已剥离·DSH 用 read 推理） |
+| **友好版** | 初稿回答的问题与 `01-任务简报.md` 的「研究问题」不一致（选题漂移）：请对照简报核对——改稿，或回 Phase 2 重定框架，二者必须一致。 |
 
 #### E06：G1 引用遗漏
 
@@ -87,7 +87,7 @@ M-Form-3 failed: temp_id pattern detected in output
 | | |
 | **触发** | 审计发现正文有 [Dxx] 引用但文末清单没有 |
 | **原报错** | `G1 failed: orphan citation [D05] in body` |
-| **友好版** | （检查 [D05]） |
+| **友好版** | 正文引用了 [D05]，但文末「数据来源」清单里没有它：请补进清单，或从正文删除该引用（引用双向比对，G1）。 |
 
 #### E07：G8 过程语言残留
 
@@ -95,7 +95,7 @@ M-Form-3 failed: temp_id pattern detected in output
 | | |
 | **触发** | 审计发现正文有「v2 稿」「修订说明」等过程痕迹 |
 | **原报错** | `G8 #1 failed: process language detected` |
-| **友好版** | （命令已剥离·DSH 用 read 推理） |
+| **友好版** | 正文混入过程痕迹（「v2 稿」「修订说明」「待回查」「流水线」等操作员语言）：请从正文删除，必要信息移到 `drafts/修订说明-vN.md`。 |
 
 #### E08：G13 AI 使用披露缺失
 
@@ -103,7 +103,7 @@ M-Form-3 failed: temp_id pattern detected in output
 | | |
 | **触发** | 审计发现文末缺少 AI 使用声明 |
 | **原报错** | `G13 failed: AI usage disclosure missing` |
-| **友好版** | （命令已剥离·DSH 用 read 推理） |
+| **友好版** | 定稿文末缺「AI 使用声明」节：请按 `templates/AI-使用声明-template.md` 对应版本（学术/出版/公众）补齐——它是文末五节之一，M-Form-7 会一并拦。 |
 
 ---
 
@@ -115,15 +115,15 @@ M-Form-3 failed: temp_id pattern detected in output
 | | |
 | **触发** | 审计发现引用 URL 不可访问或与正文不符 |
 | **原报错** | `F1 detected: hallucinated citation [L03]` |
-| **友好版** | （检查 [L03]） |
+| **友好版** | [L03] 的 URL 不可访问或与正文描述不符（疑似幻觉引用）：请核验 DOI/CNKI 真实性——核验不过就删除该引用及其支撑的论点。 |
 
 #### E10：F3 早期框架锁定
 
 | 项 | 内容 |
 | | |
 | **触发** | 分析员产出大纲时检测到服务主线 >80% |
-| **原报错** | （命令已剥离·DSH 用 read 推理） |
-| **友好版** | （命令已剥离·DSH 用 read 推理） |
+| **原报错** | `F3 failed: mainline_service_ratio > 80%` |
+| **友好版** | 大纲被单一主线/单一服务对象占满（>80%）：请补第二主线或反方视角，避免「早期框架锁定」（教训 #64）。 |
 
 ---
 
@@ -135,7 +135,7 @@ M-Form-3 failed: temp_id pattern detected in output
 | | |
 | **触发** | 主控未给主人 4 选 1 同意就 spawn 子代理 |
 | **原报错** | `Phase 0 gate not passed before spawn T1` |
-| **友好版** | （命令已剥离·DSH 用 read 推理） |
+| **友好版** | 主控在未取得主人 Phase 0 同意（外部服务 4 选 1）的情况下就派发了子代理：请立刻停下向主人确认，并把结论写回 `01-任务简报.md` 头部作审计追溯。 |
 
 #### E12：修订超 2 轮触发 Acknowledged Limitations
 

@@ -1,6 +1,6 @@
 // 论衡插件一致性自检脚本（DSH）— 发布/commit 前运行
 // 用法：node scripts/consistency-check.mjs
-// 覆盖 18 类漂移（v2.5.2-dsh.16 起；.5 为 9 类，.13 加 ⑩-⑭，.15 加 ⑮-⑰，.16 加 ⑱）：
+// 覆盖 20 类漂移（v2.5.2-dsh.17 起；.5 为 9 类，.13 加 ⑩-⑭，.15 加 ⑮-⑰，.16 加 ⑱，.17 加 ④b + ⑲）：
 //   ① 跨文件版本一致性（package.json ↔ SKILL.md frontmatter ↔ 版本头行 ↔ 仓库级文档）
 //   ② 双头版本行 / M-Gate-Report 文件名漂移
 //   ③ 悬空引用（版本一致性检查旧名 / scripts/*.mjs 悬空 / 角色卡索引缺失）
@@ -19,6 +19,8 @@
 //   ⑯ 审计视图三方一致（pipeline-readme 声称 ↔ 角色卡 ↔ 生成脚本，防「已投入未兑现」）
 //   ⑰ 定量节省断言必须有算式/实测出处（防「省 N%」无出处自我繁殖）
 //   ⑱ 图件链路口径（图件路径唯一 + 宣称的图件机械门必须存在 + 图位独占一行规范）
+//   ④b 占位符残留（「命令已剥离·DSH 用 read 推理」零容忍）
+//   ⑲ 交接契约表（每个声明产出的产物须被产出者声明 + 被下游读清单/证据包引用；版本化报告不得写死 -v1.md）
 // 退出码 0 = 通过；1 = 有漂移（列在 stderr）
 // (重写用法：node scripts/consistency-check.mjs [--fix]
 //   --fix：自动修复可逆的简单漂移（P2 级，如「（检查）」占位符替换）
@@ -219,6 +221,15 @@ for (const f of files) {
         }
       });
     }
+    // ④b 占位符残留（v2.5.2-dsh.17 新增）：DSH 迁移把 shell 片段扫成「（命令已剥离·DSH 用 read 推理）」后
+    //    有 19 处语义被剥空（含交接报告「位置」、errors.md 整张对照表的「友好版」、一条禁令的主语）。
+    //    这类残留让规则失去主语、模板失去路径 → 视为 P1 硬问题，禁止再出现。
+    if (/命令已剥离/.test(text)) {
+      const lines = text.split('\n');
+      lines.forEach((l, i) => {
+        if (l.includes('命令已剥离')) errors.push(`[P1 占位符残留] ${rel}:${i + 1} 含「命令已剥离」占位符——必须换回有意义的路径/文案（v2.5.2-dsh.17 已全量清理，勿再引入）`);
+      });
+    }
     // ⑦ 全量版本头一致性（v2.5.2-dsh.5 审计新增：防单个文件版本头漏 bump）
     const headerLine = text.split('\n').find((l) => l.startsWith('> 版本：v'));
     const headerVer = headerLine?.match(/v(\d+\.\d+\.\d+-dsh\.\d+)/)?.[1];
@@ -397,6 +408,73 @@ for (const f of active) {
         errors.push(`[P2 图位规范缺「独占一行」] ${rel}:${i + 1} 要求写手标 [图N：标题] 但未声明必须独占一行（与 md2html 块级图注/分页契约相关）`);
       }
     });
+  }
+}
+
+// ⑲ 交接契约表机检（v2.5.2-dsh.17 新增，落地上轮审计的「产出→消费」矩阵）：
+//    每个声明产出的产物必须 ① 被产出者声明 ② 被至少一个下游读清单（角色卡/派发卡）或证据包引用。
+//    实测教训：审计视图（dsh.15）、批评论据/复核报告（dsh.17）都属于「文档说有人读/有人产，实际断链」。
+//    表即契约真源——新增产物时在此登记，与文档同步演进。
+//    键用「版本无关的族名」（`初稿-v` / `修订说明` / `审计报告` …）——下游文档天然按族名引用，
+//    用精确文件名当键会把正常引用判成断链（本轮实测：4 个假阳性全部来自这一点）。
+const CONTRACTS = [
+  // [产物匹配子串（族名）, 产出者卡, 可接受的消费者（任一命中即算通过）]
+  ['文献卡.md', '01-文献检索-literature-scout.md', ['04-分析-analyst.md', '05-写作-writer.md', 'build-evidence-bundle.mjs']],
+  ['先行者清单.md', '01-文献检索-literature-scout.md', ['deliverables.md', '05-写作-writer.md', 'build-evidence-bundle.mjs']],
+  ['数据卡.md', '02-数据检索-data-scout.md', ['04-分析-analyst.md', '05-写作-writer.md', 'build-evidence-bundle.mjs']],
+  ['案例卡.md', '03-案例检索-case-scout.md', ['04-分析-analyst.md', '05-写作-writer.md', 'build-evidence-bundle.mjs']],
+  ['分析大纲.md', '04-分析-analyst.md', ['05-写作-writer.md', 'dispatch-cards.md', 'build-evidence-bundle.mjs']],
+  ['写手版精简段', '04-分析-analyst.md', ['05-写作-writer.md', 'dispatch-cards.md']],
+  ['初稿-v', '05-写作-writer.md', ['06-批判-critical-companion.md', '07-审计-auditor.md', '09-审稿-peer-reviewer.md']],
+  ['修订说明', '05-写作-writer.md', ['07-审计-auditor.md', 'build-evidence-bundle.mjs']],
+  ['批判报告', '06-批判-critical-companion.md', ['07-审计-auditor.md', '09-审稿-peer-reviewer.md', 'build-evidence-bundle.mjs']],
+  ['审计报告', '07-审计-auditor.md', ['05-写作-writer.md', '09-审稿-peer-reviewer.md', 'build-evidence-bundle.mjs']],
+  ['复核报告', '07-审计-auditor.md', ['build-evidence-bundle.mjs']],
+  ['反哺报告', '07-审计-auditor.md', ['00-主控-coordinator.md', 'build-evidence-bundle.mjs']],
+  ['审稿报告', '09-审稿-peer-reviewer.md', ['build-evidence-bundle.mjs', '08-终检-finalizer.md']],
+  ['G14-检测报告', 'checkers/中文AI痕迹-checker.md', ['09-审稿-peer-reviewer.md', 'audit-checklist-quickref.md', 'build-evidence-bundle.mjs']],
+  ['定稿.md', '08-终检-finalizer.md', ['build-evidence-bundle.mjs']],
+  ['M-Gate-Report.json', '08-终检-finalizer.md', ['build-evidence-bundle.mjs']],
+];
+{
+  const readLazy = (() => {
+    const cache = new Map();
+    return (relPath) => {
+      if (!cache.has(relPath)) {
+        const p = join(ROOT, 'references', relPath);
+        cache.set(relPath, existsSync(p) ? readFileSync(p, 'utf8') : (relPath === 'build-evidence-bundle.mjs' ? readFileSync(join(ROOT, 'scripts', 'build-evidence-bundle.mjs'), 'utf8') : ''));
+      }
+      return cache.get(relPath);
+    };
+  })();
+  for (const [artifact, producer, consumers] of CONTRACTS) {
+    const prodText = producer === 'build-evidence-bundle.mjs' ? '' : readLazy('agents/' + producer) || readLazy(producer);
+    if (producer !== 'build-evidence-bundle.mjs' && !prodText.includes(artifact)) {
+      errors.push(`[P1 契约表：产出者未声明] ${artifact} 的登记产出者 ${producer} 未提及该产物——契约表与角色卡必须同步`);
+    }
+    const hit = consumers.find((c) => {
+      const t = c === 'build-evidence-bundle.mjs' ? readLazy('build-evidence-bundle.mjs') : (readLazy('agents/' + c) || readLazy(c) || readLazy('dispatch-cards.md'));
+      return t.includes(artifact);
+    });
+    if (!hit) {
+      errors.push(`[P1 交接断链] ${artifact} 无任何下游读清单/证据包引用（期望消费者之一：${consumers.join(' / ')}）——「文档说有人读、实际读不到」属 P1`);
+    }
+  }
+  // 报告类版本号写法守卫：`批判报告-v{N-1}` / `G14-检测报告-v{N-1}` 是已被定案否定的写法（会查不存在的 v0）
+  for (const f of active) {
+    const rel = relative(ROOT, f).replaceAll('\\', '/');
+    readFileSync(f, 'utf8').split('\n').forEach((l, i) => {
+      if (/(?:批判报告|G14-检测报告|审计报告|审稿报告)-v\{N-1\}/.test(l) && !/禁止|旧版|修正|定案|教训|历史/.test(l)) {
+        errors.push(`[P1 报告版本号写法] ${rel}:${i + 1} 用 v{N-1}——报告版本号一律 = 被审正文轮次（${'`'}v{N}${'`'}），禁止加减`);
+      }
+    });
+  }
+  // 版本化报告不得再写死 -v1.md（旧版把批判/审计/复核/反哺/审稿报告硬编码成 -v1，修订轮报告被漏收）
+  const beSrc2 = readLazy('build-evidence-bundle.mjs');
+  for (const prefix of ['批判报告', '审计报告', '复核报告', '反哺报告', '审稿报告', 'G14-检测报告']) {
+    if (beSrc2.includes(`${prefix}-v1.md`)) {
+      errors.push(`[P1 版本硬编码] build-evidence-bundle.mjs 把 ${prefix} 写死成 -v1.md——必须走「取最大版本」解析（修订轮 v2/v3 报告否则不进证据包）`);
+    }
   }
 }
 

@@ -45,20 +45,38 @@ if (explicitSource) {
 }
 
 // 收集规则：源相对路径 → 目标文件名（找不到就跳过并记录）
+// 注意：**版本化报告不列在此处**（见下方 LATEST_REPORTS）——旧版把批判/审计/复核/反哺/审稿报告硬编码成 `-v1.md`，
+// 而修订轮（v2/v3）报告文件名随之变化 → 那些轮次的报告**不进证据包**，审计视图还会误显示「审计✗/批判✗」。
 const RULES = [
   ['literature/文献卡.md', '文献卡.md'],
   ['literature/先行者清单.md', '先行者清单.md'],
   ['data/数据卡.md', '数据卡.md'],
   ['cases/案例卡.md', '案例卡.md'],
   ['analysis/分析大纲.md', '分析大纲.md'],
-  ['analysis/批判报告-v1.md', '批判报告-v1.md'],
-  ['audits/审计报告-v1.md', '审计报告-v1.md'],
-  ['audits/复核报告-v1.md', '复核报告-v1.md'],
-  ['audits/反哺报告-v1.md', '反哺报告-v1.md'],
-  ['audits/审稿报告-v1.md', '审稿报告-v1.md'],
   ['01-任务简报.md', '01-任务简报.md'],
   ['status.md', 'status.md'],
 ];
+
+// 版本化报告：**取版本号最大**的那一份（v2.5.2-dsh.17：与 M-Gate-Algorithm「N 取最大」同口径；
+// 「修订说明」一直用的就是 glob，本处把同类产物一并改成解析——含此前完全没被收录的 G14 检测报告）
+const LATEST_REPORTS = [
+  ['analysis', '批判报告'],
+  ['audits', '审计报告'],
+  ['audits', '复核报告'],
+  ['audits', '反哺报告'],
+  ['audits', '审稿报告'],
+  ['audits', 'G14-检测报告'],
+];
+const latestVersioned = (dir, prefix) => {
+  const d = join(project, dir);
+  if (!existsSync(d)) return null;
+  const cands = readdirSync(d)
+    .map((f) => ({ f, m: f.match(new RegExp(`^${prefix}-v(\\d+)\\.md$`)) }))
+    .filter((x) => x.m)
+    .map((x) => ({ f: x.f, n: Number(x.m[1]) }))
+    .sort((a, b) => b.n - a.n || a.f.localeCompare(b.f));
+  return cands.length ? { name: cands[0].f, n: cands[0].n } : null;
+};
 
 const destDir = join(project, 'final', '证据包');
 if (!existsSync(destDir)) mkdirSync(destDir, { recursive: true });
@@ -85,6 +103,21 @@ if (existsSync(draftsDir)) {
       copied++;
       console.log(`✓ drafts/${f} -> 证据包/${f}`);
     }
+  }
+}
+
+// 版本化报告：取最大版本并随包（v2.5.2-dsh.17）——含此前完全没被收录的 G14 检测报告
+const reportPicks = {};
+for (const [dir, prefix] of LATEST_REPORTS) {
+  const hit = latestVersioned(dir, prefix);
+  reportPicks[prefix] = hit;
+  if (hit) {
+    copyFileSync(join(project, dir, hit.name), join(destDir, hit.name));
+    copied++;
+    console.log(`✓ ${dir}/${hit.name} -> 证据包/${hit.name}（取最大版本 v${hit.n}）`);
+  } else {
+    missing++;
+    console.log(`· 跳过(不存在): ${dir}/${prefix}-vN.md`);
   }
 }
 
@@ -187,15 +220,29 @@ if (wantSummary) {
       mSummary = `（M-Gate-Report-v0.json 解析失败: ${e.message}）`;
     }
   }
-  // 批判/审计/审稿/终检报告存在性
-  const reports = {
-    '批判': existsSync(join(project, 'analysis', '批判报告-v1.md')),
-    '审计': existsSync(join(project, 'audits', '审计报告-v1.md')),
-    '复核': existsSync(join(project, 'audits', '复核报告-v1.md')),
-    '审稿': existsSync(join(project, 'audits', '审稿报告-v1.md')),
-    '修订说明': existsSync(join(project, 'drafts', '修订说明-v1.md')),
+  // 阶段报告存在性（v2.5.2-dsh.17 重写）：
+  //   ① 一律走「取最大版本」解析（旧版写死 -v1.md → 修订轮的报告被误报为 ✗）；
+  //   ② 带上实际版本号（`审计报告v2✓`），便于主控/主人一眼确认读的是哪一轮；
+  //   ③ 条件项显式标注 N/A（复核报告只在修订轮产出；无修订轮却报 ✗ 是虚假告警，会训练读者忽略整行）。
+  const revNotes = existsSync(join(project, 'drafts'))
+    ? readdirSync(join(project, 'drafts')).filter((f) => /^修订说明-.*\.md$/.test(f))
+    : [];
+  const hasRevision = revNotes.length > 0;
+  const revNo = (n) => Number((n.match(/-v(\d+)\.md$/) || [])[1] || 0);
+  const latestRevNote = revNotes.sort((a, b) => revNo(b) - revNo(a))[0] || null;
+  const repLabel = (prefix, { conditional = false } = {}) => {
+    const hit = reportPicks[prefix];
+    if (conditional && !hasRevision) return `${prefix}: N/A(无修订轮)`;
+    return `${prefix}${hit ? `v${hit.n}✓` : '✗'}`;
   };
-  const reportsLine = Object.entries(reports).map(([k, v]) => `${k}${v ? '✓' : '✗'}`).join(' ');
+  const reportsLine = [
+    repLabel('批判报告'),
+    repLabel('审计报告'),
+    repLabel('复核报告', { conditional: true }),
+    repLabel('审稿报告'),
+    repLabel('G14-检测报告'),
+    `修订说明${latestRevNote ? `${latestRevNote.match(/-v(\d+)\.md$/)?.[1] ?? ''}✓` : '✗'}`,
+  ].join(' ');
 
   // 引用闭环扫描（[Lxx]/[Dxx]/[Cxx] 在正文源中的实际使用，去重计数）
   const uniq = (arr) => new Set(arr).size;
