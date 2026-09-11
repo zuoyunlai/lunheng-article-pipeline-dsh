@@ -88,7 +88,7 @@
 执行必查项时，配合以下 M 门算法（**T7 必跑 exit 0**）：
 
 - **M-Form 形式合规门**（11 项）：见 `M-Gate-Algorithm.md` § M-Form（含 **M-Form-10 索引段完整性** + **M-Form-11 素材按需加载闭环**，v2.5.2-dsh.17 加；**M-Form-8 已含承重墙超载机检**——同一证据被 ≥3 论点承重 = P1）
-- **M-Exist 存在性合规门**（9 项）：见 `M-Gate-Algorithm.md` § M-Exist（含 **M-Exist-4 审计条目闭环** / **M-Exist-5 阶段闸门记录表** / **M-Exist-6 审稿报告与期刊匹配** / **M-Exist-7 交付说明字段齐备** / **M-Exist-8 批判报告覆盖（C1-C7）** / **M-Exist-9 审计报告 G 项覆盖（G0-G14）**，v2.5.2-dsh.17 加）
+- **M-Exist 存在性合规门**（10 项）：见 `M-Gate-Algorithm.md` § M-Exist（含 **M-Exist-4 审计条目闭环** / **M-Exist-5 阶段闸门记录表** / **M-Exist-6 审稿报告与期刊匹配**（含**审稿建议可消费性 + 修订回执闭环**）/ **M-Exist-7 交付说明字段齐备** / **M-Exist-8 批判报告覆盖（C1-C7）** / **M-Exist-9 审计报告 G 项覆盖（G0-G14，结论须带实据）** / **M-Exist-10 大纲 §11 精简段六要素**，v2.5.2-dsh.17 加）
 - **M-Integrity 阶段闸门**（2 项）：见 `M-Gate-Algorithm.md` § M-Integrity
 
 ### 素材卡索引核验（M-Form-10 索引段完整性，v2.5.2-dsh.17 新增）

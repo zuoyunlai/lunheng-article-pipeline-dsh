@@ -22,7 +22,7 @@ Phase 4 审计     → spawn T7 审计员 → audits/审计报告-vN.md（G0-G14
                  → 打回修订 ≤2 轮（必须 spawn 独立写手）；仍不过 → 升级决策 / Acknowledged Limitations 模式
 Phase 4.5 审稿   → spawn T9 同行评审（可选，默认选中，**学术论文必选**）→ audits/审稿报告-vN.md（6 维度评分 + 期刊匹配助手 Top 3）
 [🔒 T7.5 完整性门] 审计报告最新版 + P0/P1 清单 + M 门全 exit 0 + 隔离 → 通过才终检
-Phase 5 终检     → T8 终检（独立角色，主控 T0 以 T8 身份亲完成 M 门：M-Form 11 / M-Exist 9 / M-Integrity 2，LLM 兜底）→ final/定稿.md + 证据包/ + 交付说明.md
+Phase 5 终检     → T8 终检（独立角色，主控 T0 以 T8 身份亲完成 M 门：M-Form 11 / M-Exist 10 / M-Integrity 2，LLM 兜底）→ final/定稿.md + 证据包/ + 交付说明.md
 ```
 
 ## 关键规则
@@ -44,7 +44,7 @@ Phase 5 终检     → T8 终检（独立角色，主控 T0 以 T8 身份亲完�
 - **闸门留机械证据（v2.5.2-dsh.13）**：两道闸门与 M 门**不得只凭自述**——交接报告须附**脚本 exit code + 产物路径**（`m-gate-check.mjs … --report <项目>/final/M-Gate-Report.json`）；exit 语义 `0` 通过 / `1` P1 / `2` P0 / `3` 仅 P2·soft·SKIP（需 LLM 复核，不得当通过）/ `10` 参数错误
 - **机制文件写保护（v2.5.2-dsh.13）**：`SKILL.md` / `AGENTS.md` / `references/**` / `scripts/**` / `cordis.patch.yml` 任何角色（含子代理）**禁写**；改进动议只写 `audits/反哺报告-vN.md`，由主人在 host shell 手工 apply（改机制文件 = P0 违规）
 - **技能来源自检（v2.5.2-dsh.13）**：启动时核对 `SKILL.md` 版本头与期望版本一致，不一致即停机报「技能来源可疑」（同名技能会按 rank 就近静默顶替）
-- **M 门（v2.2.0+）**：终检前必读 `references/_shared/M-Gate-Algorithm.md`（**仅 T7/T8 读**——T1-T5/T9 不读，因 M 门 22 项中 21 项已脚本化为 `scripts/m-gate-check.mjs`（M-Form 1-11 + M-Exist 1-9 + M-Integrity-1 佐证），LLM 只复核 M-Form-8 的承重墙质量与 M-Integrity-2 跨文件判断），按伪代码执行 M-Form/M-Exist/M-Integrity（M-Form 11 项含 M-Form-7 文末白名单 v2.3.5 + M-Form-8 三角验证 v2.3.7 + M-Form-9 图件闭环 v2.5.2-dsh.16 + M-Form-10 索引段完整性 / M-Form-11 素材按需加载闭环 v2.5.2-dsh.17），产出 `final/M-Gate-Report.json`，exit 0 才返回
+- **M 门（v2.2.0+）**：终检前必读 `references/_shared/M-Gate-Algorithm.md`（**仅 T7/T8 读**——T1-T5/T9 不读，因 M 门 23 项中 22 项已脚本化为 `scripts/m-gate-check.mjs`（M-Form 1-11 + M-Exist 1-10 + M-Integrity-1 佐证），LLM 只复核 M-Form-8 的承重墙质量与 M-Integrity-2 跨文件判断），按伪代码执行 M-Form/M-Exist/M-Integrity（M-Form 11 项含 M-Form-7 文末白名单 v2.3.5 + M-Form-8 三角验证 v2.3.7 + M-Form-9 图件闭环 v2.5.2-dsh.16 + M-Form-10 索引段完整性 / M-Form-11 素材按需加载闭环 v2.5.2-dsh.17），产出 `final/M-Gate-Report.json`，exit 0 才返回
 - **图件链路（v2.5.2-dsh.16）**：写手只标 `[图N：标题]`（**独占一行**）→ 主控 Phase 4.5 用 `write` 手写 SVG 到 `final/图件/图N_标题.svg`（**唯一口径**）→ 导出 `md2html.mjs --fig-dir final/图件`（按图号配图，缺图显式标注）→ **M-Form-9** 对账（缺图/图位不足 → P0·P1；孤儿图件/图上数字无出处 → P2 提示）
 - **G14 中文 AI 痕迹闸（v2.4.0+）**：Phase 4.5 与 T6 并行触发（LLM 推理判定，零 exec），8 类检测维度，0-2 类 Pass / 3-4 类 Warning 触发 T5 修订 1 轮 / 5+ 类 Fail 触发 2 轮；主人在 Phase 0 可显式关闭。闸门定义 `references/gates/14-中文AI痕迹-gate.md`，检测器 `references/checkers/中文AI痕迹-checker.md`
 - **T9 同行评审 + 期刊匹配（v2.4.0+/v2.5.0，v2.5.2-dsh.8 定案：可选默认选中，学术论文必选）**：Phase 4.5 终稿前触发，6 维度评分 → accept/minor/major/reject；学术模式输出 Top 3 推荐期刊（`references/_shared/期刊数据库.md` + `期刊匹配算法.md`）

@@ -897,6 +897,37 @@ try {
         if (iWhy2 !== -1 && (r[iWhy2] || '').replace(/[\s.。…-]/g, '').length < 6) soft6.push(`「${r[0]}」推荐理由过短（须含主题契合 + 风格契合 + 周期依据）`);
       }
     }
+    // ---- 审稿建议的「可消费 + 落地追踪」（v2.5.2-dsh.17 增补）----
+    // 依据：审稿报告的「给作者的具体修改建议（按优先级）」是 T5/主控据以做「目标期刊适配修订」的
+    //   唯一输入；若建议只写「建议加强论证」这类无定位、无动作的句子，下游无法消费，
+    //   而报告表面完全正常。本项核：建议段存在 + 条目带定位（§/段落/章/行 或素材编号）+ 编号连续，
+    //   并在发生修订轮时核「审稿建议是否进了修订回执」（防「建议提了没人接」）。
+    const sugIdx = jLines.findIndex((l) => /^#{2,4}\s/.test(l) && /修改建议|建议（按优先级）|给作者/.test(l));
+    if (sugIdx === -1) soft6.push('未见「给作者的具体修改建议」段（T5/主控无据以做期刊适配修订）');
+    else {
+      let sugEnd = jLines.length;
+      for (let k = sugIdx + 1; k < jLines.length; k++) { if (/^#{2,4}\s/.test(jLines[k])) { sugEnd = k; break; } }
+      const sugLines = jLines.slice(sugIdx + 1, sugEnd);
+      const sugItems = sugLines.filter((l) => /^\s*(?:\d+[.、)]|[-*]\s)/.test(l) && l.replace(/[\s\-*\d.、)]/g, '').length > 6);
+      if (sugItems.length === 0) soft6.push('「修改建议」段无有效条目（须按优先级逐条列）');
+      else {
+        const noLoc = sugItems.filter((l) => !/[§第]\s*[一二三四五六七八九十\d]+|段落|行\s*\d|章|\[(?:L|D|C)\d+\]/.test(l));
+        if (noLoc.length) soft6.push(`${noLoc.length}/${sugItems.length} 条建议无定位（须写 §章节/段落/行号 或素材编号，否则 T5 无法照做）`);
+      }
+    }
+    // 落地追踪：已有修订说明（说明发生过修订轮）时，修订回执应提到审稿意见
+    try {
+      const drafts10 = join(projDir6, 'drafts');
+      if (existsSync(drafts10)) {
+        const revNotes6 = readdirSync(drafts10).filter((f) => /^修订说明-.*\.md$/.test(f)).sort();
+        if (revNotes6.length) {
+          const lastNote = readFileSync(join(drafts10, revNotes6[revNotes6.length - 1]), 'utf8');
+          if (!/审稿|期刊|T9|同行评审/.test(lastNote)) {
+            soft6.push(`修订说明（${revNotes6[revNotes6.length - 1]}）未提及审稿意见——审稿建议未进修订回执（「建议提了没人接」）`);
+          }
+        }
+      }
+    } catch { /* 落地追踪为增强项，读不到就跳过 */ }
     const hard6 = findings6.length > 0;
     results.push({
       gate: 'M-Exist-6 审稿报告与期刊匹配',
@@ -1054,7 +1085,8 @@ try {
 //   「必查项逐条执行，缺一不可」——**但没有任何脚本核过覆盖**。实测风险：审计报告只写了
 //   G1-G7，G11（时效）/G12（信任级别）/G14（中文 AI 痕迹）整段缺席，报告读起来仍像「全项检查」。
 // 本项机检：G0-G14 十五个主项都要出现**且邻域内有结论词**（缺项 → P1；>3 缺 → P0；有提及无结论 → P2）；
-//   G0.5 / G2.5 / G4-2 子项缺失 → P2。
+//   **且结论必须带实据**（v2.5.2-dsh.17 增补：同行/次行要有素材编号、文件路径、§ 或带量词的数字——
+//   只写「通过」不给依据 = 自称通过 → P2）；G0.5 / G2.5 / G4-2 子项缺失 → P2。
 // 触发条件：存在 audits/审计报告-vN.md；无 → N/A。
 try {
   const projDir9 = dirname(dirname(draftPath));
@@ -1075,8 +1107,11 @@ try {
     const G_SUB9 = ['G0.5', 'G2.5', 'G4-2'];
     const VERDICT9 = /通过|不通过|合规|违规|达标|未达标|PASS|FAIL|⚠|✅|❌|N\/A|部分|已核|未核|无问题|有问题/;
     const at9Lines = at9.split('\n');
+    // 实据标记：素材编号 / 文件路径 / § / exit code / **带量词的数字**（裸数字不算——G 编号自带的数字已剥掉）
+    const EVID9 = /\[(?:L|D|C|先)\d+\]|\.md\b|\.json\b|\.svg\b|\/|§|exit\s*\d|\d+\s*(?:条|个|处|项|篇|例|%|倍|字|\/)/;
     const absent9 = [];
     const noVerdict9 = [];
+    const noEvidence9 = [];
     for (const id of G_MAIN) {
       const esc9 = id.replace(/[.-]/g, (c) => `\\${c}`);
       const re9 = new RegExp(`(?<![A-Za-z0-9])${esc9}(?![0-9.])`);
@@ -1084,8 +1119,11 @@ try {
       at9Lines.forEach((l, i) => { if (re9.test(l)) hitLines.push(i); });
       if (hitLines.length === 0) { absent9.push(id); continue; }
       // 结论词须在**同一行或紧接着的下一行**（覆盖「- **G7**：通过」「| G7 | 通过 |」「### G7 \n 结论：通过」三种写法）
-      const ok9 = hitLines.some((i) => VERDICT9.test(at9Lines[i]) || (i + 1 < at9Lines.length && VERDICT9.test(at9Lines[i + 1])));
-      if (!ok9) noVerdict9.push(id);
+      const okIdx = hitLines.find((i) => VERDICT9.test(at9Lines[i]) || (i + 1 < at9Lines.length && VERDICT9.test(at9Lines[i + 1])));
+      if (okIdx === undefined) { noVerdict9.push(id); continue; }
+      // 该结论附近还要有实据（剥掉 G 编号本身再判，防编号里的数字误当证据）
+      const near = [at9Lines[okIdx], at9Lines[okIdx + 1] || ''].join('\n').replace(new RegExp(esc9, 'g'), '');
+      if (!EVID9.test(near)) noEvidence9.push(id);
     }
     const absentSub9 = G_SUB9.filter((id) => {
       const esc9 = id.replace(/[.-]/g, (c) => `\\${c}`);
@@ -1095,14 +1133,15 @@ try {
     const soft9 = [];
     if (absent9.length) findings9.push(`G 项未覆盖 ${absent9.length} 个：${absent9.join(',')}（quickref 要求逐条执行、缺一不可）`);
     if (noVerdict9.length) soft9.push(`${noVerdict9.join(',')} 有提及但邻域无结论词（须写 通过/不通过/N/A + 证据）`);
+    if (noEvidence9.length) soft9.push(`${noEvidence9.join(',')} 的结论无实据（须给素材编号 / 文件路径 / § / 带量词的数字，不能只写「通过」）`);
     if (absentSub9.length) soft9.push(`子项未覆盖：${absentSub9.join(',')}`);
     const hard9 = findings9.length > 0;
     results.push({
       gate: 'M-Exist-9 审计报告 G 项覆盖',
       pass: !hard9 && soft9.length === 0,
       detail: [
-        `${latest9.name}｜G0-G14 实到 ${G_MAIN.length - absent9.length}/15`,
-        hard9 ? `硬问题：${findings9[0]}` : '十五项全覆盖且各有结论',
+        `${latest9.name}｜G0-G14 实到 ${G_MAIN.length - absent9.length}/15${noEvidence9.length ? `（${noEvidence9.length} 项结论无实据）` : ''}`,
+        hard9 ? `硬问题：${findings9[0]}` : (noEvidence9.length ? '十五项已覆盖且各有结论，部分结论缺实据' : '十五项全覆盖、各有结论与实据'),
         soft9.length ? `软提示：${soft9.slice(0, 2).join('；')}` : '',
       ].filter(Boolean).join(' ｜ '),
       severity: hard9 ? (absent9.length > 3 ? 'P0' : 'P1') : (soft9.length ? 'P2' : '通过'),
@@ -1110,6 +1149,81 @@ try {
   }
 } catch (e) {
   results.push({ gate: 'M-Exist-9 审计报告 G 项覆盖', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
+}
+
+// === M-Exist-10 大纲 §11 精简段完整性（v2.5.2-dsh.17 新增）===
+// 依据：04/05 卡定案「T5 只读 `analysis/分析大纲.md` 末尾 §11 写手版精简段（≈60 行），完整大纲按需」
+//   —— 这条是**T5 上下文 50K 大头的根治手段**，但 §11 自身是否真的含齐六个要素（论证主线 /
+//   论点-论据映射表 / 反方规划要点 / 字数预算 / 禁做项 / 承重墙清单）**从来没被核过**。
+//   实测风险：§11 缺要素时 T5 只能**回退整读大纲**——省 token 的机制静默失效，而产物上看不出来。
+// 本项机检：段落存在（缺 → P2，未启用精简段的老项目不判死）、六要素齐备（缺 ≥3 → P0，缺 1-2 → P1）、
+//   段落非空（<5 行 → P1）、段落不在文件末尾（其后还有 >20 行的实质章节 → P2，与「末尾段」口径冲突）、
+//   段落过长（>120 行 → P2，失去「精简」意义）。
+try {
+  const projDir10 = dirname(dirname(draftPath));
+  const outline10 = [join(projDir10, 'analysis', '分析大纲.md'), join(evDir, '分析大纲.md')]
+    .find((p) => existsSync(p)) || null;
+  if (!outline10) {
+    results.push({ gate: 'M-Exist-10 大纲 §11 精简段', pass: true, detail: 'N/A：未找到分析大纲（尚未进入 Phase 2）', severity: '通过' });
+  } else {
+    const ol10 = readFileSync(outline10, 'utf8').split('\n');
+    const hIdx10 = ol10.findIndex((l) => /^#{2,4}\s/.test(l) && /写手版|精简段/.test(l));
+    if (hIdx10 === -1) {
+      results.push({
+        gate: 'M-Exist-10 大纲 §11 精简段',
+        pass: false,
+        detail: '大纲缺「写手版精简段」标题（T5 按 §11 定位会找不到 → 回退整读大纲，token 优化失效）',
+        severity: 'P2',
+      });
+    } else {
+      const lvl10 = (/^(#{1,6})/.exec(ol10[hIdx10]) || [])[1].length;
+      let eIdx10 = ol10.length;
+      const re10 = new RegExp(`^#{1,${lvl10}}\\s`);
+      let nextHeading10 = -1;
+      for (let i = hIdx10 + 1; i < ol10.length; i++) { if (re10.test(ol10[i])) { nextHeading10 = i; break; } }
+      if (nextHeading10 !== -1) eIdx10 = nextHeading10;
+      const seg10 = ol10.slice(hIdx10 + 1, eIdx10);
+      const segText10 = seg10.join('\n');
+      const rows10 = seg10.filter((l) => l.trim()).length;
+      const ELEMS10 = [
+        ['论证主线', /主线/],
+        ['论点-论据映射表', /映射/],
+        ['反方规划要点', /反方/],
+        ['字数预算', /字数/],
+        ['禁做项', /禁做|禁止/],
+        ['承重墙清单', /承重墙/],
+      ];
+      const missing10 = ELEMS10.filter(([, re]) => !re.test(segText10)).map(([n]) => n);
+      // 映射表要有真表格（表头含论点 + 至少一行含素材编号）
+      const hasTable10 = /\|[^\n]*论点[^\n]*\|/.test(segText10) && /\[(?:L|D|C)\d+\]/.test(segText10);
+      // 字数预算要有数字
+      const budgetNumeric = /字数[^\n]{0,30}\d/.test(segText10);
+      const findings10 = [];
+      const soft10 = [];
+      if (rows10 < 5) findings10.push(`精简段仅 ${rows10} 行实质内容（须 ≈60 行且含六要素）`);
+      if (missing10.length >= 3) findings10.push(`缺 ${missing10.length} 个要素：${missing10.join(',')}（六要素：论证主线 / 论点-论据映射表 / 反方规划要点 / 字数预算 / 禁做项 / 承重墙清单）`);
+      else if (missing10.length) findings10.push(`缺要素：${missing10.join(',')}`);
+      if (!hasTable10) soft10.push('未见「论点-论据映射表」真表格（表头含论点 + 行内含素材编号）');
+      if (!budgetNumeric) soft10.push('字数预算未见数字');
+      if (rows10 > 120) soft10.push(`精简段 ${rows10} 行过长（≈60 行为准，过长则失去「只读精简段」的意义）`);
+      if (nextHeading10 !== -1 && ol10.slice(nextHeading10).filter((l) => l.trim()).length > 20) {
+        soft10.push('精简段不在文件末尾（其后还有 >20 行实质章节）——与「末尾 §11」口径冲突，T5 按末尾段读会漏内容');
+      }
+      const hard10 = findings10.length > 0;
+      results.push({
+        gate: 'M-Exist-10 大纲 §11 精简段',
+        pass: !hard10 && soft10.length === 0,
+        detail: [
+          `${outline10.split(/[\\/]/).pop()}｜精简段 ${rows10} 行｜六要素实到 ${ELEMS10.length - missing10.length}/6`,
+          hard10 ? `硬问题：${findings10.slice(0, 2).join('；')}` : '六要素齐备',
+          soft10.length ? `软提示：${soft10.slice(0, 2).join('；')}` : '',
+        ].filter(Boolean).join(' ｜ '),
+        severity: hard10 ? (missing10.length >= 3 ? 'P0' : 'P1') : (soft10.length ? 'P2' : '通过'),
+      });
+    }
+  }
+} catch (e) {
+  results.push({ gate: 'M-Exist-10 大纲 §11 精简段', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
 }
 
 // === M-Exist-2 证据包完整性 ===
