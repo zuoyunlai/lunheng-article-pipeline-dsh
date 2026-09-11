@@ -4,7 +4,9 @@
 //   v2.5.2-dsh.16: 新增 M-Form-9 图件闭环（[图N] ↔ final/图件/ ↔ 图上数字）
 //   v2.5.2-dsh.17: 新增 M-Form-10 索引段完整性 / M-Form-11 素材按需加载闭环 /
 //                  M-Exist-4 审计条目闭环 / M-Exist-5 阶段闸门记录表 /
-//                  M-Exist-6 审稿报告与期刊匹配 / M-Exist-7 交付说明字段齐备 → M 门 20 项（脚本 19 项 + M-Integrity-2 主控）
+//                  M-Exist-6 审稿报告与期刊匹配 / M-Exist-7 交付说明字段齐备 /
+//                  M-Exist-8 批判报告覆盖（C1-C7）/ M-Exist-9 审计报告 G 项覆盖；
+//                  M-Form-8 增补「承重墙超载」机检 → M 门 22 项（脚本 21 项 + M-Integrity-2 主控）
 // 用法: node m-gate-check.mjs <final/定稿.md> <final/证据包目录> [--summary] [--fig-dir <图件目录>] [--report <path>]
 //   --summary：仅输出聚合统计（total/pass/p0/p1/p2/soft/skips）+ 硬失败项；省略通过项 details[]（省 ~80% 输出字节，机器可读友好）
 //   --fig-dir：图件目录（缺省自动推 <定稿目录>/图件）
@@ -250,12 +252,76 @@ try {
     if (!hasL) { mform8Findings.L_missing++; mform8Findings.details.push(`段缺[Lxx]: ${sec.split('\n')[0].slice(0, 30)}`); }
     if (cov < 2) mform8Findings.weak++;
   }
-  let mform8Pass = (mform8Findings.L_missing === 0 && mform8Findings.weak === 0);
-  let mform8Severity = mform8Pass ? '通过' : (mform8Findings.L_missing > 0 ? 'P0' : 'P1');
+  // ---- 承重墙超载机检（v2.5.2-dsh.17 新增）----
+  // 承重墙 = 支撑力最强的单条证据，T4 在大纲「承重墙清单」里逐论点标 top1；论衡定的规则是
+  // **同一证据被 ≥3 个论点标为承重墙 = 超载**（教训：善行实战祁东案一个案例承重四个论点，
+  // 被击穿则整链塌）。此前该规则只有 T6 的专项批判 + T7 的 LLM 复核，**没有任何机械计数**。
+  // 判定方式与格式无关：清单区内每个论点最多贡献一次 top1 标注，故同一编号出现 ≥3 次即 ≥3 个论点。
+  const wall8 = { checked: false, rows: 0, overload: [], ghost: [], claims: 0, notes: [] };
+  try {
+    const projDir8 = dirname(dirname(draftPath));
+    const outlinePath8 = [join(projDir8, 'analysis', '分析大纲.md'), join(evDir, '分析大纲.md')]
+      .find((p) => existsSync(p));
+    if (outlinePath8) {
+      const ol = readFileSync(outlinePath8, 'utf8').split('\n');
+      const sIdx = ol.findIndex((l) => /承重墙/.test(l) || /承重证据\s*top\s*1/i.test(l));
+      if (sIdx !== -1) {
+        wall8.checked = true;
+        const head = /^(#{1,6})\s/.exec(ol[sIdx]);
+        let eIdx = Math.min(ol.length, sIdx + 61);
+        if (head) {
+          const re = new RegExp(`^#{1,${head[1].length}}\\s`);
+          for (let i = sIdx + 1; i < ol.length; i++) { if (re.test(ol[i])) { eIdx = i; break; } }
+          if (eIdx === Math.min(ol.length, sIdx + 61)) eIdx = ol.length;   // 未找到同级标题 → 到文件末
+        }
+        const block = ol.slice(sIdx, eIdx);
+        // 只认「结构性行」：表格行 / 列表项 / 含论点标记的行（防把散文里的编号算成承重墙标注）
+        const structRows = block.filter((l) => /\[[LDC]\d+\]/.test(l) && (/^\s*[|*-]/.test(l) || /论点\s*[0-9一二三四五六七八九十]/.test(l)));
+        wall8.rows = structRows.length;
+        const freq = new Map();
+        for (const l of structRows) for (const m of l.matchAll(/\[([LDC])(\d+)\]/g)) {
+          const id = `[${m[1]}${m[2]}]`;
+          freq.set(id, (freq.get(id) || 0) + 1);
+        }
+        wall8.claims = new Set([...block.join('\n').matchAll(/论点\s*([0-9一二三四五六七八九十]+)/g)].map((m) => m[1])).size;
+        wall8.overload = [...freq.entries()].filter(([, n]) => n >= 3).map(([id, n]) => `${id}×${n}论点`);
+        if (wall8.rows === 0) wall8.notes.push('承重墙清单无结构性条目（每个论点须标一条「承重证据 top1」）');
+        else if (wall8.claims > wall8.rows) wall8.notes.push(`${wall8.claims} 个论点但只标了 ${wall8.rows} 条承重墙——有论点未标 top1`);
+        // 幽灵编号：承重墙标了卡片里不存在的编号
+        const cardIds8 = new Set();
+        for (const [name, rel] of [['文献卡.md', 'literature/文献卡.md'], ['数据卡.md', 'data/数据卡.md'], ['案例卡.md', 'cases/案例卡.md']]) {
+          let p = join(evDir, name);
+          if (!existsSync(p)) { const alt = join(projDir8, rel); p = existsSync(alt) ? alt : null; }
+          if (!p) continue;
+          for (const m of readFileSync(p, 'utf8').matchAll(/^#{2,4}\s*\[([LDC])(\d+)\]/gm)) cardIds8.add(`[${m[1]}${m[2]}]`);
+        }
+        if (cardIds8.size > 0) wall8.ghost = [...freq.keys()].filter((id) => !cardIds8.has(id));
+      } else {
+        wall8.notes.push('大纲未见承重墙清单（T4 未标 top1 → 本项无从核，T6/T7 按清单专项检查失效）');
+      }
+    }
+  } catch { /* 承重墙是增强项：解析失败不拖垮 M-Form-8 原有覆盖率判定 */ }
+
+  const wallHard = wall8.overload.length > 0 || wall8.ghost.length > 0;
+  let mform8Pass = (mform8Findings.L_missing === 0 && mform8Findings.weak === 0 && !wallHard);
+  let mform8Severity = mform8Findings.L_missing > 0 ? 'P0'
+    : (wallHard || mform8Findings.weak > 0 ? 'P1' : '通过');
+  const wallBit = wall8.checked
+    ? (wall8.overload.length
+      ? `承重墙超载：${wall8.overload.join(',')}（同一证据被 ≥3 论点承重 → 降级为辅助证据或补检索）`
+      : (wall8.rows > 0 ? `承重墙 ${wall8.rows} 条标注、无超载` : (wall8.notes[0] || '承重墙清单为空')))
+    : '';
+  let wallBit2 = '';
+  if (wall8.ghost.length) wallBit2 = `承重墙含卡片中不存在的编号：${wall8.ghost.slice(0, 5).join(',')}`;
   results.push({
     gate: 'M-Form-8 三角验证',
     pass: mform8Pass,
-    detail: `${mform8Findings.total} 段：${mform8Findings.L_missing} 段缺 L，${mform8Findings.weak} 段覆盖 <2 类${mform8Findings.details.length ? `（${mform8Findings.details.slice(0, 3).join('; ')}）` : ''}`,
+    detail: [
+      `${mform8Findings.total} 段：${mform8Findings.L_missing} 段缺 L，${mform8Findings.weak} 段覆盖 <2 类${mform8Findings.details.length ? `（${mform8Findings.details.slice(0, 3).join('; ')}）` : ''}`,
+      wallBit,
+      wallBit2,
+      (wall8.checked && wall8.rows > 0 && !wall8.overload.length && wall8.notes.length) ? `备注：${wall8.notes[0]}` : '',
+    ].filter(Boolean).join(' ｜ '),
     severity: mform8Severity,
   });
 } catch (e) {
@@ -907,6 +973,143 @@ try {
   }
 } catch (e) {
   results.push({ gate: 'M-Exist-7 交付说明字段齐备', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
+}
+
+// === M-Exist-8 批判报告覆盖（C1-C7；v2.5.2-dsh.17 新增）===
+// 依据：06 卡明确要求「C1-C7 逐条执行」且每条按统一结构化清单写（论点定位/反方观点/你的论据/
+//   攻击强度/建议），并声明「T7 审计员 + T5 写手可机械消费」——**但没有任何脚本核过它**。
+//   实测风险：批判报告漏掉 C3（理论假设）或 C7（一处两用）时，从报告表面完全看不出来，
+//   而 T7 的「T6 条目关闭复核」与 T5 的段级 diff 都以这些条目为输入。
+// 本项机检：七节齐备（缺 → P1；>2 缺 → P0）、节体非空（软）、段级清单编号合法且唯一（P1/P2）、
+//   每条清单至少含 3 项要素（软）。
+// 触发条件：存在 analysis/批判报告-vN.md；无 → N/A（轻量档可跳，不算失败）。
+try {
+  const projDir8c = dirname(dirname(draftPath));
+  const revDirs = [join(projDir8c, 'analysis'), join(projDir8c, 'audits'), dirname(draftPath)];
+  const latestRevPath = (() => {
+    for (const d of revDirs) {
+      if (!existsSync(d)) continue;
+      const c = readdirSync(d)
+        .map((f) => ({ f, m: f.match(/^批判报告-v(\d+)\.md$/) }))
+        .filter((x) => x.m).map((x) => ({ f: x.f, n: Number(x.m[1]) }))
+        .sort((a, b) => b.n - a.n);
+      if (c.length) return { path: join(d, c[0].f), name: c[0].f, n: c[0].n };
+    }
+    return null;
+  })();
+  if (!latestRevPath) {
+    results.push({ gate: 'M-Exist-8 批判报告覆盖', pass: true, detail: 'N/A：无批判报告（轻量档跳过 Phase 3.6 或尚未到该阶段）', severity: '通过' });
+  } else {
+    const rt8 = readFileSync(latestRevPath.path, 'utf8');
+    const rl8 = rt8.split('\n');
+    const CIDS = ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7'];
+    // 认标题 / 加粗标签 / 列表项 / 表格行四种写法（避免因格式差异误判「漏节」）
+    const cLine = (c) => new RegExp(`^(?:#{1,6}\\s*|[-*]\\s*|\\|\\s*)?\\*{0,2}${c}(?![0-9])\\b`);
+    const headLine = (c) => new RegExp(`^#{2,4}\\s*\\*{0,2}${c}(?![0-9])\\b`);
+    const missing8 = CIDS.filter((c) => !rl8.some((l) => cLine(c).test(l)));
+    const thin8 = [];
+    for (const c of CIDS) {
+      const hi = rl8.findIndex((l) => headLine(c).test(l));
+      if (hi === -1) continue;                      // 非标题写法 → 跳过非空判定（避免误伤）
+      let hj = rl8.findIndex((l, i) => i > hi && /^#{2,4}\s/.test(l));
+      if (hj === -1) hj = rl8.length;
+      const secBody = rl8.slice(hi + 1, hj).join('\n').replace(/[\s|*`\-—–:：]/g, '');
+      if (secBody.length < 40) thin8.push(c);
+    }
+    const entries8 = [...rt8.matchAll(/\[(P[012])-(C\d+)-(\d+)\]/g)].map((m) => ({ id: m[0], cat: m[2] }));
+    const badCat8 = [...new Set(entries8.filter((e) => !CIDS.includes(e.cat)).map((e) => e.id))];
+    const dup8 = (() => { const seen = new Set(), dup = new Set(); for (const e of entries8) { if (seen.has(e.id)) dup.add(e.id); seen.add(e.id); } return [...dup]; })();
+    const ELEMS8 = [/论点定位/, /反方观点|攻击方式/, /论据|\[(?:L|D|C)\d+\]/, /攻击强度|严重度|强度/, /建议|处置/];
+    const thinEntries8 = [];
+    for (const e of entries8) {
+      const i = rt8.indexOf(e.id);
+      const seg = rt8.slice(i, i + 700);
+      if (ELEMS8.filter((re) => re.test(seg)).length < 3) thinEntries8.push(e.id);
+    }
+    const findings8 = [];
+    const soft8 = [];
+    if (missing8.length) findings8.push(`批判维度缺 ${missing8.length} 节：${missing8.join(',')}（C1-C7 须逐条执行）`);
+    if (dup8.length) findings8.push(`段级清单编号重复：${dup8.slice(0, 5).join(',')}——同报告内编号必须唯一`);
+    if (thin8.length) soft8.push(`节体过短（内容不足）：${thin8.join(',')}`);
+    if (badCat8.length) soft8.push(`清单编号类别非法（须 C1-C7）：${badCat8.slice(0, 5).join(',')}`);
+    if (thinEntries8.length) soft8.push(`${thinEntries8.length} 条清单要素不足 3 项（须含 论点定位/反方观点/论据/攻击强度/建议）：${thinEntries8.slice(0, 4).join(',')}`);
+    const hard8 = findings8.length > 0;
+    results.push({
+      gate: 'M-Exist-8 批判报告覆盖',
+      pass: !hard8 && soft8.length === 0,
+      detail: [
+        `${latestRevPath.name}｜C1-C7 实到 ${CIDS.length - missing8.length}/7｜段级条目 ${entries8.length} 条`,
+        hard8 ? `硬问题：${findings8.slice(0, 2).join('；')}` : '七维齐备且条目编号合法',
+        soft8.length ? `软提示：${soft8.slice(0, 2).join('；')}` : '',
+      ].filter(Boolean).join(' ｜ '),
+      severity: hard8 ? (missing8.length > 2 ? 'P0' : 'P1') : (soft8.length ? 'P2' : '通过'),
+    });
+  }
+} catch (e) {
+  results.push({ gate: 'M-Exist-8 批判报告覆盖', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
+}
+
+// === M-Exist-9 审计报告 G 项覆盖（v2.5.2-dsh.17 新增）===
+// 依据：07 卡把「审计报告里的 G0-G14 检查项是否全覆盖」列为**验收标准**，quickref 要求
+//   「必查项逐条执行，缺一不可」——**但没有任何脚本核过覆盖**。实测风险：审计报告只写了
+//   G1-G7，G11（时效）/G12（信任级别）/G14（中文 AI 痕迹）整段缺席，报告读起来仍像「全项检查」。
+// 本项机检：G0-G14 十五个主项都要出现**且邻域内有结论词**（缺项 → P1；>3 缺 → P0；有提及无结论 → P2）；
+//   G0.5 / G2.5 / G4-2 子项缺失 → P2。
+// 触发条件：存在 audits/审计报告-vN.md；无 → N/A。
+try {
+  const projDir9 = dirname(dirname(draftPath));
+  const auditsDir9 = [join(projDir9, 'audits'), join(dirname(draftPath), 'audits')].find((d) => existsSync(d)) || null;
+  const latest9 = (() => {
+    if (!auditsDir9) return null;
+    const c = readdirSync(auditsDir9)
+      .map((f) => ({ f, m: f.match(/^审计报告-v(\d+)\.md$/) }))
+      .filter((x) => x.m).map((x) => ({ f: x.f, n: Number(x.m[1]) }))
+      .sort((a, b) => b.n - a.n);
+    return c.length ? { path: join(auditsDir9, c[0].f), name: c[0].f } : null;
+  })();
+  if (!latest9) {
+    results.push({ gate: 'M-Exist-9 审计报告 G 项覆盖', pass: true, detail: 'N/A：尚无审计报告（未进入 Phase 4）', severity: '通过' });
+  } else {
+    const at9 = readFileSync(latest9.path, 'utf8');
+    const G_MAIN = ['G0', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9', 'G10', 'G11', 'G12', 'G13', 'G14'];
+    const G_SUB9 = ['G0.5', 'G2.5', 'G4-2'];
+    const VERDICT9 = /通过|不通过|合规|违规|达标|未达标|PASS|FAIL|⚠|✅|❌|N\/A|部分|已核|未核|无问题|有问题/;
+    const at9Lines = at9.split('\n');
+    const absent9 = [];
+    const noVerdict9 = [];
+    for (const id of G_MAIN) {
+      const esc9 = id.replace(/[.-]/g, (c) => `\\${c}`);
+      const re9 = new RegExp(`(?<![A-Za-z0-9])${esc9}(?![0-9.])`);
+      const hitLines = [];
+      at9Lines.forEach((l, i) => { if (re9.test(l)) hitLines.push(i); });
+      if (hitLines.length === 0) { absent9.push(id); continue; }
+      // 结论词须在**同一行或紧接着的下一行**（覆盖「- **G7**：通过」「| G7 | 通过 |」「### G7 \n 结论：通过」三种写法）
+      const ok9 = hitLines.some((i) => VERDICT9.test(at9Lines[i]) || (i + 1 < at9Lines.length && VERDICT9.test(at9Lines[i + 1])));
+      if (!ok9) noVerdict9.push(id);
+    }
+    const absentSub9 = G_SUB9.filter((id) => {
+      const esc9 = id.replace(/[.-]/g, (c) => `\\${c}`);
+      return !new RegExp(`(?<![A-Za-z0-9])${esc9}(?![0-9.])`).test(at9);
+    });
+    const findings9 = [];
+    const soft9 = [];
+    if (absent9.length) findings9.push(`G 项未覆盖 ${absent9.length} 个：${absent9.join(',')}（quickref 要求逐条执行、缺一不可）`);
+    if (noVerdict9.length) soft9.push(`${noVerdict9.join(',')} 有提及但邻域无结论词（须写 通过/不通过/N/A + 证据）`);
+    if (absentSub9.length) soft9.push(`子项未覆盖：${absentSub9.join(',')}`);
+    const hard9 = findings9.length > 0;
+    results.push({
+      gate: 'M-Exist-9 审计报告 G 项覆盖',
+      pass: !hard9 && soft9.length === 0,
+      detail: [
+        `${latest9.name}｜G0-G14 实到 ${G_MAIN.length - absent9.length}/15`,
+        hard9 ? `硬问题：${findings9[0]}` : '十五项全覆盖且各有结论',
+        soft9.length ? `软提示：${soft9.slice(0, 2).join('；')}` : '',
+      ].filter(Boolean).join(' ｜ '),
+      severity: hard9 ? (absent9.length > 3 ? 'P0' : 'P1') : (soft9.length ? 'P2' : '通过'),
+    });
+  }
+} catch (e) {
+  results.push({ gate: 'M-Exist-9 审计报告 G 项覆盖', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
 }
 
 // === M-Exist-2 证据包完整性 ===
