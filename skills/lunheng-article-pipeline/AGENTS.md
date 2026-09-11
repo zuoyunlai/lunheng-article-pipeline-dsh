@@ -5,7 +5,10 @@
 ## 启动时必读
 1. `references/pipeline-readme.md` — 流水线运行手册（含复制即用的派发话术）
 2. `references/glossary.md` — 核心概念词汇表（单一真源：角色/三层防御/数据信任/教训体系）
-3. `memory/YYYY-MM-DD.md` — 今日/昨日记录（如有）
+3. `references/glossary.md` **§十二 本技能自用术语与文档约定** — 承重墙/三角验证/M 门等术语的确切含义，以及与官方文档规范的刻意偏离说明（v18.0.0 新增）
+4. `memory/YYYY-MM-DD.md` — 今日/昨日记录（如有）
+
+> **包形态（v18.0.0 起）**：**包根**含 `package.json`（`main` → `lib/index.js` + `dsh.bundle.patch` → `cordis.patch.yml`）、`lib/index.js`（**入口**：读随包 `skills/lunheng-article-pipeline/SKILL.md`，经 `ctx.skills.register()` 注册为 agent 技能，`inject=['skills']` + `resourceBase` 指向技能目录，注册即 effect、卸载自动清理）、`cordis.patch.yml`（只叠加 3 档 subagent 工具）。两种部署均受支持：① `dsh plugin add` 装 bundle（技能由入口注册）；② 把 **`skills/lunheng-article-pipeline/` 技能目录**复制到任一 skill 根（项目级 `.dsh/skills/` rank 100 / 用户级 `$DSH_HOME/skills/` rank 400）。**包面自检**：`dsh-plugin-dev check`（14 项：11 通过 / 3 跳过——**v18.0.0 起无豁免**，目标 0 fail / 0 warn）。
 
 ## 流水线协议（摘要，详见 references/pipeline-readme.md）
 
@@ -42,7 +45,14 @@ Phase 5 终检     → T8 终检（独立角色，主控 T0 以 T8 身份亲完�
 - **执行约定（DSH 精简版）**：状态机 + 交接报告六要素 + G8 自检 + **进度播报三播报**（派发即播报 / 完成即转播 / 卡住即告警，防主人干等；无需心跳/分阶段 ack/预检/8 分钟硬卡；旧版完整韧化协议已移出仓库（历史见 git log），现行规则即本执行约定）
 - **阶段闸门（v2.2.1，v2.3.0 改 T5.5→T7.5）**：T2.5（检索→分析）与 T7.5（审计→终检）两道主控 checkpoint，用 `todo_write` + `read` 实现，**不绕过交接直接派发**
 - **闸门留机械证据（v2.5.2-dsh.13）**：两道闸门与 M 门**不得只凭自述**——交接报告须附**脚本 exit code + 产物路径**（`m-gate-check.mjs … --report <项目>/final/M-Gate-Report.json`）；exit 语义 `0` 通过 / `1` P1 / `2` P0 / `3` 仅 P2·soft·SKIP（需 LLM 复核，不得当通过）/ `10` 参数错误
-- **机制文件写保护（v2.5.2-dsh.13）**：`SKILL.md` / `AGENTS.md` / `references/**` / `scripts/**` / `cordis.patch.yml` 任何角色（含子代理）**禁写**；改进动议只写 `audits/反哺报告-vN.md`，由主人在 host shell 手工 apply（改机制文件 = P0 违规）
+- **机制文件写保护（v2.5.2-dsh.13；v18.0.0 补授权例外）**：`SKILL.md` / `AGENTS.md` / `references/**` / `scripts/**` / `cordis.patch.yml` 任何角色（含子代理）**默认禁写**；改进动议只写 `audits/反哺报告-vN.md`，由主人在 host shell 手工 apply（**agent 自主改机制文件 = P0 违规，本次交付作废**）。
+  > **⚠️ 唯一例外：主人显式授权（v18.0.0）**：当**主人直接指令**要求修订机制文件时（如「你依次全部修订吧」），**不构成越权**——主人是机制文件的所有者，该指令即授权。此时仍须遵守：
+  > ① **改前备份**（工作区外 `<DSH_HOME>/_backup/lunheng-<日期>/`，含 `scripts/` + `references/` + `SKILL.md` + `AGENTS.md` 全量）+ 记录行数基线；
+  > ② **改中用 `edit` 精确匹配**（禁 `sed -i`）；
+  > ③ **改后验证**（逐文件语法检查 `node -c`、重跑受影响脚本、必要时 `diff` 对比备份）；
+  > ④ **全程可回滚**（备份保留；改动清单与回滚命令写入交付说明）；
+  > ⑤ **如实标注**（在改动记录中写明「本次机制文件改动依据主人显式授权」，不掩盖默认约束的突破）。
+  > **判据一句话**：**agent 自发改进 = 禁写（只出反哺报告）；主人明确下令 = 可写（走安全流程）**。
 - **技能来源自检（v2.5.2-dsh.13）**：启动时核对 `SKILL.md` 版本头与期望版本一致，不一致即停机报「技能来源可疑」（同名技能会按 rank 就近静默顶替）
 - **M 门（v2.2.0+）**：终检前必读 `references/_shared/M-Gate-Algorithm.md`（**仅 T7/T8 读**——T1-T5/T9 不读，因 M 门 23 项中 22 项已脚本化为 `scripts/m-gate-check.mjs`（M-Form 1-11 + M-Exist 1-10 + M-Integrity-1 佐证），LLM 只复核 M-Form-8 的承重墙质量与 M-Integrity-2 跨文件判断），按伪代码执行 M-Form/M-Exist/M-Integrity（M-Form 11 项含 M-Form-7 文末白名单 v2.3.5 + M-Form-8 三角验证 v2.3.7 + M-Form-9 图件闭环 v2.5.2-dsh.16 + M-Form-10 索引段完整性 / M-Form-11 素材按需加载闭环 v2.5.2-dsh.17），产出 `final/M-Gate-Report.json`，exit 0 才返回
 - **图件链路（v2.5.2-dsh.16）**：写手只标 `[图N：标题]`（**独占一行**）→ 主控 Phase 4.5 用 `write` 手写 SVG 到 `final/图件/图N_标题.svg`（**唯一口径**）→ 导出 `md2html.mjs --fig-dir final/图件`（按图号配图，缺图显式标注）→ **M-Form-9** 对账（缺图/图位不足 → P0·P1；孤儿图件/图上数字无出处 → P2 提示）
@@ -59,7 +69,39 @@ Phase 5 终检     → T8 终检（独立角色，主控 T0 以 T8 身份亲完�
 2. **改中**：用 `edit` 工具（精确 oldText 匹配），**不用 sed/awk/perl 直接写回原文件**
 3. **改后**：`wc -l` 对比 + `diff <file> <备份目录>/<file>.bak` 验证（不一致立即从 .bak 恢复）
 4. **跨文件 sync**：用 `cp` 不带任何转换，直接覆盖（skill 副本同步是 `references/` 路径映射）
-5. **验证**：本修改走完后必 `grep` 关键词 + 结构性 grep（如本手册的「## 交接报告」所有角色卡齐整性）；改论衡机制/文档后额外跑 `node scripts/consistency-check.mjs`（P0-1 四类漂移自动检测，exit 0 才提交）；**仓库级打包面检查**（cordis.patch.yml 合法性 / 行 id 唯一 / `dsh.bundle.patch` 指向 / package.json 元数据 / 工程红线，含纯 skill bundle 的两条已声明豁免）由 CI 的 `plugin-surface` job 承担，本地复现命令见 `.github/workflows/ci.yml` 与 CHANGELOG 同名条目
+5. **验证**：本修改走完后必 `grep` 关键词 + 结构性 grep（如本手册的「## 交接报告」所有角色卡齐整性）；改论衡机制/文档后额外跑两条门（v18.0.0 起为双门）：
+   - `node scripts/consistency-check.mjs` —— 文档一致性（21 类漂移，**exit 0 才提交**）
+   - `dsh-plugin-dev check` —— 包面静态门（14 项：patch 合法性 / `package.json` 元数据 / 多语 README 一致性 / 工程红线；**目标 0 fail / 0 warn**）
+   > **布局提示（v18.0.0）**：`consistency-check.mjs` 支持两种部署布局——**仓库布局**（`<repo>/package.json` + `<repo>/skills/<name>/`）与**技能即包根**（`<skillRoot>/package.json`，本机 `.dsh/skills/<name>/` 部署）；`REPO_ROOT` 自动探测，旧版硬编码「向上两级」会在本机布局下指向 `~/.dsh` 而 ENOENT。
+   **仓库级打包面检查**（`cordis.patch.yml` 合法性 / 行 id 唯一 / `dsh.bundle.patch` 指向 / `package.json` 元数据（`main` + `files` 含 `lib` + `packageManager`）/ 五语 README 一致性 / 工程红线；**v18.0.0 起无豁免**，11 通过 / 3 跳过）由 CI 的 `plugin-surface` job 承担，本地复现命令见 `.github/workflows/ci.yml` 与 CHANGELOG 同名条目；**包入口的执行路径**由 `tests/entry.test.mjs` 用最小 ctx 真跑 `apply` 覆盖（静态门不执行入口，故这条不可省——教训 #152）
+
+## 开发参考资料（v18.0.0 新增，主人指示：官方资料为以后开发的重要参考）
+
+> **判据（主人 2026-09-11 指示）**：凡涉及**包形态、插件契约、服务/事件、工具注册、打包发布、官方文档规范**的改动，**先查官方资料再动手**——不得凭记忆、也不得凭本包既有写法推断（既有写法本身可能与官方漂移）。
+
+**官方资料入口**（`dsh-plugin-guide` 技能；其包目录含 `guide/` + `references/official-docs/`）：
+
+| 需要什么 | 查哪里 |
+|---|---|
+| 契约速查（插件骨架 / core ctx API / 事件分发模式 / 硬规则） | `guide/quick-reference.md` |
+| 完整开发路径（新工具 / 新服务 / 拦截策略 / 打包发布） | `guide/plugin-dev-guide.md` |
+| 官方文档全文（215 页，中英成对） | `references/official-docs/docs/**` |
+| **skill 子系统契约**（frontmatter 键 / 本地发现 rank 表 / `resourceBase` / 目录只用 name+description） | `references/official-docs/docs/subsystems/skills.zh.md` |
+| 打包与层顺序（bundle vs plain cordis、`dsh.bundle.patch`、覆盖语义） | `references/official-docs/docs/user/develop/basic/publish.zh.md` |
+| 仓库约束 + **文档写作规范**（不用隐喻 / 不保留审查历史 / 一事实一处） | `references/official-docs/AGENTS.md` |
+| 精确服务与事件签名 | `references/official-docs/docs/subsystems/*.md`（生成式 Cordis API 区） |
+| 能力接缝（Service Definition / Provider / Consumer 三层） | `references/official-docs/docs/capability-seams.md` |
+
+**机械层（官方 CLI，随知识库分发）**：
+- `dsh-plugin-dev check` —— 14 项静态门（patch 合法性 / `package.json` 元数据 / 多语 README 一致性 / 工程红线）；**目标 0 fail / 0 warn**
+- `dsh-plugin-dev verify` —— `pnpm pack` 后装入干净 `DSH_HOME` profile 做安装+启动+卸载冒烟
+- `dsh-plugin-dev new <name>` —— 参数化脚手架（生成契约模板 / Schemastery Config / `cordis.patch.yml` / 五语 README）
+
+**冲突裁决顺序**：① 官方 `references/official-docs/**`（官方仓库原文）→ ② 本包 `AGENTS.md` / `SKILL.md` → ③ 其他文档。**官方与本包冲突时以官方为准**，并按上表判断应改本包哪一处；改完跑双门。
+
+**何时必须查官方资料**：改 `package.json` / `cordis.patch.yml` / `lib/**`；新增工具或服务；改 `SKILL.md` frontmatter；调整审计/门禁的**执行方式**（而非检查内容）；打包发布前。
+
+**本包与官方的已知刻意偏离**：见 [`references/glossary.md`](references/glossary.md) **§十二**（自用术语 + 文档约定 + 偏离理由与代价）——改动前先读该节，避免把「刻意设计」当成疏漏改掉。
 
 ## 记忆文件（运行时由主控在项目目录创建，非技能包内置）
 - `memory/YYYY-MM-DD.md` — 每日日志（记结论不记过程）

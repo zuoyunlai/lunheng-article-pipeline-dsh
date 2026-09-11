@@ -24,16 +24,20 @@ dsh plugin --profile <profile> add lunheng-article-pipeline
    corepack enable && corepack prepare pnpm@latest --activate
    ```
 2. **`dsh plugin add` 会自动加 bundles 清单（新版 dsh）**：`reconcilePlugins` 会把声明了 `dsh.bundle` 的依赖自动追加进 `dsh.profile.bundles`（按依赖顺序），装完重启即可。仅当**绕过 `dsh plugin` 用纯 npm/pnpm 直接安装**、或使用**旧版 dsh** 时，才需要手动编辑第 2 步（把包名加进 `dsh.profile.bundles`）。
-3. **dshmarket 市场会显示「校验失败」误报**：它只认 JS 入口（`main`/`exports`/`index.js`），不认 `dsh.bundle.patch`，会把论衡误标「入口产物缺失」。**实际安装与使用不受影响**（见 `docs/faq.md`）。
+3. **dshmarket 市场**：v18.0.0 起本包带 JS 包入口（`main` → `lib/index.js`），「只认 JS 入口」的校验器不再误报（详见 `docs/faq.md`）。
 
 ## 验证
 
 ```sh
-# bundle 行应出现在组合树中
+# bundle 层与三档工具行应出现在组合树中
 dsh --profile <profile> --dump-config
 #   预期看到：  # == lunheng-article-pipeline
-#              - id: skill-filesystem-lunheng
+#              - id: tool-subagent-retrieval
+#              - id: tool-subagent-strong
+#              - id: tool-subagent-audit
 ```
+
+技能本身由包入口 `lib/index.js` 在加载期经 `ctx.skills.register()` 注册，**不出现在 `--dump-config` 的行里**——技能是否挂上要用会话目录验证（下一条）。
 
 空目录 headless 验证（排除本地技能根干扰，确认技能仅来自 bundle）：
 
@@ -45,7 +49,7 @@ dsh --profile <headless-profile> "请调用 skill 工具列出你可见的技能
 
 ## 分档预设（按角色分模型，可选，通用化）
 
-**单模型用户无需本预设**——默认所有角色继承会话模型，任何模型配置都能跑。装预设只对「配了多个模型、想按角色能力分档」的用户有意义（检索便宜快 / 分析写作批判审稿推理强 / 审计顶配）：
+**单模型用户无需任何配置**——默认所有角色继承会话模型，任何模型配置都能跑。分档只对「配了多个模型、想按角色能力分档」的用户有意义（检索便宜快 / 分析写作批判审稿推理强 / 审计顶配）：
 
 | 工具 | 角色 | 能力定位 | 默认 provider/model（可覆盖） |
 |---|---|---|---|
@@ -53,20 +57,17 @@ dsh --profile <headless-profile> "请调用 skill 工具列出你可见的技能
 | `subagent_strong` | T4 分析 / T5 写作 / T6 批判 / T9 审稿 | 推理强 | 继承父会话（设 `LUNHENG_STRONG_*` 才分档） |
 | `subagent_audit` | T7 审计 / G14 检测 | 顶配防漏判 | 继承父会话（设 `LUNHENG_AUDIT_*` 才分档） |
 
+**分档随 bundle 生效，无需复制任何预设目录**（`examples/preset/` 只是说明文档，不含可加载的 `agent.cordis.yml`）：安装本包即在 profile 里插入上述三档工具行。
+
 ```sh
-# 1) 复制预设到用户预设根（Windows 用 copy / xcopy 同理）
-cp -r examples/preset "$DSH_HOME/.agent-presets/lunheng"
-
-# 2) 新会话在预设选择器里选「论衡分档」
-
-# 3) 换模型：设环境变量后重启 dsh（模型挂载期求值一次，改完必须重启）
+# 换模型：设环境变量后重启 dsh（模型在挂载期求值一次，改完必须重启）
 #    ⚠️ provider 与 model 分离：model 是裸 id，provider 必须单独指定
 export LUNHENG_AUDIT_PROVIDER=minimax
 export LUNHENG_AUDIT_MODEL=MiniMax-M3
 dsh --profile <profile>
 ```
 
-- 不装预设：技能回退到 `subagent`，所有角色继承会话模型（对多数场景够用）。
+- 不设任何 `LUNHENG_*`：三档全部继承会话模型（安全默认）；某档工具未挂载时，派发回退到 `subagent`。
 - 模型在挂载期用 `!!js` 求值一次，改环境变量后**必须重启 dsh** 才生效。
 - **v2.5.2-dsh.4 修订：未设 `LUNHENG_*_PROVIDER` 的档不覆盖模型（继承父会话）——任何模型配置都能安全装预设**；设了 PROVIDER 未设 MODEL 才用档位默认模型（retrieval=deepseek-v4-flash / strong·audit=deepseek-v4-pro）。
 - provider 名须是你 dsh 已注册的 LLM provider（查 `settings.yaml` 的 `agent-default-model.provider`）。

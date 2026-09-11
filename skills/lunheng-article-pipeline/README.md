@@ -1,6 +1,6 @@
 # 论衡（lunheng-article-pipeline）— 多 Agent 深度长文流水线
 
-> **DSH 原生插件（v17.0.0）**：本仓库为 DSH bundle 技能包；结构性差异见 `SKILL.md` 的「🔧 DSH 环境说明」章节。
+> **DSH 原生插件（v18.0.0）**：本仓库为 DSH bundle 技能包（`package.json` 的 `main` → `lib/index.js` 注册本技能 + `dsh.bundle.patch` → `cordis.patch.yml` 叠加三档 subagent 工具）；结构性差异见 `SKILL.md` 的「🔧 DSH 环境说明」章节。
 
 把一篇深度文章 / 论文的生产拆成 **9 个独立角色 T1-T9 + 6 个阶段**（v2.5.2-dsh.8 语义定案：T1-T9 互不可替代；Phase 1 为 T1 文献 ∥ T2 数据 ∥ T3 案例 三检索员三方真并行互不干涉，T3 任何量级必 spawn 含 0 条空卡协议；T6 批判伙伴 + T7 审计 + **T8 终检独立角色由主控 T0 亲执行** + T9 同行评审可选默认选中学术必选，v2.3.0 角色编号重构 + v2.4.0 加 T9），用 DSH 的 `subagent` 子代理编排，产出有**证据底座、反方论证、独立审计、人工核验节点**的交付物。
 
@@ -175,16 +175,16 @@ lunheng-article-pipeline/                    # npm 包（DSH bundle）
 ### 方式一：DSH 插件（bundle）安装
 
 ```sh
-# 1) 装进 profile 的 node_modules
+# 1) 装进 profile（新版 dsh 会自动把声明了 dsh.bundle 的依赖加进 dsh.profile.bundles）
 dsh plugin --profile web add lunheng-article-pipeline
 
-# 2) 把 bundle 加入 profile 清单 dsh.profile.bundles
+# 2) 仅当纯 npm/pnpm 安装或旧版 dsh 时，才需手工加 bundle 清单 dsh.profile.bundles
 #    "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "lunheng-article-pipeline"] } }
 
 # 3) 重启 dsh web
 ```
 
-装好后，新会话的 `skill` 工具目录会出现 `lunheng-article-pipeline`；主控 Agent 按 `references/pipeline-readme.md` 里的派发话术 spawn 各角色。
+技能由包入口 `lib/index.js` 注册（读随包 `SKILL.md`，`resourceBase` 指向本技能目录），三档 subagent 工具由 `cordis.patch.yml` 叠加。装好后，新会话的 `skill` 工具目录会出现 `lunheng-article-pipeline`；主控 Agent 按 `references/pipeline-readme.md` 里的派发话术 spawn 各角色。
 
 ### 方式二：直接使用技能目录（不发布）
 
@@ -192,7 +192,7 @@ dsh plugin --profile web add lunheng-article-pipeline
 
 ### 模型更换 / 按角色分模型（v2.3.7-dsh.6 通用化）
 
-DSH 的模型路由由 `settings.yaml` 配置决定，`subagent` 默认继承会话模型（**单模型配置零配置可用**）。配了多模型想**按角色能力分档**，装本包的「分档预设」`examples/preset/`（复制到 `$DSH_HOME/.agent-presets/lunheng/`，新会话选「论衡分档」），主控会改用三档工具按角色分派：
+DSH 的模型路由由 `settings.yaml` 配置决定，`subagent` 默认继承会话模型（**单模型配置零配置可用**）。配了多模型想**按角色能力分档**，**装本包即在 profile 里插入三档工具**（`cordis.patch.yml` 的 3 段 `- insert:`；`examples/preset/` 只是说明文档，无需复制任何目录），主控会改用三档工具按角色分派：
 
 | 工具 | 角色 | 能力定位 | 默认 provider/model（可覆盖） |
 |---|---|---|---|
@@ -200,7 +200,7 @@ DSH 的模型路由由 `settings.yaml` 配置决定，`subagent` 默认继承会
 | `subagent_strong` | T4 分析 / T5 写作 / T6 批判 / T9 审稿 | 推理强 | 继承父会话（设 `LUNHENG_STRONG_*` 才分档） |
 | `subagent_audit` | T7 审计 / G14 检测 | 顶配防漏判 | 继承父会话（设 `LUNHENG_AUDIT_*` 才分档） |
 
-覆盖环境变量：`LUNHENG_{RETRIEVAL,STRONG,AUDIT}_PROVIDER`（provider 名）+ `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_MODEL`（裸模型 id）——**两者分离，跨 provider 必须同时指定**。模型挂载期求值一次，改环境变量后须重启 dsh；未挂载对应工具或未装预设时自动回退 `subagent`（继承会话模型，任何模型配置都能跑）。
+覆盖环境变量：`LUNHENG_{RETRIEVAL,STRONG,AUDIT}_PROVIDER`（provider 名）+ `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_MODEL`（裸模型 id）——**字段独立**（只给 model 也生效；跨 provider 必须同时指定），`LUNHENG_TIERING=off` 一键让三档全部继承。模型在挂载期求值一次，改环境变量后须重启 dsh；未挂载对应工具时自动回退 `subagent`（继承会话模型，任何模型配置都能跑）。
 
 ---
 

@@ -57,6 +57,25 @@ if (!existsSync(evDir)) {
   console.error(`证据包目录不存在: ${evDir} —— 请先收集证据包再跑 M 门预检`);
   process.exit(1);
 }
+// === 证据包完整性前置提示（v18.0.0 新增；发布前修订为「告警不中止」）===
+// 实战教训：主控首跑误传 `analysis/`（非证据包目录）→ 脚本继续执行并产出 **8 个假 P0**
+//   （「数据卡.md 不在证据包」/「文献卡无对应条目」…），主控需逐项读 detail 文字推断哪些是路径造成的。
+// ⚠️ 但**不能因此中止**（v18.0.0 发布前据随包回归用例修正）：
+//   ① 本包契约是「缺卡记 N/A、0 条场景合法」（见 M-Form-10 用例「三张卡都没有 → N/A」）；
+//   ② 证据包在 `build-evidence-bundle.mjs` 跑之前本就可能是空目录——中止会把「顺序没到」误报成「路径传错」；
+//   ③ 中止（exit 10）会让调用方拿不到任何 JSON，`final-check.mjs` 与回归用例随之整体失效。
+// 故改为：缺关键文件 → **stderr 显著告警 + 给出正确用法，然后继续正常出报告**；路径不存在才中止。
+const EV_REQUIRED = ['数据卡.md', '文献卡.md'];
+const evMissing = EV_REQUIRED.filter((f) => !existsSync(join(evDir, f)));
+if (evMissing.length > 0) {
+  console.error(
+    `\n⚠ 证据包不完整：${evDir}\n` +
+      `  缺少：${evMissing.join(' / ')}\n` +
+      `  · 若这是**路径传错**（如误传 analysis/）→ 请改用 <final/证据包>；\n` +
+      `  · 若证据包尚未生成 → 先跑 node scripts/build-evidence-bundle.mjs <run/项目名> --summary。\n` +
+      `  （缺卡本身按契约记 N/A、不判失败，故本提示不中止；但引用类检查会因此报「无对应条目」，先确认路径再读结论）\n`,
+  );
+}
 
 const text = readFileSync(draftPath, 'utf8');
 const results = [];
@@ -83,15 +102,35 @@ results.push({
   severity: missingSections.length > 0 ? 'P0' : '通过',
 });
 
-// === M-Form-7 文末节白名单纯净 ===
+// === M-Form-7 文末节白名单纯净 + 顺序（v18.0.0 加顺序断言，冲突⑧）===
 let mform7Violations = [];
 if (firstIdx === -1) mform7Violations = ['文末无任何白名单节'];
 else mform7Violations = h2s.slice(firstIdx).filter((t) => !WHITELIST.some((w) => t === w || t.startsWith(w)));
+// v18.0.0 修复（冲突⑧）：旧版只核**成员资格**、不核 `deliverables.md` 行 32-40 规定的**顺序固定**。
+//   实战：v1 文末顺序为 数据来源→案例来源→参考文献→先行者文献→AI 使用声明（参考文献错位），
+//   M-Form-7 判「全白名单」通过，由 T7 独立扫出（P1-1）。属教训 #139「规范从文档层到执行层断链」同型。
+const mform7OrderViolations = [];
+if (firstIdx !== -1 && mform7Violations.length === 0) {
+  const seq = h2s.slice(firstIdx)
+    .map((t) => WHITELIST.findIndex((w) => t === w || t.startsWith(w)))
+    .filter((i) => i !== -1);
+  const sorted = [...seq].sort((a, b) => a - b);
+  if (seq.join(',') !== sorted.join(',')) {
+    const actual = seq.map((i) => WHITELIST[i]).join(' → ');
+    mform7OrderViolations.push(
+      `文末五节顺序违规：实际「${actual}」；规定「${WHITELIST.join(' → ')}」`,
+    );
+  }
+}
 results.push({
   gate: 'M-Form-7 文末白名单',
-  pass: mform7Violations.length === 0,
-  detail: mform7Violations.length ? `违规节: ${mform7Violations.join(',')}` : '全白名单',
-  severity: mform7Violations.length > 0 ? 'P0' : '通过',
+  pass: mform7Violations.length === 0 && mform7OrderViolations.length === 0,
+  detail: mform7Violations.length
+    ? `违规节: ${mform7Violations.join(',')}`
+    : mform7OrderViolations.length
+      ? mform7OrderViolations[0]
+      : '全白名单且顺序正确',
+  severity: mform7Violations.length > 0 ? 'P0' : mform7OrderViolations.length > 0 ? 'P1' : '通过',
 });
 
 // 计算正文和文末区段
@@ -143,8 +182,13 @@ results.push({ gate: 'M-Form-1 引用标注完整性', pass: mform1Pass, detail:
 const TEMP_MARKERS = [
   [/\[(?:待补|待定|待查|待核|待回查|临时|占位|TBD|TODO|PLACEHOLDER)\]/gi, '临时/占位方括号'],
   // 临时编号本体（errors.md 记的原始形态）：`[L_TBD-1]` / `[D_占位]` / `[L-新1]`
-  // —— 排除合法形态 `[C-主01]`（主人洞察）与纯数字后缀（`[L01-2]` 版本后缀是允许的）
-  [/\[[LDC][-_](?!主\d)[A-Za-z\u4e00-\u9fff][^\]]*\]/g, '临时编号（如 [L_TBD-1]）'],
+  // —— 排除合法形态：
+  //   ① `[C-主01]`（主人洞察）
+  //   ② `[D-基-{类别}-{序号}]`（glossary §三 v2.3.7 正式基线编号格式，必须保留）
+  //   ③ `[C-空]`（0 条空卡协议规定标记）
+  //   ④ 纯数字后缀（`[L01-2]` 版本后缀是允许的）
+  // v18.0.0 修复（P0-1，实战：本项目 12 处命中全为 ②③，真占位符 = 0 → 假 P0 使 M 门永不可能 exit 0）
+  [/\[[LDC](?:_|-)(?!主\d)(?!基-)(?!空\])[A-Za-z\u4e00-\u9fff][^\]]*\]/g, '临时编号（如 [L_TBD-1]）'],
   [/【(?:待补|待定|待查|待核|临时)】/g, '中文方头括号占位'],
   [/（(?:待补|待定|待查|待核|临时)）/g, '圆括号占位'],
   [/_{3,}/g, '下划线占位'],
@@ -169,7 +213,10 @@ const TEMP_MARKERS = [
 // === M-Form-5 过程语言残留（v2.5.2-dsh.5 扩禁词清单：弱 AI 痕；v2.5.2-dsh.9 扩内部流程词；
 //     v2.5.2-dsh.17 补严重度分级——自省审计发现旧版最高只到 P1，**P0 分支不可达**，
 //     与同族的 M-Form-4（元数据泄露）/ M-Form-9 不一致：过程语言成规模 = 读者看到流水线内部 = 交付级缺陷）===
-const bannedBanned = /v\d+ 稿|初稿|草稿|修订说明|上一版|下一版|(?<!板)卡级|修卡|承重墙|承重案例|批注|待回查|审计环节|流水线|将在[^，。\n]{0,8}订正/g;
+// v18.0.0 修复（冲突⑨）：旧表列「承重墙 / 承重案例」**全词** → 正文写「承重证据」即漏网
+//   （实战：本文 §5.3 末段「承重证据之脆弱环」判「零命中」，由 T7 独立扫出）。
+//   现改为「承重」**前缀词整体入表**，并补 05 卡内部术语（一处两用 / 段级条目 / 素材卡类名）。
+const bannedBanned = /v\d+ 稿|初稿|草稿|修订说明|上一版|下一版|(?<!板)卡级|修卡|承重|批注|待回查|审计环节|流水线|将在[^，。\n]{0,8}订正|一处两用|段级条目|索引段|素材加载清单|素材卡|案例卡|数据卡|文献卡/g;
 const estRe = /据行业经验估算/g;
 const weakAITrend = /据可靠来源|据悉|据了解|研究显示|专家表示/g;
 const hits = (body.match(bannedBanned) || []);
@@ -207,7 +254,9 @@ const forPatternText = (() => {
 const forbiddenPatterns = [
   /T[0-9] (主控|文献|数据|分析|写手|审计|案例|批判|审稿)/g,
   /((?<!自)主控|文献检索员|数据检索员|分析员|写手|批判伙伴|审计员|审稿人|案例检索员)/g,
-  /论衡 (agent|流水线|技能|主控|测试轮)/g,
+  // v18.0.0 修复（冲突⑥）：旧式「论衡 + 空格 + 枚举词」会漏掉「论衡 AI 写作流水线」
+  //   → 改为「论衡」与枚举词**同句共现**（≤12 字间隔），是否合规披露段交由 LLM 判断
+  /论衡[^\n。；]{0,12}(?:agent|流水线|技能|测试轮)/g,
   /角色卡|任务书|六要素|交接报告|反哺报告|教训 #?\d+|Phase [0-9.]+/g,
   /批 v?\d+ 稿|初稿|草稿|定稿/g,
   /输入材料|输出材料|任务简报第 ?\d+ ?行|修订说明-?v?\d+|scripts\//g,
@@ -219,10 +268,46 @@ for (const pat of forbiddenPatterns) {
   const m = forPatternText.match(pat);
   if (m) leakHits.push(...m);
 }
+
+// === M-Form-4 补充：文末节二级扫描（v18.0.0 新增，P0-4）===
+// 实战教训：M-Form-4 只扫正文区 `body`（文末节被整体剥离），文末 `## 案例来源` 遂成「免责区」——
+//   本轮该节含「案例检索员」+「spawn + 立即 Done」+「任务简报 §五 第 55–56 行」+「主人 Phase 0」，
+//   脚本判通过，由 T7 逐行人工扫出（判 P0-1）。而 deliverables.md 明确要求定稿文末亦不得含内部流水线信息。
+// 现规则：白名单 5 节 **只豁免书目条目行**（以 [Lxx]/[Dxx]/[Cxx]/[先xx] **数字编号**开头者，
+//   含基线编号 [D-基-x-NN]）；其余说明性文字与正文同口径扫描。
+// ⚠️ [C-空] 标记行**不豁免**（0 条空卡场景下，该行的说明文字正是本轮泄露点）。
+const ENDNOTE_FORBIDDEN = [
+  /((?<!自)主控|文献检索员|数据检索员|分析员|写手|批判伙伴|审计员|审稿人|案例检索员)/g,
+  /\bspawn\b|\bsubagent\b|立即\s*Done|foreground|background/g,
+  /空卡协议|交接报告|六要素|角色卡|任务简报|反哺报告|修订说明|教训\s*#?\d+/g,
+  /\bPhase\s*[0-9.]+/g,
+  /v\d+\.\d+\.\d+/g, // 版本注记（如「（v2.2.2 新增）」）
+  /论衡[^\n。；]{0,12}(?:agent|流水线|技能|测试轮)/g,
+  // v18.0.0：补「读者面内部术语」——实战本轮文末「数据来源」节出现「数据卡 [D02] 未记页码」
+  //   （行 147，由 T7 独立发现、M-Form-5 因 body 不含文末节而漏检）
+  /承重|素材卡|案例卡|数据卡|文献卡|索引段|素材加载清单|一处两用|段级条目|卡级|修卡/g,
+];
+const endnoteNonBiblio = endnote
+  .split('\n')
+  .filter((l) => !/^\s*[-*]?\s*\[(?:L|D|C|先)(?:\d|-基-)/.test(l)) // 仅豁免数字/基线编号书目行
+  .join('\n');
+const endnoteLeakHits = [];
+for (const pat of ENDNOTE_FORBIDDEN) {
+  const m = stripCodeSpans(endnoteNonBiblio).match(pat);
+  if (m) endnoteLeakHits.push(...m);
+}
+if (endnoteLeakHits.length > 0) {
+  const secNames = [...endnote.matchAll(/^##\s+(.+)$/gm)].map((m) => m[1]);
+  const secTag = secNames.length ? `（文末节: ${secNames.join(' / ')}）` : '';
+  leakHits.push(...[...new Set(endnoteLeakHits)].map((h) => `文末节泄露「${h}」${secTag}`));
+}
+
 results.push({
   gate: 'M-Form-4 元数据泄露',
   pass: leakHits.length === 0,
-  detail: leakHits.length ? `命中: ${[...new Set(leakHits)].slice(0, 5).join(',')}` : '正文无内部代码（白名单剥离后）',
+  detail: leakHits.length
+    ? `命中: ${[...new Set(leakHits)].slice(0, 5).join(',')}`
+    : '正文 + 文末节均无内部代码（白名单剥离后 + 文末二级扫描）',
   // v2.5.2-dsh.17：与文档口径对齐——**任一处泄露即 P0**（文档：M-Form-4 是 P0 优先级，
   // 读者看到论衡内部代码 = 失去学术严肃性；旧版 1-5 处只给 P1，与 M-Form-7「一处违规即 P0」不一致）
   severity: leakHits.length > 0 ? 'P0' : '通过',
@@ -338,7 +423,9 @@ try {
         else if (wall8.claims > wall8.rows) wall8.notes.push(`${wall8.claims} 个论点但只标了 ${wall8.rows} 条承重墙——有论点未标 top1`);
         // 幽灵编号：承重墙标了卡片里不存在的编号
         const cardIds8 = new Set();
-        for (const [name, rel] of [['文献卡.md', 'literature/文献卡.md'], ['数据卡.md', 'data/数据卡.md'], ['案例卡.md', 'cases/案例卡.md']]) {
+        // v18.0.0：纳入 **先行者清单** —— `[先NN]` 编号不在三张素材卡内（存在 `literature/先行者清单.md`），
+  //   否则 ghost 判定会把清单里的 [先01]-[先07] 误判为「清单编造」（假 P0）。
+  for (const [name, rel] of [['文献卡.md', 'literature/文献卡.md'], ['数据卡.md', 'data/数据卡.md'], ['案例卡.md', 'cases/案例卡.md'], ['先行者清单.md', 'literature/先行者清单.md']]) {
           let p = join(evDir, name);
           if (!existsSync(p)) { const alt = join(projDir8, rel); p = existsSync(alt) ? alt : null; }
           if (!p) continue;
@@ -557,24 +644,29 @@ try {
     join(projDir11, 'analysis', '素材加载清单.md'),
     join(evDir, '素材加载清单.md'),
   ].find((p) => existsSync(p)) || null;
-  const cited11 = new Set(
-    [...refsOf(body, 'L'), ...refsOf(body, 'D'), ...refsOf(body, 'C')].map(norm),
-  );
+  // v18.0.0 修复（冲突⑦）：统一「素材编号全形态」正则，纳入基线编号 `[D-基-x-NN]` 与先行者 `[先NN]`。
+  //   旧实现用 refsOf(body,'L'|'D'|'C') 三类编号 → 基线编号与先行者全部漏计（实战：本项目实际 40 条 vs 脚本计 30 条），
+  //   导致「已加载 ⊆ 卡片」的核对面少 10 条（虽然 >90% 软提示结论巧合一致）。
+  const REF_TOKEN = '[LDC]\\d+|D-基-[A-Z]-\\d+|先\\d+';
+  const refRe11 = new RegExp('\\[(' + REF_TOKEN + ')\\]', 'g');
+  const cited11 = new Set([...body.matchAll(refRe11)].map((m) => '[' + m[1] + ']'));
   // 卡片侧真源：正文条目编号（幽灵判定）+ 索引段编号（选择性判定）
   const cardEntryIds = new Set();
   const cardIndexIds = new Set();
-  for (const [name, rel] of [['文献卡.md', 'literature/文献卡.md'], ['数据卡.md', 'data/数据卡.md'], ['案例卡.md', 'cases/案例卡.md']]) {
+  // v18.0.0：纳入 **先行者清单** —— `[先NN]` 编号不在三张素材卡内（存在 `literature/先行者清单.md`），
+  //   否则 ghost 判定会把清单里的 [先01]-[先07] 误判为「清单编造」（假 P0）。
+  for (const [name, rel] of [['文献卡.md', 'literature/文献卡.md'], ['数据卡.md', 'data/数据卡.md'], ['案例卡.md', 'cases/案例卡.md'], ['先行者清单.md', 'literature/先行者清单.md']]) {
     let p = join(evDir, name);
     if (!existsSync(p)) { const alt = join(projDir11, rel); p = existsSync(alt) ? alt : null; }
     if (!p) continue;
     const t = readFileSync(p, 'utf8');
-    for (const m of t.matchAll(/^#{2,4}\s*\[([LDC])(\d+)\]/gm)) cardEntryIds.add(`[${m[1]}${m[2]}]`);
+    for (const m of t.matchAll(new RegExp('^#{2,4}\\s*\\[(' + REF_TOKEN + ')\\]', 'gm'))) cardEntryIds.add('[' + m[1] + ']');
     const ls = t.split('\n');
     const si = ls.findIndex((l) => /^##\s*📇\s*索引段/.test(l));
     if (si !== -1) {
       let ei = ls.findIndex((l, i) => i > si && /^##\s/.test(l));
       if (ei === -1) ei = ls.length;
-      for (const m of ls.slice(si + 1, ei).join('\n').matchAll(/\[([LDC])(\d+)\]/g)) cardIndexIds.add(`[${m[1]}${m[2]}]`);
+      for (const m of ls.slice(si + 1, ei).join('\n').matchAll(new RegExp('\\[(' + REF_TOKEN + ')\\]', 'g'))) cardIndexIds.add('[' + m[1] + ']');
     }
   }
   const findings11 = [];
@@ -605,7 +697,7 @@ try {
       if (e11 === -1) e11 = ls2.length;
       loadedSeg = ls2.slice(hIdx11 + 1, e11).join('\n');
     }
-    const loaded11 = new Set([...loadedSeg.matchAll(/\[([LDC])(\d+)\]/g)].map((m) => `[${m[1]}${m[2]}]`));
+    const loaded11 = new Set([...loadedSeg.matchAll(new RegExp('\\[(' + REF_TOKEN + ')\\]', 'g'))].map((m) => '[' + m[1] + ']'));
     const notLoaded = [...cited11].filter((x) => !loaded11.has(x));
     const ghost = [...loaded11].filter((x) => cardEntryIds.size > 0 && !cardEntryIds.has(x));
     const unused = [...loaded11].filter((x) => !cited11.has(x));
@@ -677,7 +769,18 @@ try {
         const l = lines[i];
         if (/^#{2,4}\s/.test(l)) break;
         if (!/^\s*\|/.test(l)) continue;
-        const cells = l.split('|').slice(1, -1).map((c) => c.trim());
+        // v18.0.0 修复（冲突⑩）：单元格内含**裸竖线**（如验收标准写正则 `a|b|c`）会被 split('|') 切列
+        //   → 列错位 → 误读「关闭状态」。实战：T7 首版审计报告 P0-1 的验收标准写了
+        //   `案例检索员|空卡协议|…`，脚本把「空卡协议」读成关闭状态 → 软提示「非固定词」；
+        //   T7 自纠（改用顿号）后消失。现先将**转义竖线 `\|`** 与**行内代码块内的竖线**保护为占位符，切列后再还原。
+        const PROTECT_CH = '\u0001';
+        const protectedLine = l
+          .replace(/\\\|/g, PROTECT_CH)
+          .replace(/`[^`]*`/g, (mm) => mm.replace(/\|/g, PROTECT_CH));
+        const cells = protectedLine
+          .split('|')
+          .slice(1, -1)
+          .map((c) => c.trim().replace(new RegExp(PROTECT_CH, 'g'), '|'));
         if (cells.every((c) => /^:?-{2,}:?$/.test(c) || c === '')) continue;   // 分隔行
         if (!header && cells.some((c) => c.includes('编号'))) { header = cells; continue; }
         if (header) rows.push(cells);
@@ -833,9 +936,23 @@ try {
         if (repPath5) {
           try {
             const rj = JSON.parse(readFileSync(repPath5, 'utf8'));
-            if (typeof rj.exit === 'number' && rj.exit !== 0) {
+            // v18.0.0 修复（自引用循环）：脚本报告的 `exit` 是**脚本机械值**，会随每次重跑变化；
+            //   而 T7.5 闸门记录是**人工/主控当场写**的结论。若直接比对「闸门全 ✓ vs exit ≠ 0」，
+            //   会遇到两重问题：① 脚本重跑（含 final-check 串联）会覆写报告，把 T8 裁定段冲掉；
+            //   ② 判定依赖上一次跑分 → 形成「跑分低→判 P0→闸门不过→再跑分……」的自引用循环。
+            // 现规则：**优先采信 T8 裁定段**（`_t8_conclusion`）——存在且 `true_p0 === 0` / `true_p1 === 0`
+            //   时，闸门与报告视为一致（放行）；仅在无 T8 裁定段时才回退比对脚本 exit。
+            const t8 = rj._t8_conclusion;
+            const t8Clean = t8 && Number(t8.true_p0) === 0 && Number(t8.true_p1) === 0;
+            if (t8Clean) {
+              soft5.push(
+                `闸门 ↔ 报告对账：已按 T8 裁定段放行（true_p0=0 / true_p1=0；脚本 script_exit_raw=${rj.script_exit_raw ?? rj.exit}）`,
+              );
+            } else if (typeof rj.exit === 'number' && rj.exit !== 0) {
               contradict5 = true;
-              findings5.push(`闸门记录-T7.5 全判 ✓，但 M-Gate-Report.json 的 exit = ${rj.exit}（非 0）——闸门结论与 M 门报告自相矛盾（P0）`);
+              findings5.push(
+                `闸门记录-T7.5 全判 ✓，但 M-Gate-Report.json 的 exit = ${rj.exit}（非 0）且**无 T8 裁定段**——闸门结论与 M 门报告自相矛盾（P0）`,
+              );
             }
           } catch { soft5.push('M-Gate-Report.json 无法解析，未做闸门↔报告对账'); }
         }
@@ -1100,7 +1217,10 @@ try {
     //   若按全文出现次数判唯一性，会把**模板要求的重述**误判成「编号重复」（端到端测试反哺）。
     // 定义行 = 行首即编号，且**不是「关闭状态」清单行**（关闭状态行形如 `- [P0-C1-1] ✓已关闭（…）`）。
     // 06 卡模板要求「批判总结」里逐条列一次关闭状态 —— 那是**引用**，不该判成「同编号第二次定义」（端到端测试反哺）。
-    const entryLineRe = /^\s*(?:[-*]\s*)?\[(P[012])-(C\d+)-(\d+)\]/;
+    // v18.0.0 修复（冲突②）：06 卡允许**标题式**写法 `### [P0-C1-1] …`，而旧正则只认「行首即编号」
+    //   → T6 报告的 19 条段级条目被计为 **0 条**（假阴性），下游若以该计数为准会误判 T6 未完成。
+    //   现放宽为「行首编号」∪「列表项」∪「二~四级标题后接编号」（保留「关闭状态」行排除逻辑于下方）。
+    const entryLineRe = /^\s*(?:[-*]\s*|#{2,4}\s*)?\[(P[012])-(C\d+)-(\d+)\]/;
     const closeStateRe = /已关闭|未关闭|待复核/;
     const entries8 = rt8.split('\n')
       .filter((l) => !closeStateRe.test(l))
@@ -1269,6 +1389,7 @@ try {
       const budgetNumeric = /字数[\s\S]{0,40}?\d/.test(segText10);
       const findings10 = [];
       const soft10 = [];
+      const notes10 = []; // v18.0.0：备注（不计失败）——用于「两条规范自相矛盾」类项
       if (rows10 < 5) findings10.push(`精简段仅 ${rows10} 行实质内容（须 ≈60 行且含六要素）`);
       if (missing10.length >= 3) findings10.push(`缺 ${missing10.length} 个要素：${missing10.join(',')}（六要素：论证主线 / 论点-论据映射表 / 反方规划要点 / 字数预算 / 禁做项 / 承重墙清单）`);
       else if (missing10.length) findings10.push(`缺要素：${missing10.join(',')}`);
@@ -1276,7 +1397,13 @@ try {
       if (!budgetNumeric) soft10.push('字数预算未见数字');
       if (rows10 > 120) soft10.push(`精简段 ${rows10} 行过长（≈60 行为准，过长则失去「只读精简段」的意义）`);
       if (nextHeading10 !== -1 && ol10.slice(nextHeading10).filter((l) => l.trim()).length > 20) {
-        soft10.push('精简段不在文件末尾（其后还有 >20 行实质章节）——与「末尾 §11」口径冲突，T5 按末尾段读会漏内容');
+        // v18.0.0 修复（冲突③）：本项**不再判 P2**，改为**备注**（notes10）。
+        //   原因：04 卡模板本身要求 §11 之后还有 F3 早期框架锁定检查（必填段），
+        //   「§11 位于文件末尾」与「F3 检查为必填」两条规范**自相矛盾**——每篇论文都会稳定产生一条无法关闭的 P2。
+        //   T5 是按「## §11 标题」定位读取的，不依赖「文件末尾」这一位置属性，故位置偏差不构成质量缺陷。
+        notes10.push(
+          '备注（不计失败）：精简段之后还有 >20 行实质章节——与「末尾 §11」口径冲突，但 04 卡模板要求 F3 检查为必填段，故本项仅作备注；T5 按「## §11」标题定位读取不受影响',
+        );
       }
       const hard10 = findings10.length > 0;
       results.push({
@@ -1286,8 +1413,10 @@ try {
           `${outline10.split(/[\\/]/).pop()}｜精简段 ${rows10} 行｜六要素实到 ${ELEMS10.length - missing10.length}/6`,
           hard10 ? `硬问题：${findings10.slice(0, 2).join('；')}` : '六要素齐备',
           soft10.length ? `软提示：${soft10.slice(0, 2).join('；')}` : '',
+          notes10.length ? notes10[0] : '',
         ].filter(Boolean).join(' ｜ '),
         severity: hard10 ? (missing10.length >= 3 ? 'P0' : 'P1') : (soft10.length ? 'P2' : '通过'),
+        ...(notes10.length ? { notes: notes10 } : {}),
       });
     }
   }
@@ -1333,9 +1462,34 @@ if (dataCard) {
 //   仍保留「最终由主控 L4 跨文件判断」的定位：脚本只判这两项可机械化的对账。
 let briefData = { hasBrief: false, subclaims: 0, minDataPoints: 0, placeholder: 0 };
 try {
-  const briefPath = draftPath.replace(/final[\\/]定稿\.md$/, '01-任务简报.md');
-  if (existsSync(briefPath)) {
+  // v18.0.0 修复（P0-3）：旧实现 `draftPath.replace(/final[\\/]定稿\.md$/, '01-任务简报.md')`
+  //   **只对 `final/定稿.md` 生效**；被审对象为 `drafts/初稿-vN.md` 时替换不命中 → briefPath 退回初稿自身路径
+  //   → 把初稿当简报读 → ① 常驻误报「研究问题段缺失」；② needsT2=0 使「数据条目 ≥ 需求」比较短路
+  //   → **该门在 Phase 4 场景事实上静默失效**（实战：本轮审计 drafts/初稿-v1.md 时即如此，因数据远超需求而侥幸无损失）。
+  // 现改为：从被审文件所在目录**向上查找**首个含 `01-任务简报.md` 的目录（兼容 final/ 与 drafts/ 两种场景）。
+  const findBriefUpward = (startDir) => {
+    let d = startDir;
+    for (let i = 0; i < 8; i++) {
+      const p = join(d, '01-任务简报.md');
+      if (existsSync(p)) return p;
+      const parent = dirname(d);
+      if (parent === d) break; // 已到文件系统根
+      d = parent;
+    }
+    return null;
+  };
+  const briefPath = findBriefUpward(dirname(draftPath));
+  // 自检：解析结果不得与被审正文同路径（同路径 = 「把正文当简报读」）→ 直接报参数/解析错误，禁止静默降级
+  if (briefPath && briefPath === draftPath) {
+    console.error(
+      `M-Integrity-1 解析错误：任务简报路径与被审正文相同（${briefPath}）\n` +
+        `  —— 说明未能在项目目录中找到 01-任务简报.md，请检查项目目录结构（应为 run/<项目名>/01-任务简报.md）`,
+    );
+    process.exit(10);
+  }
+  if (briefPath && existsSync(briefPath)) {
     briefData.hasBrief = true;
+    briefData.briefPath = briefPath; // 留痕：供报告与复核追溯简报真源
     const briefText = readFileSync(briefPath, 'utf8');
     // 子问题编号兼容：「子问题 A/B/C」（v2.5.2-dsh.5 模板规范）∪「S1/S2」（v2.5.2-dsh.4 表格旧格式）
     const letterSub = [...briefText.matchAll(/子问题\s*([A-Z一二三四五六七八九十\d]+)/g)].map((m) => m[1]);
@@ -1385,6 +1539,21 @@ const pass = results.filter((r) => r.pass === true).length;
 const fail = results.filter((r) => r.pass === false);
 const soft = fail.filter((r) => r.severity === 'LLM 兜底').length;
 const hard = fail.filter((r) => r.severity !== 'LLM 兜底');
+
+// === 激活时序标记（v18.0.0 新增，冲突⑪）===
+// 实战教训：M-Exist-4/5/6/9 的前提均为「报告文件已落盘」（审计报告 / 审稿报告等）——
+//   主控在 Phase 4 预跑时四项全 N/A；**报告一落盘，重跑同一命令立刻变化**
+//   （实战本轮：T7 报告落盘 → M-Exist-9 转通过、M-Exist-4 进入实检、**M-Exist-5 由 N/A 直接转 P0**）。
+//   后果：① 任何时刻的 M 门结果都不是稳定量；② 下游易误读为「T7 落盘 = 新增了 P0」。
+// 现规则：凡「因报告落盘而由 N/A 转为实检」的项，在 detail 前置 `[报告后激活]` 标记，
+//   便于区分「稿件缺陷」与「履历性新增」。**主控取闸门口径时须在相关报告落盘后重跑一次。**
+const REPORT_ACTIVATED = ['M-Exist-4', 'M-Exist-5', 'M-Exist-6', 'M-Exist-9'];
+for (const r of results) {
+  if (REPORT_ACTIVATED.some((g) => r.gate.startsWith(g)) && !/^N\/A/.test(r.detail) && !/^\[报告后激活\]/.test(r.detail)) {
+    r.detail = '[报告后激活] ' + r.detail;
+  }
+}
+
 const p0 = hard.filter((r) => r.severity === 'P0').length;
 const p1 = hard.filter((r) => r.severity === 'P1').length;
 const p2 = hard.filter((r) => r.severity === 'P2').length;
@@ -1405,7 +1574,31 @@ console.log(JSON.stringify(report, null, 2));
 if (reportPath) {
   try {
     mkdirSync(dirname(reportPath), { recursive: true });
-    writeFileSync(reportPath, JSON.stringify(report, null, 2), 'utf8');
+    // === T8 裁定段保留（v18.0.0 新增，防自引用循环）===
+    // 背景：`final-check.mjs` 会串联调用本脚本并 `--report final/M-Gate-Report.json`，
+    //   旧实现直接覆写 → **冲掉 T8 手写的 `_t8_llm_review` / `_t8_conclusion`** →
+    //   M-Exist-5 的「闸门 ↔ 报告」对账失去 T8 裁定依据（并因脚本 exit ≠ 0 而误报 P0）。
+    // 现规则：写入前读取既有报告，**保留 T8 裁定两段**；同时把脚本机械值另存 `script_exit_raw`，
+    //   并在存在 T8 裁定时**保留 T8 的 `exit` 裁定值**（脚本值只进 `script_exit_raw`）。
+    let out = { ...report, script_exit_raw: report.exit }; // 脚本机械值始终另存（v18.0.0）
+    if (existsSync(reportPath)) {
+      try {
+        const prev = JSON.parse(readFileSync(reportPath, 'utf8'));
+        const keep = {};
+        for (const k of ['_t8_llm_review', '_t8_conclusion']) if (prev[k]) keep[k] = prev[k];
+        if (Object.keys(keep).length > 0) {
+          out = { ...report, ...keep, script_exit_raw: report.exit };
+          if (typeof prev.exit === 'number') out.exit = prev.exit; // 保留 T8 裁定值
+          if (typeof prev.script_exit_raw === 'number' && prev.script_exit_raw !== report.exit) {
+            out.script_exit_raw_prev = prev.script_exit_raw; // 留痕：上一次脚本原值
+          }
+          console.error(
+            `· 已保留既有 T8 裁定段（exit=${out.exit}，本次脚本值 script_exit_raw=${report.exit}）`,
+          );
+        }
+      } catch {}
+    }
+    writeFileSync(reportPath, JSON.stringify(out, null, 2), 'utf8');
     console.error(`📄 M-Gate 报告已落盘: ${reportPath}`);
   } catch (e) {
     console.error(`⚠️ M-Gate 报告落盘失败: ${e.message}`);

@@ -1,6 +1,7 @@
 // 论衡终检 token 成本汇总脚本（v2.5.2-dsh 补丁）：Phase 5 终检显示全流程总 token 成本
 // 用法：
 //   node token-cost.mjs --sessions <主会话ID>,<子代理ID1>,<子代理ID2>...   # 项目精确统计（主控传本项目派发的全部会话）
+//   node token-cost.mjs --project run/<项目名>                             # 从项目日志自动提取会话 ID（v18.0.0 新增）
 //   node token-cost.mjs --tree <主会话ID>                                  # 整会话委托树统计（含历史项目）
 //   node token-cost.mjs [--dsh-home <path>] [--price-in N --price-cache N --price-out N]
 //   node token-cost.mjs --top N                  # 追加 cacheRead/成本 Top N 会话排名（与 --sessions/--tree 连用，用于优化决策）
@@ -11,10 +12,12 @@ import { join } from 'node:path';
 import os from 'node:os';
 
 const args = process.argv.slice(2);
-const opt = { dshHome: process.env.DSH_HOME || join(os.homedir(), '.dsh'), prices: { in: 0.28, cache: 0.028, out: 0.42 }, ids: null, tree: null, top: 0 };
+const opt = { dshHome: process.env.DSH_HOME || join(os.homedir(), '.dsh'), prices: { in: 0.28, cache: 0.028, out: 0.42 }, ids: null, tree: null, top: 0, project: null };
 // 用法/帮助：v2.5.2-dsh.17 补（此前 `--help` 会被「未知参数」拦下，只报错不给用法）
-const USAGE = `用法: node token-cost.mjs --sessions <id1,id2,...> 或 --tree <主会话ID> [--top N]
+const USAGE = `用法: node token-cost.mjs --sessions <id1,id2,...> 或 --project <run/项目名> 或 --tree <主会话ID> [--top N]
   --sessions <ids>   项目精确统计（主控传本项目派发的全部会话 id，逗号分隔）
+  --project <dir>    从项目日志（agents-log.md / status.md）自动提取其中的会话 ID 再统计（v18.0.0 新增；
+                     适合主控在会话内拿不到 session id 的场景——交接报告里的 session-<uuid> 会被自动提取）
   --tree <id>        整会话委托树统计（含历史项目；需 Node ≥ 22.15）
   --top N            追加 cacheRead/成本 Top N 排名（优化决策用）
   --dsh-home <path>  指定 DSH_HOME（默认 $DSH_HOME 或 ~/.dsh）
@@ -34,6 +37,7 @@ for (let i = 0; i < args.length; i++) {
   else if (a === '--price-cache') { const v = Number(next()); if (!Number.isFinite(v)) { console.error(`--price-cache 需为数字，收到: ${args[i]}`); process.exit(1); } opt.prices.cache = v; }
   else if (a === '--price-out') { const v = Number(next()); if (!Number.isFinite(v)) { console.error(`--price-out 需为数字，收到: ${args[i]}`); process.exit(1); } opt.prices.out = v; }
   else if (a === '--sessions') opt.ids = next().split(',').map((s) => s.trim()).filter(Boolean);
+  else if (a === '--project') opt.project = next();
   else if (a === '--tree') opt.tree = next();
   // --top N：Top N 成本排名（v2.5.2-dsh.15 实现——旧版头注释与 CHANGELOG 已宣传该参数，代码里却是死变量 `topMode=false`）
   else if (a === '--top') {
@@ -68,6 +72,39 @@ if (existsSync(legacyFile)) {
   }
 } else {
   console.error('找不到会话投影缓存（已尝试单文件与目录式布局）: ' + projDir); process.exit(1);
+}
+
+// === --project 模式（v18.0.0 新增，P2-1）===
+// 背景：交付说明的「成本指标」字段此前**结构性填不上** —— `--sessions` 需要精确 session id，
+//   而主控在会话内**拿不到**（subagent 返回的是 agent id，不是 session id）。
+// 现规则：从项目日志（agents-log.md / status.md / 01-任务简报.md / audits/审计视图-v0.md）
+//   用 UUID 正则提取所有会话 ID，与 `--sessions` 传入者合并去重。
+//   子代理交接报告里常见的 `session-<uuid>` 形态会被自动提取。
+if (opt.project) {
+  const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+  const cand = ['agents-log.md', 'status.md', '01-任务简报.md', join('audits', '审计视图-v0.md')].map((f) =>
+    join(opt.project, f),
+  );
+  const found = new Set(opt.ids || []);
+  const srcFiles = [];
+  for (const p of cand) {
+    if (!existsSync(p)) continue;
+    srcFiles.push(p);
+    for (const m of readFileSync(p, 'utf8').matchAll(UUID_RE)) found.add(m[0]);
+  }
+  if (srcFiles.length === 0) {
+    console.error(`--project 未找到任何项目日志（已试: ${cand.join(' / ')}）`);
+    process.exit(1);
+  }
+  opt.ids = [...found];
+  if (opt.ids.length === 0) {
+    console.error(
+      `--project 在 ${srcFiles.join(' / ')} 中未提取到会话 ID（UUID 形态）。\n` +
+        `  —— 请让主控在派发时把子代理 session id 记入 agents-log.md，或改用 --sessions 手工传入。`,
+    );
+    process.exit(1);
+  }
+  console.error(`· --project ${opt.project}：从 ${srcFiles.length} 个日志文件提取到 ${opt.ids.length} 个会话 ID`);
 }
 
 // 树模式：扫描会话头 parentSession 建委托树

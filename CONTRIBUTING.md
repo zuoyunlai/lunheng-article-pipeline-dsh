@@ -6,18 +6,19 @@
 
 ## 版本号约定
 
-**v17.0.0 起：版本号 = 纯语义化版本，迭代号进 major**——`<迭代号>.0.0`（本轮 `17.0.0` → 下一轮 `18.0.0`；同轮修补 `17.0.1`、小步改进 `17.1.0`）。DSH 版独立维护、独立版本线。
+**v17.0.0 起：版本号 = 纯语义化版本，迭代号进 major**——`<迭代号>.0.0`（本轮 `18.0.0`；同轮修补 `18.0.1`、小步改进 `18.1.0`）。DSH 版独立维护、独立版本线。
 
 > **为什么不是 `dsh.17.0`**：npm 强制 semver，三段必须是数字；`dsh` 只能作 prerelease/build 后缀（实测 `npm publish` 对 `dsh.17.0` 直接 `Invalid version`）。
 > **历史形态** `2.5.2-dsh.N`（截至 `2.5.2-dsh.17`）仍被一致性规则 ① 兼容识别（CHANGELOG 历史段与旧注解里都还有）。
+> **未单独发布的迭代**：`17.0.0` 从未推到 npm/GitHub（它在本地历史中存在过）。其内容随 `18.0.0` 首发，并在 `CHANGELOG.md` 的 `## 17.0.0` 段注明。
 > **版本头约定**：未发布期间写「（DSH 原生插件，尚未发布）」，发版时改「（DSH 原生插件，发布于 <日期>）」。
-> **功能注解不追溯改写**：`（v2.5.2-dsh.17 补）` 记的是**当时**的版本号；本版起新注解用 `v17.0.0`。
+> **功能注解不追溯改写**：`（v17.0.0 修）` 这类注解记的是**当时**的版本号（注：`17.0.0` 的改动随 `18.0.0` 首发，但注解保留其原始迭代号）；本版起新注解用 `v18.0.0`。
 
 ## 升级流程（发布新版本时）
 
-1. 在 `skills/lunheng-article-pipeline/` 下完成机制/角色卡/脚本的修改；
-2. **同步版本号**：`package.json` 的 `version`、`SKILL.md`（frontmatter `version` + 首部版本行）、`cordis.patch.yml` 头、`README.md`/`docs/introduction.md` 版本头、`examples/preset/README.md` 的安装命令——**全部一致**（`consistency-check.mjs` 规则 ⑫⑬ 会全量扫描版本点位）；
-3. **同一提交内更新 `CHANGELOG.md`**（写 `## X.Y.Z` 段，如 `## 17.0.0`）——规则 ⑪ 会机械校验「当前版本段存在」，bump 与 CHANGELOG 脱钩会直接红灯；
+1. 在 `skills/lunheng-article-pipeline/` 下完成机制/角色卡/脚本的修改；改包面（`package.json` / `cordis.patch.yml` / `lib/**`）时**先查官方资料**（`dsh-plugin-guide` 技能），见 `skills/lunheng-article-pipeline/AGENTS.md` 的「开发参考资料」段；
+2. **同步版本号**：`package.json` 的 `version`、`SKILL.md`（frontmatter `version` + 首部版本行）、`cordis.patch.yml` 头、根 `README.md`/`README.zh.md`/`README.es.md`/`README.pt.md`/`README.hi.md`、`SECURITY.md`、`docs/introduction.md` 版本头与「当前版本」、`docs/troubleshooting.md`、`skills/lunheng-article-pipeline/README.md`、`examples/preset/README.md` 的安装命令——**全部一致**（`consistency-check.mjs` 规则 ⑫⑬ 会全量扫描版本点位）；
+3. **同一提交内更新 `CHANGELOG.md`**（写 `## X.Y.Z` 段，如 `## 18.0.0`）——规则 ⑪ 会机械校验「当前版本段存在」，bump 与 CHANGELOG 脱钩会直接红灯；
 4. 本地跑**四道门**，全绿才提交：
    ```sh
    node skills/lunheng-article-pipeline/scripts/consistency-check.mjs
@@ -26,8 +27,8 @@
    node --test "tests/**/*.test.mjs"
    ```
 5. 提交并推送分支；
-6. **发布 = 只推 tag**：`git tag v17.0.0 && git push origin v17.0.0`（tag 必须等于 `v` + `package.json.version`，publish 工作流会校验）
-   - **发布前多跑一步打包产物验证**：`npm pack` 后解包，确认新增脚本/库随包且能从解包副本运行（教训：`_lib/` 重构后必须确认相对 `import` 未因 `files` 白名单而丢失）
+6. **发布 = 只推 tag**：`git tag v18.0.0 && git push origin v18.0.0`（tag 必须等于 `v` + `package.json.version`，publish 工作流会校验）
+   - **发布前多跑一步打包产物验证**：`npm pack` 后解包，确认新增脚本/库/入口随包且能从解包副本运行（两条历史教训：`_lib/` 重构后必须确认相对 `import` 未因 `files` 白名单而丢失；入口移入 `lib/` 后必须确认 `apply` 真能读到 `SKILL.md`——后者现由 `tests/entry.test.mjs` 在 CI 里常驻防守）
    - ⚠️ **一次只能推 1 个 tag**：GitHub 对「单次 push 超过 3 个 tag」**不触发任何 workflow**（实测：一次推 4 个 tag → 0 个运行）；
    - ⚠️ **禁止本地 `npm publish`**（会绕过 CI 三道门与 OIDC provenance，且 npm 版本不可覆盖）；
    - tag 触发的 `publish.yml` 会依次跑门 1/2/3 + 回归测试 → tag/版本一致校验 → **幂等守卫**（该版本已发布则跳过）→ OIDC `npm publish --provenance --tag dsh` → **发布后审计**（`npm view <pkg>@<ver> gitHead` 必须等于本次提交）。
@@ -36,17 +37,21 @@
 
 npm 版本**不可覆盖**：一旦某版本发布，仓库里**不得**再改动该版本相关的语义内容（`package.json` / `skills/**` / `CHANGELOG` 段）。任何修复都必须 bump 新版本重发——历史教训：`2.5.2-dsh.12` 发布后仓库又改了 `engines.node`，导致「同版本号内容 ≠ 已发布产物」。
 
-## 发布
+## 发布（维护者）
+
+**发布 = 推 tag**，由 `.github/workflows/publish.yml` 以 **OIDC Trusted Publishing + `--provenance`** 完成：
 
 ```sh
-npm login
-npm publish --tag dsh
+git tag v18.0.0 && git push origin v18.0.0   # 工作流会校验 tag == v + package.json.version
 ```
+
+> ⚠️ **不要在本机 `npm publish`**：会绕过 CI 三道门与来源证明，且 npm 版本**不可覆盖**（发错只能 bump 重发）。
+> 历史（≤ `2.5.2-dsh.12`）留有「本地 `npm publish --tag dsh`」的记录，自 `2.5.2-dsh.13` 起改为 tag + OIDC。
 
 ## 验证
 
 ```sh
-dsh --profile web --dump-config   # 应看到 skill-filesystem-lunheng 行
+dsh --profile web --dump-config   # 应看到本包层 + 三档 tool-subagent-* 行
 ```
 
 空目录 headless 验证（确认技能仅来自 bundle，排除本地技能根干扰）：

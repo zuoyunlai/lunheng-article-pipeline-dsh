@@ -2,7 +2,7 @@
 
 > **论衡（lunheng-article-pipeline）** 是一个多 Agent 深度长文生产流水线，DeepSeek Harness（dsh）bundle 插件。它不是让一个 AI 直接写文章，而是让一支 **9 个 AI 角色组成的"论文生产小队"** 按既定协议协作：定题 → 三线并行检索 → 分析 → 写作 → 批判 → 审计 → 审稿 → 终检。每一步都有明确产出物、交接报告与质量闸门，最终交付**有证据底座、有反方论证、有独立审计、有人工核验节点**的文章。
 
-> 适用：公众号深度长文、研究报告、学术论文、商业评论、行业分析——任何"要站得住脚"的长内容。当前版本 **v17.0.0**（DSH 独立版本）。
+> 适用：公众号深度长文、研究报告、学术论文、商业评论、行业分析——任何"要站得住脚"的长内容。当前版本 **v18.0.0**（DSH 独立版本）。
 
 ---
 
@@ -144,7 +144,7 @@ dsh plugin --profile web add lunheng-article-pipeline
 
 新会话的 `skill` 工具目录会出现 `lunheng-article-pipeline`，直接说「加载 lunheng-article-pipeline 技能」或交给它一个深度文章主题，它会先走 Phase 0 定题确认（含外部服务 4 选 1 明示同意）。
 
-> **安装注意**：① 目标机器需有 pnpm（`dsh plugin` 内部转 pnpm）；② 新版 dsh 的 `dsh plugin add` **会自动**把声明了 `dsh.bundle` 的依赖加进 `dsh.profile.bundles`——装完重启即可；仅当纯 npm/pnpm 直接安装或旧版 dsh 时才需手动加第 2 步；③ 依赖版本如被精确锁定（如 `2.5.2-dsh.4`），升级需手动改 `package.json` 依赖后 `pnpm install`；④ 用 dshmarket 市场的用户会看到「校验失败」误报（它只认 JS 入口，不认 `dsh.bundle.patch`），不影响实际使用。
+> **安装注意**：① 目标机器需有 pnpm（`dsh plugin` 内部转 pnpm）；② 新版 dsh 的 `dsh plugin add` **会自动**把声明了 `dsh.bundle` 的依赖加进 `dsh.profile.bundles`——装完重启即可；仅当纯 npm/pnpm 直接安装或旧版 dsh 时才需手动加第 2 步；③ 依赖版本如被精确锁定（如 `2.5.2-dsh.4`），升级需手动改 `package.json` 依赖后 `pnpm install`；④ 技能由包入口 `lib/index.js` 注册、三档工具由 `cordis.patch.yml` 叠加——v18.0.0 起本包带 JS 入口，dshmarket 一类「只认 JS 入口」的校验器不再误报。
 
 ---
 
@@ -152,6 +152,8 @@ dsh plugin --profile web add lunheng-article-pipeline
 
 | 版本 | 内容 |
 |---|---|
+| **v18.0.0** | 包形态升级为官方插件形态：新增包入口 `lib/index.js`（经 `ctx.skills.register()` 注册技能，`resourceBase` 指向随包技能目录）+ `main`/`files`/`packageManager`/optional peer 补齐；`cordis.patch.yml` 只保留 3 档 subagent 工具（删除技能挂载行与该处加载期 `!!js`）；根 README 五语（英文源 + zh/es/pt/hi）；新增入口回归测试；机检与自检脚本多项缺陷修复（M 门假阳性、`.dsh` 部署布局兼容、`--project` 成本统计） |
+| **v17.0.0**（未单独发布，内容随 v18.0.0 首发） | 版本号方案迁移 `2.5.2-dsh.N` → `N.0.0`（npm 强制 semver，`dsh.17.0` 形态发布不了）+ 端到端测试反哺的 6 处机检假阳性修复 |
 | **v2.5.2-dsh.0** | 对齐版本线 v2.5.2：T9 审稿 + G14 中文 AI 痕迹闸 + 期刊匹配助手 + 多格式导出 + 中文数据源集成 + 外部内容防注入；全包 DSH 适配（9 角色/工具映射/版本行统一） |
 | **v2.3.7-dsh.8** | M 门单文件算法统一 + 修订回环语义定案（审计独立预算 ≤2 轮）+ 三角验证机械化（M-Form-8）+ 反哺 merge 闭环 |
 | **v2.3.7-dsh.4~7** | status.md 主控独占写（防并发冲突）、审计数字级/存在性两档核验、修订复核带「关闭✅/未关闭❌」、分档预设通用化（provider/model 分离） |
@@ -166,7 +168,7 @@ dsh plugin --profile web add lunheng-article-pipeline
 ## 获取方式
 
 - **GitHub（DSH bundle）**：https://github.com/zuoyunlai/lunheng-article-pipeline-dsh
-- **npm**：`lunheng-article-pipeline@dsh`（dist-tag `dsh` = 最新 DSH 迭代版；锁定版本可写 `@17.0.0`，v17.0.0 发布后可用；当前 npm 已发布版 = `2.5.2-dsh.17`）
+- **npm**：`lunheng-article-pipeline@dsh`（dist-tag `dsh` = 最新 DSH 迭代版）；锁定具体版本可写 `@18.0.0`
 - **历史版本线（独立化前）**：https://github.com/zuoyunlai/lunheng-article-pipeline
 
 ---

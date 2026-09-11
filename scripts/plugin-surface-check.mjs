@@ -7,15 +7,18 @@
  * dsh.bundle.patch 指向 / package.json 元数据 / 工程红线，由 dsh-plugin-guide 提供的
  * dsh-plugin-dev CLI 机械判定。两层互补，互不重叠。
  *
- * 豁免（waiver）—— 论衡是「纯 skill bundle」，无 JS 运行时产物：
- *   1) manifest-main  ：不设 main（bundle patch 只叠加 skill filesystem provider +
- *                       3 档 subagent 工具，无入口模块）
- *   2) manifest-files ：files 白名单不含 lib/dist（无构建步骤）
- * 两条均为 dsh-plugin-dev 面向「代码插件」的模板假设，非论衡缺陷。
+ * 豁免（waiver）—— **v18.0.0 起本包无豁免**：早期版本是「纯 skill bundle」（不设 main、
+ * files 白名单无 lib/dist），故对下面两条各声明过一条豁免：
+ *   1) manifest-main  ：不设 main
+ *   2) manifest-files ：files 白名单不含 lib/dist
+ * v18.0.0 起本包改为**官方推荐的插件形态**：`lib/index.js` 包入口（`inject = ['skills']` +
+ * `ctx.skills.register()`）注册技能，`main` 与 `files: ['lib', ...]` 齐备 —— 两条豁免来源消失，
+ * 于是**全部清空**。豁免机制本身保留（见 WAIVERS），但任何新增豁免都必须写明理由并随发布评审；
+ * 空白名单下的默认行为是 fail-closed：任一项 fail 都直接拦发布。
  *
- * 关键设计：豁免精确到「子条件」而非整个检查项——manifest-files 若因别的原因失败
- * （例如 patch 文件被移出白名单 = 真实回归），仍会拦截。检查项通过时豁免会自动标为
- * 可清理（stale），避免豁免长期滞留。
+ * 关键设计：豁免精确到「子条件」而非整个检查项——若将来重新声明豁免，只有 allowPrefixes
+ * 命中的问题字符串才放行（例如 patch 文件被移出白名单 = 真实回归，仍会拦截）。
+ * 检查项通过时豁免会自动标为可清理（stale），避免豁免长期滞留。
  *
  * 用法：
  *   node scripts/plugin-surface-check.mjs            # 退出码 0/1
@@ -44,19 +47,10 @@ const ROOT = path.resolve(HERE, '..')
 const CLI_SPEC = process.env.DSH_PLUGIN_DEV_SPEC || 'dsh-plugin-guide@0.3.7'
 const TIMEOUT_MS = Number(process.env.DSH_PLUGIN_DEV_TIMEOUT || 300000)
 
-/** 豁免清单：allowPrefixes 命中的问题字符串才放行，其余一律拦截。 */
-const WAIVERS = [
-  {
-    id: 'manifest-main',
-    allowPrefixes: ['package.json has no `main` entry'],
-    reason: '纯 skill bundle 无 JS 入口模块（patch 只叠加 skill provider + subagent 工具）',
-  },
-  {
-    id: 'manifest-files',
-    allowPrefixes: ['files whitelist has no built-artifact directory'],
-    reason: '无构建步骤，故无 lib/dist 产物；patch 文件或入口缺失仍会拦截',
-  },
-]
+/** 豁免清单：allowPrefixes 命中的问题字符串才放行，其余一律拦截。
+ *  v18.0.0：清空——本包已有 main + lib/ 入口，manifest-main / manifest-files 两条豁免不再需要，
+ *  目标是「0 fail / 0 warn / 0 豁免」。新增条目必须写明 reason 并随发布评审。 */
+const WAIVERS = []
 
 const wantJson = process.argv.includes('--json')
 const isCI = Boolean(process.env.GITHUB_ACTIONS)
@@ -188,12 +182,16 @@ for (const check of checks) {
 }
 
 const stale = WAIVERS.filter((w) => !waivedUsed.has(w.id))
-console.log('\n已声明的豁免（纯 skill bundle，非缺陷）：')
-for (const w of WAIVERS) {
-  const used = waivedUsed.has(w.id)
-  console.log(`  ${used ? '·' : '○'} ${w.id} —— ${w.reason}${used ? '' : '（本次未触发：如已稳定通过，可考虑清理本条豁免）'}`)
+if (WAIVERS.length === 0) {
+  console.log('\n豁免：无（v18.0.0 起本包自证通过全部检查项；任何 fail 都是发布阻塞项）')
+} else {
+  console.log('\n已声明的豁免：')
+  for (const w of WAIVERS) {
+    const used = waivedUsed.has(w.id)
+    console.log(`  ${used ? '·' : '○'} ${w.id} —— ${w.reason}${used ? '' : '（本次未触发：如已稳定通过，可考虑清理本条豁免）'}`)
+  }
+  if (stale.length > 0) console.log(`  ⚠ ${stale.length} 条豁免本次未使用，建议复核后清理`)
 }
-if (stale.length > 0) console.log(`  ⚠ ${stale.length} 条豁免本次未使用，建议复核后清理`)
 
 const failed = checks.filter((c) => c.status === 'fail').length
 const passed = checks.filter((c) => c.status === 'pass').length
@@ -207,4 +205,8 @@ if (blocking.length > 0) {
   process.exit(1)
 }
 
-console.log(`\n✓ 打包面检查通过：${passed} 项通过，${failed} 项均为已声明豁免，${warned} 项提示（不阻塞）`)
+console.log(
+  failed === 0
+    ? `\n✓ 打包面检查通过：${passed} 项通过，0 项失败，${warned} 项提示（不阻塞）`
+    : `\n✓ 打包面检查通过：${passed} 项通过，${failed} 项均为已声明豁免，${warned} 项提示（不阻塞）`,
+)

@@ -112,13 +112,19 @@ const report = {
       p2: parsedOutputs['m-gate'].p2 || 0,
       soft: parsedOutputs['m-gate'].soft || 0,
       skips: parsedOutputs['m-gate'].skips || 0,
-      hardExit: parsedOutputs['m-gate'].exit,
+      hardExit: parsedOutputs['m-gate'].exit, // 脚本机械 exit（= M-Gate-Report.json 的 script_exit_raw 语义）
     } : null,
+    // v18.0.0 修复：旧版只处理 0/1，其余一律落 `else` → **exit 3（仅 P2，无 P0/P1）被误报「存在 P0 致命问题」**。
+    //   现按 M-Gate-Algorithm.md 的 exit 语义分档（0/1/2/3/10）。
     recommendation: exitCode === 0
-      ? '✅ 终检通过，可交付主人终审'
+      ? '✅ 终检通过（无失败项），可交付主人终审'
       : exitCode === 1
       ? '⚠️ 终检存在 P1 残留，主控可触发 T5 修订一轮'
-      : '❌ 终检存在 P0 致命问题，禁止标记终检完成',
+      : exitCode === 2
+      ? '❌ 终检存在 P0 致命问题，禁止标记终检完成'
+      : exitCode === 3
+      ? '🔍 仅 P2 / LLM兜底 / SKIP 残留（无 P0/P1）——须 T8 逐项复核后以 T8 裁定值放行（不得当作失败，也不得无条件当作通过）'
+      : '⛔ 参数/路径错误（exit 10）——检查 m-gate-check 的证据包目录参数',
   },
 };
 

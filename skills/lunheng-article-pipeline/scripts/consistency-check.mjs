@@ -32,8 +32,13 @@ import { join, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = join(__dirname, '..'); // skills/lunheng-article-pipeline
-const REPO_ROOT = join(ROOT, '..', '..'); // lunheng-article-pipeline-dsh
+const ROOT = join(__dirname, '..'); // 技能根（两种布局下均正确）
+// REPO_ROOT 探测（v18.0.0 修复）：本包有两种部署布局，旧实现**硬编码「向上两级」**，
+//   在「技能即包根」布局下会指向错误目录（实测：本机 `.dsh/skills/<name>/` 部署时，
+//   REPO_ROOT 解析成 `~/.dsh`，读 `~/.dsh/package.json` → ENOENT 而整个脚本不可用）。
+//   ① 仓库布局：`<repo>/package.json` + `<repo>/skills/lunheng-article-pipeline/`（向上两级）
+//   ② 技能即包根：`<skillRoot>/package.json`（本机部署；REPO_ROOT = ROOT）
+const REPO_ROOT = existsSync(join(ROOT, 'package.json')) ? ROOT : join(ROOT, '..', '..');
 
 // ① 版本真源 = package.json；版本头行任意 semver（v2.5.2-dsh.3 修订：不再硬编码 v2.5.2，防 bump 后失效）
 // **版本号形态真源（v17.0.0 起迁移为纯 semver：迭代号进 major，如 17.0.0 / 18.0.0 / 修补 17.0.1）**：
@@ -150,12 +155,20 @@ const skillHeader = skillText.split('\n').find((l) => VER_HEADER_RE.test(l));
 if (skillHeader && !skillHeader.includes(pkgVer)) {
   errors.push(`[P0 版本一致性] SKILL.md 版本头「${skillHeader.trim().slice(0, 30)}…」≠ package.json=${pkgVer}`);
 }
-// 仓库级文档版本头（README.md / docs/introduction.md / skills/README.md 的 `> 版本：` 或「当前版本」）
-for (const [rel, p] of [
-  ['README.md', join(REPO_ROOT, 'README.md')],
-  ['docs/introduction.md', join(REPO_ROOT, 'docs', 'introduction.md')],
-  ['skills/README.md', join(ROOT, 'README.md')],
-]) {
+// 仓库级文档版本头（v18.0.0：按部署布局分流）
+//   ① 仓库布局（ROOT ≠ REPO_ROOT）：README.md / docs/introduction.md / skills/README.md 三处
+//   ② 技能即包根（ROOT === REPO_ROOT，本机 `.dsh/skills/<name>/` 部署）：只有一处 README.md
+//      ——旧实现硬编码三处，在布局②下 `README.md` 与 `skills/README.md` 指向**同一文件**（重复检查），
+//      且 `docs/introduction.md` 根本不存在 → 产生 3 条假 P0，使脚本在本地部署下不可用。
+const isRepoLayout = ROOT !== REPO_ROOT;
+const repoTargets = isRepoLayout
+  ? [
+      ['README.md', join(REPO_ROOT, 'README.md')],
+      ['docs/introduction.md', join(REPO_ROOT, 'docs', 'introduction.md')],
+      ['skills/README.md', join(ROOT, 'README.md')],
+    ]
+  : [['README.md', join(ROOT, 'README.md')]];
+for (const [rel, p] of repoTargets) {
   if (!existsSync(p)) { errors.push(`[P0 版本一致性] 缺文件 ${rel}`); continue; }
   const t = readFileSync(p, 'utf8');
   const m = t.match(new RegExp('v?' + SEMVER));

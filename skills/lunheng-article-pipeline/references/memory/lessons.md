@@ -25,3 +25,62 @@
 - **根因**：数据卡未区分「官方原文」与「口径说明/检索归纳」两类内容；写手引用口径说明未带限定。
 - **解决**：已 merge 到 T2 卡（口径说明与官方原文分离）+ T5 卡铁律 2（口径说明引用带「据检索归纳」限定）。
 - **判据**：论衡特定（数据卡口径机制 + 写手引用纪律）。
+
+---
+
+## 观念与理念论文 + DSH 规范对照（2026-09-11，v18.0.0）
+
+### #145 M 门 exit 字段语义未定义 → T8 无合规出路
+- **现象**：脚本报 `exit 2`（1 项假阳性 P0），而 M 门规范同时要求「exit 0 才允许 T8 返回」与「如实记账、不得伪造」——两条同真时，T8 只能自行发明解法（本项目临场加了 `script_exit_raw` / `exit` / `exit_semantics` 三字段旁路），口径无法跨项目比较。
+- **根因**：`M-Gate-Algorithm.md` 从未定义 `exit` 是「脚本机械输出」还是「T8 复核裁定值」；两者语义不同却共用同一字段名。
+- **解决**：已 merge 到 `M-Gate-Algorithm.md` §执行模型（**exit 双字段定义**：`script_exit_raw` 禁止修改 + `exit` 为 T8 裁定值 + 裁定≠机械时须附证伪证据四件套与 `_t8_conclusion`）；脚本侧同步实现「报告写入保留 T8 段」与「M-Exist-5 优先采信 T8 裁定段」。
+- **判据**：论衡特定（M 门执行模型）。
+
+### #146 自研脚本的「目录布局假设」与部署形态不匹配
+- **现象**：`scripts/consistency-check.mjs` 在本地部署下**完全不可用**（`ENOENT: ~/.dsh/package.json`），21 类文档漂移检查长期空转；同因另产生 3 条假 P0（`README.md` 与 `skills/README.md` 指向同一文件、`docs/introduction.md` 不存在）。
+- **根因**：`REPO_ROOT = join(ROOT,'..','..')` **硬编码「向上两级」**，只对「仓库布局」（`<repo>/package.json` + `<repo>/skills/<name>/`）成立；本机是「技能即包根」（`.dsh/skills/<name>/`）布局。
+- **解决**：已 merge 到该脚本——`REPO_ROOT` **自动探测**（`existsSync(join(ROOT,'package.json')) ? ROOT : join(ROOT,'..','..')`）+ 仓库级文档检查**按布局分流**。
+- **判据**：论衡特定（但判据通用：**脚本跑不通时先查目录布局假设，别急着改逻辑**）。
+
+### #147 正式编号被正则误判为「临时编号」→ M 门永不可能 exit 0
+- **现象**：M-Form-3 稳定报「临时编号 ×12 = P0」，逐条枚举实为 `[D-基-T-01]`×7 + `[D-基-R-01]`×2 + `[D-基-E-01]`×2 + `[C-空]`×1（**真占位符扫描 = 0**）。
+- **根因**：脚本正则未排除 `-基-` 段与空卡标记；而这两者分别是 `glossary.md` §三 与 0 条空卡协议**强制保留**的正式格式——**正则与 spec 反向冲突**，且冲突结果是「照单执行会去改不可改的编号」。
+- **解决**：已 merge 到 `scripts/m-gate-check.mjs`（正则加 `(?!基-)` / `(?!空\])`）+ `M-Gate-Algorithm.md` 边界说明；并写入 `_shared/规范-机械门对照表.md`。
+- **判据**：论衡特定（M-Form-3）；**同类风险通用**：凡「脚本报 P0 但 spec 要求保留该形态」，属口径冲突而非稿件缺陷。
+
+### #148 报告落盘「激活」N/A 门的时序效应
+- **现象**：同一 M 门命令在本项目跑出过 `P0 3` / `P0 2` / `P0 1` 三种结果——M-Exist-4/5/6/9 的前提是「报告已落盘」，T7 报告一落盘即由 N/A 转为实检（M-Exist-5 曾直接转 P0）。
+- **根因**：报告既是被检对象、又是检出门的输入（自引用）；主控 Phase 4 预跑与 T7.5 闸门口径必然不一致。
+- **解决**：已 merge 到 `M-Gate-Algorithm.md`（「T7 报告落盘后必须重跑再取闸门口径」）+ 脚本侧对四项加 `[报告后激活]` 标记；另修「重跑覆写报告冲掉 T8 裁定段」的自引用循环。
+- **判据**：论衡特定（M-Exist 激活时序）。
+
+### #149 「名实不符」会以工具链失败的形式暴露
+- **现象**：本包自称「DSH 原生插件」，实为**纯 skill 目录**（无 `package.json` / `cordis.patch.yml` / 插件入口）。后果三重连锁：① 无法 `dsh plugin add`（官方 `publish.zh.md`：无 `dsh.bundle` 声明则「只作普通依赖、不激活任何层」）；② 官方 `dsh-plugin-dev check` 直接 `FAILED (2 failed / 5 warned)`；③ **自己的 `consistency-check.mjs` 因布局假设不匹配而完全不可用**（见 #146）——21 类检查长期空转。
+- **根因**：包形态（包装层）与内容层（9 角色 + 35 文档 + 11 脚本）发展不同步；内容层质量高使「名实不符」长期未被察觉。
+- **解决**：已补齐 `package.json`（`dsh.bundle.patch` + `main: lib/index.js` + `files` 含 `lib` + `engines` + optional peers + `packageManager`）+ `cordis.patch.yml` + `lib/index.js`（`inject=['skills']` + `ctx.effect(…register(…resourceBase))`）+ 五语 README；官方门由 `3 passed/2 failed/5 warned` 提升为 **`12 passed/0 failed/0 warned/2 skipped`**（反超官方范例 1 项）。
+- **判据**：论衡特定（包形态）；**判据通用**：对外宣称的形态（插件/包/服务）必须能被对应生态的**官方静态门**验证，否则宣称与实现会各自漂移。
+
+### #150 白名单剥离使文末节成为「免责区」
+- **现象**：初稿 `## 案例来源` 含「案例检索员」「spawn + 立即 Done」「0 条空卡协议」「任务简报 §五 第 55–56 行」而 M-Form-4 **判通过**；由 T7 逐行人工扫出（判 P0）。同批另有正文「审稿人」×2 与 AI 声明标题版本注记。
+- **根因**：M-Form-4 为「避免书目条目误报」把文末四节**整体剥离**，使其成为唯一可合法泄露内部信息的位置；而 `deliverables.md` 明确要求定稿文末亦不得含内部流水线信息——**两处规范直接冲突**。
+- **解决**：已 merge 到 `scripts/m-gate-check.mjs`（**文末节二级扫描**：仅豁免「以数字/基线编号开头的书目条目行」，`[C-空]` 行不豁免）+ 05 卡「文末五节纯净自查」+ 模板「0 条空卡场景的定稿写法」。
+- **判据**：论衡特定（M-Form-4 白名单机制）；**判据通用**：**白名单只豁免「该位置可以存在」，不豁免「该位置的内容合规」**。
+
+### #151 批量版本号替换引入 BOM，破坏 JSON 解析（发布流程）
+- **现象**：v18.0.0 版本 bump 时用 PowerShell `Set-Content -Encoding UTF8` 批量写回 62 个文件 → **57 个文件被写入 UTF-8 BOM**（`EF BB BF`）→ `package.json` 变成 `\uFEFF{…}`，`consistency-check.mjs` 的 `JSON.parse` 抛 `SyntaxError: Unexpected token ''`，**整个自检不可用**；官方 `dsh-plugin-dev check` 同时由 OK 掉回 `FAILED (4 passed / 2 failed / 5 warned)`。
+- **根因**：① PowerShell 的 `-Encoding UTF8` 在部分版本/场景下会写 BOM（与「UTF-8 无 BOM」不是同一语义）；② **批量字符替换后只做了「文本级」校验**（grep 版本号残留），**未做「字节级」校验**（BOM / 行尾 / 末尾换行都不在文本 diff 中显现）。
+- **解决**：改为 `[System.IO.File]::WriteAllText($p, $text, (New-Object System.Text.UTF8Encoding $false))`（**显式无 BOM**）；并补「**BOM 状态须与备份逐文件一致**」的校验（本项目：备份 5 个含 BOM → 修复后仍为 5 个，57 个新增 BOM 全部去除）。
+- **判据**：论衡特定（版本 bump 流程）；**判据通用**：**批量改写多文件后必须做字节级一致性校验**（BOM / 行尾符 / 末尾换行），文本级 grep 无法发现这类污染——它们只在被下游解析器（JSON / YAML / 正则锚定）消费时才爆出来。
+
+### #152 移动入口文件未同步修正相对路径：静态门全绿但装了跑不起来
+- **现象**：为满足官方 `manifest-files`（files 白名单须含 `lib` 或 `dist`）把插件入口从包根 `index.js` 移到 `lib/index.js`，但 `const packageRoot = dirname(fileURLToPath(import.meta.url))` **未同步调整** → 在 `lib/` 下解析成 `<pkg>/lib` → `readFileSync(<pkg>/lib/SKILL.md)` 抛 **ENOENT** → **`apply` 崩溃，技能根本注册不上**。而官方 `dsh-plugin-dev check` **14 项全绿**（12 passed / 0 failed / 0 warned）、`consistency-check.mjs` 也 0 漂移——**两个静态门都抓不到**。
+- **根因**：① 移动文件时未检查它的相对路径依赖（入口位置一变，`import.meta.url` 基准随之改变）；② **静态检查与运行时行为之间存在结构性缺口**：checker 校验的是**形态**（patch 合法性 / 元数据 / 白名单 / README 一致性），从不执行 `apply`，因此「包面完整」**不等于**「插件能跑」。
+- **解决**：`packageRoot` 改为 `dirname(dirname(fileURLToPath(import.meta.url)))`；并在官方 `verify` 因环境问题（pnpm ≥10 `allowBuilds` 拒绝 `@deepseek-ai/dsh-*` 原生依赖构建）跑不通时，用**等效冒烟**替代——构造最小 ctx（`{effect: f=>f(), skills:{register}}`）真实执行 `apply`，断言 `skill.name` / `source==='bundled'` / `content.length>5000` / `resourceBase.kind==='directory'`；并对**打包后的 tarball 解包**再跑一次（验证发布物而非工作副本）。
+- **判据**：论衡特定（bundle 入口路径）；**判据通用**：**凡「被静态门验证通过」的发布物，必须再做一次运行时冒烟**——静态门验证「形态齐备」，只有运行时才验证「行为正确」。发布前用**打包产物**（tarball）而非工作副本做这次冒烟，否则测的不是要发出去的东西。
+
+### #153 只在部署副本上改脚本：「本机自测通过」不等于「契约兼容」（发布流程）
+
+- **现象**：v18.0.0 发布前把「证据包缺卡」判为**传参错误**并 `exit 10` 中止（动机正当：误传 `analysis/` 曾一次产出 8 个假 P0）。在部署副本（`.dsh/skills/lunheng-article-pipeline`）上自测通过、`consistency-check` 0 漂移、官方 14 项门全绿，文档也照此写好。**合入真源仓库后 `node --test` 立刻红 18 个用例**——中止让所有 m-gate 用例的 `parseJson(r)` 拿到空输出，一起崩。
+- **根因**：① **部署副本不含 `tests/`**，在副本上改动永远跑不到仓库的契约回归用例——那里的「通过」只覆盖了语法与自测路径；② 该改动与**既有契约**直接冲突：本包明确「缺卡记 N/A、0 条场景合法」（M-Form-10 用例写死「三张卡片都没有 → N/A」），且证据包在 `build-evidence-bundle.mjs` 跑之前本就是空目录——中止会把「顺序没到」误报成「路径传错」；③ 自测走的是「正常路径」，而契约管的是**异常路径**（空目录 / 缺卡 / 下游 JSON 消费者）。
+- **解决**：改为**告警不中止**（stderr 显著提示 + 正确用法，继续出报告），四处口径同步（`M-Gate-Algorithm.md` / `SKILL.md` / CHANGELOG / 本条）。修后 **59/59 全绿**。
+- **判据**：论衡特定（双部署布局：真源仓库 vs 部署副本）；**判据通用**：**改动「被别的组件消费的输出契约」（退出码 / JSON / 文件路径）前，必须在带回归用例的那一份上验证**——只有实现与测试同居的目录才算真源；在副本上改完再合，等于跳过了契约验证。

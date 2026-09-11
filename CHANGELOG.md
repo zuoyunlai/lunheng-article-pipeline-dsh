@@ -1,10 +1,73 @@
 # Changelog
 
-本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见最近的 `## 17.0.0` 段。
+本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
-## 17.0.0（未发布，待发）— 版本号方案迁移：`2.5.2-dsh.N` → `N.0.0`（+ 机检可信化与成本可实测的 11 批改动）
+## 18.0.0 — 2026-09-11
 
-> **本版尚未发布**（`npm` 上最新已发布版 = `2.5.2-dsh.17`）；发版时 tag 为 **`v17.0.0`**，发布后把各文档版本头的「尚未发布」改为「发布于 <日期>」。
+> **发布形态**：tag `v18.0.0`，由 `publish.yml` 以 OIDC Trusted Publishing + `--provenance` 发布到 npm（dist-tag `dsh`）。
+> **包含两个迭代**：`17.0.0` 从未单独发布——它的内容（版本号方案迁移 + 11 批机检可信化改动 + 端到端测试反哺的 6 处修复）随本版**首发**，历史记录保留在下方 `## 17.0.0` 段。
+
+**本次发布完成三件事**：① 包形态升级为**官方插件形态**（包入口 + `dsh.bundle.patch`），并把打包面检查的两条历史豁免**清零**；② 把仓库文档与**实现对齐**（此前若干文档仍在描述已被替换的挂载机制）；③ 修复 M 门与自检脚本中使机制长期空转、误报或结构性失效的缺陷。
+
+### 新增
+
+- **包入口 `lib/index.js`**（本版核心）：
+  - `inject = ['skills']` + `apply(ctx)` 内经 `ctx.effect(() => ctx.skills.register({ … }))` 注册技能（**注册即 effect，卸载自动清理**；官方检查项 `redline-effect-registration` PASS）；
+  - `resourceBase: { kind: 'directory', path: <包根>/skills/lunheng-article-pipeline }` —— `references/**`、`scripts/**` 的相对引用在**任意 cwd** 下可解析（渐进披露）；
+  - 不 import harness 任何模块 → `@deepseek-ai/dsh` 保持 **optional peer**（检查项 `manifest-peers` PASS）；入口放在 `files` 白名单内的 `lib/`（检查项 `manifest-files` PASS）。
+- **`package.json` 补齐包元数据**：`main` / `type: module` / `files` 含 `lib` / `packageManager: pnpm@11.7.0` / optional `peerDependencies` / `scripts`（`check:consistent` · `check:surface` · `check:hygiene` · `test`）。
+- **根 README 五语**：`README.md` 改写为**英文源**，新增 `README.zh.md` / `README.es.md` / `README.pt.md` / `README.hi.md`（12 个 `##` 标题跨 5 语一致，检查项 `readme-five-langs` + `readme-consistency` PASS）；退役 `README.en.md`（英文门面由 `README.md` 承担，避免同一语言两份门面）。
+- **`tests/entry.test.mjs`**：用最小 ctx **真执行 `apply`**，断言注册字段（name/source/description/whenToUse/content/resourceBase）与 `resourceBase` 下 `SKILL.md` / `references/` / `scripts/` 齐备，并校验「frontmatter 已剥离且正文与 SKILL.md 正文段逐字一致」。**为什么必要**：包面静态检查不执行入口，「入口 import 得动但 apply 一跑就崩」只有运行时能发现（教训 #152）。
+- **`references/_shared/规范-机械门对照表.md`**：逐条勾稽「文档层规范 ↔ 机械门覆盖」，含仍无机械门的 10 项及其人工责任点。
+- **`references/_shared/DSH-集成方案.md`**：`defineTool` 注册门禁脚本 / `workflow` 工具接管 Phase 内并行 / DSH 服务映射的契约、示例与边界（**默认未启用**，启用前须知见文档）。
+- **`references/glossary.md` §十二**：本技能自用术语（9 个）的**确切含义**与**「不是什么」**，以及与官方文档规范的**刻意偏离**逐条声明（理由 + 代价 + 维护者规则）。
+- **`AGENTS.md`「开发参考资料」节**：官方资料入口对照表 + 官方 CLI 机械层 + 冲突裁决顺序（官方 > 本包 > 其他）+ 何时必须查官方资料。
+- **`SKILL.md` frontmatter `whenToUse`**：路由边界（不适用场景 / 人在环成本 / 时长预期）从 `description` 迁至官方可选字段（已读实现核实 `dsh-skill-filesystem` 读取该键），`description` 相应精简。
+- **教训 #145–#152**（`references/memory/lessons.md`）：exit 字段双语义 / 目录布局假设 / 正式编号被误判 / 报告落盘激活 N/A 门的时序效应 / 名实不符以工具链失败暴露 / 白名单剥离使文末节成免责区 / **BOM 污染** / **入口路径回归**。
+
+### 修复
+
+- **M-Form-3 误判正式编号为「临时编号」→ M 门永不可能 exit 0**（P0）：正则排除 glossary §三 基线编号 `[D-基-x-NN]` 与空卡标记 `[C-空]`。
+- **M-Integrity-1 在 Phase 4 场景静默失效**（P0）：简报路径由「只对 `final/定稿.md` 生效的字符串替换」改为**向上查找** `01-任务简报.md`；解析到被审正文自身即 `exit 10`，不再静默降级。
+- **M-Form-4 白名单剥离使文末四节成为免责区**（P0）：新增**文末节二级扫描**（仅豁免以数字/基线编号开头的书目条目行，`[C-空]` 行不豁免）。
+- **M 门路径传参陷阱**：证据包缺 `数据卡.md` / `文献卡.md` → **stderr 显著告警 + 给出正确用法**（旧版静默产出 8 个假 P0）。
+  > **发布前据随包回归用例修正（值得单独记）**：本项最初实现为「缺卡 → `exit 10` 中止」，本机自测通过、文档也照此写了；合入仓库后 `node --test` 立刻红 **18 个用例**——因为**中止会让调用方拿不到任何 JSON**，而本包契约是「**缺卡记 N/A、0 条场景合法**」，且证据包在 `build-evidence-bundle.mjs` 跑之前本就是空目录。现改为**告警不中止**，并把这条判据写进 `M-Gate-Algorithm.md` 与 `SKILL.md`。教训：**「本机自测通过」不等于「契约兼容」**——只在部署副本上改脚本、没跑仓库回归用例，就会把这类跨契约冲突带到发布口。
+- **`consistency-check.mjs` 在「技能即包根」部署下完全不可用**（ENOENT）：`REPO_ROOT` 由硬编码「向上两级」改为**双布局自动探测**；「仓库级文档版本头」检查按布局分流（旧版在技能即包根布局下产生 3 条假 P0）。
+- **M-Form-7 只核成员资格、不核顺序**：加**五节顺序断言**（错序判 P1）。
+- **M-Form-5 禁词表列全词 → 「承重证据」漏网**：改「承重」前缀匹配 + 补内部术语。
+- **M-Exist-8 只认「行首即编号」→ T6 的段级条目计 0 条**：放宽为「行首编号 ∪ 列表项 ∪ 标题式」。
+- **M-Form-11 漏计 `[D-基-x-NN]` 与 `[先NN]`**：统一素材编号正则 + 纳入 `先行者清单.md` 为卡片真源。
+- **`final-check.mjs` 推荐语分档**：旧版只处理 exit 0/1，其余落 `else` → **exit 3（仅 P2）被误报「存在 P0 致命问题」**；现按 0/1/2/3/10 五档给建议，且 exit 3/10 不再当失败。
+- **M-Exist-5 自引用循环**：报告重跑覆写会冲掉 T8 裁定段 → 改为写入时**保留** `_t8_llm_review` / `_t8_conclusion`，且 M-Exist-5 **优先采信 T8 裁定段**。
+- **`token-cost.mjs` 加 `--project <dir>` 模式**：从项目日志（`agents-log.md` / `status.md` / `01-任务简报.md` / `审计视图-v0.md`）自动提取会话 ID——交付说明的「成本指标」此前**结构性填不上**（主控拿不到 session id）。
+- **文档与实现对齐**（此前若干文档仍描述已被替换的挂载机制）：`SECURITY.md`（`!!js` 处数 7 → **3**，脚本数 9 → **11**，信任边界补入口面）、`docs/faq.md`（dshmarket 误报、`!!js` 披露、版本号表）、`docs/architecture.md`（挂载机制）、`docs/installation.md`（验证预期行、删掉「复制预设目录」步骤）、`docs/troubleshooting.md`（技能缺失排查改为按入口路径排查）、`examples/preset/README.md`（`!!js` 单表达式写法与「未设即继承」语义）、`CONTRIBUTING.md`（删掉与自身「禁止本地 `npm publish`」相矛盾的本地发布步骤）。
+- **批量改版踩到的两个真缺陷**（若跳过打包产物冒烟会带病发布）：**#151 BOM 污染**（批量版本号替换给 57 个文件写入 BOM → `package.json` 无法 `JSON.parse`）；**#152 入口路径回归**（入口移入 `lib/` 后未同步调整相对路径 → `readFileSync` ENOENT、技能注册失败，而当时两个静态门全绿）。
+
+### 变更
+
+- **`cordis.patch.yml` 只保留 3 段 `- insert:`**（技能挂载行删除）：技能改由包入口注册后，原先「插入 `@deepseek-ai/dsh-skill-filesystem` provider + `customSkillDirs` + `!!js` 路径求值」整段移除 → **加载期 `!!js` 由 4 处降为 3 处**（只剩三段 `agentOptions`），且不再依赖内部包名 `@deepseek-ai/dsh-skill-filesystem`，表达式面只剩 `process.env.*` + 全局 `Object.assign`。
+- **打包面豁免清零**（`scripts/plugin-surface-check.mjs`）：历史两条豁免（`manifest-main`「无入口」、`manifest-files`「无 lib/dist」）**来源消失，全部删除**；脚本在空白名单下保持 fail-closed，并新增「本次无豁免」提示。
+- **M 门 exit 语义显式化**：`M-Gate-Report.json` 须含 **`script_exit_raw`**（脚本机械原值，禁改）+ **`exit`**（T8 裁定值）；两者不同时须附**证伪证据四件套**与 `_t8_conclusion`；并明确「**脚本是筛子不是判别器**」（实测约 45% 命中需人工修正）。
+- **素材卡机检硬格式**写入四份 `*-lite` 模板（索引段标题 / 条目标题 / 信任级别行档位词不加粗 / 总条数只声明本类）——消除「模板人读、脚本机读」的格式返工。
+- **交接报告模板**强制产物三要素（路径 + 字节数 + 结构自检结果），防「写盘前失败」。
+- **`AGENTS.md` 机制文件写保护**补「**唯一例外：主人显式授权**」+ 5 条安全流程（判据：agent 自发改进 = 禁写；主人明确下令 = 可写）。
+- **`SKILL.md` 启动清单**改为三层（必读 3 项 / 按需读 / T7-T8 阶段读）；**技能来源自检**引用**官方 rank 表**（`project-dsh` 100 → `bundled` 600）。
+- **`glossary.md` 版本号管理**澄清：frontmatter `version` **不在官方 5 键契约内**（落入 `metadata`），不得假定其他 DSH 组件读取；下游工具应读 `package.json#version`。
+
+### 验收
+
+| 门 | 结果 |
+|---|---|
+| `dsh-plugin-dev check`（官方 14 项静态门） | **11 通过 / 0 失败 / 0 提示 / 3 跳过**，**无豁免**（本版前为 6 通过 + 2 豁免 + 2 提示） |
+| `scripts/consistency-check.mjs`（文档 21 类漂移 + `.dsh` 双写同步） | **exit 0**——0 处漂移（含 `.dsh` 镜像回填与仓库级条目清理） |
+| `scripts/repo-hygiene-check.mjs`（语法/JSON/YAML/行尾/UTF-8/发布包面） | **全部通过** |
+| `node --test "tests/**/*.test.mjs"`（随包脚本 + 入口回归） | **59/59 通过**（含新增入口 2 例；修复期一度 18 红——见「M 门路径传参陷阱」条的发布前修正） |
+| 打包产物冒烟 | `npm pack` 解包后 import 入口并真执行 `apply` → 注册字段与 `resourceBase` 全部正确 |
+| 端到端实战回归（本版前一轮） | 6000 字哲学论文全流程：M 门 `pass 18 / P0 0 / P1 0 / P2 4`；T9 审稿 23/30 minor revision |
+
+## 17.0.0（未单独发布 —— 内容随 18.0.0 首发）— 版本号方案迁移：`2.5.2-dsh.N` → `N.0.0`（+ 机检可信化与成本可实测的 11 批改动）
+
+> **本版未单独发到 npm/GitHub**（`npm` 上当时的已发布版 = `2.5.2-dsh.17`）；其全部内容随 **`18.0.0`** 首发，故各文档版本头最终写的是 `v18.0.0`。以下原文保留当时的「发版计划」，仅作为决策记录。
 
 ### 为什么改：npm 强制 semver，`dsh.17.0` 这种形态**发布不了**
 

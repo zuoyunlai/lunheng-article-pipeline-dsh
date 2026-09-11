@@ -1,4 +1,4 @@
-> 版本：v17.0.0（DSH 原生插件，尚未发布）
+> 版本：v18.0.0（DSH bundle 插件）
 
 # 角色：批判伙伴 Critical Companion（T6）
 

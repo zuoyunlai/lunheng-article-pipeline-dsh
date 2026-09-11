@@ -38,7 +38,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
-      - name: 打包面检查（dsh-plugin-dev check，含纯 skill bundle 豁免）
+      - name: 打包面检查（dsh-plugin-dev check，v18.0.0 起无豁免）
         run: node scripts/plugin-surface-check.mjs
 
   # 机械卫生门（v2.5.2-dsh.13 新增）：语法 / JSON / YAML 结构 / 行尾 / UTF-8 / 发布包内容

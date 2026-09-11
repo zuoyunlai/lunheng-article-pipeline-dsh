@@ -37,4 +37,4 @@ T1 先行者检索 → T4 差异点声明 → T7 G7 原创性审计，防止「�
 
 ## DSH 适配
 
-技能以「bundle patch」形态发布：`package.json` 声明 `dsh.bundle.patch` 指向 `cordis.patch.yml`，后者通过 `skill-filesystem` 的 `customSkillDirs` 把包内 `skills/` 目录注册为技能根。工具集由 DSH Agent 预设决定，模型路由由 `settings.yaml` 配置。
+技能以「bundle」形态发布，两部分各司其职：**包入口 `lib/index.js`** 经 `ctx.skills.register()` 注册技能（`resourceBase` 指向随包的 `skills/lunheng-article-pipeline/`，故角色卡/模板/脚本的相对引用在任意 cwd 下可解析，且注册即 effect、卸载自动清理）；**`cordis.patch.yml`**（由 `package.json` 的 `dsh.bundle.patch` 声明）只叠加 3 档 subagent 工具。工具集由 DSH Agent 预设决定，模型路由由 `settings.yaml` 配置。

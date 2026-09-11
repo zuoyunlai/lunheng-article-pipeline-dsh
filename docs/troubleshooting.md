@@ -1,13 +1,14 @@
 # 故障排查（troubleshooting）
 
-> 版本：v17.0.0（DSH 原生插件，尚未发布）
+> 版本：v18.0.0（DSH 原生插件，发布于 2026-09-11）
 
-安装/验证失败时按「症状 → 原因 → 处置」对照。**先跑本地三道门**：
+安装/验证失败时按「症状 → 原因 → 处置」对照。**先跑本地四道门**：
 
 ```sh
 node skills/lunheng-article-pipeline/scripts/consistency-check.mjs   # 仓库一致性
 node scripts/plugin-surface-check.mjs                                # 打包面契约
 node scripts/repo-hygiene-check.mjs                                  # 语法/行尾/UTF-8/发布包
+node --test "tests/**/*.test.mjs"                                    # 随包脚本 + 包入口回归
 ```
 
 ---
@@ -21,8 +22,8 @@ node scripts/repo-hygiene-check.mjs                                  # 语法/�
 
 ## 2. `dshmarket` 显示「安装完成但校验失败 / 入口产物缺失」
 
-- **原因**：dshmarket 的校验器只认 JS 入口（`main`/`exports`/`index.js`），而本包是纯 bundle（入口是 `dsh.bundle.patch`）。
-- **处置**：忽略该误报。验证方式见下一条。
+- **原因**：旧版（≤ v17.0.0）本包是纯 skill bundle，没有 JS 模块入口，而 dshmarket 的校验器只认 JS 入口。
+- **处置**：v18.0.0 起本包带 `main` → `lib/index.js`，该校验不再误报。若在 v18.0.0 上仍报，请贴出 `npm view lunheng-article-pipeline@<ver> main` 的输出（应为 `lib/index.js`）作为 issue 证据。
 
 ## 3. 装完看不到 `lunheng-article-pipeline` 技能
 
@@ -31,12 +32,13 @@ node scripts/repo-hygiene-check.mjs                                  # 语法/�
 1. **bundle 是否进了 profile**：`<DSH_HOME>/profiles/<profile>/package.json` 的 `dsh.profile.bundles` 应含 `lunheng-article-pipeline`（新版 `dsh plugin add` 会自动加）。
 2. **patch 行是否组合进树**：
    ```sh
-   dsh --profile <profile> --dump-config | Select-String 'skill-filesystem-lunheng|tool-subagent-(retrieval|strong|audit)'
+   dsh --profile <profile> --dump-config | Select-String 'lunheng-article-pipeline|tool-subagent-(retrieval|strong|audit)'
    ```
-   注意：`--dump-config` 会把 `!!js` 原样打印（不求值），所以这一步只证明「行进入了组合树」，**不证明技能挂载成功**。
+   注意：`--dump-config` 会把 `!!js` 原样打印（不求值），所以这一步只证明「行进入了组合树」，**不证明技能注册成功**（技能由包入口注册，不表现为 patch 行）。
 3. **真验证**：开一个会话问「列出你可见的技能名称」——期望出现 `lunheng-article-pipeline`。
-4. **同名覆盖**：检查当前工作目录下是否存在 `.dsh/skills/lunheng-article-pipeline/`（项目技能根 rank 100 **高于**本包的 custom root rank 300，会**静默顶替**）。删掉或改名该目录即可确认。
-5. **路径解析**：本包用 `!!js` 把 `<profile>/node_modules/lunheng-article-pipeline/skills/` 绝对化（`baseUrl` 由宿主锚定在 profile 目录；该解析已于 2026-09-11 在真实 profile 上端到端实测通过，详见 `CHANGELOG.md` dsh.13 段「已知限制」）。若包被解析到共享回退目录（`<DSH_HOME>/profiles/node_modules`），该路径不存在，而技能文件系统 provider 对缺失根**只轮询不报错** → 技能静默消失。用 `dsh plugin --profile <profile> add <pkg>` 直装（而非手工拷贝）可避免。
+4. **同名覆盖**：检查当前工作目录下是否存在 `.dsh/skills/lunheng-article-pipeline/`（项目技能根 rank 100 **高于**本包的 rank 300，会**静默顶替**）。删掉或改名该目录即可确认。
+5. **入口是否随包**：v18.0.0 起技能由包入口 `lib/index.js` 注册，入口在 `apply` 期读 `<包根>/skills/lunheng-article-pipeline/SKILL.md`。若安装副本缺 `lib/`（例如发布包的 `files` 白名单漏项，或手工只拷了 `skills/`），技能会**静默不出现**。排查：`node -e "import('<包根>/lib/index.js').then(m=>console.log(m.name,m.inject))"`，并确认 `<包根>/skills/lunheng-article-pipeline/SKILL.md` 存在。回归用例见 `tests/entry.test.mjs`。
+   > 历史（≤ v17.0.0）：技能由 patch 里的 `@deepseek-ai/dsh-skill-filesystem` 提供者 + `!!js` 路径求值挂载，包被解析到共享回退目录（`<DSH_HOME>/profiles/node_modules`）时会因根不存在而静默消失；该路径求值已在 v18.0.0 删除。
 6. **只想快速排除「是不是本地同名技能顶替」**：临时把 `<cwd>/.dsh/skills/lunheng-article-pipeline` 改名，重开会话再看技能是否出现。
 
 ## 4. `dsh-plugin-dev verify` 跑不通
