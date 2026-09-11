@@ -322,7 +322,7 @@ test('m-gate-check M-Form-9：未启用配图记 N/A 不算失败（配图默认
   assert.ok(item, '应存在 M-Form-9 项')
   assert.equal(item.pass, true, '无图位无图件 → N/A pass')
   assert.match(item.detail, /N\/A/)
-  assert.equal(j.total, 14, '脚本机械项应为 14 项（含 M-Form-9/10）')
+  assert.equal(j.total, 15, '脚本机械项应为 15 项（M-Form 1-10 + M-Exist 1-4 + M-Integrity-1）')
   rmSync(d, { recursive: true, force: true })
 })
 
@@ -387,7 +387,7 @@ test('consistency-check ⑱：图件路径口径与「宣称的图件门」必�
   writeFileSync(t8, readFileSync(t8, 'utf8') + '\n> 图件落在 `final/图N-标题.svg`。\n')
   // ② M 门计数漂移（把 14 项写回 13 项）
   const gl = join(R, 'references', 'glossary.md')
-  writeFileSync(gl, readFileSync(gl, 'utf8').replace('M 门 15 项复核', 'M 门 13 项复核'))
+  writeFileSync(gl, readFileSync(gl, 'utf8').replace('M 门 16 项复核', 'M 门 13 项复核'))
   const r = run([join(R, 'scripts', 'consistency-check.mjs')])
   assert.equal(r.code, 1, '注入漂移后必须 exit 1')
   assert.match(r.out, /图件路径口径漂移/, '⑱ 必须捕获旧图件路径')
@@ -582,6 +582,65 @@ test('m-gate-check M-Form-10：索引段缺条必须报（下游按索引定位�
   item = gate()
   assert.equal(item.pass, true, '无卡应记 N/A 而非失败')
   assert.match(item.detail, /N\/A/)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('m-gate-check M-Exist-4：修订任务书结构 + 审计↔复核编号闭环 + 初轮不得预填「已关闭」', () => {
+  const d = tmp()
+  const proj = join(d, 'run', 'proj')
+  const fin = join(proj, 'final')
+  const ev = join(fin, '证据包')
+  const aud = join(proj, 'audits')
+  mkdirSync(ev, { recursive: true })
+  mkdirSync(aud, { recursive: true })
+  mkdirSync(join(proj, 'drafts'), { recursive: true })
+  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
+  const item = () => {
+    const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])
+    return parseJson(r).results.find((x) => x.gate.startsWith('M-Exist-4'))
+  }
+  const AUD = join(aud, '审计报告-v1.md')
+  const REV = join(aud, '复核报告-v1.md')
+  const HEAD = '| 编号 | 严重度 | 改哪里（文件+位置） | 怎么改（具体动作） | 验收标准 | 关闭状态 |\n|---|---|---|---|---|---|\n'
+  const ROW = (id, st) => `| ${id} | P1 | 初稿.md §三第 2 段 | 补 [L01] 支撑该论点 | 该段含 [L01] 且 M-Form-8 通过 | ${st} |\n`
+
+  // ① 无审计报告 → N/A（不判失败）
+  let it = item()
+  assert.equal(it.pass, true, '无审计报告应记 N/A')
+  assert.match(it.detail, /N\/A/)
+
+  // ② 打回 + 完整任务书（待复核）+ 复核报告覆盖 → 通过
+  writeFileSync(AUD, `# 审计报告 v1\n\n结论：打回修订 ❌\n\n## 修订任务书\n\n${HEAD}${ROW('P0-1', '待复核')}${ROW('P1-1', '待复核')}`)
+  writeFileSync(REV, '# 复核报告 v1\n\n| 原条目编号 | 判定 | 依据 |\n|---|---|---|\n| P0-1 | ✓已关闭 | 修订说明 §2 |\n| P1-1 | ✓已关闭 | 头部已清理 |\n')
+  it = item()
+  assert.equal(it.pass, true, '完整任务书 + 复核覆盖应通过：' + it.detail)
+  assert.match(it.detail, /闭环成立/)
+
+  // ③ 初轮（无复核报告）预填「已关闭」→ 硬问题
+  rmSync(REV, { force: true })
+  writeFileSync(AUD, `# 审计报告 v1\n\n结论：打回修订 ❌\n\n## 修订任务书\n\n${HEAD}${ROW('P0-1', '已关闭')}`)
+  it = item()
+  assert.equal(it.pass, false, '未复核就宣称已关闭必须报')
+  assert.match(it.detail, /尚未有复核报告|尚无复核报告|真源是复核报告/)
+
+  // ④ 编号重复 + 位置列空缺 → 硬问题
+  writeFileSync(AUD, `# 审计报告 v1\n\n结论：打回修订 ❌\n\n## 修订任务书\n\n${HEAD}${ROW('P1-1', '待复核')}| P1-1 | P1 |  |  |  | 待复核 |\n`)
+  it = item()
+  assert.equal(it.pass, false)
+  assert.match(it.detail, /编号重复|空缺/)
+
+  // ⑤ 已有修订说明但缺复核报告 → 硬问题（复核必须落盘）
+  writeFileSync(join(proj, 'drafts', '修订说明-v1.md'), '# 修订说明 v1\n')
+  writeFileSync(AUD, `# 审计报告 v1\n\n结论：打回修订 ❌\n\n## 修订任务书\n\n${HEAD}${ROW('P1-1', '待复核')}`)
+  it = item()
+  assert.equal(it.pass, false, '有修订说明但无复核报告必须报')
+  assert.match(it.detail, /复核报告/)
+
+  // ⑥ 结论「通过」→ 无需任务书，也不因缺复核报告而失败
+  writeFileSync(AUD, '# 审计报告 v1\n\n结论：通过 ✅（剩余风险：付费墙文献仅核验摘要）\n')
+  it = item()
+  assert.equal(it.pass, true, '结论通过时无需任务书：' + it.detail)
+  assert.match(it.detail, /无需任务书/)
   rmSync(d, { recursive: true, force: true })
 })
 

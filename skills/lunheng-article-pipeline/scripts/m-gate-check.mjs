@@ -1,7 +1,7 @@
 // 论衡 M 门机械化预检脚本（v2.5.2-dsh 补丁 + v2.5.2-dsh.5 重大增强 + v2.5.2-dsh.16 加图件闭环）
 //   v2.5.2-dsh:   M-Form-1/3/5/7 + M-Exist-2 纯正则/哈希判定
 //   v2.5.2-dsh.5: M 门全脚本化（T8 仅复核 M-Form-8 承重墙质量 + M-Integrity 跨文件判断）
-//   v2.5.2-dsh.16: 新增 M-Form-9 图件闭环（[图N] ↔ final/图件/ ↔ 图上数字）→ M 门 15 项（脚本 13 项 + M-Integrity-2 主控）
+//   v2.5.2-dsh.16: 新增 M-Form-9 图件闭环（[图N] ↔ final/图件/ ↔ 图上数字）→ M 门 16 项（脚本 13 项 + M-Integrity-2 主控）
 // 用法: node m-gate-check.mjs <final/定稿.md> <final/证据包目录> [--summary] [--fig-dir <图件目录>] [--report <path>]
 //   --summary：仅输出聚合统计（total/pass/p0/p1/p2/soft/skips）+ 硬失败项；省略通过项 details[]（省 ~80% 输出字节，机器可读友好）
 //   --fig-dir：图件目录（缺省自动推 <定稿目录>/图件）
@@ -256,7 +256,7 @@ try {
 
 // === M-Form-9 图件闭环（v2.5.2-dsh.16 新增）：[图N] 图位 ↔ final/图件/ ↔ 图上数字 三方对账 ===
 // 背景（第三方 SVG 链路审计）：T5 卡宣称「T7 跑 M-Gate 算法检查 [图N] 出现次数 ≥ 拍板图位数量 → P0 拦截」，
-// 但 M 门 15 项里**没有任何图项**、T7 速查表 0 处提及「图」、证据包不收图件 → 该条文无落地路径。
+// 但 M 门 16 项里**没有任何图项**、T7 速查表 0 处提及「图」、证据包不收图件 → 该条文无落地路径。
 // 本项即该条文的机械落地：缺图/图位不足 → 硬失败；孤儿图件/数字对不上 → 软提示（数字对账为启发式）。
 // 未启用配图（无图位且无图件目录）→ 记 N/A 且 pass=true（不得因「没配图」把 M 门判失败——配图默认关闭）。
 try {
@@ -418,6 +418,97 @@ try {
   }
 } catch (e) {
   results.push({ gate: 'M-Form-10 索引段完整性', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
+}
+
+// === M-Exist-4 审计条目闭环（v2.5.2-dsh.17 新增）===
+// 依据：07 卡早已规定「打回修订必须附结构化修订任务书（编号/严重度/位置/动作/验收标准/关闭状态）」，
+//   但**没有任何脚本校验**；且 dsh.17 引入复核报告后出现「关闭状态」**双真源**（审计报告表列 ↔ 复核报告）。
+// 本项把该契约变成机检：结构完整 + 编号唯一 + 编号在审计↔复核之间双向闭环 + 初轮不得预填「已关闭」。
+try {
+  const projectDir2 = dirname(dirname(draftPath));
+  const auditsDir = [join(projectDir2, 'audits'), join(dirname(draftPath), 'audits'), evDir].find((d) => existsSync(d)) || null;
+  const latestOf = (prefix) => {
+    if (!auditsDir) return null;
+    const cands = readdirSync(auditsDir)
+      .map((f) => ({ f, m: f.match(new RegExp(`^${prefix}-v(\\d+)\\.md$`)) }))
+      .filter((x) => x.m).map((x) => ({ f: x.f, n: Number(x.m[1]) }))
+      .sort((a, b) => b.n - a.n);
+    return cands.length ? { path: join(auditsDir, cands[0].f), n: cands[0].n, name: cands[0].f } : null;
+  };
+  const audit = latestOf('审计报告');
+  const review = latestOf('复核报告');
+  const revNotes = existsSync(join(projectDir2, 'drafts'))
+    ? readdirSync(join(projectDir2, 'drafts')).filter((f) => /^修订说明-.*\.md$/.test(f)) : [];
+
+  if (!audit) {
+    results.push({ gate: 'M-Exist-4 审计条目闭环', pass: true, detail: 'N/A：尚无审计报告（未进入 Phase 4）', severity: '通过' });
+  } else {
+    const text = readFileSync(audit.path, 'utf8');
+    const isReject = /打回|必须修改清单|未通过/.test(text);
+    const lines = text.split('\n');
+    const hIdx = lines.findIndex((l) => /^#{2,4}\s*修订任务书/.test(l));
+    const rows = [];
+    let header = null;
+    if (hIdx !== -1) {
+      for (let i = hIdx + 1; i < lines.length; i++) {
+        const l = lines[i];
+        if (/^#{2,4}\s/.test(l)) break;
+        if (!/^\s*\|/.test(l)) continue;
+        const cells = l.split('|').slice(1, -1).map((c) => c.trim());
+        if (cells.every((c) => /^:?-{2,}:?$/.test(c) || c === '')) continue;   // 分隔行
+        if (!header && cells.some((c) => c.includes('编号'))) { header = cells; continue; }
+        if (header) rows.push(cells);
+      }
+    }
+    const colOf = (kw) => (header || []).findIndex((h) => kw.test(h));
+    const iId = colOf(/编号/), iSev = colOf(/严重度/), iLoc = colOf(/改哪里|位置/), iAct = colOf(/怎么改|动作/), iAcc = colOf(/验收/), iStat = colOf(/关闭状态|状态/);
+    const findings = [];
+    const soft = [];
+    if (isReject) {
+      if (hIdx === -1 || !header) findings.push('结论为「打回修订」但缺「## 修订任务书」段或表格表头');
+      else if ([iId, iSev, iLoc, iAct, iAcc, iStat].some((x) => x === -1)) {
+        findings.push(`修订任务书缺必需列（现表头：${header.join(' / ')}）——需含 编号/严重度/改哪里/怎么改/验收标准/关闭状态`);
+      } else {
+        const ids = [];
+        for (const r of rows) {
+          if (!r[iId] || /^\.+$/.test(r[iId])) continue;
+          const id = r[iId].replace(/[`*]/g, '').trim();
+          ids.push(id);
+          if (!/^P[012][-\u2011]?[0-9A-Da-d]+/.test(id)) soft.push(`编号「${id}」不符合 P0-n / P1-n 约定`);
+          for (const [idx, label] of [[iLoc, '改哪里'], [iAct, '怎么改'], [iAcc, '验收标准']]) {
+            if ((r[idx] || '').replace(/[\s.。…-]/g, '').length < 4) findings.push(`${id} 的「${label}」列空缺或过于笼统`);
+          }
+          const st = (r[iStat] || '').trim();
+          if (!/已关闭|未关闭|待复核/.test(st)) soft.push(`${id} 的关闭状态「${st}」非固定词（应为 已关闭/未关闭/待复核）`);
+          if (!review && /已关闭/.test(st)) findings.push(`${id} 在**尚无复核报告**时即标「已关闭」——关闭状态真源是复核报告，初轮只能填「待复核」`);
+        }
+        const dup = ids.filter((x, i) => ids.indexOf(x) !== i);
+        if (dup.length) findings.push(`编号重复：${[...new Set(dup)].join(',')}——同报告内编号必须唯一（跨轮新增须续号，不得复用）`);
+        if (ids.length === 0) soft.push('修订任务书表格无有效条目行');
+        if (review) {
+          const rid = new Set([...readFileSync(review.path, 'utf8').matchAll(/P[012][-\u2011]?[0-9A-Da-d]+/g)].map((m) => m[0].replace(/\u2011/g, '-')));
+          const miss = [...new Set(ids)].filter((x) => !rid.has(x.replace(/\u2011/g, '-')));
+          if (miss.length) findings.push(`复核报告 ${review.name} 未覆盖 ${miss.length} 个审计编号：${miss.slice(0, 5).join(',')}`);
+        } else if (revNotes.length) {
+          findings.push(`已有修订说明（${revNotes.length} 份）但缺同号复核报告——修订复核必须落盘 audits/复核报告-v${audit.n}.md`);
+        }
+      }
+    }
+    const hard = findings.length > 0;
+    results.push({
+      gate: 'M-Exist-4 审计条目闭环',
+      pass: !hard && soft.length === 0,
+      detail: [
+        `审计报告 ${audit.name}${review ? ` ↔ 复核报告 ${review.name}` : '（无复核报告）'}`,
+        isReject ? (header ? `任务书 ${rows.length} 行` : '结论为打回') : '结论非打回（无需任务书）',
+        hard ? `硬问题：${findings.slice(0, 3).join('；')}` : '条目契约与闭环成立',
+        soft.length ? `软提示：${soft.slice(0, 2).join('；')}` : '',
+      ].filter(Boolean).join(' ｜ '),
+      severity: hard ? (findings.length > 2 ? 'P0' : 'P1') : (soft.length ? 'P2' : '通过'),
+    });
+  }
+} catch (e) {
+  results.push({ gate: 'M-Exist-4 审计条目闭环', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
 }
 
 // === M-Exist-2 证据包完整性 ===

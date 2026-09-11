@@ -73,6 +73,9 @@ function checkGateCounts(text, rel) {
   check(/M\s*门\s*(\d+)\s*项机械化/, 1, mech, '机械化项数');
   check(/M\s*门\s*(\d+)\s*项(?!机械化)/, 1, total, '总项数');
   check(/M-Form\s*(\d+)\s*项/, 1, form, ' M-Form 项数');
+  // 中文括注写法（v2.5.2-dsh.17 加：如「M-Form 形式合规门（10 项）」——旧规则只认紧邻数字，漏检过 T7 速查表）
+  check(/M-Form[^\n（]{0,14}（(\d+)\s*项）/, 1, form, ' M-Form 括注项数');
+  check(/M-Exist[^\n（]{0,14}（(\d+)\s*项）/, 1, exist, ' M-Exist 括注项数');
   check(/M-Form\s*(\d+)\s*\/\s*M-Exist\s*(\d+)\s*\/\s*M-Integrity\s*(\d+)/, 1, form, ' 分工（Form）');
   check(/M-Form\s*(\d+)\s*\/\s*M-Exist\s*(\d+)\s*\/\s*M-Integrity\s*(\d+)/, 2, exist, ' 分工（Exist）');
   check(/M-Form\s*(\d+)\s*项\s*\+\s*M-Exist\s*(\d+)\s*项/, 1, form, ' 分项（Form）');
@@ -386,7 +389,7 @@ for (const f of active) {
 // ⑱ 图件链路口径（v2.5.2-dsh.16 新增，第三方 SVG 链路审计）：
 //   ① 图件路径只有**一个**口径：`final/图件/图N_标题.svg`（旧版 08 卡写 `final/图件/图N_标题.svg`，两套口径并存）；
 //   ② 文档宣称的「图件机械门」必须真实存在——T5 卡宣称「T7 跑 M-Gate 检查 [图N] 数量 ≥ 拍板数 → P0 拦截」，
-//      而当时的 M 门 15 项**没有任何图项**（现由 M-Form-9 落地）：宣称与实现必须一起改；
+//      而当时的 M 门 16 项**没有任何图项**（现由 M-Form-9 落地）：宣称与实现必须一起改；
 //   ③ 图位规范必须写明「独占一行」（md2html 的块级图注/分页依赖它；行内仅在 dsh.16 起被容错识别）。
 {
   const mGateSrc = gateSrc;
