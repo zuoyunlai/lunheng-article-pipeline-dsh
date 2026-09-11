@@ -4,8 +4,11 @@
 
 ## 未发布（下次版本 bump 时定名）
 
-- **随包脚本待改进（自 dsh.15 遗留，本版未做）**：`token-cost.mjs` 在 dsh.15 起「未知参数一律 exit 1」，导致 `--help` 报 `未知参数: --help`（旧版静默忽略、随后走用法提示）——改进方向：报错时**附带打印用法行**，或显式支持 `-h/--help`。
-- 暂无其他。dsh.16 发布后新动议记在此段（CONTRIBUTING：只提交动议，发版时改名为版本段）。
+- **发布运维（dsh.16 发布实测反哺，CI-only 变更、不影响已发布产物）**：
+  1. **`2.5.2-dsh.16` 已发布**（2026-09-11T02:22Z）：`_npmUser = GitHub Actions` + trustedPublisher、**含 provenance**（2 条 attestation，已入 sigstore 透明度日志）、`gitHead = 398b1aa`（与 tag 提交一致）、**89 个文件**（较 dsh.15 多 `scripts/_lib/svg.mjs`）、`dist-tags.dsh → 2.5.2-dsh.16` ✓。
+  2. **修正「发布后审计」的窗口与分级（dsh.16 首跑实测）**：publish 日志明写「Your package is being processed and **may take a few minutes** to become available」，而 dsh.14 起设的 **120s 轮询窗口仍不够**（本次 gitHead 约 10 分钟后才可取到，且与 HEAD 完全一致——**产物本身没问题，是审计窗口太短误报红灯**）。现改为：窗口 **30 × 15s（≈7.5 分钟）**、等待时提示 npm 的「处理中」语义、**取不到 = `::warning::` + exit 0**（发布步骤自身已返回成功且 provenance 已签署，元数据传播延迟不是本仓库缺陷）、**取到但不一致 = 硬错误**（真正的产物/tag 不对应必须拦）。
+- **待办（非代码）**：`latest` dist-tag 同步至 dsh.16 —— `npm dist-tag add lunheng-article-pipeline@2.5.2-dsh.16 latest`（OIDC 令牌无权重写 `latest`；配置 `NPM_TOKEN` secret 可由 publish.yml 自动接管）。
+- **随包脚本待改进（自 dsh.15 遗留，尚未做）**：`token-cost.mjs` 在 dsh.15 起「未知参数一律 exit 1」，导致 `--help` 报 `未知参数: --help`（旧版静默忽略、随后走用法提示）——改进方向：报错时**附带打印用法行**，或显式支持 `-h/--help`。
 
 ## 2.5.2-dsh.16（2026-09-11）— SVG 图件链路：从「有机制无门」到可验证
 

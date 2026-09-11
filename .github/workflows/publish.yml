@@ -99,7 +99,14 @@ jobs:
       # 发布后审计：核对 npm 上该版本的 gitHead 与本次提交一致、dist-tag 指向本版本。
       # v2.5.2-dsh.14 修（实测教训）：**registry 元数据有传播延迟**——publish 步骤刚成功就 `npm view gitHead`
       # 会拿到空值，旧写法因此误判「产物与 tag 不对应」并红灯（dsh.14 首跑即如此，事后核验 gitHead 其实完全正确）。
-      # 现改为**轮询等待**（最多 120s），并把「取不到」与「取到但不一致」区分开。
+      # 现改为**轮询等待**，并把「取不到」与「取到但不一致」区分开。
+      # v2.5.2-dsh.16 再修（dsh.16 首跑实测）：publish 日志明写
+      # 「Your package is being processed and may take a few minutes to become available」——**120s 窗口仍不够**
+      # （本次 gitHead 实际在 ~10 分钟后可取到，且与 HEAD 完全一致）。故：
+      #   ① 窗口放宽到 30 × 15s（≈7.5 分钟），并在等待时提示 npm 的「处理中」语义；
+      #   ② **取不到 = 告警**（::warning::，exit 0）——发布步骤自身已由 npm 返回成功 + provenance 签署，
+      #      元数据传播延迟不是本仓库缺陷，不该把运行弄红；
+      #   ③ **取到但不一致 = 硬错误**（真正的产物/tag 不对应，必须拦）。
       # `always()` 确保即使中间某步失败（如缺 token 的告警步）也仍执行审计——但只在**发布本身成功**时才有意义。
       - name: 发布后审计（gitHead / dist-tags 断言）
         if: always() && startsWith(github.ref, 'refs/tags/') && steps.guard.outputs.skip == 'false' && steps.publish.outcome == 'success'
@@ -107,23 +114,23 @@ jobs:
           VER="$(node -p "require('./package.json').version")"
           HEAD="$(git rev-parse HEAD)"
           GITHEAD=""
-          for i in $(seq 1 12); do
+          for i in $(seq 1 30); do
             GITHEAD="$(npm view "$PKG@$VER" gitHead 2>/dev/null | tr -d '[:space:]')"
             [ -n "$GITHEAD" ] && break
-            echo "registry 元数据尚未就绪，等待中（第 $i/12 次，每次 10s）…"
-            sleep 10
+            echo "registry 元数据尚未就绪，等待中（第 $i/30 次，每次 15s）—— npm 可能仍在处理发布（其提示：may take a few minutes to become available）"
+            sleep 15
           done
           echo "npm gitHead=$GITHEAD  repo HEAD=$HEAD"
           if [ -z "$GITHEAD" ]; then
-            echo "::error::120s 内未取到 npm 上 $VER 的 gitHead —— registry 元数据缺失（发布本身已成功，请人工核对）"
+            echo "::warning::7.5 分钟内未取到 npm 上 $VER 的 gitHead —— registry 元数据传播延迟（发布本身已成功：publish 步骤退出 0 + provenance 已签署）。请人工核对：npm view $PKG@$VER gitHead 应等于 $HEAD"
+          elif [ "$GITHEAD" != "$HEAD" ]; then
+            echo "::error::npm 上 $VER 的 gitHead($GITHEAD) ≠ 本次提交($HEAD) —— 发布产物与 tag 不对应（真实缺陷，必须处理）"
             exit 1
-          fi
-          if [ "$GITHEAD" != "$HEAD" ]; then
-            echo "::error::npm 上 $VER 的 gitHead($GITHEAD) ≠ 本次提交($HEAD) —— 发布产物与 tag 不对应"
-            exit 1
+          else
+            echo "✓ gitHead 与本次提交一致"
           fi
           DSH_TAG="$(npm view "$PKG" dist-tags.dsh 2>/dev/null | tr -d '[:space:]')"
           echo "dist-tags.dsh=$DSH_TAG"
           if [ "$DSH_TAG" != "$VER" ]; then
-            echo "::warning::dist-tags.dsh=$DSH_TAG ≠ $VER（若已配置 NPM_TOKEN 则不应发生）"
+            echo "::warning::dist-tags.dsh=$DSH_TAG ≠ $VER（若已配置 NPM_TOKEN 则不应发生；无 token 时属预期：publish --tag dsh 会自动指向本版本）"
           fi
