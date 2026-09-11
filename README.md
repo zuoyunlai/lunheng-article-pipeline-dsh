@@ -4,7 +4,7 @@
 
 把一篇深度文章/论文的生产拆成 **9 个独立角色 T1-T9（互不可替代）**（文献/数据/案例/分析/写作/批判/审计/终检/审稿；主控 = T0 调度 + T8 终检亲执行，T8 是独立角色不 spawn 子代理；T9 审稿可选默认选中、学术必选）：Phase 1 三检索员（T1 文献 ∥ T2 数据 ∥ T3 案例）**三方真并行、互不干涉**，T3 **任何量级必 spawn**（含 0 条场景空卡协议）；T6 批判伙伴从反方攻击论证；T9 同行评审 + 期刊匹配；G0-G14 独立审计（含 G14 中文 AI 痕迹闸）+ M 门机械化终检（M-Form 8 / M-Exist 3 / M-Integrity 2）。用 dsh `subagent` 子代理编排，产出有**证据底座、反方论证、独立审计、人工核验节点**的交付物。
 
-> 版本：v2.5.2-dsh.12（DSH 原生插件）。
+> 版本：v2.5.2-dsh.13（DSH 原生插件）。
 
 ## 安装（在目标机器上）
 
@@ -59,13 +59,40 @@ dsh --profile web --dump-config   # 应能看到 skill-filesystem-lunheng 行
 # 新开会话后，skill 工具目录应列出 lunheng-article-pipeline
 ```
 
+## 前置要求
+
+| 项 | 要求 |
+|---|---|
+| DSH | `dsh` CLI 可用（bundle 的 `- insert:` 增量 patch 需 DSH 5.5.0+） |
+| Node | `^22.19.0 \|\| >=24.0.0`（DSH 运行时下限；见 `package.json` 的 `engines`） |
+| pnpm | 安装/卸载依赖它（`dsh plugin` 内部转 pnpm） |
+| 平台 | Windows / macOS / Linux（脚本零依赖，跨平台可跑） |
+
+## 卸载
+
+```sh
+dsh plugin --profile <profile> remove lunheng-article-pipeline
+```
+
+卸载后 `cordis.patch.yml` 的 4 段 `- insert:` 一并消失——技能提供者与三档 subagent 工具同时移除，不留残余行。
+若曾手工把技能目录拷到技能根（`.dsh/skills/` 或 `.agents/skills/`），需另行删除该目录。
+
+## 数据流向与免责
+
+- **外发**：检索关键词与目标 URL 会发往 DSH 配置的检索服务商（如 DeepSeek 官方 `web_search`）；Phase 0 有「4 选 1」明示同意关卡，拒绝任一外发项即调整方案重做 Phase 0。
+- **不外发**：本地文件记忆（`memory/*.md`、`references/memory/lessons.md`）与所有随包脚本（零网络请求）；PDF/HTML 导出为本地步骤。
+- **稿件**：项目名/主题/纲要可能含未公开信息——敏感题材请脱敏并选用 SVG 封面（本地生成），主人投喂的一手材料须已获知情同意。**主人是数据处理责任方**。
+- **AI 披露**：流水线会在产物中输出 AI 使用声明（学术投稿另加「AI 使用声明」段），不隐瞒生成方式。
+- **免责**：本软件以 MIT 许可「按现状」提供，不附带任何担保；产出内容的正确性、合规性与引用准确性由使用者负责。
+- **安全**：安装前的信任边界（含加载期 `!!js` 求值）见 [`SECURITY.md`](SECURITY.md)。
+
 ## 发布（维护者）
 
 > **只打 tag 发布，禁止本地 `npm publish`**（v2.5.2-dsh.13 起）。
 > 本地直发会绕过 CI 的三道门与 OIDC 来源证明（provenance），且 npm 版本不可覆盖 —— 一旦发出无法补救。
 
 ```sh
-git tag v2.5.2-dsh.N && git push origin v2.5.2-dsh.N
+git tag v2.5.2-dsh.N && git push origin v2.5.2-dsh.N   # 一次只推 1 个 tag（GitHub：单次 push >3 个 tag 不触发任何 workflow）
 # 触发 publish.yml：门 1 一致性 → 门 2 打包面 → 门 3 机械卫生 → 脚本回归测试
 #   → tag/版本一致校验 → 幂等守卫（已发布则跳过）→ OIDC 发布 --provenance --tag dsh → 发布后审计（gitHead/dist-tags）
 ```
@@ -86,6 +113,8 @@ node --test "tests/**/*.test.mjs"
 - `docs/architecture.md` — 架构（9 角色 + 三角验证 + G0-G14 审计 + M 门）
 - `docs/introduction.md` — 插件介绍
 - `docs/faq.md` — 常见问题
+- `docs/troubleshooting.md` — 安装/验证故障排查（症状→原因→处置）
+- `SECURITY.md` — 安全策略与信任边界
 - `CHANGELOG.md` — 版本历史
 - `CONTRIBUTING.md` — 维护与同步指南
 

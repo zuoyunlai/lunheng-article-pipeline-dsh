@@ -2,7 +2,7 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护，版本号以 -dsh.N 标记第 N 次迭代。
 
-## 未发布（下次版本 bump 时定名）
+## 2.5.2-dsh.13（2026-09-11）— 第三方深度审计全量修订
 
 - **仓库级打包面检查接入 CI + engines 对齐 DSH 运行时下限**：
   1. `package.json`：`engines.node` `>=20.6` → **`^22.19.0 || >=24.0.0`**（对齐 DSH 官方运行时下限 22.19+/24+；原范围还含不受支持的 21.x/23.x 分支）
@@ -13,6 +13,44 @@
   6. **待上游修复（`dsh-plugin-dev` v0.3.7 实测）**：① 复用真实 `DSH_HOME` 的 `compat` profile 并钉住上一轮临时 tarball 绝对路径 → 二次运行必然 ENOENT（与文档「干净临时 DSH_HOME」不符）；② 安装步骤超时中止后 CLI 自身挂起不退出；③ **中止（或外部杀掉 CLI）后其 `dsh` 与 `pnpm` 孙进程会存活为孤儿**（父进程已退出、被重新挂到已死父进程下），继续占用真实 `compat` profile → 目录被锁无法删除（实测需逐个 `Stop-Process` 两个孤儿，才能释放该 profile 的 154.7 MB）。另：新建 profile 的 `allowBuilds` 五项为占位符字符串，需先填 `true` 原生构建才会执行
   7. **修复 dsh.12 遗留**：SKILL.md「随包脚本白名单」8 → 9（补列 `normalize-trust-level`，复核版本标为 dsh.12）——该脚本 dsh.12 已随包却未入白名单，按白名单语义主控本需请示才能调用；`.dsh` 镜像 SKILL.md 同步（17076 B 逐字节一致）
   8. **CI 首跑失败与修复（真实根因：npm 10 的可选 peer 缺陷，与论衡无关）**：`plugin-surface` job 在 Node 22.19 上 5 秒即败（`Process completed with exit code 1`，job 日志下载需 admin 权限，只能靠 annotation 排障）。排查链：干净克隆 + 冷缓存本地通过 → 排除工作区/缓存；本机下载 Node 22.19 复现 → 定位 **npm 10.9.3 无法安装 `dsh-plugin-guide@0.3.7`**：该包声明 optional peerDependency（`@deepseek-ai/dsh`，`optional: true`），npm 10 的 arborist 在 `#loadPeerSet` 读 `edgesOut` 崩溃；同为 npm 10 时装 `lodash` 正常 → 属该包 peer 图特有，npx / `npm install` 全不可用。修复：① 脚本改**多策略获取 CLI**（`DSH_PLUGIN_DEV_CLI` → 本地 node_modules → `pnpm dlx` 优先（pnpm 解析器不受影响）→ `npx -y`），并在失败时打印 GitHub annotation `::error::`（失败原因无需下载日志即可见）；② `plugin-surface` job 改用 Node 24（npm 11/12 正常），运行时下限仍由 `drift-check`（22.19）覆盖。本地实测：Node 24 ✅、Node 22.19 ✅（走 pnpm dlx）、全策略失败 ✅（fail-closed 退出码 1）
+
+### dsh.13 补充：证据链、机械门与校验体系（同日第二批）
+
+> 触发：第三方深度审计（5 个独立切片 + 宿主实现源码核验）。总评「契约 A−｜机制 B+｜验证与发布 D」。
+
+- **证据链污染修复（P0）**：`normalize-trust-level.mjs` 旧版在卡内无任何信任级别 token 时**默认填「已发布」**——等于用最高信任档掩盖未核验数据，且让 M-Form-6 的判定正则机械判过。现改为**拒绝推断**：该条不写、列入未决清单、`exit 1` 交回 T2/人工；并默认 dry-run（`--write` 才落盘 + `.bak` 备份）。
+- **机械门可靠性（P1）**：
+  1. `m-gate-check.mjs` exit 语义分档 `0/1/2/3/10`（旧版 P2、`severity:LLM 兜底`、`SKIP` 一律 `exit 0`，与「任何一项不过都不得标记完成」矛盾）；新增 `--report <path>` 落盘（报告契约闭环）；参数错误改 `exit 10` 与内容失败区分。
+  2. `final-check.mjs`：`dirname()` 替代硬编码反斜杠（POSIX 与正斜杠 `--report` 必崩）、`fileURLToPath` 替代 `URL.pathname`（安装路径含空格/中文时三个子脚本全部找不到 → 误报「M 门未过」）、字数改走**正文区锁定口径**（旧版传 `--full` 却被称为「字数权威值」，与简报目标区间比对会系统性偏大）。
+  3. `count-chars.mjs`：缺「## 摘要」时正文口径静默退化 → 现输出 `degraded` 标记 + stderr 告警。
+  4. `build-evidence-bundle.mjs`：M 门报告改读**真源** `final/M-Gate-Report.json`（旧版读 `audits/M-Gate-Report-v0.json`，而该路径**无人写入** → 审计视图的 M 门状态恒为空）；`--deep-summary` 蕴含 `--summary`（旧版单独用是静默空操作）；`--project` 参数真正生效；汉字区间与引用编号正则与 m-gate 统一。
+  5. `consistency-check.mjs --fix`：旧版未导入 `writeFileSync`（执行即 `ReferenceError`，「一键修复」100% 不可用）；现改 dry-run + 显式 `--write`，并复用检查器豁免集（不再改写 SKILL.md/glossary.md 元文档）。
+- **校验盲区补齐（P1）**：`consistency-check.mjs` 新增规则——⑩ 白名单集合==磁盘 ⑪ CHANGELOG 当前版本段存在性 ⑫ 任意前缀版本点位全量扫描 ⑬ docs 安装 pin/当前版本声明 ⑭ `cordis.patch.yml` 执行面红线 ⑥b M 门口径 ⑥c 非 DSH 工具名黑名单。**对抗测试 5/5 通过**（注入漂移均被抓到、还原后绿灯恢复）。此前该门报「0 处漂移」的同时，仓库实际存在 2 处陈旧版本号、3 种白名单口径、1 条永不成立的脚本契约。
+- **安全与权限面（P2）**：
+  1. `cordis.patch.yml` 技能路径表达式去掉 `getBuiltinModule`（改用 `process.platform` + 全局 `URL`/`decodeURIComponent`，语义等价已在两种 baseUrl 下实测），并新增**执行面披露**（7 处 `!!js` 的信任边界说明）+ CI 红线（禁 `getBuiltinModule`/`child_process`/`require(`/`import(`/`eval(`/`new Function`/`node:`/`fs.`）。
+  2. `docs/faq.md` 撤回「不含 JS 代码」表述，如实披露 `!!js` 加载期求值。
+  3. 新增**机制文件写保护**条款（SKILL/AGENTS）：`SKILL.md`/`AGENTS.md`/`references/**`/`scripts/**`/`cordis.patch.yml` 任何角色（含子代理）禁写，改进只写 `audits/反哺报告-vN.md` 由主人 apply。
+  4. 新增**技能来源自检**条款：启动核对版本头；文档化「同名技能按 rank 就近静默覆盖」风险（项目根 `.dsh/skills/` 会顶替插件副本）。
+- **CI 与发布（P0/P2）**：
+  1. 新增 `scripts/repo-hygiene-check.mjs`（零依赖）：`*.mjs` 语法 / `*.json` 解析 / YAML 结构（禁制表符 + 关键文件预期键）/ 行尾无 `w/crlf|w/mixed` / 文本文件 UTF-8 / `npm pack --dry-run` 断言关键路径齐备且随包脚本 == 9。
+  2. 新增 `tests/scripts.test.mjs`（9 个用例，每个对应本批一个已修缺陷）+ CI `script-tests` job（ubuntu + windows 双平台矩阵——`final-check` 的 POSIX 崩溃类缺陷只在跨平台时暴露）。
+  3. `ci.yml`：`permissions: contents: read`、`concurrency` 取消旧运行、Actions **pin commit SHA**。
+  4. `publish.yml` 重写：**四道门 fail-closed**（一致性/打包面/机械卫生/回归测试）→ tag 与版本一致 → **幂等守卫**（版本已发布则跳过，支持补打历史 tag）→ OIDC `npm publish --provenance --tag dsh` → **发布后审计**（`npm view <pkg>@<ver> gitHead` 必须等于本次提交）。移除 `--global-style` 与 `npm i -g npm@latest`（发布环境可复现）。
+  5. **补 tag** `v2.5.2-dsh.9/.10/.11/.12`（按 npm 已发布产物的 `gitHead`，精确指向真实发布内容）。
+- **行尾与编码（P2）**：新增 `.gitattributes`（`* text=auto eol=lf` + 二进制声明）；**35 个工作区 CRLF 文件归一为 LF**（index 本为 LF，内容无变化）；`.gitignore` 从 GBK + 混合行尾重写为 UTF-8/LF 并补凭据类忽略项。npm 打包读工作区而非 git blob，此行尾归一使跨平台内容（含基于 sha256 的证据包指纹）可复现。
+- **文档与口径（P1）**：
+  1. `read_page` → `web_fetch`（29 处 / 10 文件）：`read_page` 与 `bash` 在 DSH 中**并不存在**，却被 8 个文件声明为 standard 预设工具，并充当 T1/T2 检索熔断后的**唯一降级路径**（调用必失败 → 被误判为「检索能力受限」→ 错误降级并写进产物）。
+  2. 随包脚本白名单 **7/8/9 三口径统一为 9**（SKILL/glossary/QUICKSTART/主控卡）。
+  3. 删除任务简报模板残留的 v2.1.0 **心跳 / 5 段 ack / session-kill** 段（与全包「无心跳、无 ack」定案正面对撞，且该模板是每个项目都会复制的入口），替换为现行执行约定四要素。
+  4. 清理 `gm_search`/`gm_record`/OpenViking/「15 项白名单」等旧生态残留概念；`docs/architecture.md` 与角色定案对齐（T8 独立角色卡 / T9 默认选中）。
+  5. 修正 `examples/preset/README.md` 两处**与实现相反**的描述（「未设环境变量抛错」实为静默继承；`customSkillDirs` 的解析机制）；补「只设 MODEL 无效」提示。
+  6. `CONTRIBUTING.md` 补发布纪律：bump 与 CHANGELOG 同提交、只推 tag、**一次只推 1 个 tag**（GitHub 对单次 push >3 个 tag 不触发任何 workflow，实测一次推 4 个 tag → 0 个运行）、禁止本地 `npm publish`、**已发布版本不可再改**（dsh.12 的 `engines` 漂移教训）。
+
+### 已知限制（诚实记录，勿当已完成）
+
+- **bundle 交付链路尚未端到端验证**：本机真实 profile（desktop/work）的 `dsh.profile.bundles` 均未包含本包，技能此前由**项目技能根** `E:\HERNESS\.dsh\skills`（rank 100）提供而非 bundle patch（rank 300）。机制链已按宿主源码逐层核验（`cordis-plugin-loader` 用 `with (ctx) { return eval(expr) }` 求值 → 裸 `baseUrl` 等价 `ctx.baseUrl`；`dsh-app-boot` 把 baseUrl 锚定在 profile 目录 → 解析出 `<profile>/node_modules/lunheng-article-pipeline/skills/`；provider 对 customSkillDirs 做 `path.resolve`，故需绝对路径），但**「装一次真能挂上」仍需一次干净 profile 安装实测**（配方见 README 发布段与 CHANGELOG 第 6/8 条工具缺陷说明）。
+- **未做（下次迭代）**：抽 `scripts/_lib/` 公共模块消除 5 类正则/口径复制漂移（P3）；`README.en.md` 英文门面；冒烟矩阵扩到 macOS；`gitleaks`/`trufflehog` 密钥扫描接 CI。
+- **本批已补**：`SECURITY.md`（信任边界与漏洞披露）、`docs/troubleshooting.md`（9 类故障症状→原因→处置）、README 的「前置要求 / 卸载 / 数据流向与免责」三节。
 
 ## 2.5.2-dsh.12（2026-09-09）
 

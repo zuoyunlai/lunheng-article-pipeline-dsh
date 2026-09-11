@@ -260,6 +260,26 @@ if (existsSync(docsDir)) {
   }
 }
 
+// ⑭ cordis.patch.yml 执行面红线（v2.5.2-dsh.13 新增）：
+//    `!!js` 在宿主进程加载期以完整 Node 权限求值，且发生在 agent 沙箱/审批之前 —— 安装即执行。
+//    因此补丁内只允许 env / baseUrl / 全局 URL 级取值，禁止模块加载、子进程与任意代码求值。
+const redlinePatchPath = join(REPO_ROOT, 'cordis.patch.yml');
+if (existsSync(redlinePatchPath)) {
+  const pt = readFileSync(redlinePatchPath, 'utf8');
+  const FORBIDDEN = ['getBuiltinModule', 'child_process', 'require(', 'import(', 'eval(', 'new Function', 'node:', 'fs.'];
+  // 只检查**非注释行**（注释里会正当地列出这些被禁标识符作为说明）
+  const codeLines = pt.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  for (const bad of FORBIDDEN) {
+    if (codeLines.includes(bad)) {
+      errors.push(`[P0 patch 执行面红线] cordis.patch.yml 含被禁标识符「${bad}」——!!js 只允许 process.env / baseUrl / 全局 URL 级取值`);
+    }
+  }
+  const jsCount = (pt.match(/!!js/g) || []).length;
+  if (jsCount > 0 && !pt.includes('执行面披露')) {
+    errors.push(`[P2 执行面披露] cordis.patch.yml 用了 ${jsCount} 处 !!js，但文件头未做「执行面披露」说明`);
+  }
+}
+
 // ⑧ cordis.patch.yml + examples/ 版本引用（v2.5.2-dsh.5 审计新增：防安装文档指向未发布版本）
 const patchPath = join(REPO_ROOT, 'cordis.patch.yml');
 if (existsSync(patchPath)) {
@@ -269,17 +289,19 @@ if (existsSync(patchPath)) {
     errors.push(`[P0 版本引用] cordis.patch.yml 头写 ${pm[1]} ≠ package.json=${pkgVer}`);
   }
 }
+// examples/ 只查**安装 pin**（`@x.y.z-dsh.N`）——版本注解行（「… 起」「更正」「修订」「历史」等）豁免，
+// 因为注解天然会提到相邻版本（v2.5.2-dsh.13 起）
 const exDir = join(REPO_ROOT, 'examples');
 if (existsSync(exDir)) {
   for (const f of walk(exDir)) {
     const rel = 'examples/' + relative(exDir, f).replaceAll('\\', '/');
-    const t = readFileSync(f, 'utf8');
-    for (const m of t.matchAll(/v?(\d+\.\d+\.\d+-dsh\.\d+)/g)) {
-      if (normVer(m[1]) !== normVer(pkgVer)) {
-        errors.push(`[P0 版本引用] ${rel} 写 ${m[0]} ≠ package.json=${pkgVer}`);
-        break;
+    readFileSync(f, 'utf8').split('\n').forEach((l, i) => {
+      if (/起|之前|新增|修订|教训|历史|更正|及以后/.test(l)) return;
+      const pin = l.match(/@(v?\d+\.\d+\.\d+-dsh\.\d+)/);
+      if (pin && normVer(pin[1]) !== normVer(pkgVer)) {
+        errors.push(`[P0 版本引用] ${rel}:${i + 1} 安装 pin 写 @${pin[1]} ≠ package.json=${pkgVer}`);
       }
-    }
+    });
   }
 }
 

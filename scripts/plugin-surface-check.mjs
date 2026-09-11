@@ -2,8 +2,8 @@
 /**
  * 论衡打包面检查（CI 用）—— 包装 dsh-plugin-dev check
  *
- * 背景（v2.5.2-dsh.12 补）：论衡自带 consistency-check.mjs 只覆盖 skills/ 下 73 个
- * .md 的漂移；本脚本补上「打包面」这一层——cordis.patch.yml 合法性 / 行 id 唯一 /
+ * 背景（v2.5.2-dsh.13 补）：论衡自带 consistency-check.mjs 只覆盖 skills/ 下的 .md 漂移
+ * （当前 57 个，且已含 10 类机械规则）；本脚本补上「打包面」这一层——cordis.patch.yml 合法性 / 行 id 唯一 /
  * dsh.bundle.patch 指向 / package.json 元数据 / 工程红线，由 dsh-plugin-guide 提供的
  * dsh-plugin-dev CLI 机械判定。两层互补，互不重叠。
  *

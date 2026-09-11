@@ -35,6 +35,9 @@ Phase 5 终检     → T8 终检（独立角色，主控 T0 以 T8 身份亲完�
 - **status.md / agents-log.md 分文件写入约定（v2.5.2-dsh.5 修订，教训：T1/T2 与主控并发写冲突）**：**状态文件分两层**——① `status.md` 由**主控独占写**（纯状态机表，不允许子代理直接 edit）；② `agents-log.md`（v2.5.2-dsh.5 新增，项目根目录）由**子代理追加写**（每完成一个角色任务追加一段 `### Tn 执行记录` 节）。子代理的进度/完成状态通过「交接报告 + 产物落盘」回报，主控在收到交接报告后统一更新 status.md。**两文件分离目的**：避免子代理追加触发主控 edit status.md 报「file changed since it was read」（测试轮多次遇到的小摩擦）。冲突已发生时：主控先 re-read 再 edit。
 - **执行约定（DSH 精简版）**：状态机 + 交接报告六要素 + G8 自检 + **进度播报三播报**（派发即播报 / 完成即转播 / 卡住即告警，防主人干等；无需心跳/分阶段 ack/预检/8 分钟硬卡；旧版完整韧化协议已移出仓库（历史见 git log），现行规则即本执行约定）
 - **阶段闸门（v2.2.1，v2.3.0 改 T5.5→T7.5）**：T2.5（检索→分析）与 T7.5（审计→终检）两道主控 checkpoint，用 `todo_write` + `read` 实现，**不绕过交接直接派发**
+- **闸门留机械证据（v2.5.2-dsh.13）**：两道闸门与 M 门**不得只凭自述**——交接报告须附**脚本 exit code + 产物路径**（`m-gate-check.mjs … --report <项目>/final/M-Gate-Report.json`）；exit 语义 `0` 通过 / `1` P1 / `2` P0 / `3` 仅 P2·soft·SKIP（需 LLM 复核，不得当通过）/ `10` 参数错误
+- **机制文件写保护（v2.5.2-dsh.13）**：`SKILL.md` / `AGENTS.md` / `references/**` / `scripts/**` / `cordis.patch.yml` 任何角色（含子代理）**禁写**；改进动议只写 `audits/反哺报告-vN.md`，由主人在 host shell 手工 apply（改机制文件 = P0 违规）
+- **技能来源自检（v2.5.2-dsh.13）**：启动时核对 `SKILL.md` 版本头与期望版本一致，不一致即停机报「技能来源可疑」（同名技能会按 rank 就近静默顶替）
 - **M 门（v2.2.0+）**：终检前必读 `references/_shared/M-Gate-Algorithm.md`（**仅 T7/T8 读**——T1-T5/T9 不读，因 M-Form-1/3/5/7 + M-Exist-2 已脚本化为 `scripts/m-gate-check.mjs`，LLM 只判 M-Form-8 三角验证等不可脚本化项），按伪代码执行 M-Form/M-Exist/M-Integrity（M-Form 8 项含 M-Form-7 定稿文末白名单 v2.3.5 + M-Form-8 三角验证 v2.3.7），产出 `final/M-Gate-Report.json`，exit 0 才返回
 - **G14 中文 AI 痕迹闸（v2.4.0+）**：Phase 4.5 与 T6 并行触发（LLM 推理判定，零 exec），8 类检测维度，0-2 类 Pass / 3-4 类 Warning 触发 T5 修订 1 轮 / 5+ 类 Fail 触发 2 轮；主人在 Phase 0 可显式关闭。闸门定义 `references/gates/14-中文AI痕迹-gate.md`，检测器 `references/checkers/中文AI痕迹-checker.md`
 - **T9 同行评审 + 期刊匹配（v2.4.0+/v2.5.0，v2.5.2-dsh.8 定案：可选默认选中，学术论文必选）**：Phase 4.5 终稿前触发，6 维度评分 → accept/minor/major/reject；学术模式输出 Top 3 推荐期刊（`references/_shared/期刊数据库.md` + `期刊匹配算法.md`）

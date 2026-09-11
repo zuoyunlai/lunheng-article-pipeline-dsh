@@ -2,7 +2,11 @@
 
 ## 为什么 dshmarket 里显示「安装完成但校验失败 / 入口产物缺失」？
 
-这是 dshmarket 的**误报**。它的校验器只认 JS 入口（`main` / `exports` / 兜底 `index.js`），而本插件是**纯 bundle 插件**——入口是 `package.json` 里 `dsh.bundle.patch` 指向的 YAML 补丁 `cordis.patch.yml`，不含 JS 代码。实测技能可正常加载（`dsh --dump-config` 可见 `skill-filesystem-lunheng` 行，headless 会话技能目录能列出本技能）。下次启动不会失败。
+这是 dshmarket 的**误报**。它的校验器只认 JS 入口（`main` / `exports` / 兜底 `index.js`），而本插件的入口是 `package.json` 里 `dsh.bundle.patch` 指向的 YAML 补丁 `cordis.patch.yml`——本包**不含 JS 模块入口**（无 `main`/`exports`），因此该校验器会误判。
+
+> ⚠️ **如实披露（v2.5.2-dsh.13 修订）**：本包**并非「零可执行内容」**——`cordis.patch.yml` 含 **7 处 `!!js` 表达式**（1 处路径求值 + 6 处读取 `LUNHENG_*_PROVIDER/MODEL` 环境变量）。这些表达式由 DSH 宿主进程在**加载期以完整 Node 权限**求值，发生在 agent 沙箱与审批关卡之前——**安装本包即等于允许这些表达式在每次启动时执行**。它们只使用 `process.env` / `baseUrl` / 全局 `URL`（CI 有红线规则禁止 `getBuiltinModule`/`child_process`/`require(`/`eval(` 等标识符），但安装者应当知悉这一信任边界。
+
+实测技能可正常加载（`dsh --dump-config` 可见 `skill-filesystem-lunheng` 行，headless 会话技能目录能列出本技能）。
 
 ## 版本号为什么是 2.5.2-dsh.N？
 

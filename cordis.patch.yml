@@ -1,4 +1,4 @@
-# lunheng-article-pipeline bundle patch（DSH 原生插件 v2.5.2-dsh.12）
+# lunheng-article-pipeline bundle patch（DSH 原生插件 v2.5.2-dsh.13）
 #
 # 本文件用 DSH cordis-plugin-include 的 `- insert:` 列表语法在 standard 组合树之上叠加 4 类 patch：
 #   1. 技能 filesystem 提供者（consumer，注入 ctx.skills）：挂载本包 skills/ 目录
@@ -10,7 +10,17 @@
 # - 普通行按 id-targeted patch existing row；新增行必须用 - insert: 形式
 # - `providerName` 独立命名避免与系统默认 filesystem 提供者产生歧义
 # - `includeDefaultRoots: false` 避免与项目/用户根的技能根重复加载
-# - `customSkillDirs` 的相对路径在挂载时由 baseUrl 解析为绝对路径（与 profile 位置无关）
+# - `customSkillDirs` 需要**绝对路径**：provider 内部对每项做 path.resolve(root)（相对路径按进程 cwd 解析，不可靠），
+#   故本文件用 `!!js` 把 URL 转成绝对路径。baseUrl 由 dsh-app-boot 锚定在** profile 目录**
+#   （`ctx.baseUrl = pathToFileURL(dirname(absoluteConfigPath)).href + '/'`），且 loader 用
+#   `with (ctx) { return eval(expr) }` 求值，故裸 `baseUrl` 等价于 `ctx.baseUrl`（v2.5.2-dsh.13 核验）。
+#
+# ⚠️ **执行面披露（v2.5.2-dsh.13 新增）**：本文件共 7 处 `!!js`（1 处路径求值 + 6 处 env 取值）。
+#   `!!js` 由宿主进程以完整 Node 权限在**加载期**求值，发生在 agent 沙箱与审批关卡之前——
+#   安装本包即等于允许这些表达式在启动时执行。因此：
+#   - **只允许** `process.env.*`、`baseUrl`、全局 `URL`/`decodeURIComponent`/`String` 级取值；
+#   - **禁止** `getBuiltinModule` / `child_process` / `require(` / `import(` / `eval(` / `new Function` / `fs.` / `node:`（CI 红线：consistency-check 规则 ⑭）；
+#   - 改本文件等同于改交付物的信任边界，须主人 review。
 
 # ── 1. 技能提供者（filesystem 注入）─────────────────────────────────────
 - insert:
@@ -20,7 +30,9 @@
         providerName: skill-filesystem-lunheng
         includeDefaultRoots: false
         customSkillDirs:
-          - !!js "process.getBuiltinModule?.('node:url')?.fileURLToPath(new URL('node_modules/lunheng-article-pipeline/skills/', baseUrl))"
+          # 只用 process.platform + 全局 URL/decodeURIComponent（避免 getBuiltinModule 带来的模块加载面）；
+          # decodeURIComponent 处理路径中的空格/中文；Windows 下去掉 file URL pathname 的前导斜杠
+          - !!js "(u => process.platform === 'win32' && u.startsWith('/') ? u.slice(1) : u)(decodeURIComponent(new URL('node_modules/lunheng-article-pipeline/skills/', baseUrl).pathname))"
 
 # ── 2. 检索档 subagent（T1/T2/T3 便宜快）────────────────────────────────
 - insert:
@@ -58,7 +70,12 @@
           provider: !!js "process.env.LUNHENG_AUDIT_PROVIDER || undefined"
           model: !!js "(process.env.LUNHENG_AUDIT_PROVIDER ? (process.env.LUNHENG_AUDIT_MODEL || 'deepseek-v4-pro') : undefined)"
 
-# ── 5. 标准（DSH 默认）— 论衡示例预设（v2.5.2-dsh.12 实测 OK）──────────────
+# ── 5. 标准（DSH 默认）— 论衡示例预设 ────────────────────────────────────
+# ⚠️ 诚实声明（v2.5.2-dsh.13）：本段此前标注「实测 OK」，但**本包的 bundle 安装链路
+#    在本机从未完成端到端验证**（真实 profile 未安装本包；技能当时由项目技能根 .dsh/skills 提供）。
+#    机制链已按宿主源码逐层核验（loader `with (ctx)` 求值 + `dsh-app-boot` 把 baseUrl 锚定
+#    在 profile 目录 + provider 对 customSkillDirs 做 path.resolve），但「装一次真能挂上」
+#    仍待一次干净 profile 安装实测（见 CHANGELOG 已知限制）。
 # DSH 默认包含 dsh-base / dsh-web-app / dsh-agent-presets/standard；
 # 论衡不重写 standard 全部内容，只通过上述 insert: 列表叠加分档 subagent 工具。
 # examples/preset/ 目录只保留 preset.yml（分档说明）+ README.md（安装指南）；
