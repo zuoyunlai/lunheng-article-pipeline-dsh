@@ -48,7 +48,11 @@
 
 ### 已知限制（诚实记录，勿当已完成）
 
-- **bundle 交付链路尚未端到端验证**：本机真实 profile（desktop/work）的 `dsh.profile.bundles` 均未包含本包，技能此前由**项目技能根** `E:\HERNESS\.dsh\skills`（rank 100）提供而非 bundle patch（rank 300）。机制链已按宿主源码逐层核验（`cordis-plugin-loader` 用 `with (ctx) { return eval(expr) }` 求值 → 裸 `baseUrl` 等价 `ctx.baseUrl`；`dsh-app-boot` 把 baseUrl 锚定在 profile 目录 → 解析出 `<profile>/node_modules/lunheng-article-pipeline/skills/`；provider 对 customSkillDirs 做 `path.resolve`，故需绝对路径），但**「装一次真能挂上」仍需一次干净 profile 安装实测**（配方见 README 发布段与 CHANGELOG 第 6/8 条工具缺陷说明）。
+- ✅ **bundle 交付链路端到端验证（2026-09-11 完成）**——此前本机真实 profile（desktop/work）的 `dsh.profile.bundles` 均未包含本包，技能由**项目技能根** `E:\HERNESS\.dsh\skills`（rank 100）提供而非 bundle patch（rank 300），故「装一次真能挂上」长期未证。现已用一次性 profile `__lunheng_probe__` 实测三项：
+  1. **安装**：`npm pack` → `dsh plugin --profile __lunheng_probe__ add <tgz>`（首跑按 `docs/troubleshooting.md` 第 1 条修 `allowBuilds` 占位符后成功，233 包）→ 副本落位 `<profile>/node_modules/lunheng-article-pipeline/`，`dsh.bundle.patch` 指向正确、`skills/lunheng-article-pipeline/SKILL.md` 随包安装 ✓
+  2. **路径解析**：取出**已安装副本**里的真实 `!!js` 表达式，按 loader 语义 `with (ctx) { return eval(expr) }` 以真实 `baseUrl=file:///<profile>/` 求值 → 得到 `<profile>/node_modules/lunheng-article-pipeline/skills/`，**该目录真实存在且内含 SKILL.md（18688 B）** ✓（同时证明 `getBuiltinModule` → `URL.pathname` 的替换端到端等价）
+  3. **组合树**：`dsh --profile __lunheng_probe__ --dump-config` 中 `skill-filesystem-lunheng` + `tool-subagent-retrieval/strong/audit` **4 行全部进入** ✓
+  验证后已删除该 profile（释放 154.9 MB），无孤儿进程残留。**残余未测**：需要模型凭据的「会话内列出技能」一步（CLI headless 无 `DEEPSEEK_API_KEY`），风险很低（provider 挂载与目录解析均已实证）。
 - **未做（下次迭代）**：抽 `scripts/_lib/` 公共模块消除 5 类正则/口径复制漂移（P3）；`README.en.md` 英文门面；冒烟矩阵扩到 macOS；`gitleaks`/`trufflehog` 密钥扫描接 CI。
 - **本批已补**：`SECURITY.md`（信任边界与漏洞披露）、`docs/troubleshooting.md`（9 类故障症状→原因→处置）、README 的「前置要求 / 卸载 / 数据流向与免责」三节。
 

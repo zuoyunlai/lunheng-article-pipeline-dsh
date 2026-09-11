@@ -36,7 +36,8 @@ node scripts/repo-hygiene-check.mjs                                  # 语法/�
    注意：`--dump-config` 会把 `!!js` 原样打印（不求值），所以这一步只证明「行进入了组合树」，**不证明技能挂载成功**。
 3. **真验证**：开一个会话问「列出你可见的技能名称」——期望出现 `lunheng-article-pipeline`。
 4. **同名覆盖**：检查当前工作目录下是否存在 `.dsh/skills/lunheng-article-pipeline/`（项目技能根 rank 100 **高于**本包的 custom root rank 300，会**静默顶替**）。删掉或改名该目录即可确认。
-5. **路径解析**：本包用 `!!js` 把 `<profile>/node_modules/lunheng-article-pipeline/skills/` 绝对化（`baseUrl` 由宿主锚定在 profile 目录）。若包被解析到共享回退目录（`<DSH_HOME>/profiles/node_modules`），该路径不存在，而多文件系统 provider 对缺失根**只轮询不报错** → 技能静默消失。用 `dsh plugin --profile <profile> add <pkg>` 直装（而非手工拷贝）可避免。
+5. **路径解析**：本包用 `!!js` 把 `<profile>/node_modules/lunheng-article-pipeline/skills/` 绝对化（`baseUrl` 由宿主锚定在 profile 目录；该解析已于 2026-09-11 在真实 profile 上端到端实测通过，详见 `CHANGELOG.md` dsh.13 段「已知限制」）。若包被解析到共享回退目录（`<DSH_HOME>/profiles/node_modules`），该路径不存在，而技能文件系统 provider 对缺失根**只轮询不报错** → 技能静默消失。用 `dsh plugin --profile <profile> add <pkg>` 直装（而非手工拷贝）可避免。
+6. **只想快速排除「是不是本地同名技能顶替」**：临时把 `<cwd>/.dsh/skills/lunheng-article-pipeline` 改名，重开会话再看技能是否出现。
 
 ## 4. `dsh-plugin-dev verify` 跑不通
 

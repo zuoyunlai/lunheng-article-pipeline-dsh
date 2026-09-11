@@ -71,11 +71,13 @@
           model: !!js "(process.env.LUNHENG_AUDIT_PROVIDER ? (process.env.LUNHENG_AUDIT_MODEL || 'deepseek-v4-pro') : undefined)"
 
 # ── 5. 标准（DSH 默认）— 论衡示例预设 ────────────────────────────────────
-# ⚠️ 诚实声明（v2.5.2-dsh.13）：本段此前标注「实测 OK」，但**本包的 bundle 安装链路
-#    在本机从未完成端到端验证**（真实 profile 未安装本包；技能当时由项目技能根 .dsh/skills 提供）。
-#    机制链已按宿主源码逐层核验（loader `with (ctx)` 求值 + `dsh-app-boot` 把 baseUrl 锚定
-#    在 profile 目录 + provider 对 customSkillDirs 做 path.resolve），但「装一次真能挂上」
-#    仍待一次干净 profile 安装实测（见 CHANGELOG 已知限制）。
+# ✅ 验证记录（v2.5.2-dsh.13，2026-09-11）：本段此前标注「实测 OK」却无证据；现已端到端实测——
+#    装进一次性 profile 后：① 副本落位 `<profile>/node_modules/lunheng-article-pipeline/`，随包 SKILL.md 就位；
+#    ② 用**已安装副本里的本表达式** + 真实 baseUrl（`file:///<profile>/`）按 loader 语义
+#    （`with (ctx) { return eval(expr) }`）求值 → 得到 `<profile>/node_modules/lunheng-article-pipeline/skills/`，
+#    目录真实存在且含 SKILL.md；③ `--dump-config` 中本文件的 4 段 `- insert:` 行全部进入组合树。
+#    机制链依据：loader 用 `with (ctx)` 求值（故裸 `baseUrl` 等价 `ctx.baseUrl`）＋ `dsh-app-boot` 把 baseUrl
+#    锚定在 profile 目录 ＋ provider 对 customSkillDirs 做 `path.resolve`（故必须绝对路径）。详见 CHANGELOG dsh.13 段。
 # DSH 默认包含 dsh-base / dsh-web-app / dsh-agent-presets/standard；
 # 论衡不重写 standard 全部内容，只通过上述 insert: 列表叠加分档 subagent 工具。
 # examples/preset/ 目录只保留 preset.yml（分档说明）+ README.md（安装指南）；
