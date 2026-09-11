@@ -29,15 +29,18 @@ dsh plugin --profile <profile> add lunheng-article-pipeline
 ## 验证
 
 ```sh
-# bundle 层与三档工具行应出现在组合树中
+# 本包自注册行 + bundle 层 + 三档工具行应出现在组合树中
 dsh --profile <profile> --dump-config
 #   预期看到：  # == lunheng-article-pipeline
+#              - id: lunheng-article-pipeline      ← 自注册行（缺它 = 入口不会被 import，技能不注册）
 #              - id: tool-subagent-retrieval
 #              - id: tool-subagent-strong
 #              - id: tool-subagent-audit
 ```
 
-技能本身由包入口 `lib/index.js` 在加载期经 `ctx.skills.register()` 注册，**不出现在 `--dump-config` 的行里**——技能是否挂上要用会话目录验证（下一条）。
+> ⚠️ **`- id: lunheng-article-pipeline` 这一行是承重的**：loader 靠它按包名 import 本包入口（`package.json#main` → `lib/index.js`），入口的 `apply` 才会执行 `ctx.skills.register()`。**只有层头 `# == lunheng-article-pipeline` 而没有这一行，说明技能不会注册**（v18.0.0 的真实缺陷，18.0.1 修复；回归防线 `tests/bundle-contract.test.mjs`）。
+
+技能本身由包入口 `lib/index.js` 在加载期经 `ctx.skills.register()` 注册，**不表现为独立配置行**——技能是否真的挂上仍需会话目录验证（下一条）。
 
 空目录 headless 验证（排除本地技能根干扰，确认技能仅来自 bundle）：
 

@@ -1,6 +1,6 @@
 # 故障排查（troubleshooting）
 
-> 版本：v18.0.0（DSH 原生插件，发布于 2026-09-11）
+> 版本：v18.0.1（DSH 原生插件，发布于 2026-09-11）
 
 安装/验证失败时按「症状 → 原因 → 处置」对照。**先跑本地四道门**：
 
@@ -32,9 +32,10 @@ node --test "tests/**/*.test.mjs"                                    # 随包脚
 1. **bundle 是否进了 profile**：`<DSH_HOME>/profiles/<profile>/package.json` 的 `dsh.profile.bundles` 应含 `lunheng-article-pipeline`（新版 `dsh plugin add` 会自动加）。
 2. **patch 行是否组合进树**：
    ```sh
-   dsh --profile <profile> --dump-config | Select-String 'lunheng-article-pipeline|tool-subagent-(retrieval|strong|audit)'
+   dsh --profile <profile> --dump-config | Select-String 'id: lunheng-article-pipeline|tool-subagent-(retrieval|strong|audit)'
    ```
-   注意：`--dump-config` 会把 `!!js` 原样打印（不求值），所以这一步只证明「行进入了组合树」，**不证明技能注册成功**（技能由包入口注册，不表现为 patch 行）。
+   **必须先看到 `- id: lunheng-article-pipeline`（自注册行）**：loader 靠它 import 本包入口，技能才注册。只看到层头 `# == lunheng-article-pipeline`、没有这一行 → 入口从不被加载、技能绝不出现（v18.0.0 缺陷，18.0.1 修复）。
+   注意：`--dump-config` 会把 `!!js` 原样打印（不求值），所以这一步只证明「行进入了组合树」，**不证明技能注册成功**——注册发生在入口 `apply` 里，仍需下一步验证。
 3. **真验证**：开一个会话问「列出你可见的技能名称」——期望出现 `lunheng-article-pipeline`。
 4. **同名覆盖**：检查当前工作目录下是否存在 `.dsh/skills/lunheng-article-pipeline/`（项目技能根 rank 100 **高于**本包的 rank 300，会**静默顶替**）。删掉或改名该目录即可确认。
 5. **入口是否随包**：v18.0.0 起技能由包入口 `lib/index.js` 注册，入口在 `apply` 期读 `<包根>/skills/lunheng-article-pipeline/SKILL.md`。若安装副本缺 `lib/`（例如发布包的 `files` 白名单漏项，或手工只拷了 `skills/`），技能会**静默不出现**。排查：`node -e "import('<包根>/lib/index.js').then(m=>console.log(m.name,m.inject))"`，并确认 `<包根>/skills/lunheng-article-pipeline/SKILL.md` 存在。回归用例见 `tests/entry.test.mjs`。

@@ -12,7 +12,7 @@
 ```sh
 # 1. 在 profile 里声明 bundle 依赖（DSH 读 dsh.bundle.patch 找到 cordis.patch.yml 加载）
 dsh plugin --profile web add lunheng-article-pipeline@dsh   # 推荐：跟随最新 DSH 迭代版
-# 锁定具体版本：dsh plugin --profile web add lunheng-article-pipeline@18.0.0
+# 锁定具体版本：dsh plugin --profile web add lunheng-article-pipeline@18.0.1
 
 # 2. （可选）设三档 subagent 工具的 provider/model 环境变量
 #    不设任何变量 = 三档全部继承会话模型（安全默认，单模型用户无需本步）
@@ -76,18 +76,19 @@ agentOptions: !!js "(e => { const p = e.LUNHENG_RETRIEVAL_PROVIDER, m = e.LUNHEN
 
 「分档是否生效」**不会有报错提示**：派发前请按 `SKILL.md` 的约定确认三档工具存在且取值符合预期，否则回退 `subagent`。
 
-## 5. 技能如何随包生效（v18.0.0 变更）
+## 5. 技能如何随包生效（v18.0.0 变更；v18.0.1 补自注册行）
 
-v18.0.0 起，技能**不再**由 patch 行挂载：包入口 `lib/index.js` 在 `apply` 期读
-`skills/lunheng-article-pipeline/SKILL.md`，经 `ctx.effect(() => ctx.skills.register({ … }))` 注册，`resourceBase`
-指向该技能目录（因此 `references/**`、`scripts/**` 的相对引用在任意 cwd 下可解析；卸载时注册自动回滚）。
+**链路完整版**：patch 第一段 `- insert:` 插入**本包自注册行**（`- id: lunheng-article-pipeline` / `name: lunheng-article-pipeline`）→ loader 按包名解析到 `package.json#main` → **import `lib/index.js`** → 其 `apply` 读 `skills/lunheng-article-pipeline/SKILL.md`，经 `ctx.effect(() => ctx.skills.register({ … }))` 注册技能，`resourceBase` 指向该技能目录（因此 `references/**`、`scripts/**` 的相对引用在任意 cwd 下可解析；卸载时注册自动回滚）。
+
+> ⚠️ **自注册行是承重的**：`package.json#main` **不会**因为「包被列进 profile 的 `bundles`」就自动执行——**patch 里的行才是会被 import 的东西**（官方 `publish.zh.md`：插件行按包名引用本包，Node 的模块解析才能找到已安装的代码）。v18.0.0 删掉旧挂载行时漏补这一行 → 组合树里 `name: lunheng-article-pipeline` 行数为 0 → **入口从不被加载、技能不注册**；18.0.1 修复，并由 `tests/bundle-contract.test.mjs` 机械防守（该测试跑已发布的 18.0.0 产物会红）。
 
 - **删掉的东西**：早期版本第一段 `- insert:` 行挂 `@deepseek-ai/dsh-skill-filesystem` 提供者
   （`providerName` / `includeDefaultRoots: false` / `customSkillDirs` + 一处 `!!js` 路径求值）。该行连同那处加载期求值一并删除，
   故本包 `!!js` 由 4 处降为 **3 处**，且不再依赖内部包名 `@deepseek-ai/dsh-skill-filesystem`。
 - **本包现在的三处 `!!js`**：三段 `agentOptions`（见第 4 节），只用 `process.env.*` 与全局 `Object.assign`。
 - **入口回归**：`tests/entry.test.mjs` 用最小 ctx 真执行 `apply`，断言注册字段与 `resourceBase` 下的
-  `SKILL.md` / `references/` / `scripts/` 齐备——这正是「入口路径写错 → 技能静默不出现」这类缺陷的机械防线。
+  `SKILL.md` / `references/` / `scripts/` 齐备；`tests/bundle-contract.test.mjs` 断言「patch 恰有一行 `name == 包名`」。
+  两条合起来才是完整防线：前者证明「入口能跑」，后者证明「入口会被加载」。
 
 ## 6. 升级/降级/卸载
 

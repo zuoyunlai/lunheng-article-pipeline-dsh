@@ -1,6 +1,6 @@
 # Lunheng (lunheng-article-pipeline) — pipeline multiagente para textos longos
 
-> 版本：v18.0.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.0.1（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > Um bundle do DeepSeek Harness (DSH) que registra uma skill de agente sob demanda. A skill transforma a produção de textos longos — artigos acadêmicos, análise setorial, comentário econômico e artigos extensos — em uma **pipeline de 9 papéis com participação humana**.
 
@@ -83,7 +83,9 @@ lunheng-article-pipeline/                 # o pacote é o repositório
 ├── SECURITY.md CHANGELOG.md CONTRIBUTING.md LICENSE
 ```
 
-A entrada do plugin registra `skills/lunheng-article-pipeline/SKILL.md` como skill com `resourceBase` apontando para esse diretório, então `references/**` e `scripts/**` resolvem-se relativos a ele a partir de qualquer diretório de trabalho. O arquivo patch apenas adiciona as ferramentas subagent por nível; não monta a skill.
+A entrada do plugin registra `skills/lunheng-article-pipeline/SKILL.md` como skill com `resourceBase` apontando para esse diretório, então `references/**` e `scripts/**` resolvem-se relativos a ele a partir de qualquer diretório de trabalho.
+
+A camada patch faz duas coisas: **insere uma linha para este pacote** (`- id: lunheng-article-pipeline` / `name: lunheng-article-pipeline`) — é essa linha que faz o loader importar `lib/index.js`, que é o que registra a skill — e insere as três ferramentas subagent por nível. **Essa linha é estrutural**: sem ela a entrada nunca é importada e a skill não aparece (defeito da v18.0.0, corrigido na 18.0.1; vigiado por `tests/bundle-contract.test.mjs`).
 
 ### Documentation
 
@@ -94,7 +96,7 @@ A entrada do plugin registra `skills/lunheng-article-pipeline/SKILL.md` como ski
 As versões são publicadas **apenas por tag**; `npm publish` local é proibido (contorna os portões de CI e a proveniência OIDC, e uma versão npm nunca pode ser sobrescrita).
 
 ```sh
-git tag v18.0.0 && git push origin v18.0.0   # uma tag por push (GitHub: >3 tags em um push não dispara workflow)
+git tag v18.0.1 && git push origin v18.0.0   # uma tag por push (GitHub: >3 tags em um push não dispara workflow)
 # publish.yml executa: portão 1 consistência → portão 2 empacotamento → portão 3 higiene → testes
 #   → tag/versão iguais → guarda de idempotência → OIDC publish --provenance --tag dsh → auditoria posterior
 ```

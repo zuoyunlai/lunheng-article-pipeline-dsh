@@ -2,6 +2,66 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.0.1 — 2026-09-11
+
+> **本版是 18.0.0 的缺陷修复版**（npm 版本不可覆盖，故前滚重发）：修复「bundle 自注册行缺失」——
+> 它使 `dsh plugin add` 装上的包里**技能根本不会被注册**。`18.0.0` 保持原样不动。
+
+### 缺陷：patch 缺自注册行 → 入口从不被 import → 技能不注册（P0，只影响 bundle 安装路径）
+
+- **现象**：装完 18.0.0 后，组合树里**没有一行引用本包**：
+
+  ```
+  $ dsh --profile <临时> --dump-config | Select-String 'name:\s*lunheng-article-pipeline'
+  （0 命中）
+  # 只有层头 "# == lunheng-article-pipeline" + 3 行 tool-subagent-{retrieval,strong,audit}
+  ```
+
+  即三档 subagent 工具装上了，但 `lib/index.js` **从未被 import** → `ctx.skills.register()` 从未执行 →
+  **知识库技能不出现**（README「作为 bundle 安装（推荐）」那条路径不产出技能；「复制技能目录」那条仍可用）。
+- **根因**：官方 `docs/user/develop/basic/publish.zh.md` 明确要求组合包的 patch **插入一行 `name` = 本包包名**——
+  「插件行按包名而不是相对源码路径引用这个包，这样 Node 的模块解析才能找到已安装的代码」；参考包
+  `dsh-plugin-guide` 正是 `- insert: [{id: dsh-plugin-guide, name: dsh-plugin-guide}]`。
+  **`package.json#main` 不会因为「包被列进 profile 的 `bundles`」就自动执行——patch 里的行才是会被 import 的东西。**
+  18.0.0 删掉旧的 `@deepseek-ai/dsh-skill-filesystem` 挂载行时，漏补了这一行。
+- **为什么当时四道验证全都避开（值得记住）**：
+  1. 官方 `dsh-plugin-dev check` 只验 patch **合法性**（行是否良构 / id 是否唯一），**不验它是否引用本包**——11 项全绿；
+  2. 发布前的打包冒烟是**直接 import 入口跑 `apply`**（绕过 loader），恰好测不到「入口会不会被加载」；
+  3. 当时 `--dump-config` 的 grep 命中的是**层头** `# == lunheng-article-pipeline`，不是插件行；
+  4. 唯一能抓到它的检查（headless 会话「列出技能名」）当时**挂住 150 秒无输出**，被判为环境限制而略过。
+  → **「装上了」不等于「装的东西被加载了」**；前者只证明包面完整，后者才证明运行期接上。
+
+### 修复
+
+- **`cordis.patch.yml` 补自注册行**（官方形态）：
+  ```yaml
+  - insert:
+      - id: lunheng-article-pipeline
+        name: lunheng-article-pipeline
+  ```
+  并重排段落编号（1 = 自注册行 / 2-4 = 三档 subagent / 5 = 说明），文件头写明**这一行不能删**及其后果。
+- **新增 `tests/bundle-contract.test.mjs`（3 例，机械防线）**：
+  ① patch 必须**恰有一行** `name == package.json.name`（自注册行），且其 `id` 亦等于包名；
+  ② patch 行的 `name` 只能是本包名或 `@deepseek-ai/*` 核心模块（防拼写错误）；
+  ③ `dsh.bundle.patch` / `main` / `skills` 三者磁盘真实存在且都在 `files` 白名单内。
+  **守卫有效性已反向实测**：把同一测试文件放进**从 npm 下载的 18.0.0 产物**里跑 → **红**（命中自注册行断言）；在本仓库跑 → 绿。
+- **文档与探针同步**：`SKILL.md` 第 6 条与 `AGENTS.md` 包形态段写明自注册行及其后果；`docs/installation.md` 验证预期行补
+  `- id: lunheng-article-pipeline`；`docs/troubleshooting.md` 的 `--dump-config` 过滤式补本包名；五语 README 的
+  Repository layout 段改为「patch 插入本包自注册行（loader 由此 import 入口）+ 三档工具」。
+- **顺带补齐（同批）**：`AGENTS.md` 文件修改约束新增第 5 条 **「改动位置：一律在真源仓库做，再同步部署镜像」**
+  （教训 #153——上一版在部署镜像上改脚本、绕过仓库 `tests/`，导致合入后 18 个用例红）。
+
+### 验收
+
+| 项 | 结果 |
+|---|---|
+| `node --test "tests/**/*.test.mjs"` | **62/62 通过**（新增组合包契约 3 例） |
+| **守卫反向验证** | 同一测试跑**已发布的 18.0.0 产物** → 1 红（命中自注册行）；跑本仓库 → 全绿 |
+| `dsh-plugin-dev check` | 11 通过 / 0 失败 / 0 提示 / 3 跳过（无豁免） |
+| `scripts/consistency-check.mjs` | exit 0（版本点位全量同步至 18.0.1，含 `.dsh` 镜像） |
+| `scripts/repo-hygiene-check.mjs` | 全部通过 |
+| **组合树实测（发布后）** | 一次性 profile 装 18.0.1 → `--dump-config` 出现 `- id: lunheng-article-pipeline` / `name: lunheng-article-pipeline` 行；对装入副本跑 `apply` → 技能注册成功 |
+
 ## 18.0.0 — 2026-09-11
 
 > **发布形态**：tag `v18.0.0`，由 `publish.yml` 以 OIDC Trusted Publishing + `--provenance` 发布到 npm（dist-tag `dsh`）。

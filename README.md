@@ -2,7 +2,7 @@
 
 > 🌐 **English** (this file) ｜ [中文](README.zh.md) ｜ [Español](README.es.md) ｜ [Português](README.pt.md) ｜ [हिन्दी](README.hi.md)
 
-> 版本：v18.0.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.0.1（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > A DeepSeek Harness (DSH) bundle that registers one on-demand agent skill. The skill turns long-form production — academic papers, industry analysis, business commentary, and long-form articles — into a **9-role pipeline with a human in the loop**.
 
@@ -85,7 +85,9 @@ lunheng-article-pipeline/                 # the package is the repository
 ├── SECURITY.md CHANGELOG.md CONTRIBUTING.md LICENSE
 ```
 
-The plugin entry registers `skills/lunheng-article-pipeline/SKILL.md` as a skill whose `resourceBase` is that directory, so `references/**` and `scripts/**` resolve relative to it from any working directory. The patch file adds only the model-tier subagent tools; it does not mount the skill.
+The plugin entry registers `skills/lunheng-article-pipeline/SKILL.md` as a skill whose `resourceBase` is that directory, so `references/**` and `scripts/**` resolve relative to it from any working directory.
+
+The patch layer does two things: it **inserts one row for this package** (`- id: lunheng-article-pipeline` / `name: lunheng-article-pipeline`) — that row is what makes the loader import `lib/index.js`, which is what registers the skill — and it inserts the three model-tier subagent tools. **That self row is load-bearing**: without it the entry is never imported and no skill appears (the v18.0.0 defect fixed in 18.0.1; guarded by `tests/bundle-contract.test.mjs`).
 
 ### Documentation
 
@@ -106,7 +108,7 @@ The plugin entry registers `skills/lunheng-article-pipeline/SKILL.md` as a skill
 Releases are **tag-only**; a local `npm publish` is forbidden (it would bypass the CI gates and OIDC provenance, and a published npm version can never be overwritten).
 
 ```sh
-git tag v18.0.0 && git push origin v18.0.0   # push one tag at a time (GitHub: >3 tags in one push triggers no workflow)
+git tag v18.0.1 && git push origin v18.0.0   # push one tag at a time (GitHub: >3 tags in one push triggers no workflow)
 # publish.yml then runs gate 1 consistency → gate 2 packaging surface → gate 3 hygiene → script tests
 #   → tag/version equality → idempotency guard → OIDC publish --provenance --tag dsh → post-publish audit
 ```

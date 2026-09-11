@@ -27,7 +27,7 @@
    node --test "tests/**/*.test.mjs"
    ```
 5. 提交并推送分支；
-6. **发布 = 只推 tag**：`git tag v18.0.0 && git push origin v18.0.0`（tag 必须等于 `v` + `package.json.version`，publish 工作流会校验）
+6. **发布 = 只推 tag**：`git tag v18.0.1 && git push origin v18.0.0`（tag 必须等于 `v` + `package.json.version`，publish 工作流会校验）
    - **发布前多跑一步打包产物验证**：`npm pack` 后解包，确认新增脚本/库/入口随包且能从解包副本运行（两条历史教训：`_lib/` 重构后必须确认相对 `import` 未因 `files` 白名单而丢失；入口移入 `lib/` 后必须确认 `apply` 真能读到 `SKILL.md`——后者现由 `tests/entry.test.mjs` 在 CI 里常驻防守）
    - ⚠️ **一次只能推 1 个 tag**：GitHub 对「单次 push 超过 3 个 tag」**不触发任何 workflow**（实测：一次推 4 个 tag → 0 个运行）；
    - ⚠️ **禁止本地 `npm publish`**（会绕过 CI 三道门与 OIDC provenance，且 npm 版本不可覆盖）；
@@ -76,7 +76,7 @@ npm 版本**不可覆盖**：一旦某版本发布，仓库里**不得**再改�
 **发布 = 推 tag**，由 `.github/workflows/publish.yml` 以 **OIDC Trusted Publishing + `--provenance`** 完成：
 
 ```sh
-git tag v18.0.0 && git push origin v18.0.0   # 工作流会校验 tag == v + package.json.version
+git tag v18.0.1 && git push origin v18.0.0   # 工作流会校验 tag == v + package.json.version
 ```
 
 > ⚠️ **不要在本机 `npm publish`**：会绕过 CI 三道门与来源证明，且 npm 版本**不可覆盖**（发错只能 bump 重发）。

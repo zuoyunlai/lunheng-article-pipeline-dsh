@@ -84,3 +84,11 @@
 - **根因**：① **部署副本不含 `tests/`**，在副本上改动永远跑不到仓库的契约回归用例——那里的「通过」只覆盖了语法与自测路径；② 该改动与**既有契约**直接冲突：本包明确「缺卡记 N/A、0 条场景合法」（M-Form-10 用例写死「三张卡片都没有 → N/A」），且证据包在 `build-evidence-bundle.mjs` 跑之前本就是空目录——中止会把「顺序没到」误报成「路径传错」；③ 自测走的是「正常路径」，而契约管的是**异常路径**（空目录 / 缺卡 / 下游 JSON 消费者）。
 - **解决**：改为**告警不中止**（stderr 显著提示 + 正确用法，继续出报告），四处口径同步（`M-Gate-Algorithm.md` / `SKILL.md` / CHANGELOG / 本条）。修后 **59/59 全绿**。
 - **判据**：论衡特定（双部署布局：真源仓库 vs 部署副本）；**判据通用**：**改动「被别的组件消费的输出契约」（退出码 / JSON / 文件路径）前，必须在带回归用例的那一份上验证**——只有实现与测试同居的目录才算真源；在副本上改完再合，等于跳过了契约验证。
+
+### #154 「装上了」不等于「装的东西被加载了」：patch 缺自注册行，入口永不执行（发布流程）
+
+- **现象**：v18.0.0 发布后实测组合树：`dsh plugin add lunheng-article-pipeline` **装成功**、`--dump-config` 里有本包层头与三档 `tool-subagent-*` 行，但 `name: lunheng-article-pipeline` 的行数 = **0**。即 **`lib/index.js` 从未被 import** → `ctx.skills.register()` 从未执行 → **技能不注册**（README 推荐的 bundle 安装路径不产出技能）。
+- **根因**：官方 `publish.zh.md` 要求组合包的 patch **插入一行 `name` = 本包包名**——「插件行按包名引用这个包，Node 的模块解析才能找到已安装的代码」。**`package.json#main` 不会因为「包被列进 profile 的 `bundles`」就自动执行；patch 里的行才是会被 import 的东西。** v18.0.0 删掉旧的 skill-filesystem 挂载行时漏补自注册行，而参考包 `dsh-plugin-guide` 一直写着 `- insert: [{id: dsh-plugin-guide, name: dsh-plugin-guide}]`。
+- **为什么四道验证全都避开**：① 官方 `dsh-plugin-dev check` 只验 patch **合法性**（良构 / id 唯一），**不验是否引用本包**；② 打包冒烟是**直接 import 入口跑 `apply`**（绕过 loader），测不到「入口会不会被加载」；③ `--dump-config` 的 grep 命中了**层头** `# == lunheng-article-pipeline`；④ 唯一能抓到的 headless「列技能」检查当时挂住 150 秒，被判环境限制略过。**四处都是「用自己的方式绕过 loader 去验证」，于是谁都没验 loader 本身。**
+- **解决**：patch 补自注册行（v18.0.1，前滚重发，见 CHANGELOG）；新增 `tests/bundle-contract.test.mjs` 断言「patch 恰有一行 `name == 包名`」+「patch 行名只能是本包名或 `@deepseek-ai/*`」+「patch/main/skills 三者在盘且都在 files 白名单」；并**反向验证守卫有效**——同一测试跑**已发布的 18.0.0 产物**会红、跑修好的仓库为绿。
+- **判据**：论衡特定（bundle patch 契约）；**判据通用**：**发布物必须至少有一条「走真实加载路径」的验证**——凡「形态检查 + 直接调用内部函数」的组合，都无法证明「这东西会被加载/被发现」。别人（第三方市场）的校验规则常比自家的更早抓到这类问题，值得提前对齐。

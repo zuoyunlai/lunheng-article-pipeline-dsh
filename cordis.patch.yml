@@ -1,18 +1,26 @@
-# lunheng-article-pipeline bundle patch（DSH 原生插件 v18.0.0）
+# lunheng-article-pipeline bundle patch（DSH 原生插件 v18.0.1）
 #
-# 本文件用 DSH cordis-plugin-include 的 `- insert:` 列表语法在 standard 组合树之上叠加 3 档
-# subagent 工具（subagent_retrieval / subagent_strong / subagent_audit），按角色能力分模型。
+# 本文件用 DSH cordis-plugin-include 的 `- insert:` 列表语法在 standard 组合树之上叠加 4 行：
+#   1. **本包入口（自注册行）**：`name: lunheng-article-pipeline` → loader 按包名解析到
+#      `package.json#main`（`lib/index.js`），由它注册技能
+#   2-4. 3 档 subagent 工具（subagent_retrieval / subagent_strong / subagent_audit），按角色能力分模型
 #
-# ⚠️ **技能本身不再由本文件挂载（v18.0.0 变更）**：早期版本用一段 `- insert:` 行挂一个
-#   `@deepseek-ai/dsh-skill-filesystem` 提供者（`customSkillDirs` + `includeDefaultRoots: false`）
-#   来暴露本包的技能目录。v18.0.0 起改由**包入口 `lib/index.js`** 通过 `ctx.skills.register()`
-#   注册技能（官方推荐的插件形态），因此：
-#     · 技能目录仍随包分发在 `skills/lunheng-article-pipeline/`，入口以
-#       `resourceBase: { kind: 'directory', path: <包根>/skills/lunheng-article-pipeline }` 指向它，
-#       故角色卡/模板/脚本的相对引用在任意 cwd 下都能解析；
-#     · 本文件因此**少了一处加载期 `!!js` 求值**（技能路径那处随之删除，见下方执行面披露）；
+# ⚠️ **第 1 行为什么不能删（v18.0.1 修复）**：官方 `publish.zh.md` 明确——组合包的 patch 必须
+#   **插入一行 `name` = 本包包名**，「插件行按包名而不是相对源码路径引用这个包，这样 Node 的模块
+#   解析才能找到已安装的代码」。**patch 里的行才是会被 import 的东西**；`package.json#main`
+#   不会因为「包被列进 profile 的 bundles」就自动执行。
+#   v18.0.0 删掉旧的 skill-filesystem 挂载行时漏补这一行 → 入口从不被 import → 技能不注册
+#   （实测：组合树中 `name: lunheng-article-pipeline` 行数 = 0，只有三档工具）。已发布版本不可再改，
+#   故以 18.0.1 修复，并由 `tests/bundle-contract.test.mjs` 机械防守。
+#
+# ⚠️ **技能由包入口注册，不再由 provider 挂载（v18.0.0 变更）**：早期版本用一段 `- insert:` 行挂
+#   `@deepseek-ai/dsh-skill-filesystem` 提供者（`customSkillDirs` + `includeDefaultRoots: false`）暴露
+#   技能目录。现在改为：入口 `lib/index.js` 读随包 `skills/lunheng-article-pipeline/SKILL.md`，
+#   经 `ctx.skills.register()` 注册，`resourceBase: { kind: 'directory', path: <包根>/skills/lunheng-article-pipeline }`
+#   指向技能目录（故角色卡/模板/脚本的相对引用在任意 cwd 下都能解析）。由此：
+#     · 本文件**少了一处加载期 `!!js` 求值**（技能路径那处随旧行删除，见下方执行面披露）；
 #     · 不再依赖内部包名 `@deepseek-ai/dsh-skill-filesystem`，也不再需要 `providerName` /
-#       `includeDefaultRoots` / `customSkillDirs` 三项配置（相关推导与实测记录保留在 CHANGELOG）。
+#       `includeDefaultRoots` / `customSkillDirs` 三项配置（推导与实测记录保留在 CHANGELOG）。
 #
 # DSH 架构要点（v5.5.0+）：
 # - `- id: X`：覆盖已存在 id 的 config（v2.5.2-dsh.0 之前的默认语义，常误用产生"entry not found"警告）
@@ -30,7 +38,12 @@
 #     `{provider: undefined, model: undefined}` ✓ 通过（规范化为 `{}`）、只给 `model` ✓ 通过、整块 `undefined` ✓ 通过。
 #     故本文件采用「未设即 undefined」形态，避免传空对象触发 provider 的 agentOptions 能力门。
 
-# ── 1. 检索档 subagent（T1/T2/T3 便宜快）────────────────────────────────
+# ── 1. 本包入口（自注册行；id 用包名，便于其他层按 id 覆盖本行 config）──────────
+- insert:
+    - id: lunheng-article-pipeline
+      name: lunheng-article-pipeline
+
+# ── 2. 检索档 subagent（T1/T2/T3 便宜快）────────────────────────────────
 # v2.5.2-dsh.17 改写（字段独立 + 一键退路 + 不写死任何厂商默认）：
 #   · **字段独立**：只给 `LUNHENG_RETRIEVAL_MODEL` 即可（`provider` 由 dsh-subagent 的
 #     `resolveChildAgentOptions` 逐字段继承父级）——跨 provider 才需同时给 `_PROVIDER`；
@@ -47,7 +60,7 @@
         backgroundMode: continuable
         agentOptions: !!js "(e => { const p = e.LUNHENG_RETRIEVAL_PROVIDER, m = e.LUNHENG_RETRIEVAL_MODEL; if (e.LUNHENG_TIERING === 'off' || (!p && !m)) return undefined; return Object.assign({}, p ? { provider: p } : {}, m ? { model: m } : {}); })(process.env)"
 
-# ── 2. 强推理档 subagent（T4/T5/T6+T9 推理强）─────────────────────────────
+# ── 3. 强推理档 subagent（T4/T5/T6+T9 推理强）─────────────────────────────
 - insert:
     - id: tool-subagent-strong
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -57,7 +70,7 @@
         backgroundMode: continuable
         agentOptions: !!js "(e => { const p = e.LUNHENG_STRONG_PROVIDER, m = e.LUNHENG_STRONG_MODEL; if (e.LUNHENG_TIERING === 'off' || (!p && !m)) return undefined; return Object.assign({}, p ? { provider: p } : {}, m ? { model: m } : {}); })(process.env)"
 
-# ── 3. 顶配档 subagent（T7 审计 + G14 检测）────────────────────────────────
+# ── 4. 顶配档 subagent（T7 审计 + G14 检测）────────────────────────────────
 - insert:
     - id: tool-subagent-audit
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -67,13 +80,12 @@
         backgroundMode: continuable
         agentOptions: !!js "(e => { const p = e.LUNHENG_AUDIT_PROVIDER, m = e.LUNHENG_AUDIT_MODEL; if (e.LUNHENG_TIERING === 'off' || (!p && !m)) return undefined; return Object.assign({}, p ? { provider: p } : {}, m ? { model: m } : {}); })(process.env)"
 
-# ── 4. 标准（DSH 默认）— 论衡示例预设 ────────────────────────────────────
+# ── 5. 标准（DSH 默认）— 论衡示例预设 ────────────────────────────────────
 # 本段为说明性注释，不含 patch 行。
-# ✅ 技能可用性验证（v18.0.0）：由包入口注册技能，入口执行路径有回归测试覆盖
-#    （`tests/entry.test.mjs`：import 入口 → 用最小 ctx 执行 `apply` → 断言
-#    `ctx.skills.register` 的 name / source / description / whenToUse / resourceBase）；
-#    历史版本由本文件的技能提供者行挂载时的端到端实测记录（一次性 profile 安装 +
-#    路径表达式按 loader 语义求值 + `--dump-config` 进入组合树）保留在 CHANGELOG dsh.13 段。
+# ✅ 技能可用性验证：① `tests/bundle-contract.test.mjs` 断言本文件必须插入一行
+#    `name` = 包名（v18.0.0 缺陷的机械防线）；② `tests/entry.test.mjs` 用最小 ctx 真执行
+#    `apply`，断言注册字段与 `resourceBase` 下的 SKILL.md / references / scripts 齐备；
+#    ③ 发布后用一次性 profile 实测组合树中出现 `name: lunheng-article-pipeline` 行。
 # DSH 默认包含 dsh-base / dsh-web-app / dsh-agent-presets/standard；
 # 论衡不重写 standard 全部内容，只通过上述 insert: 列表叠加分档 subagent 工具。
 # examples/preset/ 目录只保留 preset.yml（分档说明）+ README.md（安装指南）；
