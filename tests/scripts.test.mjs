@@ -1184,6 +1184,87 @@ test('自省审计：M-Integrity-1 不再是永久 soft（数据条目不足 →
   rmSync(d, { recursive: true, force: true })
 })
 
+test('token-budget --project：读目标对账（省比 / 缺失不给假 100% / §11 与索引段同口径）', () => {
+  const d = tmp()
+  const proj = join(d, 'run', 'proj')
+  const ev = join(proj, 'final', '证据包')
+  mkdirSync(join(proj, 'analysis'), { recursive: true })
+  mkdirSync(ev, { recursive: true })
+  mkdirSync(join(proj, 'audits'), { recursive: true })
+  // 大纲：一长段无关内容 + 末尾 §11（60 行规格的浓缩版）
+  writeFileSync(join(proj, 'analysis', '分析大纲.md'),
+    '# 分析大纲\n\n## 一、论点\n\n' + '大段论证内容。'.repeat(300) + '\n\n## 十一、写手版精简段\n\n- 论证主线：甲\n- 反方：乙\n- 字数预算：4000 字\n- 禁做项：丙\n- 承重墙：丁\n- 映射：| 论点 | 论据 |\n|---|---|\n| 论点1 | [L01] |\n')
+  writeFileSync(join(ev, '数据卡.md'), '# 数据卡\n\n## 📇 索引段\n\n[D01] 甲 ｜ 主题 ｜ 论点1\n\n## 正文\n\n### [D01] 甲\n' + '数据说明。'.repeat(200) + '\n信任级别：已发布\n')
+  writeFileSync(join(ev, '分析大纲.md'), 'x')
+  writeFileSync(join(proj, 'final', '定稿.md'), '# 标题\n\n## 摘要\n\n' + '正文内容。'.repeat(150) + '\n')
+  const r = run([join(SCRIPTS, 'token-budget.mjs'), '--project', proj, '--json'])
+  assert.equal(r.code, 0, r.out.slice(0, 200))
+  const j = parseJson(r)
+  const byWhat = (kw) => j.static.rows.find((x) => x.what.includes(kw))
+  const s11 = byWhat('§11')
+  assert.ok(s11, '应给出 大纲→§11 一行')
+  assert.equal(s11.leanSource, 'measured', '本夹具大纲含 §11 → measured')
+  assert.ok(s11.savePct >= 50, `§11 应显著省（实测 ${s11.savePct}%）`)
+  assert.ok(s11.fullTokens[0] <= s11.fullTokens[1], 'token 应给区间 [低, 高]')
+  const idx = byWhat('索引段')
+  assert.ok(idx && idx.leanSource === 'measured', '三卡→索引段应为 measured')
+  assert.ok(idx.savePct >= 50, `索引段应显著省（实测 ${idx.savePct}%）`)
+  // 缺 M-Gate-Report.json → 不给「省 100%」的假节省
+  const t8 = byWhat('M 门 JSON')
+  assert.ok(t8, '应给出 T8 一行')
+  assert.equal(t8.savePct, null, '缺按需读目标时不得报省比（防假 100%）')
+  assert.equal(t8.leanSource, 'missing')
+  assert.match(t8.note, /无 M-Gate-Report/)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('token-budget --roles：按角色聚合真实 tokenUsage（纯聚合数学，假 DSH_HOME 夹具）', () => {
+  const d = tmp()
+  const sdir = join(d, 'storages', 'session_projcache', 'sessions')
+  mkdirSync(sdir, { recursive: true })
+  const mk = (id, label, cacheRead, output, steps) => writeFileSync(join(sdir, `${id}.json`), JSON.stringify({
+    record: {
+      identity: { createdAt: 1 },
+      rows: {
+        title: { val: `你是论衡流水线的「${label}」` },
+        subagent: { val: { identity: { label } } },
+        sessionStats: { val: { steps } },
+        tokenUsage: { val: { totals: { cacheReadTokens: cacheRead, uncachedInputTokens: 1000, outputTokens: output, cacheWriteTokens: 0 } } },
+      },
+    },
+  }))
+  mk('a', 'T5 写手', 8_000_000, 200_000, 50)
+  mk('b', 'T7 审计', 2_000_000, 100_000, 30)
+  mk('c', 'T2 数据检索', 1_000_000, 50_000, 20)
+  mk('d', '审查打包与插件契约', 9_000_000, 999_999, 99)   // 非论衡角色 → 必须排除
+  const r = run([join(SCRIPTS, 'token-budget.mjs'), '--roles', '--dsh-home', d, '--json'])
+  assert.equal(r.code, 0, r.out.slice(0, 200))
+  const j = parseJson(r)
+  assert.equal(j.roles.sessionsTotal, 4, '应读到 4 个会话投影')
+  assert.equal(j.roles.sessionsClassified, 3, '非论衡角色的子代理必须被排除')
+  assert.equal(j.roles.subagentCacheRead, 11_000_000, '分母只计可识别角色（8M+2M+1M）')
+  const t5 = j.roles.byRole.find((x) => x.role.startsWith('T5'))
+  assert.equal(t5.cacheRead, 8_000_000)
+  assert.equal(t5.sharePct, 72.7, `T5 占比应为 8/11=72.7%（实测 ${t5.sharePct}）`)
+  assert.equal(j.roles.byRole[0].role.startsWith('T5'), true, '应按 cacheRead 降序')
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('token-budget：参数契约（-h exit 0 / 未知参数 exit 1+用法 / 无模式 exit 1 / 路径不存在 exit 2）', () => {
+  const help = run([join(SCRIPTS, 'token-budget.mjs'), '--help'])
+  assert.equal(help.code, 0, '--help 应 exit 0')
+  assert.match(help.stdout, /--project/)
+  assert.match(help.stdout, /--roles/)
+  const bogus = run([join(SCRIPTS, 'token-budget.mjs'), '--bogus'])
+  assert.equal(bogus.code, 1, '未知参数应 exit 1')
+  assert.match(bogus.out, /用法/)
+  const none = run([join(SCRIPTS, 'token-budget.mjs')])
+  assert.equal(none.code, 1, '无模式应 exit 1')
+  assert.match(none.out, /--project|--roles/)
+  const missing = run([join(SCRIPTS, 'token-budget.mjs'), '--project', join(tmpdir(), 'no-such-proj-xyz')])
+  assert.equal(missing.code, 2, '项目路径不存在应 exit 2')
+})
+
 test('cordis.patch.yml：三档 agentOptions 表达式形态正确（未设=undefined，只给 model 亦生效，含一键退路）', () => {
   const patch = readFileSync(join(ROOT, 'cordis.patch.yml'), 'utf8')
   const exprs = [...patch.matchAll(/agentOptions:\s*!!js\s+"(.+?)"\s*$/gm)].map((m) => m[1])

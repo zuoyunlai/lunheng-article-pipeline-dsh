@@ -37,7 +37,7 @@ description: "论衡：DSH 原生多 Agent 深度长文流水线（学术论文/
 
 **论衡技能的工具边界（DSH）**：
 - ✅ **可调用**：当前会话预设提供的工具（本机 standard 预设实测含 read / write / edit / web_search / web_fetch / todo_write / subagent / list_agents / pwsh 等）——DSH 无技能级白名单，工具集由 Agent 预设决定。**调用任何工具前先确认它在当前会话工具清单里**（教训：`read_page`/`bash` 并不存在于本预设，曾被本文档误声明为可用）。
-- ✅ **随包脚本白名单（v2.5.2-dsh.17 复核为 10 个）**：`scripts/*.mjs` = consistency-check / m-gate-check / md2html / pdfcheck / token-cost / count-chars / build-evidence-bundle / final-check / normalize-trust-level / model-routing + 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等）——**受限 shell 使用**（另：`_lib` 子目录为共享库，非入口、不单独调用），非「零 exec」；其余命令须经主人同意。
+- ✅ **随包脚本白名单（v2.5.2-dsh.17 复核为 11 个）**：`scripts/*.mjs` = consistency-check / m-gate-check / md2html / pdfcheck / token-cost / count-chars / build-evidence-bundle / final-check / normalize-trust-level / model-routing / token-budget + 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等）——**受限 shell 使用**（另：`_lib` 子目录为共享库，非入口、不单独调用），非「零 exec」；其余命令须经主人同意。
 - ❌ **不做**：凭据访问 / 浏览器自动化 / 定时任务（除白名单脚本与验证命令外，主控默认不执行任意 shell，LLM 推理判定）。
 - 🔒 **机制文件写保护（v2.5.2-dsh.13 新增）**：`SKILL.md` / `AGENTS.md` / `references/**` / `scripts/**` / `cordis.patch.yml` 属**机制文件**——任何角色（含主控与子代理）**不得**用 write/edit 改动；改进动议一律只写 `audits/反哺报告-vN.md`，由主人在 host shell 手工 apply。**改机制文件 = P0 违规，本次交付作废**。
 - 🧾 **闸门必须留机械证据（v2.5.2-dsh.13 新增）**：T2.5/T7.5 与 M 门**不得只凭自述**——交接报告须附**脚本 exit code + 产物路径**（如 `m-gate-check.mjs … --report <项目>/final/M-Gate-Report.json` 的 exit 与报告路径）。exit 语义：`0` 通过 / `1` P1 失败 / `2` P0 失败 / `3` 仅 P2·soft·SKIP（需 LLM 复核，**不得**当通过）/ `10` 参数路径错误。

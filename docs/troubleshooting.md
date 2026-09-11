@@ -165,3 +165,16 @@ M 门现为 **20 项**（其中 19 项由 `scripts/m-gate-check.mjs` 判定）�
 
 - **触发条件**：M-Form-11 / M-Exist-7 在对应产物缺失时记 **N/A（不算失败）**；M-Exist-5 仅在项目已进入 Phase 4（有 `audits/审计报告-vN.md`）时才硬判；M-Exist-6 仅在存在审稿报告时才判——**不会因为「没启用 T9」而判 M 门不过**。
 - **想看单条细节**：`node skills/lunheng-article-pipeline/scripts/m-gate-check.mjs <定稿.md> <证据包> --report <项目>/final/M-Gate-Report.json`，报告里 `results[]` 逐项给 `pass / detail / severity`。
+
+## 17. 「到底省没省 token」怎么量（v2.5.2-dsh.17 新增）
+
+- **一条命令出两类数**：
+  ```bash
+  node skills/lunheng-article-pipeline/scripts/token-budget.mjs --project run/<项目>   # 读目标对账（整读 vs 按需读）
+  node skills/lunheng-article-pipeline/scripts/token-budget.mjs --roles                # 真实角色分布（读会话投影）
+  ```
+  加 `--json` 给机器可读；`--dsh-home <path>` 指定投影缓存位置。
+- **两个口径别混**：`--project` 是**静态**（文件规模 → 估算 token 区间，汉字 0.6~1.0 token/字，**非计费值**）；`--roles` 是**真实**（会话投影里的 `tokenUsage.totals`）。要报给主人用后者，要判断「优化有没有效果」用前者做前后对照。
+- **「按需读目标缺失」记 `n/a` 而不是 100%**：比如项目没生成审计视图 / 没跑 M 门报告时，脚本**不给省比**——否则会得出「省 100%」的假结论。
+- **为什么 T5 最贵**：实测 43.09M cacheRead / 292 步 ≈ **147K/步**——这是「步数 × 每步上下文」，不是「一次读多大」。所以**越早进上下文的字越贵**：一次读进去的内容会被后续每一步重读（省 16K 初始上下文 ≈ 省 0.78M cacheRead/会话）。优化读取位置（§11 / 索引段 / 审计视图）比压缩单次输出更有效。
+- **`76%` 与 `63.6%` 是两个口径**：76% 是 test-paper-02 单项目峰值，63.6% 是本机 34 个可识别论衡会话的聚合值。引用时**必须写口径**，否则就是「单项目值当通用值」的漂移（自省审计抓到过这类问题）。
