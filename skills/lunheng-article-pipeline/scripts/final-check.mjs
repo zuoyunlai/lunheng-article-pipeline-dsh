@@ -12,7 +12,8 @@
 // v2.5.2-dsh.7 增强：解析 m-gate-check 的 JSON 输出与 count-chars 的 JSON 输出，汇总到 final-check.json，T8 终检可一次拿全报告不用 re-read 三个脚本输出
 import { spawnSync } from 'node:child_process';
 import { existsSync, writeFileSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const args = process.argv.slice(2);
 const wantJson = args.includes('--json');
@@ -29,10 +30,14 @@ if (!project || !existsSync(project)) {
 
 const final = join(project, 'final', '定稿.md');
 const evDir = join(project, 'final', '证据包');
-const scriptDir = new URL('.', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'); // scripts/ 绝对路径
+// scripts/ 绝对路径：必须用 fileURLToPath（URL.pathname 是 percent-encoded，
+// 安装路径含空格/中文时子脚本全部找不到 → 误报「M 门未过」，v2.5.2-dsh.13 修复）
+const scriptDir = dirname(fileURLToPath(import.meta.url));
 
 const steps = [
-  { name: 'count-chars.mjs', cmd: 'node', args: [join(scriptDir, 'count-chars.mjs'), final, '--full'], opt: true, parse: 'count-chars' },
+  // 字数口径：全流水线锁定「正文区纯汉字」（与任务简报-template 同口径）；
+  // 旧版传 --full（全文）却被称为「字数权威值」→ 与目标区间比对会系统性偏大（v2.5.2-dsh.13 修复）
+  { name: 'count-chars.mjs', cmd: 'node', args: [join(scriptDir, 'count-chars.mjs'), final], opt: true, parse: 'count-chars' },
   { name: 'm-gate-check.mjs', cmd: 'node', args: [join(scriptDir, 'm-gate-check.mjs'), final, evDir], opt: false, parse: 'm-gate' },
 ];
 if (!noSummary) steps.push({ name: 'build-evidence-bundle.mjs --summary', cmd: 'node', args: [join(scriptDir, 'build-evidence-bundle.mjs'), project, '--summary'], opt: true, parse: null });
@@ -121,7 +126,7 @@ if (wantJson) {
 
 // 写报告到默认 / 指定路径
 const finalReportPath = reportPath || join(project, 'audits', 'final-check-v0.json');
-const reportDir = finalReportPath.substring(0, finalReportPath.lastIndexOf('\\'));
+const reportDir = dirname(finalReportPath);   // 旧版硬编码反斜杠 → POSIX 与正斜杠 --report 都会崩（v2.5.2-dsh.13 修复）
 if (!existsSync(reportDir)) mkdirSync(reportDir, { recursive: true });
 writeFileSync(finalReportPath, JSON.stringify(report, null, 2), 'utf8');
 if (!wantJson) console.log(`\n📄 总报告: ${finalReportPath}`);

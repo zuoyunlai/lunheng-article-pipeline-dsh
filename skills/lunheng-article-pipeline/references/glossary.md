@@ -272,23 +272,23 @@
 
 ## 五、工具能力边界（DSH：v2.5.2-dsh.0 前置声明）
 
-> **DSH 说明**：DSH **无技能级工具白名单**——工具集由 Agent 预设（组合文件）决定，技能声明不了也禁不了工具。本节列项为历史环境的对照说明，DSH 下模型可用工具以当前会话预设为准（standard 预设含 read/write/edit/web_search/read_page/todo_write/subagent/list_agents/pwsh/bash 等）。
+> **DSH 说明**：DSH **无技能级工具白名单**——工具集由 Agent 预设（组合文件）决定，技能声明不了也禁不了工具。本节列项为历史环境的对照说明，DSH 下模型可用工具以当前会话预设为准（本机 standard 预设实测含 read/write/edit/web_search/web_fetch/todo_write/subagent/subagent_fork/list_agents/pwsh 等；**未提供 bash / read_page**——预设不同工具集不同，勿假定某工具必然存在）。
 
 ### ✅ 可以使用的工具（DSH standard 预设）
 - **文件操作**：read / write / edit
-- **Web 检索**：web_search / read_page
+- **Web 检索**：web_search / web_fetch
 - **子代理编排**：subagent（后台可续接）/ subagent_fork（继承上下文）/ list_agents
 - **规划**：todo_write
-- **命令执行**：pwsh（Windows）/ bash（Linux）——论衡主流程默认不执行任意 shell（LLM 推理判定），白名单例外：随包 8 个 `scripts/*.mjs` + 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等，主控执行、受沙箱约束），需其他命令时经主人同意（v2.5.2-dsh.5 审计修订：如实声明，非「零 exec」；v2.5.2-dsh.8 扩为 7 个含 build-evidence-bundle）
+- **命令执行**：pwsh（Windows）/ bash（Linux）——论衡主流程默认不执行任意 shell（LLM 推理判定），白名单例外：随包 **9 个** `scripts/*.mjs` + 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等，主控执行、受沙箱约束），需其他命令时经主人同意（v2.5.2-dsh.5 审计修订：如实声明，非「零 exec」；**v2.5.2-dsh.13 复核为 9 个**，单一真源见 `SKILL.md` §执行能力边界）
 
 ### ❌ 不使用的工具（DSH 下无对应或需另配）
 - **浏览器控制 / 定时任务 / 技能维护**：browser / cron / skill_workshop（无对应）
 - **图像生成**：image_generate（无内置 → SVG 矢量风 / 主人投喂 / 图像 MCP）
-- **Tavily / 记忆工具**：tavily_* / memory_*（无内置 → web_search / read_page / 文件记忆 / gm_search / gm_record）
+- **Tavily / 记忆工具**：tavily_* / memory_*（无内置 → web_search / web_fetch / 本地文件记忆（`memory/*.md`、`references/memory/lessons.md`））
 
 ### ℹ️ 关键澄清
 - **M 门算法**：主控 LLM 通过 `read` 读取算法文档，按伪代码**推理判定**；机械判定项（M-Form-1/3/5/7 + M-Exist-2）走 `scripts/m-gate-check.mjs`
-- **shell 使用（v2.5.2-dsh.4 审计修订）**：论衡**不是零 exec**——主控按需执行随包 8 个 `scripts/*.mjs` + 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等）；算法文档中的 `grep`/`diff`/`sha256sum`/`wc` 等示例命令是给人类主人手动复核的参考，agent 优先用白名单脚本与 read 工具（版本基线发布版中的「（检查）」占位符同样按此处理）
+- **shell 使用（v2.5.2-dsh.4 审计修订）**：论衡**不是零 exec**——主控按需执行随包 **9 个** `scripts/*.mjs` + 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等）；算法文档中的 `grep`/`diff`/`sha256sum`/`wc` 等示例命令是给人类主人手动复核的参考，agent 优先用白名单脚本与 read 工具（版本基线发布版中的「（检查）」占位符同样按此处理）
 - **主流程**：LLM 推理 + 文件读写 + Web 检索 + 白名单脚本；除白名单外默认不执行任意 shell 命令（经主人同意除外）
 
 ---
@@ -352,7 +352,7 @@
 ## 九、外部服务声明（v2.1.2）
 
 ### 🌐 涉及的外部服务
-1. **Web 检索 provider**（DSH 配置的 web_search / read_page 提供方，可能含 Google/Bing）
+1. **Web 检索 provider**（DSH 配置的 web_search / web_fetch 提供方，可能含 Google/Bing）
 2. **图像生成 MCP**（可选，默认关闭）：主人勾选「启用封面生成」并配图像生成 MCP（如 MiniMax `image-01`）才外发
 3. **大模型推理 provider**（当前模型，如 deepseek / MiniMax / Anthropic / GLM 等）：各角色卡调用 LLM 时，将**文献卡/数据卡/案例卡/草稿/分析大纲全文**发送给模型 provider
 
@@ -361,7 +361,7 @@
 ### 🔒 数据流方向
 - **向外发送**：
   - 检索关键词（web_search / web_search）
-  - 目标 URL（web_fetch / read_page）
+  - 目标 URL（web_fetch / web_fetch）
   - 图像生成 prompt（图像 MCP，默认关闭，需主人同意）
   - **大模型推理全文**：文献卡/数据卡/案例卡/草稿/大纲/正文全文发送给当前模型 provider
 - **不发送**：原始文献内容 / 主人投喂数据 / 中间产物（除非主人显式同意外发；大模型推理全文属上列外发项）

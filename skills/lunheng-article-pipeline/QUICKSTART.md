@@ -1,6 +1,6 @@
 > 版本：v2.5.2-dsh.12（DSH 原生插件，发布于 2026-09-09）
 
-# 论衡快速开始指南（v2.5.2-dsh.8）
+# 论衡快速开始指南（v2.5.2-dsh.12）
 
 > **v2.3.0 升级（2026-08-21）**：角色编号重构（教训 #116）—— T6 案例检索 → T3 案例检索（三方并行检索员连贯 T1∥T2∥T3），T3-T8 顺延 + T7/T8 交换位置（终检 → T8 主控亲完成、批判 → T6 独立早期攻击、审计 → T7 形式审查）。新增 Phase 3.6 批判（T6 攻击 v2 含主人洞察）。
 >
@@ -24,10 +24,10 @@
 使用论衡技能会触发以下副作用，请使用前确认你已理解并同意：
 
 - **⚠️ 文件写入**（**运行即会写盘**）：主控与各子代理会在 workspace 创建/修改约 15-25 个文件——`status.md` 状态机、`run/<项目名>/` 文件树（任务简报/文献卡/数据卡/案例卡/草稿/审计报告/定稿）；**仅写 workspace 内**，不写 workspace 外
-- **Web 检索外发**：检索关键词 + 目标 URL 会发送到外部服务（web_search / web_search / web_fetch / read_page）
+- **Web 检索外发**：检索关键词 + 目标 URL 会发送到外部服务（web_search / web_fetch）
 - **可选手动 sha256 验证**：主控会发占位符 `[哈希校验待主人回填]`，如需真实 hash 需主人在 host shell 手动计算后回填
 - **可选封面外发**（**默认关闭**）：如启用，会向 OpenAI / Google / minimax 发送 prompt
-- **本地记忆系统**：`gm_search` 仅访问本地文件记忆（不外发）
+- **本地文件记忆**：`memory/*.md` 与 `references/memory/lessons.md` 均为本地文件，不外发
 
 **v2.2.17 明确**：以上副作用会在 Phase 0 同意关卡（4 选 1）中由你主动选择。如不愿接受任何外发，选 ④全部拒绝（改纯本地 Ollama 推理）。
 
@@ -213,7 +213,7 @@
 
 ### Q1：论衡能不能执行 shell 命令？
 
-**答：有限执行（v2.5.2-dsh.4 审计修订，如实声明）。** 论衡主体是 LLM 推理 + 文件读写 + Web 检索流水线；主控/终检**按需执行随包白名单脚本**（`scripts/consistency-check.mjs` / `m-gate-check.mjs` / `md2html.mjs` / `pdfcheck.mjs` / `token-cost.mjs` / `count-chars.mjs` / `build-evidence-bundle.mjs`）+ 有限验证命令（`ls`/`stat`/`wc`/`cp`/`diff`/`Get-FileHash` 等）。算法文档中的 `grep`/`diff`/`sha256sum`/`wc` 等命令示例，agent 优先用 read 推理判定或白名单脚本，**人类主人可随时在 host shell 手动复核**。除白名单外不执行任意 shell 命令。
+**答：有限执行（v2.5.2-dsh.4 审计修订，如实声明）。** 论衡主体是 LLM 推理 + 文件读写 + Web 检索流水线；主控/终检**按需执行随包白名单脚本**（`scripts/consistency-check.mjs` / `m-gate-check.mjs` / `md2html.mjs` / `pdfcheck.mjs` / `token-cost.mjs` / `count-chars.mjs` / `build-evidence-bundle.mjs` / `final-check.mjs` / `normalize-trust-level.mjs`，**共 9 个**）+ 有限验证命令（`ls`/`stat`/`wc`/`cp`/`diff`/`Get-FileHash` 等）。算法文档中的 `grep`/`diff`/`sha256sum`/`wc` 等命令示例，agent 优先用 read 推理判定或白名单脚本，**人类主人可随时在 host shell 手动复核**。除白名单外不执行任意 shell 命令。
 
 ---
 

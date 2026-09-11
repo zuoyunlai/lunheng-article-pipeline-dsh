@@ -1,6 +1,6 @@
 # AGENTS.md — 论文流水线操作手册
 
-> **DSH 说明**：本手册为 DSH 原生手册。所用 DSH 工具：subagent / list_agents / send_message / web_search / read_page / todo_write / pwsh / edit / write 等；结构性差异见 `SKILL.md` 的「🔧 DSH 环境说明」章节。
+> **DSH 说明**：本手册为 DSH 原生手册。所用 DSH 工具：subagent / list_agents / send_message / web_search / web_fetch / todo_write / pwsh / edit / write 等；结构性差异见 `SKILL.md` 的「🔧 DSH 环境说明」章节。
 
 ## 启动时必读
 1. `references/pipeline-readme.md` — 流水线运行手册（含复制即用的派发话术）

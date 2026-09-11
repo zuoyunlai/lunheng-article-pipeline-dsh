@@ -17,13 +17,13 @@ description: "论衡：DSH 原生多 Agent 深度长文流水线（学术论文/
 |---|---|---|
 | 子代理编排 | `subagent` / `subagent_fork` / `list_agents` | 后台派发、可续接；`subagent_fork` 继承本会话上下文 |
 | 计划与任务 | `todo_write` | 计划与任务跟踪 |
-| 检索与抓取 | `web_search` / `read_page` | 引擎与可用性按 DSH 会话配置 |
+| 检索与抓取 | `web_search` / `web_fetch` | 引擎与可用性按 DSH 会话配置 |
 | 文件读写 | `read` / `write` / `edit` | 结构化文件操作 |
-| 命令/脚本 | `pwsh` / `bash` | 本机 Windows 用 `pwsh`；主流程默认零 exec（白名单脚本见「执行能力边界」） |
+| 命令/脚本 | `pwsh`（本机 Windows；当前预设提供） | 主流程默认零 exec（白名单脚本见「执行能力边界」）；Linux 上为 `bash`——**具体工具集以当前会话工具清单为准** |
 | 图像生成 | 无内置 → SVG 矢量风 / 主人投喂 | 可另配图像生成 MCP（如 MiniMax `image-01`） |
 
 **结构性要点（DSH 原生）**：
-1. **技能级工具白名单/denied 在 DSH 无效**：工具集由 Agent 预设决定；文档提到的工具以当前会话预设为准（standard 预设含 read / write / edit / web_search / read_page / todo_write / subagent / list_agents / pwsh / bash 等）。
+1. **技能级工具白名单/denied 在 DSH 无效**：工具集由 Agent 预设决定；文档提到的工具以当前会话预设为准（本机 standard 预设实测含 read / write / edit / web_search / web_fetch / todo_write / subagent / subagent_fork / list_agents / pwsh 等；**预设不同则工具集不同，勿假定某工具必然存在**）。
 2. **模型分配（通用自适应）**：路由由 `settings.yaml` 决定，`subagent` 默认继承会话模型；多模型用户可装「分档预设」（`examples/preset/`）：`subagent_retrieval`（T1/T2/T3）/ `subagent_strong`（T4/T5/T6/T9）/ `subagent_audit`（T7/G14）。未装预设或未挂载 → 全部回退 `subagent`（继承会话模型），零配置可用。档位模型经 `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_{PROVIDER,MODEL}` 覆盖（provider 与 model 分离）。
 3. **执行约定**：状态机（status.md 主控独占写）+ 交接报告六要素 + G8 自检 + 超时介入（`list_agents` 软巡检）；**无心跳/8 分钟硬卡**（旧版完整韧化协议已移出仓库，历史见 git log）。
 4. **「（检查）」占位符**：发布包中 shell 示例被净化剥离为「（检查）」——按「人类 host shell 验证示例」处理（`read` 全文 + LLM 推理模拟判定，真实 hash/字数由主人在 host shell 回填）。
@@ -36,7 +36,7 @@ description: "论衡：DSH 原生多 Agent 深度长文流水线（学术论文/
 ## ⚠️ 执行能力边界（先读这一段）
 
 **论衡技能的工具边界（DSH）**：
-- ✅ **可调用**：当前会话预设提供的工具（standard 预设含 read / write / edit / web_search / read_page / todo_write / subagent / list_agents / pwsh / bash 等）——DSH 无技能级白名单，工具集由 Agent 预设决定。
+- ✅ **可调用**：当前会话预设提供的工具（本机 standard 预设实测含 read / write / edit / web_search / web_fetch / todo_write / subagent / list_agents / pwsh 等）——DSH 无技能级白名单，工具集由 Agent 预设决定。**调用任何工具前先确认它在当前会话工具清单里**（教训：`read_page`/`bash` 并不存在于本预设，曾被本文档误声明为可用）。
 - ✅ **随包脚本白名单（v2.5.2-dsh.12 复核为 9 个）**：`scripts/*.mjs` = consistency-check / m-gate-check / md2html / pdfcheck / token-cost / count-chars / build-evidence-bundle / final-check / normalize-trust-level + 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等）——**受限 shell 使用**，非「零 exec」；其余命令须经主人同意。
 - ❌ **不做**：凭据访问 / 浏览器自动化 / 定时任务（除白名单脚本与验证命令外，主控默认不执行任意 shell，LLM 推理判定）。
 - ℹ️ **M 门**：机械项（M-Form-1/3/5/7 + M-Exist-2）走 `scripts/m-gate-check.mjs`；不可脚本化项（如 M-Form-8 三角验证）由主控 LLM 用 `read` 读算法文档推理判定（文档内 shell 示例仅供人类复核）。
@@ -63,9 +63,9 @@ description: "论衡：DSH 原生多 Agent 深度长文流水线（学术论文/
 
 ## ⚡ 启动速查表
 
-- 版本：v2.5.2-dsh.10｜角色：T0 主控（= T8 终检执行者）＋ T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / T8 终检（主控亲执行）/ T9 审稿（默认选中，学术必选）
+- 版本：v2.5.2-dsh.12｜角色：T0 主控（= T8 终检执行者）＋ T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / T8 终检（主控亲执行）/ T9 审稿（默认选中，学术必选）
 - Phase：0 定题 → 1 检索(T1∥T2∥T3) → 2 分析 → 2.5 大纲(人) → 3 写作 → 3.5 洞察(人) → 3.6 批判 → 4 审计 → 4.5 审稿+G14 → 5 终检(人)
-- 工具：subagent=派发（分档预设按角色选 subagent_retrieval/strong/audit）｜list_agents=查看｜todo_write=计划｜web_search/read_page=检索｜pwsh=命令｜edit/write=文件
+- 工具：subagent=派发（分档预设按角色选 subagent_retrieval/strong/audit）｜list_agents=查看｜todo_write=计划｜web_search/web_fetch=检索｜pwsh=命令｜edit/write=文件
 - 闸门：T2.5（检索→分析）/ T7.5（审计→终检）；M 门 exit 0；修订回环双轨 ≤2 轮（A 轨）
 - 终检成本：`node scripts/token-cost.mjs --sessions <主会话>,<子代理…>`
 - 详细：pipeline-readme.md（派发话术/模型）／ glossary.md（概念单一真源）
@@ -183,5 +183,5 @@ description: "论衡：DSH 原生多 Agent 深度长文流水线（学术论文/
 ## 📦 本包为「DSH 独立技能包（使用者发布版）」
 
 > - 已移除：历史维护脚本与归档（演进记录见 git log）；`.github/workflows/`（CI 一致性自检 + 发布）
-> - 运行时脚本（主控按需调用）：consistency-check / m-gate-check / md2html / pdfcheck / token-cost / count-chars / build-evidence-bundle / final-check
+> - 运行时脚本（主控按需调用，**共 9 个**，单一真源见 §执行能力边界）：consistency-check / m-gate-check / md2html / pdfcheck / token-cost / count-chars / build-evidence-bundle / final-check / normalize-trust-level
 > - 教训沉淀为「建议待主人 review」，不自动写入共享状态；完整设计见 GitHub 仓库：https://github.com/zuoyunlai/lunheng-article-pipeline-dsh

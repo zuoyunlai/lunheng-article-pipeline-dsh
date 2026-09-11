@@ -5,16 +5,20 @@
 //   --summary：仅输出聚合统计（total/pass/p0/p1/p2/soft/skips）+ 硬失败项；省略通过项 details[]（省 ~80% 输出字节，机器可读友好）
 // 配套：M-Gate-Algorithm.md「机械化脚本化」段
 // 严重度评级（v2.5.2-dsh.5 引入）：gate fail 时按 P0/P1/P2 分级；单子项失败子项数 ≤2 → P2 可放行
-import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, readdirSync, statSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
+import { join, dirname } from 'node:path';
 
 const args = process.argv.slice(2);
 const wantSummary = args.includes('--summary');
-const draftPath = args.find((a, i) => !a.startsWith('--') && i === 0);
-const evDir = args.find((a, i) => !a.startsWith('--') && i === 1);
+// --report <path>：把结构化报告落盘（供 build-evidence-bundle / T8 审计视图读取，v2.5.2-dsh.13 新增）
+const reportIdx = args.indexOf('--report');
+const reportPath = reportIdx >= 0 && args[reportIdx + 1] ? args[reportIdx + 1] : null;
+const positional = args.filter((a, i) => !a.startsWith('--') && i !== reportIdx + 1);
+const draftPath = positional[0];
+const evDir = positional[1];
 if (!draftPath || !evDir) {
-  console.error('用法: node m-gate-check.mjs <定稿.md> <证据包目录> [--summary]');
-  process.exit(1);
+  console.error('用法: node m-gate-check.mjs <定稿.md> <证据包目录> [--summary] [--report <path>]');
+  process.exit(10);   // 10 = 参数/路径错误（与「1 = P1 内容失败」区分，v2.5.2-dsh.13）
 }
 if (!existsSync(draftPath)) {
   console.error(`定稿不存在: ${draftPath} —— 请先产出 final/定稿.md 再跑 M 门预检`);
@@ -316,12 +320,27 @@ const hard = fail.filter((r) => r.severity !== 'LLM 兜底');
 const p0 = hard.filter((r) => r.severity === 'P0').length;
 const p1 = hard.filter((r) => r.severity === 'P1').length;
 const p2 = hard.filter((r) => r.severity === 'P2').length;
-console.log(JSON.stringify({
+// 退出码语义（v2.5.2-dsh.13 修订，回应审计 P1「exit 0 与『任何一项不过都不得标记完成』矛盾」）：
+//   0 = 全项通过（无失败、无 SKIP）｜1 = 存在 P1 失败｜2 = 存在 P0 失败
+//   3 = 仅 P2 / LLM 兜底 / SKIP —— 需 LLM 复核，**不得**当作「通过」（旧版一律 exit 0）｜10 = 参数/路径错误
+const anyFail = results.some((r) => r.pass === false);
+const exitCode = p0 > 0 ? 2 : (p1 > 0 ? 1 : (anyFail || skips > 0 ? 3 : 0));
+const report = {
   draft: draftPath,
   date: new Date().toISOString().slice(0, 10),
   total: results.length,
   pass, p0, p1, p2, soft, skips,
   results: wantSummary ? results.filter((r) => !r.pass && r.severity !== 'LLM 兜底') : results,  // --summary 仅保留硬失败项，省 token
-  exit: p0 > 0 ? 2 : (p1 > 0 ? 1 : 0),
-}, null, 2));
-process.exit(p0 > 0 ? 2 : (p1 > 0 ? 1 : 0));
+  exit: exitCode,
+};
+console.log(JSON.stringify(report, null, 2));
+if (reportPath) {
+  try {
+    mkdirSync(dirname(reportPath), { recursive: true });
+    writeFileSync(reportPath, JSON.stringify(report, null, 2), 'utf8');
+    console.error(`📄 M-Gate 报告已落盘: ${reportPath}`);
+  } catch (e) {
+    console.error(`⚠️ M-Gate 报告落盘失败: ${e.message}`);
+  }
+}
+process.exit(exitCode);

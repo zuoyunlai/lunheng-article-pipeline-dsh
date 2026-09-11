@@ -73,10 +73,18 @@ if (flag === '--summary') {
 }
 
 let target = text;
+let degraded = false;
 if (flag !== '--full') {
-  // 正文区：## 摘要 之后 到 ## 参考文献（或文末）之前；无摘要则从首个 ## 标题开始
+  // 正文区：## 摘要 之后 到 ## 参考文献（或文末）之前
+  // v2.5.2-dsh.13 修订（第三方审计 P1）：无「## 摘要」时旧版静默把起点退化为文件开头（口径前移、
+  // 若文末节标记也缺失则等于全文），却仍自称 body(正文区) → 双口径坍缩、字数分级系统性偏大。
+  // 现在：显式置 degraded 标记并在 stderr 告警，让 T7/T8 可机械识别。
   const start = text.indexOf('## 摘要');
   const from = start >= 0 ? start + '## 摘要'.length : 0;
+  if (start < 0) {
+    degraded = true;
+    console.error(`⚠️ ${file}：未找到「## 摘要」，正文区起点退化为文件开头（口径已失真）——请补写摘要，或改用 --full 明确按全文统计`);
+  }
   const endMarkers = ['## 参考文献', '## 数据来源', '## 案例来源', '## 先行者文献', '## AI 使用声明'];
   let to = text.length;
   for (const m of endMarkers) {
@@ -91,5 +99,6 @@ console.log(JSON.stringify({
   file,
   scope: flag === '--full' ? 'full(全文纯汉字)' : 'body(正文区纯汉字: 摘要后~文末节前)',
   hanChars: count,
+  ...(degraded ? { degraded: true, degradedReason: '缺「## 摘要」→ 正文区起点退化为文件开头' } : {}),
 }, null, 2));
 process.exit(0);

@@ -99,7 +99,7 @@ Phase 1 一次性并行派出 **T1 文献 ∥ T2 数据 ∥ T3 案例** 三个�
 | 原环境工具 | DSH 对应 |
 |---|---|
 | `sessions_spawn` | `subagent`（后台、可续接） |
-| `tavily_search` / `tavily_extract` | `web_search` / `read_page` |
+| `tavily_search` / `tavily_extract` | `web_search` / `web_fetch` |
 | `update_plan` | `todo_write` |
 | `sessions_history/list` | `list_agents` |
 | `image_generate`（封面） | 无内置 → SVG 矢量风 / 主人投喂 |
@@ -166,7 +166,7 @@ dsh plugin --profile web add lunheng-article-pipeline
 ## 获取方式
 
 - **GitHub（DSH bundle）**：https://github.com/zuoyunlai/lunheng-article-pipeline-dsh
-- **npm**：`lunheng-article-pipeline@2.5.2-dsh.7`（`npm i lunheng-article-pipeline@dsh`）
+- **npm**：`lunheng-article-pipeline@2.5.2-dsh.12`（`npm i lunheng-article-pipeline@dsh`）
 - **历史版本线（独立化前）**：https://github.com/zuoyunlai/lunheng-article-pipeline
 
 ---

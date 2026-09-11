@@ -5,14 +5,20 @@
 //   默认：收集 文献卡/数据卡/案例卡/先行者清单/分析大纲/批判报告/审计报告/复核报告/反哺报告/修订说明*/status/01-任务简报 到 <项目>/final/证据包/
 //   --summary：额外生成 <项目>/audits/审计视图-v0.md（T6 批判 / T7 审计 / T9 审稿 / T8 终检 共用轻量摘要，避免各自重读全文）
 //   --deep-summary：在 --summary 基础上，把每个素材卡的标题/作者/年份/信任级别列入 `审计视图-v0.md` 的「素材卡全集」段（T7 复核一次看完全部素材，不用 grep 跳文件）
-//   审计视图含：定稿章节结构 + 字数 + 素材卡数量 + 信任级别分布 + M 门 13 项状态（从 audits/M-Gate-Report-v0.json 读取，若存在）
+//   审计视图含：定稿章节结构 + 字数 + 素材卡数量 + 信任级别分布 + M 门状态（从 final/M-Gate-Report.json 读取，
+//   兼容 audits/ 旧路径；报告由 `m-gate-check.mjs --report <path>` 落盘 —— v2.5.2-dsh.13 修复路径契约）
 import { readdirSync, copyFileSync, existsSync, mkdirSync, statSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, basename } from 'node:path';
 
 const args = process.argv.slice(2);
-const wantSummary = args.includes('--summary');
 const wantDeepSummary = args.includes('--deep-summary');
-const project = args.find((a) => !a.startsWith('--') && a !== args.find((_x, i) => args[i] === '--project' && (i + 1) < args.length ? _x : null));
+// --deep-summary 蕴含 --summary（旧版单独用是静默空操作，v2.5.2-dsh.13 修复）
+const wantSummary = args.includes('--summary') || wantDeepSummary;
+// --project <名> 或第一个位置参数（旧版表达式自引用，--project 的值从未被使用）
+const projectIdx = args.indexOf('--project');
+const project = (projectIdx >= 0 && args[projectIdx + 1])
+  ? args[projectIdx + 1]
+  : args.find((a, i) => !a.startsWith('--') && i !== projectIdx + 1);
 if (!project || !existsSync(project)) {
   console.error('用法: node build-evidence-bundle.mjs <run/项目名> [--project <名>] [--summary] [--deep-summary]');
   process.exit(2);
@@ -69,11 +75,11 @@ console.log(`目录: ${destDir}`);
 if (wantSummary) {
   const finalPath = join(project, 'final', '定稿.md');
   if (!existsSync(finalPath)) {
-    console.log('· 跳过审计视图：final/定稿.md 不存在');
+    console.log('· 跳过审计视图：final/定稿.md 不存在（**未生成任何审计视图**，请先产出定稿；此行非报错但不得当作「已生成」）');
     process.exit(0);
   }
   const finalText = readFileSync(finalPath, 'utf8');
-  const han = (finalText.match(/[一-龥]/g) || []).length;
+  const han = (finalText.match(/[\u4e00-\u9fff]/g) || []).length;   // 与 count-chars.mjs 同一口径（旧版 [一-龥] 少 89 个码位）
   // 章节结构（H1/H2）
   const sections = [];
   for (const line of finalText.split('\n')) {
@@ -87,7 +93,7 @@ if (wantSummary) {
     if (!existsSync(join(project, p))) return 0;
     const t = readFileSync(join(project, p), 'utf8');
     const ids = new Set();
-    const re = /\[([LCFD])(\d{2,3})\]/g;
+    const re = /\[([LCFD])(\d+)\]/g;   // 与 m-gate-check 同口径（旧版限 2-3 位 → 1 位编号漏计，审计视图自相矛盾）
     let m;
     while ((m = re.exec(t)) !== null) ids.add(m[1] + m[2]);
     return ids.size;
@@ -108,13 +114,14 @@ if (wantSummary) {
   };
   const litT = trustDist('literature/文献卡.md');
   const datT = trustDist('data/数据卡.md');
-  // M 门 13 项状态（从 audits/M-Gate-Report-v0.json 读取）
-  const mReportPath = join(project, 'audits', 'M-Gate-Report-v0.json');
-  let mSummary = '（未找到 audits/M-Gate-Report-v0.json，m-gate-check.mjs 未跑过）';
-  if (existsSync(mReportPath)) {
+  // M 门状态：真源 = final/M-Gate-Report.json（文档全仓一致口径），兼容 audits/ 旧路径
+  const mCandidates = [join(project, 'final', 'M-Gate-Report.json'), join(project, 'audits', 'M-Gate-Report.json'), join(project, 'audits', 'M-Gate-Report-v0.json')];
+  const mReportPath = mCandidates.find((p) => existsSync(p));
+  let mSummary = '（未找到 M-Gate 报告：先跑 `node scripts/m-gate-check.mjs <final/定稿.md> <final/证据包> --report <项目>/final/M-Gate-Report.json`）';
+  if (mReportPath) {
     try {
       const m = JSON.parse(readFileSync(mReportPath, 'utf8'));
-      mSummary = `通过 ${m.pass || 0}/${m.total || 13} | P0: ${m.p0 || 0} | P1: ${m.p1 || 0} | P2: ${m.p2 || 0} | LLM 兜底: ${m.soft || m.llm || 0}`;
+      mSummary = `通过 ${m.pass || 0}/${m.total || 12} | P0: ${m.p0 || 0} | P1: ${m.p1 || 0} | P2: ${m.p2 || 0} | LLM 兜底: ${m.soft || m.llm || 0} | exit: ${m.exit ?? '?'}`;
     } catch (e) {
       mSummary = `（M-Gate-Report-v0.json 解析失败: ${e.message}）`;
     }

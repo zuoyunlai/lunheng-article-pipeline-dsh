@@ -1,0 +1,28 @@
+# 行尾与编码统一（v2.5.2-dsh.13 新增）
+#
+# 背景：本仓库曾出现 35 个受控文件工作区 CRLF（index 为 LF）、`.gitignore` 为 GBK+混合行尾，
+# 而 npm 打包读**工作区**而非 git blob → 同版本在 Windows 与 macOS/Linux 上内容不一致，
+# 基于 sha256 的「证据包指纹」跨平台不可复现。
+# 规则：所有文本文件一律 LF；二进制文件显式声明，避免 git 猜测。
+
+* text=auto eol=lf
+
+*.md   text eol=lf
+*.mjs  text eol=lf
+*.js   text eol=lf
+*.json text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.sh   text eol=lf
+*.ps1  text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.pdf  binary
+*.tgz  binary
+*.zip  binary

@@ -15,7 +15,7 @@
 //   --fix：自动修复可逆的简单漂移（P2 级，如「（检查）」占位符替换）
 const fixMode = process.argv.includes('--fix');
 
-import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, existsSync, writeFileSync, copyFileSync } from 'node:fs';
 import { join, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -44,19 +44,34 @@ const isLegacyProtocol = (f) => f.endsWith('执行韧化协议-v2.1.0.md');
 const active = files.filter((f) => !isArchive(f) && !isLegacyProtocol(f));
 
 // --fix 模式：自动修复可逆的简单漂移（P2 级）
+// v2.5.2-dsh.13 修订（第三方审计 P1）：
+//   ① 旧版未导入 writeFileSync → 一执行即 ReferenceError（宣传的「一键修复」100% 不可用）；
+//   ② 修复范围必须与检查器的**豁免集一致**：检查侧对 SKILL.md / glossary.md 的「（检查）」放行
+//      （元文档说明），修复侧若照写就会改写合法内容 —— 因此此处显式跳过同一豁免集；
+//   ③ 默认 dry-run：只打印将改动的位置与条数；`--fix --write` 才落盘，且落盘前写 `.bak-fix` 备份。
+const FIX_EXEMPT = [/SKILL\.md$/, /glossary\.md$/];
 if (fixMode) {
+  const applyFix = process.argv.includes('--write');
+  let fixFiles = 0, fixHits = 0;
   for (const f of walk(ROOT)) {
     const rel = relative(ROOT, f).replaceAll('\\', '/');
     if (rel.includes('archive')) continue;
-    let text = readFileSync(f, 'utf8');
-    let changed = false;
-    // 修复裸「（检查）」占位符为具体短语
-    if (text.includes('（检查）')) {
-      text = text.replaceAll('（检查）','（按主控 phase 0 协议）');
-      changed = true;
+    if (FIX_EXEMPT.some((re) => re.test(f))) continue;
+    const text = readFileSync(f, 'utf8');
+    const hits = text.split('（检查）').length - 1;
+    if (hits === 0) continue;
+    fixFiles++; fixHits += hits;
+    if (applyFix) {
+      copyFileSync(f, f + '.bak-fix');
+      writeFileSync(f, text.replaceAll('（检查）', '（按主控 phase 0 协议）'), 'utf8');
+      console.log(`  ✓ 已修复 ${rel}（${hits} 处，备份 ${rel}.bak-fix）`);
+    } else {
+      console.log(`  · 将修复 ${rel}（${hits} 处）`);
     }
-    if (changed) writeFileSync(f, text, 'utf8');
   }
+  console.log(applyFix
+    ? `--fix --write 完成：${fixFiles} 个文件 / ${fixHits} 处`
+    : `--fix dry-run：${fixFiles} 个文件 / ${fixHits} 处（加 --write 才落盘；SKILL.md / glossary.md 按检查器豁免集跳过）`);
 }
 
 const errors = [];
@@ -156,12 +171,92 @@ for (const f of files) {
     if (/G0-G14 十四项/.test(text)) {
       errors.push(`[P1 口径残留 G 清单「十四项」（应为 15 项）] ${rel}`);
     }
+    // ⑥b M 门项数与分工口径（v2.5.2-dsh.13 新增：脚本实测 12 项机械化，总 13 项含 M-Integrity-2 人工）
+    if (/M 门 ?13 ?项机械化|13 门（M-Form 1-8 \+ M-Exist 1-3 \+ M-Integrity-1）/.test(text)) {
+      errors.push(`[P1 口径残留 M 门项数/分工（机械化 12 项；总 13 项 = 12 + M-Integrity-2 人工）] ${rel}`);
+    }
+    // ⑥c 非 DSH 工具名黑名单（v2.5.2-dsh.13 新增：文档不得把不存在的工具声明为可用）
+    //     负向表述（不存在/不得调用/已废止/历史/旧版/误声明/教训）豁免，避免误伤纠错说明
+    {
+      const BANNED = ['read_page', 'read_url', 'fetch_page', 'gm_search', 'gm_record', 'session-kill'];
+      text.split('\n').forEach((l, i) => {
+        for (const b of BANNED) {
+          if (l.includes(b) && !/不存在|不得调用|已废止|历史|旧版|误声明|教训|残骸/.test(l)) {
+            errors.push(`[P1 非 DSH 工具名「${b}」] ${rel}:${i + 1}`);
+          }
+        }
+      });
+    }
     // ⑦ 全量版本头一致性（v2.5.2-dsh.5 审计新增：防单个文件版本头漏 bump）
     const headerLine = text.split('\n').find((l) => l.startsWith('> 版本：v'));
     const headerVer = headerLine?.match(/v(\d+\.\d+\.\d+-dsh\.\d+)/)?.[1];
     if (headerVer && normVer(headerVer) !== normVer(pkgVer)) {
       errors.push(`[P0 版本头漂移] ${rel} 版本头 v${headerVer} ≠ package.json=${pkgVer}`);
     }
+  }
+}
+
+// ⑩ 随包脚本白名单集合一致性（v2.5.2-dsh.13 新增，教训：白名单曾出现 7/8/9 三种口径）
+const diskScripts = readdirSync(join(ROOT, 'scripts')).filter((f) => f.endsWith('.mjs')).sort();
+const diskNames = diskScripts.map((f) => f.replace(/\.mjs$/, ''));
+const wlLine = readFileSync(join(ROOT, 'SKILL.md'), 'utf8').split('\n').find((l) => l.includes('随包脚本白名单')) || '';
+// SKILL.md 白名单行的格式：`scripts/*.mjs` = a / b / c + 有限验证命令…
+const declaredNames = (wlLine.split('=')[1] || '').split('+')[0].split('/').map((s) => s.trim()).filter(Boolean);
+const missingInDoc = diskNames.filter((s) => !declaredNames.includes(s));
+const extraInDoc = declaredNames.filter((s) => !diskNames.includes(s));
+if (missingInDoc.length > 0) errors.push(`[P1 白名单漏列] SKILL.md 未列：${missingInDoc.join(', ')}（磁盘共 ${diskScripts.length} 个）`);
+if (extraInDoc.length > 0) errors.push(`[P1 白名单多列] SKILL.md 列了不存在的脚本：${extraInDoc.join(', ')}`);
+const declaredCount = wlLine.match(/白名单（[^）]*?(\d+)\s*个/)?.[1];
+if (declaredCount && Number(declaredCount) !== diskScripts.length) {
+  errors.push(`[P1 白名单数量不符] SKILL.md 声明 ${declaredCount} 个 ≠ 磁盘 ${diskScripts.length} 个`);
+}
+
+// ⑪ CHANGELOG 当前版本段存在性（v2.5.2-dsh.13 新增，教训：dsh.12 的 bump 提交标题声称含 CHANGELOG 实际未写）
+const clPath = join(REPO_ROOT, 'CHANGELOG.md');
+if (existsSync(clPath)) {
+  const cl = readFileSync(clPath, 'utf8');
+  const esc = pkgVer.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (!new RegExp(`^##\\s+${esc}(\\s|（|$)`, 'm').test(cl)) {
+    errors.push(`[P0 CHANGELOG] 缺当前版本段落「## ${pkgVer}」——版本 bump 必须与 CHANGELOG 段同提交`);
+  }
+}
+
+// ⑫ 版本点位全量扫描（v2.5.2-dsh.13 新增：旧规则 ⑦ 只认 `> 版本：` 开头，漏检 `- 版本：`/标题内嵌等形态）
+for (const f of files) {
+  if (isArchive(f)) continue;
+  const rel = relative(ROOT, f).replaceAll('\\', '/');
+  readFileSync(f, 'utf8').split('\n').forEach((l, i) => {
+    const m = l.match(/^\s*[-*>#]*\s*版本：v?(\d+\.\d+\.\d+-dsh\.\d+)/);
+    if (m && normVer(m[1]) !== normVer(pkgVer)) {
+      errors.push(`[P0 版本点位漂移] ${rel}:${i + 1} 写 ${m[1]} ≠ package.json=${pkgVer}`);
+    }
+    const t2 = l.match(/^#\s+\S.*（v?(\d+\.\d+\.\d+-dsh\.\d+)）/);
+    if (t2 && normVer(t2[1]) !== normVer(pkgVer)) {
+      errors.push(`[P1 标题内嵌版本漂移] ${rel}:${i + 1} 写 ${t2[1]} ≠ package.json=${pkgVer}`);
+    }
+  });
+}
+
+// ⑬ docs/ 版本点位（v2.5.2-dsh.13 新增）：只查**可执行口径**——
+//    ① 安装 pin（`@x.y.z-dsh.N`）；② 「当前版本」声明行。历史章节（版本历史/演进/里程碑等）整体跳过。
+const docsDir = join(REPO_ROOT, 'docs');
+if (existsSync(docsDir)) {
+  for (const f of walk(docsDir)) {
+    const rel = 'docs/' + relative(docsDir, f).replaceAll('\\', '/');
+    let inHistory = false;
+    readFileSync(f, 'utf8').split('\n').forEach((l, i) => {
+      const h = l.match(/^#{1,4}\s*(.+)/);
+      if (h) inHistory = /版本历史|历史|演进|里程碑|升级记录/.test(h[1]);
+      if (inHistory) return;
+      const pin = l.match(/@(\d+\.\d+\.\d+-dsh\.\d+)/);
+      if (pin && normVer(pin[1]) !== normVer(pkgVer)) {
+        errors.push(`[P1 docs 安装 pin 漂移] ${rel}:${i + 1} 写 @${pin[1]} ≠ package.json=${pkgVer}`);
+      }
+      const cur = l.match(/当前版本\s*\*{0,2}v?(\d+\.\d+\.\d+-dsh\.\d+)/);
+      if (cur && normVer(cur[1]) !== normVer(pkgVer)) {
+        errors.push(`[P1 docs 当前版本声明漂移] ${rel}:${i + 1} 写 ${cur[1]} ≠ package.json=${pkgVer}`);
+      }
+    });
   }
 }
 

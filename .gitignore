@@ -1,7 +1,23 @@
+# 依赖与产物
 node_modules/
 *.tgz
 npm-debug.log*
 .DS_Store
 
-# ���ر��ݣ����ύ��
+# 本地备份（不提交）
 .dsh/adapt-backup/
+
+# 凭据类（防误提交；v2.5.2-dsh.13 新增）
+.env
+.env.*
+.npmrc
+*.pem
+*.key
+*.p12
+*.pfx
+.credentials*
+*.bak
+*.bak2
+*.bak3
+*.bak-fix
+*.advtest

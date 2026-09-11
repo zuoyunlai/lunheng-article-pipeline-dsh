@@ -82,8 +82,8 @@
 - **每条数据必须有「信任级别」标注（v2.2.1 新增，教训 #77）**：已发布 / 主人投喂 / 二手转引 三档之一必填，否则 M 门 M-Form-6 失败
 - **web_search 失败熔断 + 自动降级（v2.5.2-dsh.7 新增，关键优化——避免 176K 大上下文爆炸）**：
     - **失败熔断**：`web_search` 同一 query 连续 2 次返回无结果 / 错误 / 429 限流 → 第 3 次**自动停止重试**，记录到交接报告"已失败 query 清单"+ 切换 query 关键词（去掉限定词、拆子主题、加同义词），不无限死磕
-    - **自动降级 read_page**：search 引擎 firecrawl 连续 2 次欠费/超时 → **直接 `read_page` 已知权威 URL**（mohrss.gov.cn / gov.cn / stats.gov.cn / 地方人社厅 域名限制），不走搜索路径。**优先 read_page URL 列表由主控在任务简报 Phase 0 阶段预填**
-    - **彻底失败**：5 次切换 query + 2 次 read_page URL 都未命中 → 标"该子主题 Permanent Gap"，交接报告交接给 T0 主控，主控在 Phase 2 启动时显式标"数据缺角 → 缺角论点降级为观点"
+    - **自动降级 web_fetch**：search 引擎 firecrawl 连续 2 次欠费/超时 → **直接 `web_fetch` 已知权威 URL**（mohrss.gov.cn / gov.cn / stats.gov.cn / 地方人社厅 域名限制），不走搜索路径。**优先 web_fetch URL 列表由主控在任务简报 Phase 0 阶段预填**
+    - **彻底失败**：5 次切换 query + 2 次 web_fetch URL 都未命中 → 标"该子主题 Permanent Gap"，交接报告交接给 T0 主控，主控在 Phase 2 启动时显式标"数据缺角 → 缺角论点降级为观点"
     - **节省**：单次失败 5 次重试（每次 web_search 返回 ~5K 上下文）= 25K cacheRead；熔断后 ≤ 2 次 = 10K，**省 60%**。实测平台经济社保项目 T2 单会话 cacheRead 18.9M（176K 上下文），熔断后预计降到 ~7M
 - 找不到精确数据 → 标注「缺口：建议人工查 XX 数据库」，不许估一个"约"
 - 区分：官方统计 / 学术研究数据 / 媒体转引（媒体转引要回查原始来源）

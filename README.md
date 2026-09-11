@@ -39,13 +39,12 @@ dsh plugin --profile web add lunheng-article-pipeline
 | `subagent_audit` | T7 审计 / G14 检测 | 顶配防漏判 | 继承父会话（设 `LUNHENG_AUDIT_*` 才分档） |
 
 ```sh
-# 1) 复制预设到用户预设根
-cp -r examples/preset "$DSH_HOME/.agent-presets/lunheng"
+# 分档随 bundle 自动生效：安装本包即在 profile 里插入 3 档 subagent 工具
+# （无需复制预设目录——examples/preset/ 只是分档说明，不含可加载的 agent.cordis.yml）
 
-# 2) 新会话在预设选择器里选「论衡分档」
-
-# 3) 换模型：设环境变量后重启 dsh（模型挂载期求值一次）
+# 换模型：设环境变量后重启 dsh（模型挂载期求值一次）
 #    ⚠️ provider 与 model 分离：model 是裸 id，provider 必须单独指定
+#    ⚠️ 只设 MODEL 不设 PROVIDER → 该档静默继承会话模型（不报错）
 export LUNHENG_AUDIT_PROVIDER=minimax
 export LUNHENG_AUDIT_MODEL=MiniMax-M3
 dsh web
