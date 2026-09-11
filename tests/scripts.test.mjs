@@ -461,6 +461,81 @@ test('consistency-check ④b+⑲：占位符残留 / 版本硬编码 / 契约表
   rmSync(d, { recursive: true, force: true })
 })
 
+test('consistency-check ⑳+⑥b：M 门文档节头项数 / 编号跳号 / 文档↔脚本不一致都必须报（注入验证）', () => {
+  const mkRepo = () => {
+    const d = tmp()
+    const repo = join(d, 'repo')
+    mkdirSync(repo, { recursive: true })
+    cpSync(join(ROOT, 'skills'), join(repo, 'skills'), { recursive: true })
+    for (const f of ['package.json', 'CHANGELOG.md', 'cordis.patch.yml']) cpSync(join(ROOT, f), join(repo, f))
+    return { d, R: join(repo, 'skills', 'lunheng-article-pipeline') }
+  }
+  const GA = ['references', '_shared', 'M-Gate-Algorithm.md']
+
+  // ① 已知漂移形态：节头括注写 9 项，节内已 10 个 ### 子节，且括注带「，含 …」说明
+  //    ——这正是 ⑥b 首版正则（要求「项」紧跟右括号）静默漏检、⑳ 必须抓住的形态
+  {
+    const { d, R } = mkRepo()
+    const p = join(R, ...GA)
+    writeFileSync(p, readFileSync(p, 'utf8').replace('## M-Form 形式合规门（10 项，含', '## M-Form 形式合规门（9 项，含'))
+    const r = run([join(R, 'scripts', 'consistency-check.mjs')])
+    assert.equal(r.code, 1, '节头项数过期必须 exit 1')
+    assert.match(r.out, /M 门文档自洽/, '⑳ 必须按节内 ### 子节数抓出节头过期')
+    assert.match(r.out, /括注项数/, '⑥b 放宽后的中文括注规则也必须命中带说明的写法')
+    rmSync(d, { recursive: true, force: true })
+  }
+  // ② 编号跳号（把 M-Exist-3 改名成 M-Exist-5 → 1,2,5,4 非连续）
+  {
+    const { d, R } = mkRepo()
+    const p = join(R, ...GA)
+    writeFileSync(p, readFileSync(p, 'utf8').replace('### M-Exist-3:', '### M-Exist-5:'))
+    const r = run([join(R, 'scripts', 'consistency-check.mjs')])
+    assert.equal(r.code, 1, '编号跳号必须 exit 1')
+    assert.match(r.out, /M 门编号跳号/, '⑳ 必须抓出子节编号不连续')
+    rmSync(d, { recursive: true, force: true })
+  }
+  // ③ 文档与脚本加项不同步（文档删掉 M-Form-10 节体标题 → 文档 9 ≠ 脚本 10）
+  {
+    const { d, R } = mkRepo()
+    const p = join(R, ...GA)
+    writeFileSync(p, readFileSync(p, 'utf8').replace('### M-Form-10: 索引段完整性（v2.5.2-dsh.17 新增）', '### 索引段完整性（v2.5.2-dsh.17 新增）'))
+    const r = run([join(R, 'scripts', 'consistency-check.mjs')])
+    assert.equal(r.code, 1, '文档↔脚本不同步必须 exit 1')
+    assert.match(r.out, /M 门文档↔脚本不一致/, '⑳ 必须抓出「文档项数 ≠ 脚本 gate 标签数」')
+    rmSync(d, { recursive: true, force: true })
+  }
+  // ④ 节头漏写项数（口径无从派生）— M-Integrity 括注必须按「脚本 1 项 + 人工门 1 项 = 2 项」判，不得误报
+  {
+    const { d, R } = mkRepo()
+    const p = join(R, ...GA)
+    writeFileSync(p, readFileSync(p, 'utf8').replace('## M-Integrity 阶段闸门（2 项，含 v2.2.4 修订轮流程约束）', '## M-Integrity 阶段闸门'))
+    const r = run([join(R, 'scripts', 'consistency-check.mjs')])
+    assert.equal(r.code, 1, '节头缺项数必须 exit 1')
+    assert.match(r.out, /节头缺项数/, '⑳ 必须抓出节头未写「（N 项）」')
+    assert.doesNotMatch(r.out, /M-Integrity 括注项数/, 'M-Integrity 括注应期望 2 项（含主控人工门），不得误报')
+    rmSync(d, { recursive: true, force: true })
+  }
+})
+
+test('consistency-check ⑳：真源仓库自身必须自洽（M-Form 10 / M-Exist 4 / M-Integrity 2 == 节内子节数）', () => {
+  const SK = join(ROOT, 'skills', 'lunheng-article-pipeline')
+  const ga = readFileSync(join(SK, 'references', '_shared', 'M-Gate-Algorithm.md'), 'utf8')
+  const secs = {}
+  let cur = null
+  for (const l of ga.split('\n')) {
+    const h = l.match(/^## M-(Form|Exist|Integrity)\b/)
+    if (h) { cur = h[1]; secs[cur] = { declared: Number((l.match(/（(\d+)\s*项/) || [])[1]), subs: [] }; continue }
+    const s = l.match(/^### M-(?:Form|Exist|Integrity)-\d+:/)
+    if (s && cur) secs[cur].subs.push(s[0])
+  }
+  assert.equal(secs.Form.declared, 10, 'M-Form 节头应写 10 项')
+  assert.equal(secs.Form.subs.length, 10, 'M-Form 应有 10 个 ### 子节')
+  assert.equal(secs.Exist.declared, 4, 'M-Exist 节头应写 4 项')
+  assert.equal(secs.Exist.subs.length, 4, 'M-Exist 应有 4 个 ### 子节')
+  assert.equal(secs.Integrity.declared, 2, 'M-Integrity 节头应写 2 项')
+  assert.equal(secs.Integrity.subs.length, 2, 'M-Integrity 应有 2 个 ### 子节')
+})
+
 test('cordis.patch.yml：三档 agentOptions 表达式形态正确（未设=undefined，只给 model 亦生效，含一键退路）', () => {
   const patch = readFileSync(join(ROOT, 'cordis.patch.yml'), 'utf8')
   const exprs = [...patch.matchAll(/agentOptions:\s*!!js\s+"(.+?)"\s*$/gm)].map((m) => m[1])

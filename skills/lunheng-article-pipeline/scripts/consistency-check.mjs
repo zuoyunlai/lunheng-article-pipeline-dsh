@@ -1,6 +1,6 @@
 // 论衡插件一致性自检脚本（DSH）— 发布/commit 前运行
 // 用法：node scripts/consistency-check.mjs
-// 覆盖 20 类漂移（v2.5.2-dsh.17 起；.5 为 9 类，.13 加 ⑩-⑭，.15 加 ⑮-⑰，.16 加 ⑱，.17 加 ④b + ⑲）：
+// 覆盖 21 类漂移（v2.5.2-dsh.17 起；.5 为 9 类，.13 加 ⑩-⑭，.15 加 ⑮-⑰，.16 加 ⑱，.17 加 ④b + ⑲ + ⑳）：
 //   ① 跨文件版本一致性（package.json ↔ SKILL.md frontmatter ↔ 版本头行 ↔ 仓库级文档）
 //   ② 双头版本行 / M-Gate-Report 文件名漂移
 //   ③ 悬空引用（版本一致性检查旧名 / scripts/*.mjs 悬空 / 角色卡索引缺失）
@@ -21,6 +21,7 @@
 //   ⑱ 图件链路口径（图件路径唯一 + 宣称的图件机械门必须存在 + 图位独占一行规范）
 //   ④b 占位符残留（「命令已剥离·DSH 用 read 推理」零容忍）
 //   ⑲ 交接契约表（每个声明产出的产物须被产出者声明 + 被下游读清单/证据包引用；版本化报告不得写死 -v1.md）
+//   ⑳ M 门文档自洽（M-Gate-Algorithm.md 节头括注项数 == 节内 ### 子节数 == 脚本 gate 标签数；子节编号连续）
 // 退出码 0 = 通过；1 = 有漂移（列在 stderr）
 // (重写用法：node scripts/consistency-check.mjs [--fix]
 //   --fix：自动修复可逆的简单漂移（P2 级，如「（检查）」占位符替换）
@@ -74,8 +75,13 @@ function checkGateCounts(text, rel) {
   check(/M\s*门\s*(\d+)\s*项(?!机械化)/, 1, total, '总项数');
   check(/M-Form\s*(\d+)\s*项/, 1, form, ' M-Form 项数');
   // 中文括注写法（v2.5.2-dsh.17 加：如「M-Form 形式合规门（10 项）」——旧规则只认紧邻数字，漏检过 T7 速查表）
-  check(/M-Form[^\n（]{0,14}（(\d+)\s*项）/, 1, form, ' M-Form 括注项数');
-  check(/M-Exist[^\n（]{0,14}（(\d+)\s*项）/, 1, exist, ' M-Exist 括注项数');
+  //   dsh.17 二次收紧：首版正则要求「项」紧跟右括号，于是「（9 项，含 v2.2.1.2 + …）」这类**带说明的括注
+  //   依旧静默漏检**——实测漏掉了 M-Gate-Algorithm.md 的两个节头（M-Form 写 9 项、M-Exist 写 3 项，
+  //   而节内 ### 子节已是 10 / 4）。现允许「项」后接 [，、；] + ≤80 字说明，并补上 M-Integrity 括注。
+  const parenCount = (pre) => new RegExp(`${pre}[^\\n（]{0,18}（(\\d+)\\s*项(?:[，、；][^）\\n]{0,80})?）`);
+  check(parenCount('M-Form'), 1, form, ' M-Form 括注项数');
+  check(parenCount('M-Exist'), 1, exist, ' M-Exist 括注项数');
+  check(parenCount('M-Integrity'), 1, integ + 1, ' M-Integrity 括注项数');   // + M-Integrity-2（主控 T7.5 人工门，未脚本化）
   check(/M-Form\s*(\d+)\s*\/\s*M-Exist\s*(\d+)\s*\/\s*M-Integrity\s*(\d+)/, 1, form, ' 分工（Form）');
   check(/M-Form\s*(\d+)\s*\/\s*M-Exist\s*(\d+)\s*\/\s*M-Integrity\s*(\d+)/, 2, exist, ' 分工（Exist）');
   check(/M-Form\s*(\d+)\s*项\s*\+\s*M-Exist\s*(\d+)\s*项/, 1, form, ' 分项（Form）');
@@ -488,6 +494,58 @@ const CONTRACTS = [
   for (const prefix of ['批判报告', '审计报告', '复核报告', '反哺报告', '审稿报告', 'G14-检测报告']) {
     if (beSrc2.includes(`${prefix}-v1.md`)) {
       errors.push(`[P1 版本硬编码] build-evidence-bundle.mjs 把 ${prefix} 写死成 -v1.md——必须走「取最大版本」解析（修订轮 v2/v3 报告否则不进证据包）`);
+    }
+  }
+}
+
+// ⑳ M-Gate-Algorithm.md 自洽（v2.5.2-dsh.17 新增）
+//    教训：M-Form-10 / M-Exist-4 加进文档后，两个节头括注仍写「9 项」「3 项」——⑥b 当时只认
+//    「（N 项）」紧邻写法，于是「（N 项，含 …）」被静默放过；文档自身就是 M 门口径真源，
+//    它的自洽必须从**文档结构**派生（节头 ↔ 节内 ### 子节 ↔ 脚本 gate 标签），不能再靠文本模式扫。
+{
+  const gateRel = 'references/_shared/M-Gate-Algorithm.md';
+  const gatePath = join(ROOT, gateRel);
+  if (!existsSync(gatePath)) {
+    errors.push(`[P1 M 门文档缺失] ${gateRel} 不存在——M 门定义真源丢失`);
+  } else {
+    const lines = readFileSync(gatePath, 'utf8').split('\n');
+    const secs = new Map();   // kind → { headerLine, header, declared, subs: [{ id, line, n }] }
+    let cur = null;
+    lines.forEach((l, i) => {
+      const h = l.match(/^## M-(Form|Exist|Integrity)\b/);
+      if (h) {
+        cur = h[1];   // 短名 Form/Exist/Integrity（节头写作「## M-Form 形式合规门」）
+        secs.set(cur, { headerLine: i + 1, header: l, declared: null, subs: [] });
+        const d = l.match(/（(\d+)\s*项(?:[，、；][^）]*)?）/);
+        if (d) secs.get(cur).declared = Number(d[1]);
+        return;
+      }
+      const s = l.match(/^### (M-(?:Form|Exist|Integrity)-\d+):/);
+      if (s && cur && s[1].startsWith(`M-${cur}-`)) {
+        secs.get(cur).subs.push({ id: s[1], line: i + 1, n: Number(s[1].split('-')[2]) });
+      }
+    });
+    for (const kind of ['Form', 'Exist', 'Integrity']) {
+      const sec = secs.get(kind);
+      if (!sec) {
+        errors.push(`[P1 M 门文档缺节] ${gateRel} 缺少「## M-${kind}」节`);
+        continue;
+      }
+      const count = sec.subs.length;
+      if (sec.declared === null) {
+        errors.push(`[P1 M 门节头缺项数] ${gateRel}:${sec.headerLine} 「M-${kind}」节头未写「（N 项）」——项数口径无从派生`);
+      } else if (sec.declared !== count) {
+        errors.push(`[P1 M 门文档自洽] ${gateRel}:${sec.headerLine} 节头写 ${sec.declared} 项，节内 ### 子节实为 ${count} 项（${sec.subs.map((x) => x.id).join(' / ')}）`);
+      }
+      const nums = sec.subs.map((x) => x.n);
+      const expect = nums.map((_, i) => i + 1);
+      if (nums.length && JSON.stringify(nums) !== JSON.stringify(expect)) {
+        errors.push(`[P1 M 门编号跳号] ${gateRel} 「M-${kind}」子节编号 ${nums.join(',')} 非 1..${count} 连续（应为 ${expect.join(',')}）`);
+      }
+      const scriptN = { Form: GATE_DERIVED.form, Exist: GATE_DERIVED.exist, Integrity: GATE_DERIVED.integ + 1 }[kind];
+      if (count !== scriptN) {
+        errors.push(`[P1 M 门文档↔脚本不一致] ${gateRel} 「M-${kind}」定义 ${count} 项，脚本侧实为 ${scriptN} 项（M-Integrity 含主控人工门 M-Integrity-2，故 = 脚本标签数 + 1）——加项/删项必须两边同步`);
+      }
     }
   }
 }
