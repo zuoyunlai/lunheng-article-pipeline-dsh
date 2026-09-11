@@ -38,10 +38,14 @@ const steps = [
   // 字数口径：全流水线锁定「正文区纯汉字」（与任务简报-template 同口径）；
   // 旧版传 --full（全文）却被称为「字数权威值」→ 与目标区间比对会系统性偏大（v2.5.2-dsh.13 修复）
   { name: 'count-chars.mjs', cmd: 'node', args: [join(scriptDir, 'count-chars.mjs'), final], opt: true, parse: 'count-chars' },
-  // 一并落盘 M 门报告到真源路径（final/M-Gate-Report.json），供 build-evidence-bundle 的审计视图读取
-  { name: 'm-gate-check.mjs', cmd: 'node', args: [join(scriptDir, 'm-gate-check.mjs'), final, evDir, '--report', join(project, 'final', 'M-Gate-Report.json')], opt: false, parse: 'm-gate' },
+  // v17.0.0 顺序修复（端到端测试反哺）：**证据包刷新必须排在 M 门之前**。
+  //   旧顺序是 count-chars → m-gate-check → build-evidence-bundle，于是 M 门读到的证据包是**上一次**收集的副本
+  //   ——实测：文献卡在项目里已更新到 4 条，而证据包副本还是 2 条 → M-Form-10 报「头部 2 条 ≠ 正文 1 条」（误报）。
+  //   改为：count-chars → build-evidence-bundle（先刷新）→ m-gate-check（再校验）。
 ];
 if (!noSummary) steps.push({ name: 'build-evidence-bundle.mjs --summary', cmd: 'node', args: [join(scriptDir, 'build-evidence-bundle.mjs'), project, '--summary'], opt: true, parse: null });
+// 一并落盘 M 门报告到真源路径（final/M-Gate-Report.json），供 build-evidence-bundle 的审计视图读取
+steps.push({ name: 'm-gate-check.mjs', cmd: 'node', args: [join(scriptDir, 'm-gate-check.mjs'), final, evDir, '--report', join(project, 'final', 'M-Gate-Report.json')], opt: false, parse: 'm-gate' });
 
 if (!wantJson) {
   console.log(`# final-check: ${project}`);

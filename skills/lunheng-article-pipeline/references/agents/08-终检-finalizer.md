@@ -47,7 +47,7 @@ Phase 0 任务简报.md 的「Phase 1.5 补检索触发条件」字段，T8 终�
 - 字段为空：回退 LLM 副产物判断
 
 ### 2. final-check.mjs 用法（v2.5.2-dsh.8 推荐一键脚本）
-`node scripts/final-check.mjs <run/项目名>` 自动串联 3 脚本：count-chars.mjs + m-gate-check.mjs + build-evidence-bundle.mjs --summary。输出 audits/final-check-v0.json 含 exit + recommendation。**m-gate 非零退出即中止终检**。选项：
+`node scripts/final-check.mjs <run/项目名>` 自动串联 3 脚本（**v17.0.0 起顺序为：count-chars.mjs → build-evidence-bundle.mjs --summary（先刷新证据包）→ m-gate-check.mjs**——端到端测试实测：旧顺序下 M 门会读到**上一次**收集的陈旧证据包副本，误报 M-Form-10「头部声明 ≠ 正文条目」）+ count-chars.mjs + m-gate-check.mjs + build-evidence-bundle.mjs --summary。输出 audits/final-check-v0.json 含 exit + recommendation。**m-gate 非零退出即中止终检**。选项：
 - --no-summary：跳过第 3 步（已生成审计视图时复用）
 - --json：机器可读输出（final-check.json 已含 hanChars/mGate/recommendation）
 - --report <path>：覆盖默认报告路径

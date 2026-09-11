@@ -2,7 +2,9 @@
 //   v2.5.2-dsh:   M-Form-1/3/5/7 + M-Exist-2 纯正则/哈希判定
 //   v2.5.2-dsh.5: M 门全脚本化（T8 仅复核 M-Form-8 承重墙质量 + M-Integrity 跨文件判断）
 //   v2.5.2-dsh.16: 新增 M-Form-9 图件闭环（[图N] ↔ final/图件/ ↔ 图上数字）
-//   v2.5.2-dsh.17: 新增 M-Form-10 索引段完整性 / M-Form-11 素材按需加载闭环 /
+//   v17.0.0（端到端测试反哺）: 正文引用扫描前**剥离代码块/行内反引号**（论文里「被讨论的编号与占位符字面量」
+  //                  不再被当作真实引用）；M-Form-8 承重墙锚点收紧；M-Exist-8/9/10 三处窄口径放宽
+  //   v2.5.2-dsh.17: 新增 M-Form-10 索引段完整性 / M-Form-11 素材按需加载闭环 /
 //                  M-Exist-4 审计条目闭环 / M-Exist-5 阶段闸门记录表 /
 //                  M-Exist-6 审稿报告与期刊匹配 / M-Exist-7 交付说明字段齐备 /
 //                  M-Exist-8 批判报告覆盖（C1-C7）/ M-Exist-9 审计报告 G 项覆盖；
@@ -96,9 +98,20 @@ results.push({
 const body = firstEnd >= 0 ? text.slice(0, firstEnd) : text;
 const endnote = firstEnd >= 0 ? text.slice(firstEnd) : '';
 
+// === 代码 / 字面量剥离（v17.0.0 新增；端到端测试发现）===
+// 端到端测试（论衡M门自省项目）暴露一类假阳性：**正文里「被讨论的编号 / 占位符字面量」被当成真实引用**——
+//   例：技术稿引用「`[待补]` 这种占位符」、代码块里的 `??`（nullish 运算符）、说明「排除合法形态 `[C-主01]`」。
+//   围栏代码块（```…```）与行内反引号（`…`）里的内容属于**字面量引用**，不参与引用闭环 / 占位符 / 三角验证机检。
+// **不剥离**的项（有意保留）：M-Form-4 元数据泄露 —— 代码块里写 `scripts/`、`m-gate-check.mjs` 同样是泄露。
+const stripCodeSpans = (s) => String(s ?? '')
+  .replace(/```[\s\S]*?```/g, ' ')
+  .replace(/`[^`\n]*`/g, ' ');
+const bodyProse = stripCodeSpans(body);   // 引用闭环 / 三角验证 / 占位符用（不带字面量）
+const textProse = stripCodeSpans(text);   // 占位符残留用（全文，含文末）
+
 // === M-Form-1 引用标注完整性（v2.5.2-dsh.5 修订：阈值提升 L≥3）===
-const bodyRefs = body.match(refRe) || [];
-const L_count = refsOf(body, 'L').length;
+const bodyRefs = bodyProse.match(refRe) || [];
+const L_count = refsOf(bodyProse, 'L').length;
 const min_L = 3;
 let mform1Pass, mform1Detail, mform1Severity;
 if (bodyRefs.length === 0) {
@@ -138,9 +151,9 @@ const TEMP_MARKERS = [
   [/[？?]{2,}/g, '连续问号占位'],
 ];
 {
-  const tempCount = TEMP_MARKERS.reduce((a, [re]) => a + ((text.match(re) || []).length), 0);
+  const tempCount = TEMP_MARKERS.reduce((a, [re]) => a + ((textProse.match(re) || []).length), 0);
   const tempHits = TEMP_MARKERS
-    .map(([re, label]) => [label, (text.match(re) || []).length])
+    .map(([re, label]) => [label, (textProse.match(re) || []).length])
     .filter(([, n]) => n > 0)
     .map(([label, n]) => `${label}×${n}`);
   results.push({
@@ -269,9 +282,10 @@ try {
     const titleNorm = secTitle.replace(/^[0-9一二三四五六七八九十]+\s*[、.．:：\s]+/u, '').replace(/[：:].*$/u, '').trim();
     if (FRONT_BACK.some((t) => titleNorm === t || titleNorm.startsWith(t) || titleNorm.includes(t))) continue;
     mform8Findings.total++;
-    const hasL = /\[L\d+\]/.test(sec);
-    const hasD = /\[D\d+\]/.test(sec);
-    const hasC = /\[C\d+\]/.test(sec);
+    const secProse = stripCodeSpans(sec);          // 剥掉代码/反引号里的字面量编号
+    const hasL = /\[L\d+\]/.test(secProse);
+    const hasD = /\[D\d+\]/.test(secProse);
+    const hasC = /\[C\d+\]/.test(secProse);
     const cov = (hasL ? 1 : 0) + (hasD ? 1 : 0) + (hasC ? 1 : 0);
     if (!hasL) { mform8Findings.L_missing++; mform8Findings.details.push(`段缺[Lxx]: ${sec.split('\n')[0].slice(0, 30)}`); }
     if (cov < 2) mform8Findings.weak++;
@@ -288,19 +302,30 @@ try {
       .find((p) => existsSync(p));
     if (outlinePath8) {
       const ol = readFileSync(outlinePath8, 'utf8').split('\n');
-      const sIdx = ol.findIndex((l) => /承重墙/.test(l) || /承重证据\s*top\s*1/i.test(l));
+      // **锚点必须是「结构信号」**（v17.0.0 修复，端到端测试反哺）：
+      //   旧实现用 /承重墙/ 全行匹配 → 命中**散文里的「承重墙」三字**（例：禁做项列表写「不出现…承重墙…」）
+      //   → 该行非标题 → 走「猜后续 60 行」兜底 → 把论点-论据映射表也当承重墙清单 → 同一编号 ×3 → **误报超载**。
+      //   现只认：① 标题行（##/### … 承重墙…）；② 含「承重证据 top1」标记的行。
+      const wallAnchor = (l) => /^#{2,4}\s/.test(l) ? /承重墙|承重证据/.test(l) : /承重证据\s*top\s*1/i.test(l);
+      const sIdx = ol.findIndex(wallAnchor);
       if (sIdx !== -1) {
         wall8.checked = true;
         const head = /^(#{1,6})\s/.exec(ol[sIdx]);
-        let eIdx = Math.min(ol.length, sIdx + 61);
+        let eIdx = ol.length;
         if (head) {
           const re = new RegExp(`^#{1,${head[1].length}}\\s`);
           for (let i = sIdx + 1; i < ol.length; i++) { if (re.test(ol[i])) { eIdx = i; break; } }
-          if (eIdx === Math.min(ol.length, sIdx + 61)) eIdx = ol.length;   // 未找到同级标题 → 到文件末
+        } else {
+          // 行内式锚点（无标题）：只取紧随其后的**连续表格/列表行**，不猜固定行数
+          for (let i = sIdx + 1; i < ol.length; i++) {
+            if (!/^\s*[|*-]/.test(ol[i])) { eIdx = i; break; }
+          }
         }
         const block = ol.slice(sIdx, eIdx);
         // 只认「结构性行」：表格行 / 列表项 / 含论点标记的行（防把散文里的编号算成承重墙标注）
-        const structRows = block.filter((l) => /\[[LDC]\d+\]/.test(l) && (/^\s*[|*-]/.test(l) || /论点\s*[0-9一二三四五六七八九十]/.test(l)));
+        // 结构性行要求**同时**：① 行内有编号；② 行内带「论点N」标记（承重墙清单是「每论点一条 top1」的语义）
+        //   —— 只认「含论点标记」的行，防止把「论点-论据映射表」（一行可含多个编号）算成承重墙标注
+        const structRows = block.filter((l) => /\[[LDC]\d+\]/.test(l) && /论点\s*[0-9一二三四五六七八九十]/.test(l));
         wall8.rows = structRows.length;
         const freq = new Map();
         for (const l of structRows) for (const m of l.matchAll(/\[([LDC])(\d+)\]/g)) {
@@ -438,7 +463,7 @@ try {
 if (firstIdx === -1) {
   results.push({ gate: 'M-Exist-1 引用双向对比', pass: 'SKIP', detail: '文末缺失，M-Form-2 失败优先', severity: 'SKIP' });
 } else {
-  const intext = new Set((body.match(refRe) || []).map(norm));
+  const intext = new Set((bodyProse.match(refRe) || []).map(norm));
   const endRefs2 = new Set((endnote.match(refRe) || []).map(norm));
   const leaked = [...intext].filter((r) => !endRefs2.has(r));
   const orphan2 = [...endRefs2].filter((r) => !intext.has(r));
@@ -1071,7 +1096,17 @@ try {
       const secBody = rl8.slice(hi + 1, hj).join('\n').replace(/[\s|*`\-—–:：]/g, '');
       if (secBody.length < 40) thin8.push(c);
     }
-    const entries8 = [...rt8.matchAll(/\[(P[012])-(C\d+)-(\d+)\]/g)].map((m) => ({ id: m[0], cat: m[2] }));
+    // **只统计「条目定义行」（行首即编号）**：06 卡模板要求「批判总结」里再逐条列一次「关闭状态」，
+    //   若按全文出现次数判唯一性，会把**模板要求的重述**误判成「编号重复」（端到端测试反哺）。
+    // 定义行 = 行首即编号，且**不是「关闭状态」清单行**（关闭状态行形如 `- [P0-C1-1] ✓已关闭（…）`）。
+    // 06 卡模板要求「批判总结」里逐条列一次关闭状态 —— 那是**引用**，不该判成「同编号第二次定义」（端到端测试反哺）。
+    const entryLineRe = /^\s*(?:[-*]\s*)?\[(P[012])-(C\d+)-(\d+)\]/;
+    const closeStateRe = /已关闭|未关闭|待复核/;
+    const entries8 = rt8.split('\n')
+      .filter((l) => !closeStateRe.test(l))
+      .map((l) => entryLineRe.exec(l))
+      .filter(Boolean)
+      .map((m) => ({ id: `[${m[1]}-${m[2]}-${m[3]}]`, cat: m[2] }));
     const badCat8 = [...new Set(entries8.filter((e) => !CIDS.includes(e.cat)).map((e) => e.id))];
     const dup8 = (() => { const seen = new Set(), dup = new Set(); for (const e of entries8) { if (seen.has(e.id)) dup.add(e.id); seen.add(e.id); } return [...dup]; })();
     const ELEMS8 = [/论点定位/, /反方观点|攻击方式/, /论据|\[(?:L|D|C)\d+\]/, /攻击强度|严重度|强度/, /建议|处置/];
@@ -1129,10 +1164,12 @@ try {
     const at9 = readFileSync(latest9.path, 'utf8');
     const G_MAIN = ['G0', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9', 'G10', 'G11', 'G12', 'G13', 'G14'];
     const G_SUB9 = ['G0.5', 'G2.5', 'G4-2'];
-    const VERDICT9 = /通过|不通过|合规|违规|达标|未达标|PASS|FAIL|⚠|✅|❌|N\/A|部分|已核|未核|无问题|有问题/;
+    // 结论词（v17.0.0 补 ✓/✗：端到端测试发现审计报告惯用「**通过** ✓」与「✓（论据）」，旧表漏 ✓ 导致 G1 误判无结论）
+    const VERDICT9 = /通过|不通过|合规|违规|达标|未达标|PASS|FAIL|⚠|✅|❌|✓|✗|N\/A|部分|已核|未核|无问题|有问题/;
     const at9Lines = at9.split('\n');
     // 实据标记：素材编号 / 文件路径 / § / exit code / **带量词的数字**（裸数字不算——G 编号自带的数字已剥掉）
-    const EVID9 = /\[(?:L|D|C|先)\d+\]|\.md\b|\.json\b|\.svg\b|\/|§|exit\s*\d|\d+\s*(?:条|个|处|项|篇|例|%|倍|字|\/)/;
+    // 实据标记（v17.0.0 扩容：端到端测试发现「≤1 周」「8 条」类量词不在原表内 → 误判「无实据」）
+    const EVID9 = /\[(?:L|D|C|先)\d+\]|\.md\b|\.json\b|\.svg\b|\/|§|exit\s*\d|\d+\s*(?:条|个|处|项|篇|例|%|倍|字|周|月|年|天|次|段|行|份|名|位|张|轮|步|节|章|页|则|组|种|点|\/)/;
     const absent9 = [];
     const noVerdict9 = [];
     const noEvidence9 = [];
@@ -1143,11 +1180,18 @@ try {
       at9Lines.forEach((l, i) => { if (re9.test(l)) hitLines.push(i); });
       if (hitLines.length === 0) { absent9.push(id); continue; }
       // 结论词须在**同一行或紧接着的下一行**（覆盖「- **G7**：通过」「| G7 | 通过 |」「### G7 \n 结论：通过」三种写法）
-      const okIdx = hitLines.find((i) => VERDICT9.test(at9Lines[i]) || (i + 1 < at9Lines.length && VERDICT9.test(at9Lines[i + 1])));
-      if (okIdx === undefined) { noVerdict9.push(id); continue; }
-      // 该结论附近还要有实据（剥掉 G 编号本身再判，防编号里的数字误当证据）
-      const near = [at9Lines[okIdx], at9Lines[okIdx + 1] || ''].join('\n').replace(new RegExp(esc9, 'g'), '');
-      if (!EVID9.test(near)) noEvidence9.push(id);
+      // 结论词 / 实据各自判定（v17.0.0 修复，端到端测试反哺）：
+      //   报告里 G0 会出现两次 —— ① 节标题 `## G0 覆盖度`（行 5）；② 条目行 `- **G0**：… **通过** ✓。`（行 7）。
+      //   旧实现「取第一个命中行 + 三行窗口」→ 窗口落在标题上 → 结论在窗口内成立，但**实据在标题行上必然为空**
+      //   → 14 项被误报「结论无实据」。现改为：**逐命中行各取三行窗口，结论与实据分别在任一窗口中成立即可**。
+      let verdictOk = false, evidOk = false;
+      for (const i of hitLines) {
+        const win = at9Lines.slice(i, i + 3).join('\n').replace(new RegExp(esc9, 'g'), '');
+        if (VERDICT9.test(win)) verdictOk = true;
+        if (EVID9.test(win)) evidOk = true;
+      }
+      if (!verdictOk) noVerdict9.push(id);
+      else if (!evidOk) noEvidence9.push(id);
     }
     const absentSub9 = G_SUB9.filter((id) => {
       const esc9 = id.replace(/[.-]/g, (c) => `\\${c}`);
@@ -1221,7 +1265,8 @@ try {
       // 映射表要有真表格（表头含论点 + 至少一行含素材编号）
       const hasTable10 = /\|[^\n]*论点[^\n]*\|/.test(segText10) && /\[(?:L|D|C)\d+\]/.test(segText10);
       // 字数预算要有数字
-      const budgetNumeric = /字数[^\n]{0,30}\d/.test(segText10);
+      // 允许「### 字数预算」标题换行后才是数字（端到端测试发现：原正则要求同行，标题式写法被误判「未见数字」）
+      const budgetNumeric = /字数[\s\S]{0,40}?\d/.test(segText10);
       const findings10 = [];
       const soft10 = [];
       if (rows10 < 5) findings10.push(`精简段仅 ${rows10} 行实质内容（须 ≈60 行且含六要素）`);
@@ -1265,7 +1310,7 @@ let litCard = '', caseCard = '';
 try { litCard = readFileSync(join(evDir, '文献卡.md'), 'utf8'); } catch {}
 try { caseCard = readFileSync(join(evDir, '案例卡.md'), 'utf8'); } catch {}
 if (dataCard) {
-  const intextD = new Set((body.match(/\[D\d+\]/g) || []).map((s) => s.match(/\d+/)[0]));
+  const intextD = new Set((bodyProse.match(/\[D\d+\]/g) || []).map((s) => s.match(/\d+/)[0]));
   const cardD = new Set((dataCard.match(/\[D\d+\](?=[^\d])/g) || []).map((s) => s.match(/\d+/)[0]));
   const missing = [...intextD].filter((d) => !cardD.has(d));
   const mExist3Sev = missing.length > 5 ? 'P0' : (missing.length > 2 ? 'P1' : (missing.length > 0 ? 'P2' : '通过'));

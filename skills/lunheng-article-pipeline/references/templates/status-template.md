@@ -126,7 +126,7 @@ Phase 5 终检前，主控 T8 状态行写完「Done」前，**必须**先跑：
 
 `node scripts/final-check.mjs <run/项目名> [--no-summary] [--json] [--report <path>]`
 
-- 默认串联 3 脚本：count-chars.mjs（字数）+ m-gate-check.mjs（M 门 23 项）+ build-evidence-bundle.mjs --summary（证据包 + 审计视图）
+- 默认串联 3 脚本（v17.0.0 顺序）：count-chars.mjs（字数）→ build-evidence-bundle.mjs --summary（**先刷新证据包**，防 M 门读陈旧副本）→ m-gate-check.mjs（M 门 23 项）
 - 同时产出 audits/final-check-v0.json，含 summary.hanChars + summary.mGate + summary.recommendation
 - m-gate-check 非零退出（即有 P0 残留）**中止终检**，打回 T5/T7
 - --no-summary：跳过第 3 步（已生成过审计视图时复用）
