@@ -1,7 +1,7 @@
 // 论衡 M 门机械化预检脚本（v2.5.2-dsh 补丁 + v2.5.2-dsh.5 重大增强 + v2.5.2-dsh.16 加图件闭环）
 //   v2.5.2-dsh:   M-Form-1/3/5/7 + M-Exist-2 纯正则/哈希判定
 //   v2.5.2-dsh.5: M 门全脚本化（T8 仅复核 M-Form-8 承重墙质量 + M-Integrity 跨文件判断）
-//   v2.5.2-dsh.16: 新增 M-Form-9 图件闭环（[图N] ↔ final/图件/ ↔ 图上数字）→ M 门 14 项（脚本 13 项 + M-Integrity-2 主控）
+//   v2.5.2-dsh.16: 新增 M-Form-9 图件闭环（[图N] ↔ final/图件/ ↔ 图上数字）→ M 门 15 项（脚本 13 项 + M-Integrity-2 主控）
 // 用法: node m-gate-check.mjs <final/定稿.md> <final/证据包目录> [--summary] [--fig-dir <图件目录>] [--report <path>]
 //   --summary：仅输出聚合统计（total/pass/p0/p1/p2/soft/skips）+ 硬失败项；省略通过项 details[]（省 ~80% 输出字节，机器可读友好）
 //   --fig-dir：图件目录（缺省自动推 <定稿目录>/图件）
@@ -256,7 +256,7 @@ try {
 
 // === M-Form-9 图件闭环（v2.5.2-dsh.16 新增）：[图N] 图位 ↔ final/图件/ ↔ 图上数字 三方对账 ===
 // 背景（第三方 SVG 链路审计）：T5 卡宣称「T7 跑 M-Gate 算法检查 [图N] 出现次数 ≥ 拍板图位数量 → P0 拦截」，
-// 但 M 门 14 项里**没有任何图项**、T7 速查表 0 处提及「图」、证据包不收图件 → 该条文无落地路径。
+// 但 M 门 15 项里**没有任何图项**、T7 速查表 0 处提及「图」、证据包不收图件 → 该条文无落地路径。
 // 本项即该条文的机械落地：缺图/图位不足 → 硬失败；孤儿图件/数字对不上 → 软提示（数字对账为启发式）。
 // 未启用配图（无图位且无图件目录）→ 记 N/A 且 pass=true（不得因「没配图」把 M 门判失败——配图默认关闭）。
 try {
@@ -351,6 +351,73 @@ if (firstIdx === -1) {
     detail: `漏引 ${leaked.length} / 孤儿 ${orphan2.length}`,
     severity: (leaked.length === 0 && orphan2.length === 0) ? '通过' : mExist1Sev,
   });
+}
+
+// === M-Form-10 索引段完整性（v2.5.2-dsh.17 新增）===
+// 依据：三张卡模板都写着「索引段编号必须与正文条目一一对应（**一致性自检可加**『索引编号 = 实际编号』校验）」，
+//   而下游 T4/T5 的 token 优化恰恰依赖「先读索引段、按编号定位」——**索引缺条 = 静默漏卡**，
+//   最终以「漏引 / 孤儿」（M-Form-3 / M-Exist-1）的形式在审计阶段才爆出来，返工代价最高。
+// 本项即是模板自己邀请的那条校验：索引段 ↔ 正文条目 ↔ 头部声明条数 三者对账。
+try {
+  const projectDir = dirname(dirname(draftPath));   // <项目>/final/定稿.md → <项目>
+  const CARDS = [
+    ['文献卡.md', 'literature/文献卡.md'],
+    ['数据卡.md', 'data/数据卡.md'],
+    ['案例卡.md', 'cases/案例卡.md'],
+  ];
+  const findings = [];
+  const softFindings = [];
+  const notes = [];       // 仅备注，**不影响通过/严重度**（如 0 条场景导致的卡片缺失，是合法的）
+  let checked = 0;
+  for (const [name, rel] of CARDS) {
+    let p = join(evDir, name);
+    if (!existsSync(p)) {
+      const alt = join(projectDir, rel);
+      p = existsSync(alt) ? alt : null;
+    }
+    if (!p) { notes.push(`${name} 未找到（0 条场景或尚未进入检索阶段）`); continue; }
+    checked++;
+    const lines = readFileSync(p, 'utf8').split('\n');
+    const s = lines.findIndex((l) => /^##\s*📇\s*索引段/.test(l));
+    if (s === -1) { findings.push(`${name}: 缺「## 📇 索引段」标题`); continue; }
+    let e = lines.findIndex((l, i) => i > s && /^##\s/.test(l));
+    if (e === -1) e = lines.length;
+    const indexBlock = lines.slice(s + 1, e).join('\n');
+    const idxIds = new Set([...indexBlock.matchAll(/\[([LDC])(\d+)\]/g)].map((m) => m[1] + m[2]));
+    const bodyIds = new Set();
+    for (const l of lines) { const m = l.match(/^#{2,4}\s*\[([LDC])(\d+)\]/); if (m) bodyIds.add(m[1] + m[2]); }
+    const missing = [...bodyIds].filter((x) => !idxIds.has(x));       // 索引缺条 → 下游漏卡（硬）
+    const extra = [...idxIds].filter((x) => !bodyIds.has(x));         // 索引悬空（软）
+    const thin = indexBlock.split('\n').filter((l) => {
+      if (!/\[([LDC])\d+\]/.test(l)) return false;
+      return l.replace(/\[([LDC])\d+\]/, '').replace(/[｜|\s\-—–:：·]/g, '').length < 6;  // 编号后信息量不足
+    });
+    if (missing.length) findings.push(`${name}: 索引段缺 ${missing.length} 条（${missing.slice(0, 5).join(',')}）→ 下游按索引定位会漏卡`);
+    if (extra.length) softFindings.push(`${name}: 索引段有 ${extra.length} 个编号在正文无对应条目（${extra.slice(0, 5).join(',')}）`);
+    if (thin.length) softFindings.push(`${name}: ${thin.length} 行索引信息量不足（需 编号 + 主题 + 支撑论点）`);
+    const headN = readFileSync(p, 'utf8').match(/(?:总条数|合计)[^\d]{0,10}(\d+)\s*条/);
+    if (headN && bodyIds.size && Number(headN[1]) !== bodyIds.size) {
+      findings.push(`${name}: 头部声明 ${headN[1]} 条 ≠ 正文条目 ${bodyIds.size} 条（best-effort 解析头部声明）`);
+    }
+  }
+  if (checked === 0) {
+    results.push({ gate: 'M-Form-10 索引段完整性', pass: true, detail: `N/A：三张卡均未找到（${notes[0] || '尚未进入检索阶段'}）`, severity: '通过' });
+  } else {
+    const hard = findings.length > 0;
+    results.push({
+      gate: 'M-Form-10 索引段完整性',
+      pass: !hard && softFindings.length === 0,
+      detail: [
+        `已查 ${checked} 张卡`,
+        hard ? `硬问题：${findings.slice(0, 3).join('；')}` : '索引与正文编号一一对应',
+        softFindings.length ? `软提示：${softFindings.slice(0, 2).join('；')}` : '',
+        notes.length ? `备注：${notes.join('；')}` : '',
+      ].filter(Boolean).join(' ｜ '),
+      severity: hard ? (findings.length > 2 ? 'P0' : 'P1') : (softFindings.length ? 'P2' : '通过'),
+    });
+  }
+} catch (e) {
+  results.push({ gate: 'M-Form-10 索引段完整性', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
 }
 
 // === M-Exist-2 证据包完整性 ===

@@ -202,7 +202,7 @@ for (const f of files) {
     }
     // ⑥ 已知口径残留（v2.5.2-dsh.3 审计新增：防已修问题复发）
     if (/M-Form 形式合规门（6 项）/.test(text) || /M-Form 形式合规门（v2\.2\.0 5 项/.test(text)) {
-      errors.push(`[P1 口径残留 M-Form 6 项（应为 8 项）] ${rel}`);
+      errors.push(`[P1 口径残留 M-Form 6 项（现为 10 项）] ${rel}`);
     }
     if (/G0-G14 十四项/.test(text)) {
       errors.push(`[P1 口径残留 G 清单「十四项」（应为 15 项）] ${rel}`);
@@ -386,7 +386,7 @@ for (const f of active) {
 // ⑱ 图件链路口径（v2.5.2-dsh.16 新增，第三方 SVG 链路审计）：
 //   ① 图件路径只有**一个**口径：`final/图件/图N_标题.svg`（旧版 08 卡写 `final/图件/图N_标题.svg`，两套口径并存）；
 //   ② 文档宣称的「图件机械门」必须真实存在——T5 卡宣称「T7 跑 M-Gate 检查 [图N] 数量 ≥ 拍板数 → P0 拦截」，
-//      而当时的 M 门 14 项**没有任何图项**（现由 M-Form-9 落地）：宣称与实现必须一起改；
+//      而当时的 M 门 15 项**没有任何图项**（现由 M-Form-9 落地）：宣称与实现必须一起改；
 //   ③ 图位规范必须写明「独占一行」（md2html 的块级图注/分页依赖它；行内仅在 dsh.16 起被容错识别）。
 {
   const mGateSrc = gateSrc;

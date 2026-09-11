@@ -23,7 +23,7 @@
 | **修订回环**（≤2轮，v2.3.0 改 T5.2→T7.2） | ⬜ Inbox | | | | 含修订说明 |
 | T9 审稿（**v2.4.0 新增，v2.5.2-dsh.8 语义定案：可选但默认选中，学术论文必选**） | ⬜ Inbox | | | | Phase 4.5 终稿前触发（与 G14 并行）；非学术文章主人 Phase 0 可取消；输出 audits/审稿报告-vN.md |
 | **T7.5 完整性门**（v2.2.1 新增，教训 #77） | ⬜ Inbox | | | | 主控 checkpoint：审计报告最新版 + P0/P1 清单 + M 门全 exit 0 + 论文交付物 vs 操作员报告隔离 → 通过才派 T8（v2.3.3 删主人签字，教训 #138） |
-| T8 终检交付（**独立角色，v2.5.2-dsh.8 语义定案：由主控 T0 亲执行，不 spawn 子代理**） | ⬜ Inbox | | | | 含证据包（build-evidence-bundle.mjs 自动生成）+ M 门 14 项 + 终检必查项 15 项 + AI 使用声明 |
+| T8 终检交付（**独立角色，v2.5.2-dsh.8 语义定案：由主控 T0 亲执行，不 spawn 子代理**） | ⬜ Inbox | | | | 含证据包（build-evidence-bundle.mjs 自动生成）+ M 门 15 项 + 终检必查项 15 项 + AI 使用声明 |
 
 ---
 
@@ -126,7 +126,7 @@ Phase 5 终检前，主控 T8 状态行写完「Done」前，**必须**先跑：
 
 `node scripts/final-check.mjs <run/项目名> [--no-summary] [--json] [--report <path>]`
 
-- 默认串联 3 脚本：count-chars.mjs（字数）+ m-gate-check.mjs（M 门 14 项）+ build-evidence-bundle.mjs --summary（证据包 + 审计视图）
+- 默认串联 3 脚本：count-chars.mjs（字数）+ m-gate-check.mjs（M 门 15 项）+ build-evidence-bundle.mjs --summary（证据包 + 审计视图）
 - 同时产出 audits/final-check-v0.json，含 summary.hanChars + summary.mGate + summary.recommendation
 - m-gate-check 非零退出（即有 P0 残留）**中止终检**，打回 T5/T7
 - --no-summary：跳过第 3 步（已生成过审计视图时复用）

@@ -322,7 +322,7 @@ test('m-gate-check M-Form-9：未启用配图记 N/A 不算失败（配图默认
   assert.ok(item, '应存在 M-Form-9 项')
   assert.equal(item.pass, true, '无图位无图件 → N/A pass')
   assert.match(item.detail, /N\/A/)
-  assert.equal(j.total, 13, '脚本机械项应为 13 项（含 M-Form-9）')
+  assert.equal(j.total, 14, '脚本机械项应为 14 项（含 M-Form-9/10）')
   rmSync(d, { recursive: true, force: true })
 })
 
@@ -387,7 +387,7 @@ test('consistency-check ⑱：图件路径口径与「宣称的图件门」必�
   writeFileSync(t8, readFileSync(t8, 'utf8') + '\n> 图件落在 `final/图N-标题.svg`。\n')
   // ② M 门计数漂移（把 14 项写回 13 项）
   const gl = join(R, 'references', 'glossary.md')
-  writeFileSync(gl, readFileSync(gl, 'utf8').replace('M 门 14 项复核', 'M 门 13 项复核'))
+  writeFileSync(gl, readFileSync(gl, 'utf8').replace('M 门 15 项复核', 'M 门 13 项复核'))
   const r = run([join(R, 'scripts', 'consistency-check.mjs')])
   assert.equal(r.code, 1, '注入漂移后必须 exit 1')
   assert.match(r.out, /图件路径口径漂移/, '⑱ 必须捕获旧图件路径')
@@ -542,6 +542,46 @@ test('model-routing.mjs：按本机 settings.yaml 给档位建议，且跨 provi
   assert.equal(t2.retrieval.pickLocal, false, '--prefer-remote 时检索档不得选本地')
   assert.equal(t2.retrieval.crossProvider, false, '同 provider 匹配 → 不输出 _PROVIDER')
   assert.equal(t2.audit.pick, 'X-Pro-3', '审计档不受 --prefer-remote 影响')
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('m-gate-check M-Form-10：索引段缺条必须报（下游按索引定位会漏卡），索引齐则通过', () => {
+  const d = tmp()
+  const proj = join(d, 'run', 'proj')
+  const fin = join(proj, 'final')
+  const ev = join(fin, '证据包')
+  mkdirSync(ev, { recursive: true })
+  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
+  const lit = join(ev, '文献卡.md')
+  // 正文 2 条、索引只有 1 条 → 索引缺 L02
+  writeFileSync(lit, '# 文献卡\n\n## 📇 索引段\n\n[L01] Coleman 1988 ｜ 社会资本 ｜ 论点1\n\n## 正文分组\n\n### [L01] Coleman\n信任级别：已发布\n\n### [L02] Putnam\n信任级别：已发布\n')
+  writeFileSync(join(ev, '数据卡.md'), '# 数据卡\n\n## 📇 索引段\n\n[D01] 数值 86 万 ｜ 来源 ｜ 论点1\n\n## 正文\n\n### [D01] 某公报\n信任级别：已发布\n')
+  const gate = () => {
+    const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])
+    return parseJson(r).results.find((x) => x.gate.startsWith('M-Form-10'))
+  }
+  let item = gate()
+  assert.equal(item.pass, false, '索引缺条必须失败')
+  assert.equal(item.severity, 'P1', item.detail)
+  assert.match(item.detail, /索引段缺 1 条/, '必须指名缺哪条：' + item.detail)
+  assert.match(item.detail, /L02/)
+  // 补齐索引 → 通过（案例卡缺失只记备注，不判失败——0 条场景合法）
+  writeFileSync(lit, readFileSync(lit, 'utf8').replace('[L01] Coleman 1988 ｜ 社会资本 ｜ 论点1', '[L01] Coleman 1988 ｜ 社会资本 ｜ 论点1\n[L02] Putnam 1995 ｜ 公民参与 ｜ 论点1'))
+  item = gate()
+  assert.equal(item.pass, true, '索引补齐后应通过：' + item.detail)
+  assert.match(item.detail, /未找到/, '缺卡只作备注')
+  // 索引悬空 + 头部声明不符 → 硬/软问题
+  writeFileSync(lit, readFileSync(lit, 'utf8').replace('# 文献卡', '# 文献卡\n\n> 合计 5 条').replace('[L02] Putnam 1995 ｜ 公民参与 ｜ 论点1', '[L99] 悬空'))
+  item = gate()
+  assert.equal(item.pass, false, '头部声明与悬空必须报')
+  assert.match(item.detail, /头部声明 5 条 ≠ 正文条目 2 条/)
+  assert.match(item.detail, /L99/)
+  // 三张卡都没有 → N/A
+  rmSync(lit, { force: true })
+  rmSync(join(ev, '数据卡.md'), { force: true })
+  item = gate()
+  assert.equal(item.pass, true, '无卡应记 N/A 而非失败')
+  assert.match(item.detail, /N\/A/)
   rmSync(d, { recursive: true, force: true })
 })
 

@@ -18,7 +18,7 @@
 - **职责**：流程编排 + 任务派发 + 质量把关 + 人机交互 + **以 T8 身份亲完成终检**（v2.5.2-dsh.8：主控 = T0 + T8 双重身份；T8 仍是独立角色，只是执行者由主控担任，不 spawn 子代理）
 - **不做**：不替代其他 8 个子代理角色执行具体工作（T1-T7/T9 必须 spawn 独立子代理，唯一例外 T8 由主控亲执行）
 - **关键协议**：Phase 0 同意关卡 / spawn-yield 模式 / 完成验证铁律
-- **T8 终检职责**：M 门 14 项复核 + 证据包自动生成 + AI 使用声明 + 交付物完整性 + 引用闭环 → `final/定稿.md` + `final/证据包/` + `final/交付说明.md`（详见 [`agents/08-终检-finalizer.md`](agents/08-终检-finalizer.md)）
+- **T8 终检职责**：M 门 15 项复核 + 证据包自动生成 + AI 使用声明 + 交付物完整性 + 引用闭环 → `final/定稿.md` + `final/证据包/` + `final/交付说明.md`（详见 [`agents/08-终检-finalizer.md`](agents/08-终检-finalizer.md)）
 
 ### T1 - 文献侦查（Literature Scout）
 - **职责**：已发布学术文献 / 政策文件 / 统计年鉴检索
@@ -78,7 +78,7 @@
 
 > ✅ **v2.5.2-dsh.8 语义修正（主人指令，取代下方旧澄清）**：T8 终检是**独立角色**（有独立角色卡 [`agents/08-终检-finalizer.md`](agents/08-终检-finalizer.md)），**不可由 T5/T6/T7 兼任替代**；执行者由主控担任（主控 = T0 + T8 双重身份），T8 **不 spawn 子代理**——「角色独立」与「执行者 = 主控」不矛盾：独立性指职责边界不可替代，执行者指由谁完成。
 
-- **职责**：M 门 14 项复核 + 终检必查 15 项 + 证据包自动生成 + 交付物完整性 + AI 使用声明填实
+- **职责**：M 门 15 项复核 + 终检必查 15 项 + 证据包自动生成 + 交付物完整性 + AI 使用声明填实
 - **输出**：`final/定稿.md` + `final/证据包/` + `final/交付说明.md` + `final/M-Gate-Report.json`
 - **不 spawn 子代理**：由主控以 T8 身份亲自完成
 - **铁律**：只做终检不改论点——发现论点缺陷打回 T5 修订（≤2 轮），不自行补
@@ -92,9 +92,9 @@
 - **算法**：Python 伪代码 + Bash 验证命令
 - **执行模型**（v2.2.12 澄清，v2.5.2-dsh.4 审计修订）：
   - ✅ **主控 LLM 推理判定**：主控用 `read` 读取算法文档，按伪代码**推理**判定
-  - ✅ **白名单脚本机械判定**：M-Form 1-9 + M-Exist 1-3 + M-Integrity-1 走 `scripts/m-gate-check.mjs`（零 LLM，可复现 exit code）
+  - ✅ **白名单脚本机械判定**：M-Form 1-10 + M-Exist 1-3 + M-Integrity-1（共 14 项）走 `scripts/m-gate-check.mjs`（零 LLM，可复现 exit code）
   - ❌ **不执行任意 shell**：算法中的 `grep`/`diff`/`sha256sum`/`wc` 等命令示例仅供人类手动复核，agent 优先用白名单脚本/read 推理
-- **覆盖范围**：13 项检查（M-Form 9 项 + M-Exist 3 项 + M-Integrity 2 项）
+- **覆盖范围**：13 项检查（M-Form 10 项 + M-Exist 3 项 + M-Integrity 2 项）
 - **单一真源**：`references/_shared/M-Gate-Algorithm.md`
 
 ### F 模式（失败模式清单）
@@ -287,7 +287,7 @@
 - **Tavily / 记忆工具**：tavily_* / memory_*（无内置 → web_search / web_fetch / 本地文件记忆（`memory/*.md`、`references/memory/lessons.md`））
 
 ### ℹ️ 关键澄清
-- **M 门算法**：主控 LLM 通过 `read` 读取算法文档，按伪代码**推理判定**；机械判定项（M-Form-1/3/5/7 + M-Exist-2）走 `scripts/m-gate-check.mjs`
+- **M 门算法**：主控 LLM 通过 `read` 读取算法文档，按伪代码**推理判定**；机械判定项（M-Form 1-10 + M-Exist 1-3 + M-Integrity-1）走 `scripts/m-gate-check.mjs`
 - **shell 使用（v2.5.2-dsh.4 审计修订）**：论衡**不是零 exec**——主控按需执行随包 **9 个** `scripts/*.mjs` + 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等）；算法文档中的 `grep`/`diff`/`sha256sum`/`wc` 等示例命令是给人类主人手动复核的参考，agent 优先用白名单脚本与 read 工具（版本基线发布版中的「（检查）」占位符同样按此处理）
 - **主流程**：LLM 推理 + 文件读写 + Web 检索 + 白名单脚本；除白名单外默认不执行任意 shell 命令（经主人同意除外）
 
