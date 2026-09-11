@@ -22,6 +22,7 @@
    ```
 5. 提交并推送分支；
 6. **发布 = 只推 tag**：`git tag vX.Y.Z-dsh.N && git push origin vX.Y.Z-dsh.N`
+   - **发布前多跑一步打包产物验证**：`npm pack` 后解包，确认新增脚本/库随包且能从解包副本运行（教训：`_lib/` 重构后必须确认相对 `import` 未因 `files` 白名单而丢失）
    - ⚠️ **一次只能推 1 个 tag**：GitHub 对「单次 push 超过 3 个 tag」**不触发任何 workflow**（实测：一次推 4 个 tag → 0 个运行）；
    - ⚠️ **禁止本地 `npm publish`**（会绕过 CI 三道门与 OIDC provenance，且 npm 版本不可覆盖）；
    - tag 触发的 `publish.yml` 会依次跑门 1/2/3 + 回归测试 → tag/版本一致校验 → **幂等守卫**（该版本已发布则跳过）→ OIDC `npm publish --provenance --tag dsh` → **发布后审计**（`npm view <pkg>@<ver> gitHead` 必须等于本次提交）。

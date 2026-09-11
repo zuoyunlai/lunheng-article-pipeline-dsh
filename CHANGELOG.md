@@ -2,6 +2,14 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护，版本号以 -dsh.N 标记第 N 次迭代。
 
+## 未发布（下次版本 bump 时定名）
+
+- **发布运维（v2.5.2-dsh.13 发布实测反哺）**：
+  1. **`2.5.2-dsh.13` 已发布**（2026-09-11T01:18Z）：`_npmUser = GitHub Actions` + `trustedPublisher`（**OIDC 信任发布自 dsh.7 以来首次恢复**）、**含 provenance attestations**、`gitHead = 82e38c9`（与 tag 提交一致）、`dist-tags.dsh → 2.5.2-dsh.13` ✓。`latest` 仍指 `2.5.2-dsh.12`（OIDC 令牌无权改 dist-tag，需维护者 granular token 或手工 `npm dist-tag add lunheng-article-pipeline@2.5.2-dsh.13 latest`）。
+  2. **修正 publish.yml 的 dist-tag 步骤（实测暴露）**：旧写法在无 `NPM_TOKEN` 时仍执行 `npm dist-tag add` → 无鉴权 exit 1 → 整步失败，并因 GitHub 默认 `success()` 语义**连带跳过发布后审计**。现改为「只读打印 + 有 token 才写」，且审计步骤加 `always()` 与 `steps.publish.outcome == 'success'` 条件——缺 token 只出 warning，不再把运行弄红。
+  3. 发布前新增**打包产物验证**：解包 `npm pack` 产物后确认 `scripts/_lib/` 四个模块随包、且 7 个脚本从解包副本可运行（防「相对 import 未随包」这类打包缺陷；本次为 `_lib` 重构后的必检项）。
+- **待办**：`latest` dist-tag 同步（需 token）；`README.en.md`；冒烟矩阵扩到 macOS；`gitleaks` 接 CI。
+
 ## 2.5.2-dsh.13（2026-09-11）— 第三方深度审计全量修订
 
 - **仓库级打包面检查接入 CI + engines 对齐 DSH 运行时下限**：

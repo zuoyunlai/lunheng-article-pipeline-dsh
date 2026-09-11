@@ -71,30 +71,35 @@ jobs:
       # OIDC 信任发布：无需 NPM_TOKEN，--provenance 附来源证明；
       # 预发布版（-dsh.N）显式打 dsh tag（仅 tag 触发且未发布时执行）
       - name: 发布到 npm
+        id: publish
         if: startsWith(github.ref, 'refs/tags/') && steps.guard.outputs.skip == 'false'
         run: npm publish --access public --provenance --tag dsh
 
-      # 确保 dist-tag 指向本次版本。OIDC 令牌无权改 dist-tag，故仅当配了 granular token 时执行。
-      # 注意：v2.5.2-dsh.13 起把令牌存在性提升到**步骤级 env 之外的 workflow env**，
-      # 因为 GitHub 的 secrets 上下文在步骤级 `if:` 中求值不可靠（旧写法会静默跳过整步）。
-      - name: 确认 dist-tag（dsh 必打；latest 需 token）
+      # dist-tag 核对与补打。要点（v2.5.2-dsh.13 实测修正）：
+      #   ① OIDC 发布已由 `npm publish --tag dsh` 自动把 dsh 指向本次版本 —— **不需要**再 add 一次；
+      #   ② 无 token 时 `npm dist-tag add` 会因无鉴权而 exit 1，把整步（并连带跳过发布后审计）弄红 ——
+      #      故本步改为「先只读打印，有 token 才写」，永不因缺 token 而失败。
+      - name: 核对 dist-tag（只读；有 token 才补打 latest）
         if: steps.guard.outputs.skip == 'false'
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           VER="$(node -p "require('./package.json').version")"
-          npm dist-tag add "$PKG@$VER" dsh
+          echo '--- 发布后 dist-tags ---'
+          npm view "$PKG" dist-tags --json
           if [ -n "${NPM_TOKEN}" ]; then
+            npm dist-tag add "$PKG@$VER" dsh
             npm dist-tag add "$PKG@$VER" latest
+            echo "已同步 dsh + latest → $VER"
           else
-            echo "::warning::未配置 NPM_TOKEN —— latest 未跟随。OIDC 发布不接受非 tag 动作；如需 latest 同步，请用 granular token 或手工 npm dist-tag add $PKG@$VER latest"
+            echo "::warning::未配置 NPM_TOKEN —— 仅 dsh 指向本次版本（由 npm publish --tag dsh 自动完成）；latest 仍指旧版。安装请用 $PKG@dsh，或由维护者手工执行：npm dist-tag add $PKG@$VER latest"
           fi
-          echo '--- dist-tags 现状 ---'
-          npm dist-tag ls "$PKG"
+          npm view "$PKG" dist-tags --json
 
       # 发布后审计（v2.5.2-dsh.13 新增）：核对 npm 上该版本的 gitHead 与本次提交一致、dist-tag 指向本版本
+      # `always()` 确保即使中间某步失败（如缺 token 的告警步）也仍执行审计——但只在**发布本身成功**时才有意义
       - name: 发布后审计（gitHead / dist-tags 断言）
-        if: startsWith(github.ref, 'refs/tags/') && steps.guard.outputs.skip == 'false'
+        if: always() && startsWith(github.ref, 'refs/tags/') && steps.guard.outputs.skip == 'false' && steps.publish.outcome == 'success'
         run: |
           VER="$(node -p "require('./package.json').version")"
           HEAD="$(git rev-parse HEAD)"
