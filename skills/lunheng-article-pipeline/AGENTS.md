@@ -29,7 +29,13 @@ Phase 5 终检     → T8 终检（独立角色，主控 T0 以 T8 身份亲完�
 - **派发话术**：直接从 `references/pipeline-readme.md` 复制，改项目名即可
 - **每个项目一个目录**：`run/<项目名>/`，产物路径见任务简报
 - **角色编号（v2.3.0 重构，v2.5.2 延续，v2.5.2-dsh.8 语义定案）**：**9 个独立角色 T1-T9 不可相互替代**——T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / **T8 终检（独立角色，主控 T0 亲执行）** / **T9 同行评审（可选默认选中，学术必选）**（编号 = 流水线 Phase 顺序）
-- **模型分配（DSH 通用自适应）**：`subagent` 默认继承会话模型（**单模型配置零配置可用**），路由由 DSH `settings.yaml` 决定。配了多模型想按角色分档 → 装「分档预设」（三档工具 `subagent_retrieval`/`subagent_strong`/`subagent_audit`，默认检索 `deepseek-v4-flash`、分析写作批判审稿/审计 `deepseek-v4-pro`，均可经 `LUNHENG_*_PROVIDER`（provider 名）+ `LUNHENG_*_MODEL`（裸模型 id）覆盖——**provider 与 model 分离，跨 provider 必须同时指定两者**，否则 dsh-llm 报 NO_ADAPTER）；**已装分档预设时派发必须按角色选工具**（T1/T2/T3→subagent_retrieval，T4/T5/T6/T9→subagent_strong，T7/G14→subagent_audit，见 pipeline-readme「DSH 分档预设接线」）；未挂载对应工具时回退 `subagent`（任何模型配置都能跑）
+- **模型分配（v2.5.2-dsh.17 重写：按角色能力自动匹配，不写死厂商默认）**：`subagent` 默认继承会话模型（**单模型配置零配置可用**）。要按角色分档时——**先跑 `node scripts/model-routing.mjs`**（只读脚本）探测本机 provider×模型并给出「档位→模型」建议，细则见 [`references/_shared/模型路由.md`](references/_shared/模型路由.md)：
+  - **四档能力表（主人指定，v2.5.2-dsh.17）**：**检索** T1/T2/T3 = 便宜快（小参数 + 高 token/s；**默认本地 Ollama + 远程兜底**）→ `subagent_retrieval`；**分析写作** T4/T5 = 强推理（中大参数推理模型）→ `subagent_strong`；**批判审计** T6/T7（**+T9**，推断） = 顶配防漏判（顶级推理，**不得为省钱降档**）→ `subagent_audit`；**主控** T0 = 稳定路由（**不参与分档**，它就是会话模型，改的是 `agent-default-model`）；**终检** T8 = 主控亲执行，不适用。
+  - **兜底链（宿主无模型级回退，故由主控执行）**：某档主选报错 → 换脚本给出的 `fallback`（检索档本地不可达时即远端便宜档）→ 仍失败 → `LUNHENG_TIERING=off` 全继承 → 再失败 → 标准 `subagent`；**每一级回退都要在进展页与交接报告如实记录**。
+  - **配置方式**：`LUNHENG_*_MODEL`（+ 跨 provider 时同时给 `LUNHENG_*_PROVIDER`）——**字段独立**，只给 model 也能生效（provider 由宿主逐字段继承父级）；**不设任何变量 = 三档全继承**（安全默认）；`LUNHENG_TIERING=off` = 一键强制全部继承。
+  - **禁止写死厂商默认值**：本机实测默认模型可能是任何 provider（例：`minimax-cn-openai`），宿主**无模型级回退**，写错模型 = 该档工具直接不可用。
+  - **主控工作流**：Phase 0 跑一次脚本 → 把结论落 `run/<项目>/model-routing.md` → 派发时按表选档位；未启用分层时在进展页如实标注。
+  - 已装分档工具时派发必须按角色选工具；未挂载时回退 `subagent`（任何模型配置都能跑）。
 - **子代理产出必须交交接报告**：六要素缺一不可（做了什么/产物在哪/怎么验证/已知问题/下一步 + 状态更新），长时间无产出则主控用 `list_agents` 查看并介入
 - **子代理失败三段式处理（v2.5.2-dsh.6 修订，教训：测试轮三检索员全失败 + T5 两次结算异常）**：① **落盘校验**——子代理 settle 后主控必跑 `read`/`ls` 检查关键产物是否存在+非空+结构完整，区分「写盘前失败」vs「写盘后失败」vs「任务完成」；② **产物完整 → `send_message` 续接原子代理**（DSH continuable，让它读已落盘产物确认后继续，**不是整任务重派**）；③ **产物缺失 → 才 spawn 新子代理重派**。**连续失败**：先查 DSH 环境（`list_agents` 看是否 `[ready]` 可续接；全失败可能 = DSH 进程状态问题，重启 dsh web 再试）。
 - **status.md / agents-log.md 分文件写入约定（v2.5.2-dsh.5 修订，教训：T1/T2 与主控并发写冲突）**：**状态文件分两层**——① `status.md` 由**主控独占写**（纯状态机表，不允许子代理直接 edit）；② `agents-log.md`（v2.5.2-dsh.5 新增，项目根目录）由**子代理追加写**（每完成一个角色任务追加一段 `### Tn 执行记录` 节）。子代理的进度/完成状态通过「交接报告 + 产物落盘」回报，主控在收到交接报告后统一更新 status.md。**两文件分离目的**：避免子代理追加触发主控 edit status.md 报「file changed since it was read」（测试轮多次遇到的小摩擦）。冲突已发生时：主控先 re-read 再 edit。

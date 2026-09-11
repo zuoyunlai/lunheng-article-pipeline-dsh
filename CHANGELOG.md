@@ -26,6 +26,27 @@
 
 **验证**：`consistency-check` 0 漂移（57 个 .md）｜`repo-hygiene-check` 通过（89 文件/9 脚本）｜`tests` **27/27**（新增 3 例：版本化报告取最大、无修订轮 N/A、④b+⑲ 注入负向）｜`plugin-surface` 通过。
 
+### 模型分层：能力档探测与「角色→模型」匹配（同属 v2.5.2-dsh.17 待发，**已合入 master，未发版**）
+
+**背景**：主人要求「论衡自动检查 DSH 的模型、检测是否可用、并按角色卡所需的能力匹配合适的大模型」，并给出**四档能力表**（检索/分析写作/批判审计/主控，T8 不适用）。此前机制是「装分档预设 + 手填 3 组环境变量」，且**默认值是厂商硬编码**（`deepseek-v4-flash`/`deepseek-v4-pro`）。
+
+- **① 立论依据（三条均实测/源码复核，均写入 `references/_shared/模型路由.md`）**：
+  1. `cordis.patch.yml` 的 `!!js` **只能取 env/baseUrl**（CI 红线 ⑭ 禁 `fs.`/`node:`/import）→ **加载期探测不到模型目录**，探测只能由脚本做；
+  2. 宿主**没有模型级回退**（`dsh-llm-retry` 只做请求重试）→ **写死一个本机不存在的模型 = 该档工具直接不可用**；本机实测默认模型是 `minimax-cn-openai / MiniMax-M3`（**不是 DeepSeek**），任何厂商默认值都是错的；
+  3. `dsh-subagent.resolveChildAgentOptions` 为**逐字段合并**（provider/model 各自继承父级）→ **只给 `model` 也能生效**。
+- **② 新增第 10 个随包脚本 `model-routing.mjs`**（只读；不写任何文件、不读/发任何 API Key）：
+  - 解析 `<DSH_HOME>/settings.yaml` 得到 provider×模型目录与 `agent-default-model`；**默认自动探测本地 provider**（仅回环地址、3s 超时、零外发），以本机实际广告模型为准补充候选池；
+  - 按**主人指定的四档表**输出路由：**检索 T1/T2/T3**（便宜快；**默认本地 Ollama + 远程兜底**）/**分析写作 T4/T5**（强推理）/ **批判审计 T6/T7+T9**（顶配，不得降档）/ **主控 T0**（不参与路由，只给稳定性建议）/ **T8**（不适用）；
+  - 输出**兜底链**（主选本地时给出远端兜底）、候选列表、置信度、可复制的 env 片段（同 provider 只给 `_MODEL`，**跨 provider 自动补 `_PROVIDER`**）。
+  - 启发式修正（首跑实测踩坑）：`MiniMax` 内含 `mini`/`max` → 必须用**词边界**，否则同族模型同时被判定「便宜」与「强推理」；本地模型**不按命名判「快」**（本机算力决定）；族内版本号做档位内偏好（检索偏好低版本、审计偏好高版本）。
+- **③ `cordis.patch.yml` 三档改写（安全性 + 可用性）**：`agentOptions` 改为**单表达式**——**未设任何 `LUNHENG_*` → 整块 `undefined`**（不传空对象，避免无谓触发 provider 的 `agentOptions` 能力门）；**字段独立**（只给 `_MODEL` 即生效）；新增**一键退路 `LUNHENG_TIERING=off`**；**删除全部厂商硬编码默认值**。`!!js` 数量 7 → **4**（1 路径 + 3 档），执行面披露同步更新。
+  - **agentOptions 取值语义首次实测**（此前从未验证）：用宿主 `@deepseek-ai/schemastery` 3.18.2 + 与 Config 同构的 schema —— `{provider: undefined, model: undefined}` ✓ 通过（规范化为 `{}`）、**只给 `model` ✓ 通过**、整块 `undefined` ✓ 通过。→ 结论：原形态**能加载**（无 P0 缺陷），新形态更稳。
+- **④ 口径与文档**：`AGENTS.md` 模型分配段重写为四档表 + 兜底链 + 「禁止写死厂商默认」；新增单一真源 `references/_shared/模型路由.md`（四档表含**主人原表逐条**、能力维度判据、用法、**兜底链**、为什么不开原生 per-call、验证与证据）；`docs/troubleshooting.md` 新增 **§15**；白名单口径 **9 → 10**（SKILL.md 两处 / QUICKSTART / 主控卡 shell 边界 / `repo-hygiene-check.mjs` 断言 + 发布面提示）。
+- **⑤ 原生「按调用选模型」的结论（不改默认行为，写明理由）**：宿主的 `modelSelectionSettings: true` 确实会加上 `provider`/`model`/`reasoning_effort` 三个按调用参数并注册 `list_subagent_models`，但开启需**宿主侧 `subagentModelSelection` 服务 + 工具行位于 Agent/preset scope**，缺任一项**加载期抛错**；宿主 standard 的 `subagent` 行默认未开（本会话工具清单里确无 `list_subagent_models`）。→ 论衡**不默认开启**（否则在不支持的宿主上装了即坏），并把它列为「将来若 DSH 设为默认再启用」的候选。
+
+**验证**：`consistency-check` 0 漂移（**61** 个 .md）｜`repo-hygiene-check` 通过（**94** 文件 / **随包脚本 10 个**）｜`tests` **30/30**（新增 2 例：三档表达式形态 6 项断言 + 路由/跨 provider/兜底/四档归属断言，并抓出并修复「`agent-default-model` 块未退出导致吞掉后续顶层键」的解析真 bug）｜`plugin-surface` 通过。
+
+
 ### 人在环三条链修订（呈现 / 确认 / 输入；同属 v2.5.2-dsh.17 待发，**已合入 master，未发版**）
 
 **背景**：一次「人在环交互是否可再优化」的专项审计（信息呈现 / 人类确认 / 信息输入 三条链）发现 **2 个真缺口 + 8 处可打磨**——其中「**主人的回复从不落盘**」和「**主人看不到一张属于自己的纸**」是结构性缺口。

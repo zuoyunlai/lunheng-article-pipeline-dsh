@@ -213,7 +213,7 @@
 
 ### Q1：论衡能不能执行 shell 命令？
 
-**答：有限执行（v2.5.2-dsh.4 审计修订，如实声明）。** 论衡主体是 LLM 推理 + 文件读写 + Web 检索流水线；主控/终检**按需执行随包白名单脚本**（`scripts/consistency-check.mjs` / `m-gate-check.mjs` / `md2html.mjs` / `pdfcheck.mjs` / `token-cost.mjs` / `count-chars.mjs` / `build-evidence-bundle.mjs` / `final-check.mjs` / `normalize-trust-level.mjs`，**共 9 个**）+ 有限验证命令（`ls`/`stat`/`wc`/`cp`/`diff`/`Get-FileHash` 等）。算法文档中的 `grep`/`diff`/`sha256sum`/`wc` 等命令示例，agent 优先用 read 推理判定或白名单脚本，**人类主人可随时在 host shell 手动复核**。除白名单外不执行任意 shell 命令。
+**答：有限执行（v2.5.2-dsh.4 审计修订，如实声明）。** 论衡主体是 LLM 推理 + 文件读写 + Web 检索流水线；主控/终检**按需执行随包白名单脚本**（`scripts/consistency-check.mjs` / `m-gate-check.mjs` / `md2html.mjs` / `pdfcheck.mjs` / `token-cost.mjs` / `count-chars.mjs` / `build-evidence-bundle.mjs` / `final-check.mjs` / `normalize-trust-level.mjs` / `model-routing.mjs`，**共 10 个**）+ 有限验证命令（`ls`/`stat`/`wc`/`cp`/`diff`/`Get-FileHash` 等）。算法文档中的 `grep`/`diff`/`sha256sum`/`wc` 等命令示例，agent 优先用 read 推理判定或白名单脚本，**人类主人可随时在 host shell 手动复核**。除白名单外不执行任意 shell 命令。
 
 ---
 

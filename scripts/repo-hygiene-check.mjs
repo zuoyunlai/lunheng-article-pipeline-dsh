@@ -5,7 +5,7 @@
  * 为什么存在（v2.5.2-dsh.13 新增，回应第三方审计「CI 覆盖度」）：
  *   `consistency-check.mjs` 管文档漂移、`plugin-surface-check.mjs` 管打包面契约，
  *   但**语法/编码/行尾/发布内容**这些「零成本就能机械判定」的东西此前无人守：
- *   - 9 个随包脚本中 8 个从未被 CI 执行过（含承重的 m-gate-check）；
+ *   - 随包脚本多数从未被 CI 执行过（含承重的 m-gate-check）；v2.5.2-dsh.17 起共 10 个；
  *   - `examples/preset/preset.yml` 从未被任何解析器校验；
  *   - 35 个文件工作区 CRLF、`.gitignore` 是 GBK——而 npm 打包读工作区。
  *
@@ -15,7 +15,7 @@
  *   ③ *.yml/*.yaml 结构健全（禁制表符缩进 + 关键文件必须含预期键）
  *   ④ 行尾：git ls-files --eol 不得出现 w/crlf 或 w/mixed（配 .gitattributes）
  *   ⑤ 编码：文本文件必须为合法 UTF-8（拒绝替换字符/非法序列）
- *   ⑥ 发布面：npm pack --dry-run --json 必须含关键路径 + 脚本数 == 9
+ *   ⑥ 发布面：npm pack --dry-run --json 必须含关键路径 + 脚本数 == 10
  *
  * 退出码：0 = 全通过；1 = 有失败（fail-closed，CI 红灯）
  * 失败同时输出 GitHub annotation（::error::），无需下载日志即可定位。
@@ -118,7 +118,7 @@ if (pack.status !== 0) {
     for (const m of must) if (!files.includes(m)) fail('pack', `发布包缺关键路径：${m}`)
     // 只数**顶层**随包脚本（`scripts/_lib/` 是共享库，不算入口；v2.5.2-dsh.13）
     const scripts = files.filter((f) => /^skills\/lunheng-article-pipeline\/scripts\/[^/]+\.mjs$/.test(f))
-    if (scripts.length !== 9) fail('pack', `发布包内随包脚本数 ${scripts.length} ≠ 9（白名单不一致）`)
+    if (scripts.length !== 10) fail('pack', `发布包内随包脚本数 ${scripts.length} ≠ 10（白名单不一致）`)
     notes.push(`⑥ 发布面：${files.length} 个文件 / 随包脚本 ${scripts.length} 个 / 关键路径齐备`)
   } catch (e) {
     fail('pack', `npm pack --json 解析失败：${e.message}`)

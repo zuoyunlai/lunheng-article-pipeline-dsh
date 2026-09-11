@@ -461,6 +461,88 @@ test('consistency-check ④b+⑲：占位符残留 / 版本硬编码 / 契约表
   rmSync(d, { recursive: true, force: true })
 })
 
+test('cordis.patch.yml：三档 agentOptions 表达式形态正确（未设=undefined，只给 model 亦生效，含一键退路）', () => {
+  const patch = readFileSync(join(ROOT, 'cordis.patch.yml'), 'utf8')
+  const exprs = [...patch.matchAll(/agentOptions:\s*!!js\s+"(.+?)"\s*$/gm)].map((m) => m[1])
+  assert.equal(exprs.length, 3, '应恰有三档 agentOptions 表达式（检索/强推理/审计）')
+  const evalWith = (expr, env) => new Function('process', `return (${expr})`)({ env })
+  // ① 全未设 → undefined（**不得传 {}**：空对象会触发 provider 的 agentOptions 能力门）
+  for (const e of exprs) assert.equal(evalWith(e, {}), undefined, '未设任何 env 时必须为 undefined（全继承）')
+  // ② 只给 model → {model}（字段独立：provider 由宿主逐字段继承父级）
+  assert.deepEqual(evalWith(exprs[0], { LUNHENG_RETRIEVAL_MODEL: 'X' }), { model: 'X' }, '只给 model 必须生效')
+  // ③ 只给 provider → {provider}
+  assert.deepEqual(evalWith(exprs[0], { LUNHENG_RETRIEVAL_PROVIDER: 'P' }), { provider: 'P' })
+  // ④ 两者都给
+  assert.deepEqual(evalWith(exprs[0], { LUNHENG_RETRIEVAL_PROVIDER: 'P', LUNHENG_RETRIEVAL_MODEL: 'X' }), { provider: 'P', model: 'X' })
+  // ⑤ 一键退路 LUNHENG_TIERING=off（即便其它变量已设）
+  assert.equal(evalWith(exprs[0], { LUNHENG_TIERING: 'off', LUNHENG_RETRIEVAL_PROVIDER: 'P', LUNHENG_RETRIEVAL_MODEL: 'X' }), undefined, 'kill switch 必须压过其它变量')
+  // ⑥ 红线复核：表达式内不得出现被禁标识符
+  for (const e of exprs) {
+    assert.ok(!/require\(|import\(|eval\(|fs\.|node:|child_process|getBuiltinModule|new Function/.test(e), '分档表达式不得含被禁标识符：' + e.slice(0, 60))
+  }
+  // ⑦ 不得再写死厂商默认模型（宿主无模型级回退，写错 = 该档不可用）
+  for (const bad of ['deepseek-v4-flash', 'deepseek-v4-pro']) {
+    assert.ok(!patch.includes(bad), `cordis.patch.yml 不得硬编码厂商默认模型 ${bad}——应由 model-routing.mjs 按本机实况生成`)
+  }
+})
+
+test('model-routing.mjs：按本机 settings.yaml 给档位建议，且跨 provider 时同时输出 _PROVIDER', () => {
+  const d = tmp()
+  const home = join(d, 'dshhome')
+  mkdirSync(home, { recursive: true })
+  // 夹具：默认 provider 有两个模型（高/低版本），另有一个本地 provider
+  writeFileSync(join(home, 'settings.yaml'), [
+    'agent-default-model:',
+    '  provider: cloud-x',
+    '  model: X-Pro-3',
+    'llm-pi-ai:',
+    '  providers:',
+    '    cloud-x:',
+    '      displayName: Cloud X',
+    '      baseURL: https://api.example.com/v1',
+    '      models:',
+    '        - id: X-Pro-3',
+    '          contextWindow: 200000',
+    '        - id: X-Mini-1',
+    '          contextWindow: 32000',
+    '    local-y:',
+    '      baseURL: http://127.0.0.1:11434/v1',
+    '      models:',
+    '        - id: y-qwen:14b',
+    '          contextWindow: 32000',
+    '',
+  ].join('\n'))
+  const r = run([join(SCRIPTS, 'model-routing.mjs'), '--dsh-home', home, '--no-probe', '--json'])
+  assert.equal(r.code, 0, r.out.slice(0, 300))
+  const j = parseJson(r)
+  const byTier = Object.fromEntries(j.routing.map((x) => [x.tier, x]))
+  assert.ok(byTier.retrieval.pick, '检索档应有候选')
+  assert.ok(byTier.audit.pick, '审计档应有候选')
+  assert.equal(byTier.audit.pick, 'X-Pro-3', '批判审计档应选同族高版本强模型')
+  assert.equal(byTier.strong.pick, 'X-Pro-3', '分析写作档应选强推理模型')
+  // 主人指定的四档表：T6 属批判审计档；T9 亦归此档（推断）；T8 不适用；T0 不参与路由
+  assert.ok(byTier.audit.roles.some((x) => x.startsWith('T6')), 'T6 批判必须在批判审计档（主人指定表）')
+  assert.ok(byTier.strong.roles.some((x) => x.startsWith('T4')) && byTier.strong.roles.some((x) => x.startsWith('T5')), '分析写作档 = T4/T5')
+  assert.match(j.t8.strategy, /不适用/, 'T8 终检不适用分档')
+  assert.ok(j.t0.suggest, '主控档应给稳定性建议（但不由论衡自动改宿主配置）')
+  assert.match(j.t0.strategy, /不参与分档路由/, '主控不参与路由')
+  // **检索档默认「本地优先 + 远程兜底」**：--no-probe 下本地视为可用 → 主选本地、兜底为远端
+  assert.match(byTier.retrieval.pick, /qwen/, '检索档默认应本地优先')
+  assert.equal(byTier.retrieval.pickLocal, true, '检索档主选应为本地模型')
+  assert.equal(byTier.retrieval.crossProvider, true, '本地模型属另一 provider → 必须标记跨 provider')
+  assert.ok(byTier.retrieval.fallback && byTier.retrieval.fallback.local === false, '本地主选必须带**远端兜底**')
+  assert.ok(j.envSnippet.powershell.some((l) => l.includes('LUNHENG_RETRIEVAL_PROVIDER')), '跨 provider 必须同时输出 _PROVIDER')
+  assert.equal(byTier.audit.pickLocal, false, '批判审计档不得用本地小模型')
+  // --prefer-remote：忽略本地优先（主人显式选择「不用本地」）
+  const r2 = run([join(SCRIPTS, 'model-routing.mjs'), '--dsh-home', home, '--no-probe', '--prefer-remote', '--json'])
+  const j2 = parseJson(r2)
+  const t2 = Object.fromEntries(j2.routing.map((x) => [x.tier, x]))
+  assert.equal(t2.retrieval.pickLocal, false, '--prefer-remote 时检索档不得选本地')
+  assert.equal(t2.retrieval.crossProvider, false, '同 provider 匹配 → 不输出 _PROVIDER')
+  assert.equal(t2.audit.pick, 'X-Pro-3', '审计档不受 --prefer-remote 影响')
+  rmSync(d, { recursive: true, force: true })
+})
+
 test('主人侧三件套与输入模板齐备，且确认单含回填段与 Phase 0 附加块（v2.5.2-dsh.17）', () => {
   const SK = join(ROOT, 'skills', 'lunheng-article-pipeline')
   const TPL = join(SK, 'references', 'templates')

@@ -15,12 +15,16 @@
 #   （`ctx.baseUrl = pathToFileURL(dirname(absoluteConfigPath)).href + '/'`），且 loader 用
 #   `with (ctx) { return eval(expr) }` 求值，故裸 `baseUrl` 等价于 `ctx.baseUrl`（v2.5.2-dsh.13 核验）。
 #
-# ⚠️ **执行面披露（v2.5.2-dsh.13 新增）**：本文件共 7 处 `!!js`（1 处路径求值 + 6 处 env 取值）。
+# ⚠️ **执行面披露（v2.5.2-dsh.13 新增；v2.5.2-dsh.17 复核为 4 处）**：本文件共 4 处 `!!js`
+#   （1 处技能路径求值 + 3 处分档 agentOptions：各自读 env、未设则返回 undefined）。
 #   `!!js` 由宿主进程以完整 Node 权限在**加载期**求值，发生在 agent 沙箱与审批关卡之前——
 #   安装本包即等于允许这些表达式在启动时执行。因此：
-#   - **只允许** `process.env.*`、`baseUrl`、全局 `URL`/`decodeURIComponent`/`String` 级取值；
+#   - **只允许** `process.env.*`、`baseUrl`、全局 `URL`/`decodeURIComponent`/`String`/`Object.assign` 级取值；
 #   - **禁止** `getBuiltinModule` / `child_process` / `require(` / `import(` / `eval(` / `new Function` / `fs.` / `node:`（CI 红线：consistency-check 规则 ⑭）；
 #   - 改本文件等同于改交付物的信任边界，须主人 review。
+#   - **agentOptions 取值语义已实测**（v2.5.2-dsh.17，用宿主 schemastery 3.18.2 + 与 Config 同构的 schema）：
+#     `{provider: undefined, model: undefined}` ✓ 通过（规范化为 `{}`）、只给 `model` ✓ 通过、整块 `undefined` ✓ 通过。
+#     故本文件采用「未设即 undefined」形态，避免传空对象触发 provider 的 agentOptions 能力门。
 
 # ── 1. 技能提供者（filesystem 注入）─────────────────────────────────────
 - insert:
@@ -35,6 +39,13 @@
           - !!js "(u => process.platform === 'win32' && u.startsWith('/') ? u.slice(1) : u)(decodeURIComponent(new URL('node_modules/lunheng-article-pipeline/skills/', baseUrl).pathname))"
 
 # ── 2. 检索档 subagent（T1/T2/T3 便宜快）────────────────────────────────
+# v2.5.2-dsh.17 改写（字段独立 + 一键退路 + 不写死任何厂商默认）：
+#   · **字段独立**：只给 `LUNHENG_RETRIEVAL_MODEL` 即可（`provider` 由 dsh-subagent 的
+#     `resolveChildAgentOptions` 逐字段继承父级）——跨 provider 才需同时给 `_PROVIDER`；
+#   · **未设 = 整块 undefined**：不传 `{}`（避免无谓触发 provider 的 agentOptions 能力门），子代理全继承会话模型；
+#   · **一键退路**：`LUNHENG_TIERING=off` → 三档全部 undefined（即便其它 LUNHENG_* 已设）；
+#   · **不写死厂商默认**：宿主无模型级回退，写错模型 = 该档工具直接不可用；正确模型请用
+#     `node scripts/model-routing.mjs` 按本机实况生成（见 references/_shared/模型路由.md）。
 - insert:
     - id: tool-subagent-retrieval
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -42,9 +53,7 @@
         provider: spawn
         toolName: subagent_retrieval
         backgroundMode: continuable
-        agentOptions:
-          provider: !!js "process.env.LUNHENG_RETRIEVAL_PROVIDER || undefined"
-          model: !!js "(process.env.LUNHENG_RETRIEVAL_PROVIDER ? (process.env.LUNHENG_RETRIEVAL_MODEL || 'deepseek-v4-flash') : undefined)"
+        agentOptions: !!js "(e => { const p = e.LUNHENG_RETRIEVAL_PROVIDER, m = e.LUNHENG_RETRIEVAL_MODEL; if (e.LUNHENG_TIERING === 'off' || (!p && !m)) return undefined; return Object.assign({}, p ? { provider: p } : {}, m ? { model: m } : {}); })(process.env)"
 
 # ── 3. 强推理档 subagent（T4/T5/T6+T9 推理强）─────────────────────────────
 - insert:
@@ -54,9 +63,7 @@
         provider: spawn
         toolName: subagent_strong
         backgroundMode: continuable
-        agentOptions:
-          provider: !!js "process.env.LUNHENG_STRONG_PROVIDER || undefined"
-          model: !!js "(process.env.LUNHENG_STRONG_PROVIDER ? (process.env.LUNHENG_STRONG_MODEL || 'deepseek-v4-pro') : undefined)"
+        agentOptions: !!js "(e => { const p = e.LUNHENG_STRONG_PROVIDER, m = e.LUNHENG_STRONG_MODEL; if (e.LUNHENG_TIERING === 'off' || (!p && !m)) return undefined; return Object.assign({}, p ? { provider: p } : {}, m ? { model: m } : {}); })(process.env)"
 
 # ── 4. 顶配档 subagent（T7 审计 + G14 检测）────────────────────────────────
 - insert:
@@ -66,9 +73,7 @@
         provider: spawn
         toolName: subagent_audit
         backgroundMode: continuable
-        agentOptions:
-          provider: !!js "process.env.LUNHENG_AUDIT_PROVIDER || undefined"
-          model: !!js "(process.env.LUNHENG_AUDIT_PROVIDER ? (process.env.LUNHENG_AUDIT_MODEL || 'deepseek-v4-pro') : undefined)"
+        agentOptions: !!js "(e => { const p = e.LUNHENG_AUDIT_PROVIDER, m = e.LUNHENG_AUDIT_MODEL; if (e.LUNHENG_TIERING === 'off' || (!p && !m)) return undefined; return Object.assign({}, p ? { provider: p } : {}, m ? { model: m } : {}); })(process.env)"
 
 # ── 5. 标准（DSH 默认）— 论衡示例预设 ────────────────────────────────────
 # ✅ 验证记录（v2.5.2-dsh.13，2026-09-11）：本段此前标注「实测 OK」却无证据；现已端到端实测——
