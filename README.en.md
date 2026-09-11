@@ -6,9 +6,9 @@ A multi-agent pipeline skill package for **long-form serious writing** (academic
 
 It splits the production of a long article / paper into **9 independent, non-substitutable roles T1–T9** (literature / data / case retrieval, analysis, writing, critique, audit, final check, peer review). The orchestrator is **T0** and also *performs* **T8 final check** (T8 is its own role but is executed by the orchestrator, which does not spawn a subagent for it); **T9 peer review** is optional, selected by default, and mandatory for academic papers.
 
-Phase 1 runs three retrieval agents **T1 literature ∥ T2 data ∥ T3 cases truly in parallel**; T3 always spawns (including an explicit "0 cases" empty-card protocol). T6 attacks the argument from the opposing side, T9 adds peer review plus journal matching, and delivery is gated by an independent **G0–G14 audit** (including the **G14 Chinese AI-trace gate**) and the mechanical **M-Gate** (M-Form 8 / M-Exist 3 / M-Integrity 2). Orchestration uses the dsh `subagent` tool. Output is a deliverable with an **evidence base, counter-arguments, an independent audit trail and human checkpoints**.
+Phase 1 runs three retrieval agents **T1 literature ∥ T2 data ∥ T3 cases truly in parallel**; T3 always spawns (including an explicit "0 cases" empty-card protocol). T6 attacks the argument from the opposing side, T9 adds peer review plus journal matching, and delivery is gated by an independent **G0–G14 audit** (including the **G14 Chinese AI-trace gate**) and the mechanical **M-Gate** (M-Form 9 / M-Exist 3 / M-Integrity 2). Orchestration uses the dsh `subagent` tool. Output is a deliverable with an **evidence base, counter-arguments, an independent audit trail and human checkpoints**.
 
-> Version: v2.5.2-dsh.15 (DSH-native plugin).
+> Version: v2.5.2-dsh.16 (DSH-native plugin).
 
 ## Install (on the target machine)
 
@@ -32,6 +32,14 @@ After installation the skill appears in the session's `skill` tool catalogue aut
 
 - `skills/lunheng-article-pipeline/` — the skill itself (`SKILL.md` + `AGENTS.md` + `references/`: 10 role cards, templates, shared mechanisms (M-Gate / failure modes / journal matching / G14 gate), the operations manual and design docs)
 - `cordis.patch.yml` — the bundle patch: registers a filesystem skill provider pointing at the packaged `skills/`
+
+## Data charts (SVG, fully local)
+
+The writer only marks figure slots (`[图N：标题]`, on its own line) → in Phase 4.5 the orchestrator **hand-writes SVG** into `final/图件/图N_标题.svg` (the only supported path; **text-to-image is forbidden** because numbers must be exact) → export with `node scripts/md2html.mjs <final.md> <out.html> --fig-dir final/图件`, or via pandoc + rsvg-convert.
+
+- **Mechanical gate**: M-Gate **M-Form-9 figure closure** (run automatically by `scripts/m-gate-check.mjs`) reconciles figure slots ↔ figure files ↔ numbers printed in the chart — missing figure / too few slots → P1·P0; orphan files, numbers with no source in the data cards, SVG safety warnings → P2 notes; when charts are unused the item is recorded as N/A (never a failure).
+- **Pre-export validation**: structurally invalid SVG (unclosed tags / no `viewBox` / DTD·ENTITY) → export **exits 2 and writes no HTML**; `<script>`, `on*`, `javascript:` and external references are stripped with warnings; a missing figure renders an explicit placeholder including the expected filename.
+- **Visibility**: figure files are copied into `证据包/图件/` and the audit view carries a figure reconciliation section, so T7/T8 never have to open them one by one.
 
 ## Per-role model tiers (optional, adaptive)
 

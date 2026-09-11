@@ -1,8 +1,10 @@
-// 论衡 M 门机械化预检脚本（v2.5.2-dsh 补丁 + v2.5.2-dsh.5 重大增强）
+// 论衡 M 门机械化预检脚本（v2.5.2-dsh 补丁 + v2.5.2-dsh.5 重大增强 + v2.5.2-dsh.16 加图件闭环）
 //   v2.5.2-dsh:   M-Form-1/3/5/7 + M-Exist-2 纯正则/哈希判定
-//   v2.5.2-dsh.5: 13 项 M 门全脚本化（T8 仅复核 M-Form-8 承重墙质量 + M-Integrity 跨文件判断）
-// 用法: node m-gate-check.mjs <final/定稿.md> <final/证据包目录> [--summary]
+//   v2.5.2-dsh.5: M 门全脚本化（T8 仅复核 M-Form-8 承重墙质量 + M-Integrity 跨文件判断）
+//   v2.5.2-dsh.16: 新增 M-Form-9 图件闭环（[图N] ↔ final/图件/ ↔ 图上数字）→ M 门 14 项（脚本 13 项 + M-Integrity-2 主控）
+// 用法: node m-gate-check.mjs <final/定稿.md> <final/证据包目录> [--summary] [--fig-dir <图件目录>] [--report <path>]
 //   --summary：仅输出聚合统计（total/pass/p0/p1/p2/soft/skips）+ 硬失败项；省略通过项 details[]（省 ~80% 输出字节，机器可读友好）
+//   --fig-dir：图件目录（缺省自动推 <定稿目录>/图件）
 // 配套：M-Gate-Algorithm.md「机械化脚本化」段
 // 严重度评级（v2.5.2-dsh.5 引入）：gate fail 时按 P0/P1/P2 分级；单子项失败子项数 ≤2 → P2 可放行
 import { readFileSync, readdirSync, statSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
@@ -10,16 +12,25 @@ import { join, dirname } from 'node:path';
 import { refsOf, dataCardIds } from './_lib/refs.mjs';                 // 引用编号口径真源
 import { TRUST_COMPLIANT_RE, TRUST_LOOSE_RE } from './_lib/trust.mjs'; // 信任级别口径真源
 import { splitCard } from './_lib/cards.mjs';                          // 卡片切块口径真源
+import { analyzeSvg, svgTextNumbers, figureNoOf, figurePlaceholders } from './_lib/svg.mjs'; // SVG 图件口径真源
 
 const args = process.argv.slice(2);
 const wantSummary = args.includes('--summary');
+// --fig-dir <dir>：图件目录（缺省从定稿路径推 final/图件，v2.5.2-dsh.16 新增）
+const figDirIdx = args.indexOf('--fig-dir');
+const figDirArg = figDirIdx >= 0 && args[figDirIdx + 1] ? args[figDirIdx + 1] : null;
+if (figDirIdx >= 0 && !figDirArg) { console.error('--fig-dir 缺少值'); process.exit(10); }
 // --report <path>：把结构化报告落盘（供 build-evidence-bundle / T8 审计视图读取，v2.5.2-dsh.13 新增）
 const reportIdx = args.indexOf('--report');
 const reportPath = reportIdx >= 0 && args[reportIdx + 1] ? args[reportIdx + 1] : null;
 // 只有当 --report 真出现时才排除它的取值（v2.5.2-dsh.13 修复：reportIdx=-1 时 reportIdx+1=0
 // 会把第一个位置参数「定稿路径」也排除掉 → 不带 --report 时必然报用法错误；
 // 而 final-check.mjs 正是不带 --report 调用本脚本）
-const positional = args.filter((a, i) => !a.startsWith('--') && !(reportIdx >= 0 && i === reportIdx + 1));
+const flagValueIdx = new Set([
+  ...(reportIdx >= 0 ? [reportIdx + 1] : []),
+  ...(figDirIdx >= 0 ? [figDirIdx + 1] : []),
+]);
+const positional = args.filter((a, i) => !a.startsWith('--') && !flagValueIdx.has(i));
 const draftPath = positional[0];
 const evDir = positional[1];
 if (!draftPath || !evDir) {
@@ -241,6 +252,88 @@ try {
   });
 } catch (e) {
   results.push({ gate: 'M-Form-8 三角验证', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
+}
+
+// === M-Form-9 图件闭环（v2.5.2-dsh.16 新增）：[图N] 图位 ↔ final/图件/ ↔ 图上数字 三方对账 ===
+// 背景（第三方 SVG 链路审计）：T5 卡宣称「T7 跑 M-Gate 算法检查 [图N] 出现次数 ≥ 拍板图位数量 → P0 拦截」，
+// 但 M 门 14 项里**没有任何图项**、T7 速查表 0 处提及「图」、证据包不收图件 → 该条文无落地路径。
+// 本项即该条文的机械落地：缺图/图位不足 → 硬失败；孤儿图件/数字对不上 → 软提示（数字对账为启发式）。
+// 未启用配图（无图位且无图件目录）→ 记 N/A 且 pass=true（不得因「没配图」把 M 门判失败——配图默认关闭）。
+try {
+  const figDirDefault = join(dirname(draftPath), '图件');
+  const figDir = figDirArg && existsSync(figDirArg) ? figDirArg : (existsSync(figDirDefault) ? figDirDefault : null);
+  const figNos = figurePlaceholders(text);
+  const files = figDir ? readdirSync(figDir).filter((f) => f.toLowerCase().endsWith('.svg')) : [];
+  const fileNos = new Map();
+  for (const f of files) { const n = figureNoOf(f); if (n !== null && !fileNos.has(n)) fileNos.set(n, f); }
+  // 图位数量对账（拍板数取自任务简报，best-effort 解析；解析不到则不判，避免误 P0）
+  let pledged = 0, pledgedFrom = '';
+  try {
+    const briefPath = draftPath.replace(/final[\\/]定稿\.md$/, '01-任务简报.md');
+    if (existsSync(briefPath)) {
+      const b = readFileSync(briefPath, 'utf8');
+      const m1 = b.match(/(?:图位|图表)数量\s*[:：]\s*(\d+)/);
+      const m2 = b.match(/拍板[^\n。]{0,20}?(\d+)\s*(?:张|个|幅)图/);
+      pledged = Number((m1 && m1[1]) || (m2 && m2[1]) || 0);
+      if (pledged) pledgedFrom = m1 ? '简报「图位数量」' : '简报「拍板 N 张图」';
+    }
+  } catch { /* 简报缺失或不可读 → 不判 */ }
+
+  if (figNos.size === 0 && fileNos.size === 0) {
+    results.push({
+      gate: 'M-Form-9 图件闭环',
+      pass: true,
+      detail: 'N/A：未启用配图（正文无 [图N] 图位、final/图件/ 不存在）——本项不适用，不算通过也不判失败',
+      severity: '通过',
+    });
+  } else {
+    const problems = [];
+    const softNotes = [];
+    // ① 缺图：正文有图位但无对应图件
+    const missingFigs = [...figNos].filter((n) => !fileNos.has(n));
+    // ② 图位不足：拍板数 > 正文图位数
+    const shortage = pledged > 0 && figNos.size < pledged;
+    // ③ 孤儿图件
+    const orphanFigs = [...fileNos.keys()].filter((n) => !figNos.has(n));
+    // ④ SVG 良构 / 安全
+    if (figDir) {
+      for (const [n, f] of fileNos) {
+        const a = analyzeSvg(readFileSync(join(figDir, f), 'utf8'));
+        if (!a.ok) problems.push(`图${n}(${f}) 结构不合格: ${a.problems.join('；')}`);
+        if (a.warnings.length) softNotes.push(`图${n}(${f}) 告警: ${a.warnings.join('；')}`);
+      }
+      // ⑤ 图上数字 ⊆ 数据卡 ∪ 正文（启发式：仅查 <text>/<tspan>/<title> 文本节点，跳过单字符刻度）
+      const unionRaw = dataCard + '\n' + text;
+      const union = unionRaw + '\n' + unionRaw.replace(/(\d),(?=\d{3}\b)/g, '$1');
+      for (const [n, f] of fileNos) {
+        const nums = svgTextNumbers(readFileSync(join(figDir, f), 'utf8'));
+        const unmatched = [...nums.keys()].filter((t) => t.length >= 2 && !union.includes(t));
+        if (unmatched.length) {
+          softNotes.push(`图${n} 图上数字 ${unmatched.slice(0, 5).join(',')}${unmatched.length > 5 ? ` 等 ${unmatched.length} 个` : ''} 在数据卡/正文中找不到出处（启发式：可能为刻度或坐标，请人工确认）`);
+        }
+      }
+    }
+    if (missingFigs.length) problems.push(`缺图：正文标了图位但 final/图件/ 无对应文件 → 图${missingFigs.join('、图')}（期望 图N_标题.svg）`);
+    if (shortage) problems.push(`图位不足：${pledgedFrom} 记为 ${pledged} 张，正文仅 ${figNos.size} 个 [图N]（T5 卡「≥ 拍板数量」不满足）`);
+    if (orphanFigs.length) softNotes.push(`孤儿图件：图${orphanFigs.join('、图')} 未被正文引用`);
+
+    const hard = problems.length > 0;
+    // 严重度：**图件全缺（有图位但一个图件都没有/目录不存在）**或缺失总数 >2 → P0；其余缺图 → P1
+    const severity = !hard ? (softNotes.length ? 'P2' : '通过')
+      : ((missingFigs.length > 0 && fileNos.size === 0) || missingFigs.length + (shortage ? 1 : 0) > 2 ? 'P0' : 'P1');
+    results.push({
+      gate: 'M-Form-9 图件闭环',
+      pass: hard ? false : (softNotes.length ? false : true),
+      detail: [
+        `图位 ${figNos.size} 个 / 图件 ${fileNos.size} 个${figDir ? '' : '（无 final/图件/ 目录）'}`,
+        problems.length ? `硬问题: ${problems.join('；')}` : '无缺图',
+        softNotes.length ? `软提示: ${softNotes.slice(0, 2).join('；')}` : '',
+      ].filter(Boolean).join(' ｜ '),
+      severity,
+    });
+  }
+} catch (e) {
+  results.push({ gate: 'M-Form-9 图件闭环', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
 }
 
 // === M-Exist-1 文末四节双向对比（v2.5.2-dsh.5 脚本化 + 严重度评级）===

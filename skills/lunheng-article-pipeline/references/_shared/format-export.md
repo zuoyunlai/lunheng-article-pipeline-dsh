@@ -1,4 +1,4 @@
-> 版本：v2.5.2-dsh.15（DSH 原生插件，发布于 2026-09-11）
+> 版本：v2.5.2-dsh.16（DSH 原生插件，发布于 2026-09-11）
 
 
 # 多格式导出（v2.5.0 新增，可选，默认 md）
@@ -39,9 +39,14 @@
 当主机未装 pandoc + LaTeX 引擎时，用零安装替代：**`scripts/md2html.mjs`（Markdown→HTML + 内嵌 SVG + 中文打印 CSS）→ Chrome/Edge headless `--print-to-pdf`**。
 
 ```sh
-node scripts/md2html.mjs <定稿.md> <定稿.html> [<SVG 文件路径，可选，替换 [图1] 图位>]
+# 多图（推荐，v2.5.2-dsh.16）：按图号自动配 final/图件/图N_标题.svg
+node scripts/md2html.mjs <定稿.md> <定稿.html> --fig-dir final/图件
+# 单图（向后兼容）：同一份 SVG 会嵌入每一个 [图N]，脚本会显式告警；多图请改用 --fig-dir
+node scripts/md2html.mjs <定稿.md> <定稿.html> <SVG 文件路径>
 "C:\Program Files\Google\Chrome\Application\chrome.exe" --headless --disable-gpu --user-data-dir="%TEMP%\chrome-pdf-profile" --print-to-pdf="<定稿.pdf>" "file:///<定稿.html 绝对路径>"
 ```
+
+**导出前置校验（v2.5.2-dsh.16）**：`md2html.mjs` 会先用 `scripts/_lib/svg.mjs` 校验每张 SVG——**结构不合格（未闭合 / 无 `<svg>` 根 / 无 viewBox 且无宽高 / 含 DTD·ENTITY）直接 exit 2 拒绝导出且不产出 HTML**（旧版坏 SVG 原样嵌入、exit 0，浏览器整块不渲染而无提示）；`<script>`/`on*`/`foreignObject`/`javascript:`/外部引用会被剥离并逐条告警；`--strict` 可让任何告警都判失败。缺图的图位输出显式占位（含期望文件名），不会静默留白。
 
 校验：`scripts/pdfcheck.mjs`（解压 PDF FlateDecode 流 + 原始字节直查 `/Page` `/Font`/`ToUnicode`/`CIDFont` 计数 + `%%EOF`）。中文字体依赖系统字体（Windows 自带 SimSun/微软雅黑即够）。
 

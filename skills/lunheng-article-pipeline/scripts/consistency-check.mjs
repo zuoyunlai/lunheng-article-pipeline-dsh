@@ -1,6 +1,6 @@
 // 论衡插件一致性自检脚本（DSH）— 发布/commit 前运行
 // 用法：node scripts/consistency-check.mjs
-// 覆盖 17 类漂移（v2.5.2-dsh.15 起；.5 为 9 类，.13 加 ⑩-⑭，.15 加 ⑮-⑰）：
+// 覆盖 18 类漂移（v2.5.2-dsh.16 起；.5 为 9 类，.13 加 ⑩-⑭，.15 加 ⑮-⑰，.16 加 ⑱）：
 //   ① 跨文件版本一致性（package.json ↔ SKILL.md frontmatter ↔ 版本头行 ↔ 仓库级文档）
 //   ② 双头版本行 / M-Gate-Report 文件名漂移
 //   ③ 悬空引用（版本一致性检查旧名 / scripts/*.mjs 悬空 / 角色卡索引缺失）
@@ -18,6 +18,7 @@
 //   ⑮ 派发卡行数上限（每卡 ≤12 行——派发 prompt 最小化的 token 契约）
 //   ⑯ 审计视图三方一致（pipeline-readme 声称 ↔ 角色卡 ↔ 生成脚本，防「已投入未兑现」）
 //   ⑰ 定量节省断言必须有算式/实测出处（防「省 N%」无出处自我繁殖）
+//   ⑱ 图件链路口径（图件路径唯一 + 宣称的图件机械门必须存在 + 图位独占一行规范）
 // 退出码 0 = 通过；1 = 有漂移（列在 stderr）
 // (重写用法：node scripts/consistency-check.mjs [--fix]
 //   --fix：自动修复可逆的简单漂移（P2 级，如「（检查）」占位符替换）
@@ -50,6 +51,31 @@ const files = walk(ROOT);
 const isArchive = (f) => f.includes(join('references', '_shared', 'archive'));
 const isLegacyProtocol = (f) => f.endsWith('执行韧化协议-v2.1.0.md');
 const active = files.filter((f) => !isArchive(f) && !isLegacyProtocol(f));
+
+// M 门口径派生真源（v2.5.2-dsh.16）：规则 ⑥b 的数字全部从 m-gate-check.mjs 的 gate 标签算出，规则自身不会过期
+const gateSrc = readFileSync(join(ROOT, 'scripts', 'm-gate-check.mjs'), 'utf8');
+const GATE_DERIVED = (() => {
+  const grab = (pre) => new Set([...gateSrc.matchAll(new RegExp(`gate:\\s*'(M-${pre}-\\d+)`, 'g'))].map((m) => m[1])).size;
+  const form = grab('Form'), exist = grab('Exist'), integ = grab('Integrity');
+  return { form, exist, integ, mech: form + exist + integ, total: form + exist + integ + 1 };  // + M-Integrity-2（主控 T7.5 人工门）
+})();
+// ⑥b 的口径检查（skills/** 与 docs/** 共用；由调用方传 rel 以便定位）
+function checkGateCounts(text, rel) {
+  const { form, exist, integ, mech, total } = GATE_DERIVED;
+  const check = (re, idx, expected, label) => {
+    const m = text.match(re);
+    if (m && Number(m[idx]) !== expected) {
+      errors.push(`[P1 口径残留 M 门${label}] ${rel} 写 ${m[idx]}，脚本派生值应为 ${expected}（M-Form ${form} + M-Exist ${exist} + M-Integrity ${integ}）`);
+    }
+  };
+  check(/M\s*门\s*(\d+)\s*项机械化/, 1, mech, '机械化项数');
+  check(/M\s*门\s*(\d+)\s*项(?!机械化)/, 1, total, '总项数');
+  check(/M-Form\s*(\d+)\s*项/, 1, form, ' M-Form 项数');
+  check(/M-Form\s*(\d+)\s*\/\s*M-Exist\s*(\d+)\s*\/\s*M-Integrity\s*(\d+)/, 1, form, ' 分工（Form）');
+  check(/M-Form\s*(\d+)\s*\/\s*M-Exist\s*(\d+)\s*\/\s*M-Integrity\s*(\d+)/, 2, exist, ' 分工（Exist）');
+  check(/M-Form\s*(\d+)\s*项\s*\+\s*M-Exist\s*(\d+)\s*项/, 1, form, ' 分项（Form）');
+  check(/M-Form\s*(\d+)\s*项\s*\+\s*M-Exist\s*(\d+)\s*项/, 2, exist, ' 分项（Exist）');
+}
 
 // --fix 模式：自动修复可逆的简单漂移（P2 级）
 // v2.5.2-dsh.13 修订（第三方审计 P1）：
@@ -179,10 +205,8 @@ for (const f of files) {
     if (/G0-G14 十四项/.test(text)) {
       errors.push(`[P1 口径残留 G 清单「十四项」（应为 15 项）] ${rel}`);
     }
-    // ⑥b M 门项数与分工口径（v2.5.2-dsh.13 新增：脚本实测 12 项机械化，总 13 项含 M-Integrity-2 人工）
-    if (/M 门 ?13 ?项机械化|13 门（M-Form 1-8 \+ M-Exist 1-3 \+ M-Integrity-1）/.test(text)) {
-      errors.push(`[P1 口径残留 M 门项数/分工（机械化 12 项；总 13 项 = 12 + M-Integrity-2 人工）] ${rel}`);
-    }
+    // ⑥b M 门项数与分工口径（v2.5.2-dsh.13 新增；v2.5.2-dsh.16 改为**从脚本派生**——写死数字的规则自己也会过期）
+    checkGateCounts(text, rel);
     // ⑥c 非 DSH 工具名黑名单（v2.5.2-dsh.13 新增：文档不得把不存在的工具声明为可用）
     //     负向表述（不存在/不得调用/已废止/历史/旧版/误声明/教训）豁免，避免误伤纠错说明
     {
@@ -267,6 +291,8 @@ if (existsSync(docsDir)) {
         errors.push(`[P1 docs 当前版本声明漂移] ${rel}:${i + 1} 写 ${cur[1]} ≠ package.json=${pkgVer}`);
       }
     });
+    // M 门口径同样覆盖 docs（v2.5.2-dsh.16：docs 的计数声明此前不在任何规则覆盖内）
+    checkGateCounts(readFileSync(f, 'utf8'), rel);
   }
 }
 
@@ -344,6 +370,34 @@ for (const f of active) {
     if (/[=＝]|vs|实测|对比|基线|算式/.test(ctx)) return;
     errors.push(`[P2 定量断言缺出处] ${rel}:${i + 1} 声称「${m[0]}」但同行/邻行无算式或实测出处——请补算式，或改为定性表述`);
   });
+}
+
+// ⑱ 图件链路口径（v2.5.2-dsh.16 新增，第三方 SVG 链路审计）：
+//   ① 图件路径只有**一个**口径：`final/图件/图N_标题.svg`（旧版 08 卡写 `final/图件/图N_标题.svg`，两套口径并存）；
+//   ② 文档宣称的「图件机械门」必须真实存在——T5 卡宣称「T7 跑 M-Gate 检查 [图N] 数量 ≥ 拍板数 → P0 拦截」，
+//      而当时的 M 门 14 项**没有任何图项**（现由 M-Form-9 落地）：宣称与实现必须一起改；
+//   ③ 图位规范必须写明「独占一行」（md2html 的块级图注/分页依赖它；行内仅在 dsh.16 起被容错识别）。
+{
+  const mGateSrc = gateSrc;
+  const claimsFigGate = active.some((f) => /\[图N\][^\n]{0,40}P0 拦截|P0 拦截[^\n]{0,40}\[图N\]/.test(readFileSync(f, 'utf8')));
+  if (claimsFigGate && !mGateSrc.includes('M-Form-9')) {
+    errors.push('[P1 图件门断链] 文档宣称「T7 跑 M-Gate 检查 [图N] → P0 拦截」，但 m-gate-check.mjs 未实现 M-Form-9 图件闭环');
+  }
+  if (!mGateSrc.includes('_lib/svg.mjs')) {
+    errors.push('[P1 图件门断链] m-gate-check.mjs 未接入 _lib/svg.mjs（图件结构/安全校验的唯一真源）');
+  }
+  for (const f of active) {
+    const rel = relative(ROOT, f).replaceAll('\\', '/');
+    const lines = readFileSync(f, 'utf8').split('\n');
+    lines.forEach((l, i) => {
+      if (/final[\\/]图N-|final[\\/]图\d+-[^\s`]*\.svg/.test(l) && !/旧版|历史|漂移|教训|错误/.test(l)) {
+        errors.push(`[P1 图件路径口径漂移] ${rel}:${i + 1} 用了旧口径 final/图N-*.svg——唯一口径是 final/图件/图N_标题.svg`);
+      }
+      if (/只标 ?`?\[图N：标题\]/.test(l) && !/独占一行|独立成行/.test(l + '\n' + (lines[i + 1] || ''))) {
+        errors.push(`[P2 图位规范缺「独占一行」] ${rel}:${i + 1} 要求写手标 [图N：标题] 但未声明必须独占一行（与 md2html 块级图注/分页契约相关）`);
+      }
+    });
+  }
 }
 
 // ⑧ cordis.patch.yml + examples/ 版本引用（v2.5.2-dsh.5 审计新增：防安装文档指向未发布版本）

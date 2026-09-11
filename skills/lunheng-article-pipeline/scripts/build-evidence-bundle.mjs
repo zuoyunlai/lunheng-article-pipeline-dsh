@@ -2,7 +2,7 @@
 // build-evidence-bundle.mjs — T8 终检：自动生成 final/证据包/ + 可选 audits/审计视图-v0.md
 // 用法: node scripts/build-evidence-bundle.mjs <run/项目名> [--project <名>] [--source <正文路径>] [--summary] [--deep-summary]
 // 行为:
-//   默认：收集 文献卡/数据卡/案例卡/先行者清单/分析大纲/批判报告/审计报告/复核报告/反哺报告/修订说明*/status/01-任务简报 到 <项目>/final/证据包/
+//   默认：收集 文献卡/数据卡/案例卡/先行者清单/分析大纲/批判报告/审计报告/复核报告/反哺报告/修订说明*/status/01-任务简报 + **final/图件/*.svg** 到 <项目>/final/证据包/
 //   --summary：额外生成 <项目>/audits/审计视图-v0.md（T4 分析 / T5 写作 / T6 批判 / T7 审计 / T9 审稿 / T8 终检 共用轻量摘要，避免各自重读全文）
 //   --source <path>：指定审计视图的**正文源**（v2.5.2-dsh.15 新增）。不指定时按 `final/定稿.md` → `drafts/` 最高版本正文 依次回退；
 //                    两者都没有时**仍生成视图**（素材/报告阶段视图，供 T4 与 Phase 2.5 前闸门复用）。视图头记录源路径与阶段，防把草稿快照当定稿用。
@@ -14,6 +14,7 @@ import { join, basename, relative } from 'node:path';
 import { countHan } from './_lib/han.mjs';                        // 汉字口径真源
 import { refCardPairRegex, refRegexFirst, refsOf } from './_lib/refs.mjs';   // 引用编号口径真源
 import { TRUST_COMPLIANT_RE } from './_lib/trust.mjs';            // 信任级别口径真源
+import { figurePlaceholders, figureNoOf } from './_lib/svg.mjs';  // 图位/图号口径真源（v2.5.2-dsh.16）
 
 const args = process.argv.slice(2);
 const wantDeepSummary = args.includes('--deep-summary');
@@ -84,6 +85,21 @@ if (existsSync(draftsDir)) {
       copied++;
       console.log(`✓ drafts/${f} -> 证据包/${f}`);
     }
+  }
+}
+
+// 图件：final/图件/ 下所有 .svg → 证据包/图件/（v2.5.2-dsh.16 新增）
+// 旧版不收图件 → T7/T8 读审计视图时**看不见图**，M 门也无图项（第三方 SVG 链路审计 findings）
+const figDir = join(project, 'final', '图件');
+let figFiles = [];
+if (existsSync(figDir)) {
+  const figDest = join(destDir, '图件');
+  if (!existsSync(figDest)) mkdirSync(figDest, { recursive: true });
+  for (const f of readdirSync(figDir).filter((x) => x.toLowerCase().endsWith('.svg')).sort()) {
+    copyFileSync(join(figDir, f), join(figDest, f));
+    figFiles.push(f);
+    copied++;
+    console.log(`✓ final/图件/${f} -> 证据包/图件/${f}`);
   }
 }
 
@@ -187,9 +203,20 @@ if (wantSummary) {
   const usedD = uniq(refsOf(srcText, 'D'));
   const usedC = uniq(refsOf(srcText, 'C'));
 
+  // 图件对账（v2.5.2-dsh.16 新增）：让 T7/T8 只在视图里就能看见「图位 vs 图件」是否齐
+  const figNos = figurePlaceholders(srcText);
+  const figFileNos = figFiles.map((f) => figureNoOf(f)).filter((n) => n !== null);
+  const figMissing = [...figNos].filter((n) => !figFileNos.includes(n));
+  const figOrphan = figFileNos.filter((n) => !figNos.has(n));
+  const figLine = figNos.size === 0 && figFiles.length === 0
+    ? '- N/A：未启用配图（正文无 [图N] 图位，final/图件/ 为空或不存在）'
+    : `- 正文 [图N] 图位：${figNos.size} 个${figNos.size ? `（${[...figNos].sort((a, b) => a - b).map((n) => `图${n}`).join('、')}）` : ''} ｜ 图件文件：${figFiles.length} 个${figFiles.length ? `（${figFiles.join('、')}）` : ''}`
+      + (figMissing.length ? `\n- ⚠️ **缺图**：${figMissing.map((n) => `图${n}`).join('、')}（正文标了图位但 final/图件/ 无对应文件）` : '')
+      + (figOrphan.length ? `\n- ⚠️ **孤儿图件**：${figOrphan.map((n) => `图${n}`).join('、')}（未被正文引用）` : '');
+
   const summary = `# 审计视图（自动生成，T4/T5/T6/T7/T9/T8 共用）
 
-> **用法**：T4 分析 / T5 写作 / T6 批判 / T7 审计 / T9 审稿 / T8 终检 派发时**先读本视图**，按需跳转全文/数据卡/文献卡/案例卡；不强制重读全部素材——本视图含正文结构、字数、素材卡数量、信任级别分布、M 门 13 项状态、引用闭环、报告存在性。
+> **用法**：T4 分析 / T5 写作 / T6 批判 / T7 审计 / T9 审稿 / T8 终检 派发时**先读本视图**，按需跳转全文/数据卡/文献卡/案例卡；不强制重读全部素材——本视图含正文结构、字数、素材卡数量、信任级别分布、M 门 14 项状态、引用闭环、报告存在性。
 > **视图源**：\`${srcRel}\`　｜　**阶段**：${stageLabel}　｜　生成时间：${new Date().toISOString()}
 > ${src && src.kind === 'draft' ? '⚠️ 源为**草稿快照**：字数/引用闭环仅代表该草稿轮次，**定稿阶段必须重新生成**后引用（`--source final/定稿.md`）。' : src && src.kind === 'final' ? '源为定稿（终态视图）。' : '尚无正文：本视图仅含素材与报告状态，T4 分析（Phase 2）可用；草稿产出后请重新生成本视图。'}
 
@@ -205,6 +232,10 @@ ${src ? sections.join('\n') : '（无正文源：本视图不含正文结构，�
 | 数据卡 [Dxx] | ${datN} | ${datT ? `${datT.a} / ${datT.b} / ${datT.c}` : '—'} |
 | 案例卡 [Cxx] | ${casN} | — |
 
+### 图件对账（v2.5.2-dsh.16，M-Form-9 同口径）
+
+${figLine}
+
 ## 三、引用闭环（${src ? `${src.name} 正文` : '正文'}实际引用的不重复编号数）
 
 - 文献 [Lxx]：${usedL} 个
@@ -212,7 +243,7 @@ ${src ? sections.join('\n') : '（无正文源：本视图不含正文结构，�
 - 案例 [Cxx]：${usedC} 个
 ${src ? '' : '\n> 无正文源：三项均为 0（**不是「无引用」**，是尚未有正文可比对）。'}
 
-## 四、M 门 13 项状态
+## 四、M 门 14 项状态
 
 ${mSummary}
 
@@ -226,11 +257,13 @@ ${src && src.kind === 'final' ? `- [ ] 引用闭环：素材卡条数 vs 引用�
 - [ ] 字数：定稿 ${han} 汉字 vs 任务简报目标（±2% 软档）
 - [ ] 信任级别全填：数据卡每条「信任级别」独立段
 - [ ] AI 使用声明：定稿文末 5 节白名单（M-Form-7）
-- [ ] 参考文献编号闭环：定稿引用 [Lxx] 必须在参考文献清单` : `- [ ] 素材卡数量 vs 任务简报需求（缺角？）
+- [ ] 参考文献编号闭环：定稿引用 [Lxx] 必须在参考文献清单${figNos.size || figFiles.length ? `
+- [ ] 图件闭环（M-Form-9）：图位 ↔ \`final/图件/图N_标题.svg\` 双向对应 + SVG 良构 + 图上数字有出处` : ''}` : `- [ ] 素材卡数量 vs 任务简报需求（缺角？）
 - [ ] 信任级别全填：数据卡每条「信任级别」独立段
 - [ ] 阶段报告齐备：批判 / 审计 / 复核 / 审稿（按阶段应有）
 - [ ] 信任级别分布异常（A 级占比过高或全 C 级）
-- [ ] （定稿阶段项：字数 ±2% / AI 使用声明 5 节 / [Lxx] 编号闭环——待定稿后判定）`}
+- [ ] （定稿阶段项：字数 ±2% / AI 使用声明 5 节 / [Lxx] 编号闭环——待定稿后判定）${figNos.size || figFiles.length ? `
+- [ ] 图件闭环（M-Form-9）：图位 ↔ \`final/图件/\` 双向对应（定稿阶段再跑一次）` : ''}`}
 `;
 
   const auditsDir = join(project, 'audits');
@@ -242,6 +275,7 @@ ${src && src.kind === 'final' ? `- [ ] 引用闭环：素材卡条数 vs 引用�
   console.log(`  - 视图源: ${srcRel}（${stageLabel}）`);
   console.log(`  - 正文纯汉字: ${han}${src ? '' : '（无正文源）'}`);
   console.log(`  - 素材卡: L${litN} D${datN} C${casN}`);
+  console.log(`  - 图件: 图位 ${figNos.size} 个 / 图件文件 ${figFiles.length} 个${figMissing.length ? `（缺图 ${figMissing.map((n) => '图' + n).join(',')}）` : ''}`);
   console.log(`  - 引用闭环: L${usedL} D${usedD} C${usedC}`);
   console.log(`  - 报告: ${reportsLine}`);
 
