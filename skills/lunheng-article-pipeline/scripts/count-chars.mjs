@@ -6,13 +6,13 @@
 // 口径：纯中文字符数（Unicode 汉字 \u4e00-\u9fff），不含标点/数字/英文/引用编号
 // 用途：写手写完即跑（替代 LLM 推理估算）；T7 G8 字数核验；T8 终检权威回填
 import { readFileSync, existsSync } from 'node:fs';
+import { HAN_RE as HAN } from './_lib/han.mjs';   // 汉字口径唯一真源（v2.5.2-dsh.13 抽 _lib）
 
 const [, , file, flag] = process.argv;
 if (!file) { console.error('用法: node count-chars.mjs <文件.md> [--full | --summary]'); process.exit(1); }
 if (!existsSync(file)) { console.error(`文件不存在: ${file}`); process.exit(1); }
 
 const text = readFileSync(file, 'utf8');
-const HAN = /[\u4e00-\u9fff]/g;
 
 if (flag === '--summary') {
   // 分段：标题/摘要/关键词/正文/参考文献/数据来源/案例来源/先行者文献/AI 使用声明

@@ -116,7 +116,8 @@ if (pack.status !== 0) {
     if (files.length === 0) fail('pack', 'npm pack 报告无文件（--json 解析异常？）')
     const must = ['package.json', 'cordis.patch.yml', 'README.md', 'LICENSE', 'CHANGELOG.md', 'skills/lunheng-article-pipeline/SKILL.md']
     for (const m of must) if (!files.includes(m)) fail('pack', `发布包缺关键路径：${m}`)
-    const scripts = files.filter((f) => /^skills\/lunheng-article-pipeline\/scripts\/.+\.mjs$/.test(f))
+    // 只数**顶层**随包脚本（`scripts/_lib/` 是共享库，不算入口；v2.5.2-dsh.13）
+    const scripts = files.filter((f) => /^skills\/lunheng-article-pipeline\/scripts\/[^/]+\.mjs$/.test(f))
     if (scripts.length !== 9) fail('pack', `发布包内随包脚本数 ${scripts.length} ≠ 9（白名单不一致）`)
     notes.push(`⑥ 发布面：${files.length} 个文件 / 随包脚本 ${scripts.length} 个 / 关键路径齐备`)
   } catch (e) {

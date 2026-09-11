@@ -53,7 +53,9 @@
   2. **路径解析**：取出**已安装副本**里的真实 `!!js` 表达式，按 loader 语义 `with (ctx) { return eval(expr) }` 以真实 `baseUrl=file:///<profile>/` 求值 → 得到 `<profile>/node_modules/lunheng-article-pipeline/skills/`，**该目录真实存在且内含 SKILL.md（18688 B）** ✓（同时证明 `getBuiltinModule` → `URL.pathname` 的替换端到端等价）
   3. **组合树**：`dsh --profile __lunheng_probe__ --dump-config` 中 `skill-filesystem-lunheng` + `tool-subagent-retrieval/strong/audit` **4 行全部进入** ✓
   验证后已删除该 profile（释放 154.9 MB），无孤儿进程残留。**残余未测**：需要模型凭据的「会话内列出技能」一步（CLI headless 无 `DEEPSEEK_API_KEY`），风险很低（provider 挂载与目录解析均已实证）。
-- **未做（下次迭代）**：抽 `scripts/_lib/` 公共模块消除 5 类正则/口径复制漂移（P3）；`README.en.md` 英文门面；冒烟矩阵扩到 macOS；`gitleaks`/`trufflehog` 密钥扫描接 CI。
+- **已补（第三批：消重与回归）**：抽出 `scripts/_lib/`（`han.mjs` 汉字口径 / `refs.mjs` 引用编号 / `trust.mjs` 信任级别 / `cards.mjs` 卡片切块），4 个脚本改为 import——消除 5 类复制漂移；**并用「git HEAD 版 vs 工作区版跑同一夹具逐字节对比」证明重构零行为变化**（4 项输出全等；唯一的差异是修掉了一个真 bug，见下条）。
+  - **对比过程中抓到并修复一个真 bug（回归）**：`m-gate-check.mjs` 的位置参数解析在 `--report` 缺席时 `reportIdx+1=0`，会把**第一个位置参数（定稿路径）也排除**→ 不带 `--report` 的调用必然报用法错误（`exit 10`）；而 `final-check.mjs` 正是不带 `--report` 调用它 → **一键终检会误报「M 门未过」**。已修（仅当 `--report` 真出现时才排除其取值），并让 `final-check.mjs` 顺带把 M 门报告落到真源 `final/M-Gate-Report.json`（审计视图因此开箱可用）；回归用例增至 **11 个**（新增「常规调用不得判参数错误」与「final-check 落盘真源路径」两条）。
+- **未做（下次迭代）**：`README.en.md` 英文门面；冒烟矩阵扩到 macOS；`gitleaks`/`trufflehog` 密钥扫描接 CI。
 - **本批已补**：`SECURITY.md`（信任边界与漏洞披露）、`docs/troubleshooting.md`（9 类故障症状→原因→处置）、README 的「前置要求 / 卸载 / 数据流向与免责」三节。
 
 ## 2.5.2-dsh.12（2026-09-09）

@@ -9,6 +9,9 @@
 //   兼容 audits/ 旧路径；报告由 `m-gate-check.mjs --report <path>` 落盘 —— v2.5.2-dsh.13 修复路径契约）
 import { readdirSync, copyFileSync, existsSync, mkdirSync, statSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, basename } from 'node:path';
+import { countHan } from './_lib/han.mjs';                        // 汉字口径真源
+import { refCardPairRegex, refRegexFirst, refsOf } from './_lib/refs.mjs';   // 引用编号口径真源
+import { TRUST_COMPLIANT_RE } from './_lib/trust.mjs';            // 信任级别口径真源
 
 const args = process.argv.slice(2);
 const wantDeepSummary = args.includes('--deep-summary');
@@ -79,7 +82,7 @@ if (wantSummary) {
     process.exit(0);
   }
   const finalText = readFileSync(finalPath, 'utf8');
-  const han = (finalText.match(/[\u4e00-\u9fff]/g) || []).length;   // 与 count-chars.mjs 同一口径（旧版 [一-龥] 少 89 个码位）
+  const han = countHan(finalText);   // 口径真源：_lib/han.mjs（旧版 [一-龥] 少 89 个码位）
   // 章节结构（H1/H2）
   const sections = [];
   for (const line of finalText.split('\n')) {
@@ -93,7 +96,7 @@ if (wantSummary) {
     if (!existsSync(join(project, p))) return 0;
     const t = readFileSync(join(project, p), 'utf8');
     const ids = new Set();
-    const re = /\[([LCFD])(\d+)\]/g;   // 与 m-gate-check 同口径（旧版限 2-3 位 → 1 位编号漏计，审计视图自相矛盾）
+    const re = refCardPairRegex();   // 口径真源：_lib/refs.mjs（旧版限 2-3 位 → 1 位编号漏计）
     let m;
     while ((m = re.exec(t)) !== null) ids.add(m[1] + m[2]);
     return ids.size;
@@ -138,9 +141,9 @@ if (wantSummary) {
 
   // 引用闭环扫描（[Lxx]/[Dxx]/[Cxx] 在定稿中的实际使用，去重计数）
   const uniq = (arr) => new Set(arr).size;
-  const usedL = uniq(finalText.match(/\[L\d+\]/g) || []);
-  const usedD = uniq(finalText.match(/\[D\d+\]/g) || []);
-  const usedC = uniq(finalText.match(/\[C\d+\]/g) || []);
+  const usedL = uniq(refsOf(finalText, 'L'));
+  const usedD = uniq(refsOf(finalText, 'D'));
+  const usedC = uniq(refsOf(finalText, 'C'));
 
   const summary = `# 审计视图（v2.5.2-dsh.7 自动生成，T6/T7/T9/T8 共用）
 
@@ -208,7 +211,7 @@ ${reportsLine}
           if (cur) cards.push(cur);
           cur = { id: m[0], title: line.replace(m[0], '').trim().slice(0, 80), trust: null, source: null };
         } else if (cur) {
-          const t2 = line.match(/信任级别\**[:：]\s*(已发布|主人投喂|二手转引)/);
+          const t2 = line.match(TRUST_COMPLIANT_RE);   // 口径真源：_lib/trust.mjs
           if (t2) cur.trust = t2[1];
           const u = line.match(/DOI[:：]?\s*(10\.\d{4,9}\/[^\s]+)/);
           if (u) cur.source = u[1];
@@ -217,9 +220,9 @@ ${reportsLine}
       if (cur) cards.push(cur);
       return cards;
     };
-    const Ls = parseCard(join(project, 'literature', '文献卡.md'), /\[L\d+\]/);
-    const Ds = parseCard(join(project, 'data', '数据卡.md'), /\[D\d+\]/);
-    const Cs = parseCard(join(project, 'cases', '案例卡.md'), /\[C\d+\]/);
+    const Ls = parseCard(join(project, 'literature', '文献卡.md'), refRegexFirst('L'));
+    const Ds = parseCard(join(project, 'data', '数据卡.md'), refRegexFirst('D'));
+    const Cs = parseCard(join(project, 'cases', '案例卡.md'), refRegexFirst('C'));
 
     let deepSection = '\n\n---\n\n## 七、素材卡全集（--deep-summary 模式，v2.5.2-dsh.7 新增）\n\n';
     deepSection += `> T7 复核 / T5 修订 / T8 终检可在此段一次性看完全部素材卡标题 + 信任级别 + DOI，无需跳 `;

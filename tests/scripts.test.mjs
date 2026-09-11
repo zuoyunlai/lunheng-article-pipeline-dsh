@@ -70,6 +70,32 @@ test('m-gate-check：参数/路径错误必须 exit 10（与「1 = P1 内容失�
   assert.equal(r.code, 10)
 })
 
+test('m-gate-check：不带 --report 的常规调用必须正常工作（回归：曾因 reportIdx=-1 排除首个位置参数而误报用法错误）', () => {
+  const d = tmp()
+  const proj = join(d, 'proj')
+  const fin = join(proj, 'final')
+  const ev = join(fin, '证据包')
+  mkdirSync(ev, { recursive: true })
+  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文。\n')
+  const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])
+  assert.notEqual(r.code, 10, '不得判为参数错误：' + r.out.slice(0, 160))
+  const j = parseJson(r)
+  assert.ok(j.total >= 10, '应输出完整 M 门报告（total=' + j.total + '）')
+  assert.equal(typeof j.exit, 'number')
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('final-check：应把 M 门报告落到真源路径 final/M-Gate-Report.json（供审计视图读取）', () => {
+  const d = tmp()
+  const proj = join(d, 'proj')
+  const fin = join(proj, 'final')
+  mkdirSync(join(fin, '证据包'), { recursive: true })
+  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文。\n')
+  run([join(SCRIPTS, 'final-check.mjs'), proj, '--no-summary'])
+  assert.ok(existsSync(join(fin, 'M-Gate-Report.json')), 'M 门报告应落在 final/M-Gate-Report.json')
+  rmSync(d, { recursive: true, force: true })
+})
+
 test('m-gate-check：--report 落盘结构化报告（报告契约闭环）', () => {
   const d = tmp()
   const proj = join(d, 'run', 'proj')

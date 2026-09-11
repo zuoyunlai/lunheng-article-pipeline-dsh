@@ -201,7 +201,9 @@ const diskScripts = readdirSync(join(ROOT, 'scripts')).filter((f) => f.endsWith(
 const diskNames = diskScripts.map((f) => f.replace(/\.mjs$/, ''));
 const wlLine = readFileSync(join(ROOT, 'SKILL.md'), 'utf8').split('\n').find((l) => l.includes('随包脚本白名单')) || '';
 // SKILL.md 白名单行的格式：`scripts/*.mjs` = a / b / c + 有限验证命令…
-const declaredNames = (wlLine.split('=')[1] || '').split('+')[0].split('/').map((s) => s.trim()).filter(Boolean);
+// 只取「纯脚本名」token（`[a-z0-9-]+`）——防止清单里夹带的括注/路径把解析带偏（v2.5.2-dsh.13 加固：
+// 曾因注释中出现 `scripts/_lib/*.mjs` 被当成清单分隔符，导致 normalize-trust-level 被误判漏列）
+const declaredNames = (wlLine.split('=')[1] || '').split('+')[0].split('/').map((s) => s.trim()).filter((s) => /^[a-z0-9][a-z0-9-]*$/.test(s));
 const missingInDoc = diskNames.filter((s) => !declaredNames.includes(s));
 const extraInDoc = declaredNames.filter((s) => !diskNames.includes(s));
 if (missingInDoc.length > 0) errors.push(`[P1 白名单漏列] SKILL.md 未列：${missingInDoc.join(', ')}（磁盘共 ${diskScripts.length} 个）`);

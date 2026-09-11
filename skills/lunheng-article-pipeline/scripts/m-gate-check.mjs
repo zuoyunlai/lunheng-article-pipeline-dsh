@@ -7,13 +7,19 @@
 // 严重度评级（v2.5.2-dsh.5 引入）：gate fail 时按 P0/P1/P2 分级；单子项失败子项数 ≤2 → P2 可放行
 import { readFileSync, readdirSync, statSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
+import { refsOf, dataCardIds } from './_lib/refs.mjs';                 // 引用编号口径真源
+import { TRUST_COMPLIANT_RE, TRUST_LOOSE_RE } from './_lib/trust.mjs'; // 信任级别口径真源
+import { splitCard } from './_lib/cards.mjs';                          // 卡片切块口径真源
 
 const args = process.argv.slice(2);
 const wantSummary = args.includes('--summary');
 // --report <path>：把结构化报告落盘（供 build-evidence-bundle / T8 审计视图读取，v2.5.2-dsh.13 新增）
 const reportIdx = args.indexOf('--report');
 const reportPath = reportIdx >= 0 && args[reportIdx + 1] ? args[reportIdx + 1] : null;
-const positional = args.filter((a, i) => !a.startsWith('--') && i !== reportIdx + 1);
+// 只有当 --report 真出现时才排除它的取值（v2.5.2-dsh.13 修复：reportIdx=-1 时 reportIdx+1=0
+// 会把第一个位置参数「定稿路径」也排除掉 → 不带 --report 时必然报用法错误；
+// 而 final-check.mjs 正是不带 --report 调用本脚本）
+const positional = args.filter((a, i) => !a.startsWith('--') && !(reportIdx >= 0 && i === reportIdx + 1));
 const draftPath = positional[0];
 const evDir = positional[1];
 if (!draftPath || !evDir) {
@@ -71,7 +77,7 @@ const endnote = firstEnd >= 0 ? text.slice(firstEnd) : '';
 
 // === M-Form-1 引用标注完整性（v2.5.2-dsh.5 修订：阈值提升 L≥3）===
 const bodyRefs = body.match(refRe) || [];
-const L_count = (body.match(/\[L\d+\]/g) || []).length;
+const L_count = refsOf(body, 'L').length;
 const min_L = 3;
 let mform1Pass, mform1Detail, mform1Severity;
 if (bodyRefs.length === 0) {
@@ -168,18 +174,16 @@ results.push({
 let dataCard = '';
 try { dataCard = readFileSync(join(evDir, '数据卡.md'), 'utf8'); } catch {}
 if (dataCard) {
-  const dataIds = [...text.matchAll(/\[D(\d+)\]/g)].map((m) => m[1]);
-  const uniqueDataIds = [...new Set(dataIds)];
+  const uniqueDataIds = dataCardIds(text);
   const trustLevelMiss = [];
   const trustLevelDescOnly = [];
   for (const id of uniqueDataIds) {
     // v3 实际格式：### [Dxx] 标题（三级标题）| 数据卡.md 一级 # + [Dxx] 行内（v3 头部）
-    const cardRe = new RegExp(`(?:#{2,4}\\s*\\[D${id}\\]|\\n\\[D${id}\\][^\\n]*\\n)([\\s\\S]*?)(?=\\n#{1,4}\\s|\\n\\[D\\d+\\]|$)`);
-    const match = dataCard.match(cardRe);
-    if (!match) { trustLevelMiss.push(`D${id}(整段缺失)`); continue; }
-    const section = match[1];
-    const hasStdTrust = /信任级别\**[:：]\s*(已发布|主人投喂|二手转引)/.test(section);
-    const hasDescTrust = /信任级别\**[:：]|\b已发布\b|\b主人投喂\b|\b二手转引\b/.test(section);
+    const card = splitCard(dataCard, id);
+    if (!card) { trustLevelMiss.push(`D${id}(整段缺失)`); continue; }
+    const section = card.body;
+    const hasStdTrust = TRUST_COMPLIANT_RE.test(section);
+    const hasDescTrust = TRUST_LOOSE_RE.test(section);
     if (!hasStdTrust) {
       if (hasDescTrust) {
         trustLevelDescOnly.push(`D${id}`);

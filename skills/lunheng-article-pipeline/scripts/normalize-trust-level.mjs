@@ -13,6 +13,9 @@
 //   且会让 M-Form-6 的判定正则机械判过（证据链污染，比误删更隐蔽）。
 //   现在：无 token → 该条**不写**、列入未决清单，脚本以 exit 1 收尾，由 T2/人工显式判定后重跑。
 import { readFileSync, writeFileSync, copyFileSync, existsSync } from 'node:fs';
+import { dataCardIds } from './_lib/refs.mjs';              // 引用编号口径真源
+import { TRUST_COMPLIANT_RE, pickTrustToken } from './_lib/trust.mjs';   // 信任级别口径真源
+import { splitCard } from './_lib/cards.mjs';               // 卡片切块口径真源
 
 const rawArgs = process.argv.slice(2);
 const write = rawArgs.includes('--write');
@@ -21,27 +24,25 @@ if (files.length === 0) {
   console.error('用法: node normalize-trust-level.mjs <数据卡.md> ... [--write]（默认 dry-run，不落盘）');
   process.exit(1);
 }
-const TOKENS = ['主人投喂', '二手转引', '已发布'];
-const COMPLIANT = /信任级别\**[:：]\s*(已发布|主人投喂|二手转引)/;
+// 信任级别口径已上收到 _lib/trust.mjs（TOKENS / COMPLIANT → TRUST_COMPLIANT_RE / pickTrustToken）
 const unresolved = [];
 
 for (const file of files) {
   if (!existsSync(file)) { console.error(`跳过（不存在）: ${file}`); continue; }
   let text = readFileSync(file, 'utf8');
-  const ids = [...new Set([...text.matchAll(/\[D(\d+)\]/g)].map((m) => m[1]))];
+  const ids = dataCardIds(text);
   let changed = 0;
   for (const id of ids) {
-    const cardRe = new RegExp(`(?:#{2,4}\\s*\\[D${id}\\]|\\n\\[D${id}\\][^\\n]*\\n)([\\s\\S]*?)(?=\\n#{1,4}\\s|\\n\\[D\\d+\\]|$)`);
-    const match = text.match(cardRe);
-    if (!match) continue;
-    const block = match[0];
-    if (COMPLIANT.test(block)) continue;
-    const token = TOKENS.find((t) => block.includes(t));
+    const card = splitCard(text, id);
+    if (!card) continue;
+    const block = card.block;
+    if (TRUST_COMPLIANT_RE.test(block)) continue;
+    const token = pickTrustToken(block);
     if (!token) { unresolved.push(`${file} [D${id}]`); continue; }   // 绝不推断
     const im = block.match(/信任级别\**[:：]\s*([^\n（）()|，,;；]*)/);
     const detail = im && im[1].trim() ? `（${im[1].trim().replace(/[🟢🟡🔴]/g, '').trim()}）` : '';
     const nl = block.indexOf('\n');
-    const pos = match.index + (nl === -1 ? block.length : nl);
+    const pos = card.index + (nl === -1 ? block.length : nl);
     const inserted = `\n信任级别：${token}${detail}`;
     text = text.slice(0, pos) + inserted + text.slice(pos);
     changed++;
