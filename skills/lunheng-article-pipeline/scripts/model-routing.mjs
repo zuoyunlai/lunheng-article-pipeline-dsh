@@ -4,7 +4,7 @@
 // 能力档定义（**主人 2026-09-11 指定的四档表**，与 references/_shared/模型路由.md 一一对应）：
 //   检索     T1/T2/T3   便宜快（响应快 / token 便宜）   小参数 + 高 token/s（gpt-4o-mini / claude-haiku / 本地 Ollama）  默认：**本地 Ollama + 远程兜底**
 //   分析写作 T4/T5      强推理（逻辑链 / 长上下文）      中大参数推理模型（gpt-4o / claude-sonnet / deepseek-reasoner）    默认：远程强推理
-//   批判审计 T6/T7      顶配防漏判（严格审计 / 不放水）  顶级推理模型（claude-opus / gpt-4-turbo）                     默认：远程顶配
+//   批判审计 T6/T7/T9/G14  顶配防漏判（严格审计 / 不放水）  顶级推理模型（claude-opus / gpt-4-turbo）              默认：远程顶配
 //   主控     T0         稳定路由（多角色协调 / 不崩溃）  中参数稳定模型（gpt-4o / claude-sonnet）                     默认：远程稳定
 //   终检     T8         主控亲完成（不 spawn 子代理）    不适用                                                        不适用
 //
@@ -167,7 +167,7 @@ const TIERS = [
     localFirst: false,
   },
   {
-    key: 'audit', tool: 'subagent_audit', roles: ['T6 批判', 'T7 审计', 'T9 审稿（推断归此档）'],
+    key: 'audit', tool: 'subagent_audit', roles: ['T6 批判', 'T7 审计', 'T9 审稿', 'G14 检测'],
     need: '顶配防漏判（严格审计 / 不放水）',
     pool: '顶级推理模型（claude-opus / gpt-4-turbo）',
     strategy: '远程顶配（**不得为省钱降档**）',

@@ -522,6 +522,8 @@ test('model-routing.mjs：按本机 settings.yaml 给档位建议，且跨 provi
   assert.equal(byTier.strong.pick, 'X-Pro-3', '分析写作档应选强推理模型')
   // 主人指定的四档表：T6 属批判审计档；T9 亦归此档（推断）；T8 不适用；T0 不参与路由
   assert.ok(byTier.audit.roles.some((x) => x.startsWith('T6')), 'T6 批判必须在批判审计档（主人指定表）')
+  assert.ok(byTier.audit.roles.some((x) => x.startsWith('T9')), 'T9 审稿归批判审计档（主人确认）')
+  assert.ok(byTier.audit.roles.some((x) => x.startsWith('G14')), 'G14 检测归批判审计档（主人确认）')
   assert.ok(byTier.strong.roles.some((x) => x.startsWith('T4')) && byTier.strong.roles.some((x) => x.startsWith('T5')), '分析写作档 = T4/T5')
   assert.match(j.t8.strategy, /不适用/, 'T8 终检不适用分档')
   assert.ok(j.t0.suggest, '主控档应给稳定性建议（但不由论衡自动改宿主配置）')
@@ -573,4 +575,14 @@ test('主人侧三件套与输入模板齐备，且确认单含回填段与 Phas
   const coord = readFileSync(join(SK, 'references', 'agents', '00-主控-coordinator.md'), 'utf8')
   assert.match(coord, /进展-主人版/, '主控卡应声明刷新进展（主人版）')
   assert.match(coord, /四个\*\*人在环节点|四个\*\*人在环节点|Phase 0（定题）/, '主控卡应把 Phase 0 计入人在环节点')
+  // v2.5.2-dsh.17 续：模型路由表（模板存在 + 主控卡声明 + 契约表登记 + token-cost 帮助）
+  assert.ok(existsSync(join(TPL, '模型路由表-template.md')), '模型路由表模板应存在')
+  assert.match(coord, /模型路由表/, '主控卡应声明 Phase 0 落模型路由表')
+  assert.ok(readFileSync(join(SCRIPTS, 'consistency-check.mjs'), 'utf8').includes("['模型路由表'"), '交接契约表应登记模型路由表')
+  const help = run([join(SCRIPTS, 'token-cost.mjs'), '--help'])
+  assert.equal(help.code, 0, 'token-cost --help 应 exit 0')
+  assert.match(help.stdout, /--top N/, '帮助应列出 --top')
+  const bogus = run([join(SCRIPTS, 'token-cost.mjs'), '--bogus'])
+  assert.equal(bogus.code, 1, '未知参数应 exit 1')
+  assert.match(bogus.out, /用法/, '未知参数应附打印用法（旧版只有一行报错）')
 })

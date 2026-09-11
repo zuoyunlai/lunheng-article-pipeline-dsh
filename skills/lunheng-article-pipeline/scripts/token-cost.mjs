@@ -12,6 +12,15 @@ import os from 'node:os';
 
 const args = process.argv.slice(2);
 const opt = { dshHome: process.env.DSH_HOME || join(os.homedir(), '.dsh'), prices: { in: 0.28, cache: 0.028, out: 0.42 }, ids: null, tree: null, top: 0 };
+// 用法/帮助：v2.5.2-dsh.17 补（此前 `--help` 会被「未知参数」拦下，只报错不给用法）
+const USAGE = `用法: node token-cost.mjs --sessions <id1,id2,...> 或 --tree <主会话ID> [--top N]
+  --sessions <ids>   项目精确统计（主控传本项目派发的全部会话 id，逗号分隔）
+  --tree <id>        整会话委托树统计（含历史项目；需 Node ≥ 22.15）
+  --top N            追加 cacheRead/成本 Top N 排名（优化决策用）
+  --dsh-home <path>  指定 DSH_HOME（默认 $DSH_HOME 或 ~/.dsh）
+  --price-in/--price-cache/--price-out <N>  覆盖默认单价（美元/百万 token）
+  -h, --help         显示本帮助`;
+if (args.includes('-h') || args.includes('--help')) { console.log(USAGE); process.exit(0); }
 // 参数解析：尾随无值/非数字 → 明确报错而非静默 NaN（v2.5.2-dsh.3 审计修复）
 for (let i = 0; i < args.length; i++) {
   const a = args[i];
@@ -32,7 +41,7 @@ for (let i = 0; i < args.length; i++) {
     if (!Number.isInteger(v) || v <= 0) { console.error(`--top 需为正整数，收到: ${args[i]}`); process.exit(1); }
     opt.top = v;
   }
-  else { console.error(`未知参数: ${a}`); process.exit(1); }
+  else { console.error(`未知参数: ${a}\n\n${USAGE}`); process.exit(1); }
 }
 
 // 数据源兼容两种布局（v2.5.2-dsh.10+ 适配）：
@@ -103,7 +112,7 @@ if (opt.tree && !opt.ids) {
     console.error(`tree 模式警告：主会话 ${opt.tree} 未找到任何子代理会话（parentSession 链为空）——统计仅含主会话自身，结果可能不完整`);
   }
 } else if (!opt.ids) {
-  console.error('用法: node token-cost.mjs --sessions <id1,id2,...> 或 --tree <主会话ID> [--top N]');
+  console.error(USAGE);
   process.exit(1);
 }
 

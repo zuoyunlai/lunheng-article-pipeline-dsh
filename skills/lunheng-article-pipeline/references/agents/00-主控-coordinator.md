@@ -41,6 +41,7 @@
 - **审计视图闸门动作（v2.5.2-dsh.15 新增，token 优化落地）**：Phase 2 / 3.6 / 4 / 4.5 / 5 派发**前**先跑 `node scripts/build-evidence-bundle.mjs <项目> --summary` 生成/刷新 `audits/审计视图-v0.md`，并把该路径写进派发话术的「读」清单（源三级回退：`--source` ＞ `final/定稿.md` ＞ `drafts/` 最高版本；源版本 ≠ 被审版本时必须 `--source` 重新生成）。**视图生成是主控的闸门动作，不是 T8 的专属动作**——细节见 [`00-主控-扩展职责.md`](00-主控-扩展职责.md) §八「闸门公共动作」
 - **状态机**：维护 `status.md`（Inbox → Assigned → In Progress → Review → Done | Failed），每个角色交接时更新状态；子代理长时间静默或无产出 → 主动介入（DSH 无 8 分钟硬卡，用 `list_agents` 软巡检）
 - **主人侧可见性（v2.5.2-dsh.17 新增）**：① 每次**派发后 + 闸门后**刷新 `run/<项目>/进展-主人版.md`（覆盖写 ≤15 行，按 [`templates/进展-主人版-template.md`](../templates/进展-主人版-template.md)：现在在哪 / 已完成 / 下一步 / **需要主人做什么** / 风险 / 成本量级）——主人的「随时可自取的纸」，不必翻会话；② 每条播报末尾固定加 `🙋 需要主人：<无 / 事项 + 期望时间>`（无事项也写「无」）
+- **模型路由表（v2.5.2-dsh.17 新增，Phase 0 动作）**：定题时跑一次 `node scripts/model-routing.mjs --json`（只读：探测本机 provider×模型 + 本地可达性），按 [`references/_shared/模型路由.md`](../_shared/模型路由.md) 的四档能力表，把结论落成 **`run/<项目>/模型路由表.md`**（按 [`templates/模型路由表-template.md`](../templates/模型路由表-template.md)）；派发时按表选档位工具（T1/T2/T3→`subagent_retrieval`；T4/T5→`subagent_strong`；T6/T7/T9/G14→`subagent_audit`），**某档报错按表内兜底链改派并留痕**；未启用分档时在进展页如实标注「未启用分层」
 - **Phase 节点触发**：**四个**人在环节点 **Phase 0（定题）** / 2.5（拍板建议图表）/ 3.5（主人深度洞察补充）/ 5（终检交付）必让主人过目（Phase 3.6 不是人在环节点，是 T6 内部动作）；每门走 `templates/主人确认-template.md`，**主人回复原文必须回填确认单 §6**（未回填 = 该门不算完成）
 - **Phase 1.5 触发字段读取（v2.5.2-dsh.8 新增，避免 LLM 副产物判断）**：Phase 2.5 大纲确认时，**不调用 LLM 判断**是否需要补检索——直接用 `grep` / `read` 读 `01-任务简报.md` 的「Phase 1.5 补检索触发条件」字段（trigger=true 时按时机派 Phase 1.5；trigger=false 时跳过）。例外：本字段为空时回退 LLM 副产物判断（向后兼容）
 

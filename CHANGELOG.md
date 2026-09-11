@@ -44,7 +44,12 @@
 - **④ 口径与文档**：`AGENTS.md` 模型分配段重写为四档表 + 兜底链 + 「禁止写死厂商默认」；新增单一真源 `references/_shared/模型路由.md`（四档表含**主人原表逐条**、能力维度判据、用法、**兜底链**、为什么不开原生 per-call、验证与证据）；`docs/troubleshooting.md` 新增 **§15**；白名单口径 **9 → 10**（SKILL.md 两处 / QUICKSTART / 主控卡 shell 边界 / `repo-hygiene-check.mjs` 断言 + 发布面提示）。
 - **⑤ 原生「按调用选模型」的结论（不改默认行为，写明理由）**：宿主的 `modelSelectionSettings: true` 确实会加上 `provider`/`model`/`reasoning_effort` 三个按调用参数并注册 `list_subagent_models`，但开启需**宿主侧 `subagentModelSelection` 服务 + 工具行位于 Agent/preset scope**，缺任一项**加载期抛错**；宿主 standard 的 `subagent` 行默认未开（本会话工具清单里确无 `list_subagent_models`）。→ 论衡**不默认开启**（否则在不支持的宿主上装了即坏），并把它列为「将来若 DSH 设为默认再启用」的候选。
 
-**验证**：`consistency-check` 0 漂移（**61** 个 .md）｜`repo-hygiene-check` 通过（**94** 文件 / **随包脚本 10 个**）｜`tests` **30/30**（新增 2 例：三档表达式形态 6 项断言 + 路由/跨 provider/兜底/四档归属断言，并抓出并修复「`agent-default-model` 块未退出导致吞掉后续顶层键」的解析真 bug）｜`plugin-surface` 通过。
+- **⑥ 主人两点确认已写入机制（2026-09-11，成为不可反复的事实）**：
+  1. **T9 与 G14 归「批判审计」档**——主人给出的四档表未单列二者，已确认按「防漏判」原则同档（T9 是独立于写手的对抗性质量闸；G14 是可触发修订轮次的闸门）。文档与脚本中的「推断」措辞已改为「主人确认」，`model-routing.mjs` 的 audit 档角色列表为 `T6/T7/T9/G14`；并注明**若今后要省钱，最合理的降档对象是 G14**（风格识别而非事实核验），但须主人显式同意。
+  2. **维持「不默认开启原生 per-call 选模型」**——理由是「装了不坏」优先于「少一步手工」；等 DSH 把它设为默认、或宿主明确具备 `subagentModelSelection` 服务后再评估。
+- **⑦ 路由表落盘与遗留项收口**：新增 `templates/模型路由表-template.md`（Phase 0 由主控按脚本结论落 `run/<项目>/模型路由表.md`：本机实况 / 四档主选与兜底 / **是否已启用** / **回退留痕表**），并登记进交接契约表（⑲）+ 主控卡职责 + 运行手册；`token-cost.mjs` 补 **`-h/--help`**（exit 0）与「未知参数附打印用法」——**清掉自 dsh.15 起的遗留项**；测试新增相应断言（含 T9/G14 归属、模板存在、契约登记、帮助行为）。
+
+**验证**：`consistency-check` 0 漂移（**62** 个 .md）｜`repo-hygiene-check` 通过（**95** 文件 / **随包脚本 10 个**）｜`tests` **30/30**（新增 2 例：三档表达式形态 6 项断言 + 路由/跨 provider/兜底/四档归属断言，并抓出并修复「`agent-default-model` 块未退出导致吞掉后续顶层键」的解析真 bug）｜`plugin-surface` 通过。
 
 
 ### 人在环三条链修订（呈现 / 确认 / 输入；同属 v2.5.2-dsh.17 待发，**已合入 master，未发版**）
@@ -70,7 +75,7 @@
   2. **修正「发布后审计」的窗口与分级（dsh.16 首跑实测）**：publish 日志明写「Your package is being processed and **may take a few minutes** to become available」，而 dsh.14 起设的 **120s 轮询窗口仍不够**（本次 gitHead 约 10 分钟后才可取到，且与 HEAD 完全一致——**产物本身没问题，是审计窗口太短误报红灯**）。现改为：窗口 **30 × 15s（≈7.5 分钟）**、等待时提示 npm 的「处理中」语义、**取不到 = `::warning::` + exit 0**（发布步骤自身已返回成功且 provenance 已签署，元数据传播延迟不是本仓库缺陷）、**取到但不一致 = 硬错误**（真正的产物/tag 不对应必须拦）。
   3. **红 run 已转绿（幂等路径验证）**：对该 publish run 执行 `gh run rerun --failed` → attempt 2 **success**。守卫「幂等检查」识别到版本已存在于 npm → 跳过发布步骤 → 审计步骤随之跳过——**未发生二次发布**，同时验证了「重复触发同一 tag 不会重发」这条防线是真的有效。
 - **`latest` dist-tag 已同步（2026-09-11，维护者手工执行）**：`dist-tags = { latest: 2.5.2-dsh.16, dsh: 2.5.2-dsh.16 }` ✓ —— 裸包名 `npm i lunheng-article-pipeline` 与 `@latest` / `@dsh` 均解析到 **2.5.2-dsh.16**。**仍建议**配置 `NPM_TOKEN` secret 让 publish.yml 的 dist-tag 步骤自动接管（OIDC 令牌无权重写 `latest`，否则每次发版都要手工补一步）。
-- **随包脚本待改进（自 dsh.15 遗留，尚未做）**：`token-cost.mjs` 在 dsh.15 起「未知参数一律 exit 1」，导致 `--help` 报 `未知参数: --help`（旧版静默忽略、随后走用法提示）——改进方向：报错时**附带打印用法行**，或显式支持 `-h/--help`。
+- **随包脚本改进：已完成（自 dsh.15 起的遗留项，v2.5.2-dsh.17 待发段内）**：`token-cost.mjs` 已补 `-h/--help`（exit 0，列出全部参数）与「未知参数 → 附打印用法」，不再只报一行 `未知参数`。
 
 ## 2.5.2-dsh.16（2026-09-11）— SVG 图件链路：从「有机制无门」到可验证
 

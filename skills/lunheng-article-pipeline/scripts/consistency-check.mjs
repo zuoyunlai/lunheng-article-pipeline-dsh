@@ -440,6 +440,7 @@ const CONTRACTS = [
   ['阶段确认-', '00-主控-扩展职责.md', ['pipeline-readme.md']],
   ['主人投喂清单', '00-主控-扩展职责.md', ['数据卡-template.md', 'pipeline-readme.md']],
   ['style-baseline', '00-主控-扩展职责.md', ['05-写作-writer.md', '06-批判-critical-companion.md']],
+  ['模型路由表', '00-主控-coordinator.md', ['pipeline-readme.md']],
 ];
 {
   const readLazy = (() => {
