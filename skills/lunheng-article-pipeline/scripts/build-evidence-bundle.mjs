@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 // build-evidence-bundle.mjs — T8 终检：自动生成 final/证据包/ + 可选 audits/审计视图-v0.md
-// 用法: node scripts/build-evidence-bundle.mjs <run/项目名> [--project <名>] [--summary] [--deep-summary]
+// 用法: node scripts/build-evidence-bundle.mjs <run/项目名> [--project <名>] [--source <正文路径>] [--summary] [--deep-summary]
 // 行为:
 //   默认：收集 文献卡/数据卡/案例卡/先行者清单/分析大纲/批判报告/审计报告/复核报告/反哺报告/修订说明*/status/01-任务简报 到 <项目>/final/证据包/
-//   --summary：额外生成 <项目>/audits/审计视图-v0.md（T6 批判 / T7 审计 / T9 审稿 / T8 终检 共用轻量摘要，避免各自重读全文）
+//   --summary：额外生成 <项目>/audits/审计视图-v0.md（T4 分析 / T5 写作 / T6 批判 / T7 审计 / T9 审稿 / T8 终检 共用轻量摘要，避免各自重读全文）
+//   --source <path>：指定审计视图的**正文源**（v2.5.2-dsh.15 新增）。不指定时按 `final/定稿.md` → `drafts/` 最高版本正文 依次回退；
+//                    两者都没有时**仍生成视图**（素材/报告阶段视图，供 T4 与 Phase 2.5 前闸门复用）。视图头记录源路径与阶段，防把草稿快照当定稿用。
 //   --deep-summary：在 --summary 基础上，把每个素材卡的标题/作者/年份/信任级别列入 `审计视图-v0.md` 的「素材卡全集」段（T7 复核一次看完全部素材，不用 grep 跳文件）
 //   审计视图含：定稿章节结构 + 字数 + 素材卡数量 + 信任级别分布 + M 门状态（从 final/M-Gate-Report.json 读取，
 //   兼容 audits/ 旧路径；报告由 `m-gate-check.mjs --report <path>` 落盘 —— v2.5.2-dsh.13 修复路径契约）
 import { readdirSync, copyFileSync, existsSync, mkdirSync, statSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, basename } from 'node:path';
+import { join, basename, relative } from 'node:path';
 import { countHan } from './_lib/han.mjs';                        // 汉字口径真源
 import { refCardPairRegex, refRegexFirst, refsOf } from './_lib/refs.mjs';   // 引用编号口径真源
 import { TRUST_COMPLIANT_RE } from './_lib/trust.mjs';            // 信任级别口径真源
@@ -17,14 +19,28 @@ const args = process.argv.slice(2);
 const wantDeepSummary = args.includes('--deep-summary');
 // --deep-summary 蕴含 --summary（旧版单独用是静默空操作，v2.5.2-dsh.13 修复）
 const wantSummary = args.includes('--summary') || wantDeepSummary;
+// --source <path>：显式指定审计视图的正文源（v2.5.2-dsh.15 新增；相对路径按项目目录解析）
+const sourceIdx = args.indexOf('--source');
+const explicitSource = (sourceIdx >= 0 && args[sourceIdx + 1]) ? args[sourceIdx + 1] : null;
+if (sourceIdx >= 0 && !explicitSource) { console.error('--source 缺少值'); process.exit(2); }
 // --project <名> 或第一个位置参数（旧版表达式自引用，--project 的值从未被使用）
+// v2.5.2-dsh.15：位置参数解析必须排除**旗标的值**，否则 `--source drafts/初稿-v1.md <项目>` 会把源路径当成项目
 const projectIdx = args.indexOf('--project');
-const project = (projectIdx >= 0 && args[projectIdx + 1])
-  ? args[projectIdx + 1]
-  : args.find((a) => !a.startsWith('--'));
+const flagValueIdx = new Set([
+  ...(sourceIdx >= 0 ? [sourceIdx + 1] : []),
+  ...(projectIdx >= 0 ? [projectIdx + 1] : []),
+]);
+const positional = args.filter((a, i) => !a.startsWith('--') && !flagValueIdx.has(i));
+const project = (projectIdx >= 0 && args[projectIdx + 1]) ? args[projectIdx + 1] : positional[0];
 if (!project || !existsSync(project)) {
-  console.error('用法: node build-evidence-bundle.mjs <run/项目名> [--project <名>] [--summary] [--deep-summary]');
+  console.error('用法: node build-evidence-bundle.mjs <run/项目名> [--project <名>] [--source <正文路径>] [--summary] [--deep-summary]');
   process.exit(2);
+}
+
+// --source 存在性**前置**校验（v2.5.2-dsh.15）：fail fast——否则会先复制完整个证据包才报错
+if (explicitSource) {
+  const p0 = existsSync(explicitSource) ? explicitSource : join(project, explicitSource);
+  if (!existsSync(p0)) { console.error(`--source 指定的正文源不存在: ${explicitSource}`); process.exit(2); }
 }
 
 // 收集规则：源相对路径 → 目标文件名（找不到就跳过并记录）
@@ -75,17 +91,43 @@ console.log(`\n证据包生成完成: 复制 ${copied} 个文件, 跳过 ${missi
 console.log(`目录: ${destDir}`);
 
 // ===== 审计视图摘要（v2.5.2-dsh.7 新增，--summary 启用）=====
+// v2.5.2-dsh.15 修正（第三方效率审计）：旧版视图源**写死** `final/定稿.md`，而定稿是 Phase 5 才产出——
+// 被要求在派发时「先读审计视图」的 T6（Phase 3.6）/T7（Phase 4）/T9（Phase 4.5）都在**定稿之前**运行，
+// 因此这条「省 60%+ cacheRead」的优化对除 T8 以外的所有消费者都无法兑现。
+// 现改为三级源解析：`--source <path>` ＞ `final/定稿.md` ＞ `drafts/` 中版本号最高的正文（初稿-vN.md）。
+// 无正文源时**仍生成视图**（素材/报告阶段视图），供 T4 分析（Phase 2）与 Phase 2.5 前的闸门复用。
 if (wantSummary) {
-  const finalPath = join(project, 'final', '定稿.md');
-  if (!existsSync(finalPath)) {
-    console.log('· 跳过审计视图：final/定稿.md 不存在（**未生成任何审计视图**，请先产出定稿；此行非报错但不得当作「已生成」）');
-    process.exit(0);
-  }
-  const finalText = readFileSync(finalPath, 'utf8');
-  const han = countHan(finalText);   // 口径真源：_lib/han.mjs（旧版 [一-龥] 少 89 个码位）
-  // 章节结构（H1/H2）
+  const resolveSource = () => {
+    if (explicitSource) {
+      const p = existsSync(explicitSource) ? explicitSource : join(project, explicitSource);
+      if (!existsSync(p)) { console.error(`--source 指定的正文源不存在: ${explicitSource}`); process.exit(2); }
+      return { path: p, name: basename(p).replace(/\.md$/, ''), kind: /定稿/.test(basename(p)) ? 'final' : 'draft' };
+    }
+    const fin = join(project, 'final', '定稿.md');
+    if (existsSync(fin)) return { path: fin, name: '定稿', kind: 'final' };
+    const dd = join(project, 'drafts');
+    if (existsSync(dd)) {
+      const cands = readdirSync(dd)
+        .filter((f) => f.endsWith('.md') && !/^修订说明/.test(f))
+        .map((f) => ({ f, n: Number((f.match(/-v(\d+)\.md$/) || [])[1] || 0) }))
+        .sort((a, b) => b.n - a.n || a.f.localeCompare(b.f));
+      if (cands.length) return { path: join(dd, cands[0].f), name: cands[0].f.replace(/\.md$/, ''), kind: 'draft' };
+    }
+    return null;
+  };
+  const src = resolveSource();
+  const srcText = src ? readFileSync(src.path, 'utf8') : '';
+  const srcRel = src ? relative(project, src.path).replaceAll('\\', '/') : '（无正文源）';
+  // 阶段标签：让消费者一眼看出本视图是「草稿快照」还是「定稿视图」，避免把草稿字数当定稿字数用
+  const stageLabel = !src
+    ? '素材阶段（尚无正文：Phase 1-2 素材/报告状态视图）'
+    : src.kind === 'final'
+      ? 'Phase 5 终检（定稿）'
+      : `草稿阶段（${src.name} 快照，Phase 3-4.5 复用；定稿产出后须重新生成）`;
+  const han = countHan(srcText);   // 口径真源：_lib/han.mjs（旧版 [一-龥] 少 89 个码位）
+  // 章节结构（H1/H2）—— 无正文源时留空，由下方模板给出显式说明（不得伪造成「结构为空」）
   const sections = [];
-  for (const line of finalText.split('\n')) {
+  for (const line of srcText.split('\n')) {
     const m1 = line.match(/^#\s+(.+)/);
     const m2 = line.match(/^##\s+(.+)/);
     if (m1) sections.push(`# ${m1[1]}`);
@@ -139,20 +181,21 @@ if (wantSummary) {
   };
   const reportsLine = Object.entries(reports).map(([k, v]) => `${k}${v ? '✓' : '✗'}`).join(' ');
 
-  // 引用闭环扫描（[Lxx]/[Dxx]/[Cxx] 在定稿中的实际使用，去重计数）
+  // 引用闭环扫描（[Lxx]/[Dxx]/[Cxx] 在正文源中的实际使用，去重计数）
   const uniq = (arr) => new Set(arr).size;
-  const usedL = uniq(refsOf(finalText, 'L'));
-  const usedD = uniq(refsOf(finalText, 'D'));
-  const usedC = uniq(refsOf(finalText, 'C'));
+  const usedL = uniq(refsOf(srcText, 'L'));
+  const usedD = uniq(refsOf(srcText, 'D'));
+  const usedC = uniq(refsOf(srcText, 'C'));
 
-  const summary = `# 审计视图（v2.5.2-dsh.7 自动生成，T6/T7/T9/T8 共用）
+  const summary = `# 审计视图（自动生成，T4/T5/T6/T7/T9/T8 共用）
 
-> **用法**：T6 批判 / T7 审计 / T9 审稿 / T8 终检 派发时**先读本视图**，按需跳转全文/数据卡/文献卡/案例卡；不强制重读全部素材——本视图含章节结构、字数、素材卡数量、信任级别分布、M 门 13 项状态、引用闭环、报告存在性。
-> 生成时间：${new Date().toISOString()}
+> **用法**：T4 分析 / T5 写作 / T6 批判 / T7 审计 / T9 审稿 / T8 终检 派发时**先读本视图**，按需跳转全文/数据卡/文献卡/案例卡；不强制重读全部素材——本视图含正文结构、字数、素材卡数量、信任级别分布、M 门 13 项状态、引用闭环、报告存在性。
+> **视图源**：\`${srcRel}\`　｜　**阶段**：${stageLabel}　｜　生成时间：${new Date().toISOString()}
+> ${src && src.kind === 'draft' ? '⚠️ 源为**草稿快照**：字数/引用闭环仅代表该草稿轮次，**定稿阶段必须重新生成**后引用（`--source final/定稿.md`）。' : src && src.kind === 'final' ? '源为定稿（终态视图）。' : '尚无正文：本视图仅含素材与报告状态，T4 分析（Phase 2）可用；草稿产出后请重新生成本视图。'}
 
-## 一、定稿结构（${han} 纯汉字）
+## 一、正文结构（${han} 纯汉字${src ? `，源：${src.name}` : ''}）
 
-${sections.join('\n')}
+${src ? sections.join('\n') : '（无正文源：本视图不含正文结构，见「二、素材卡数量」与「五、阶段报告存在性」）'}
 
 ## 二、素材卡数量
 
@@ -162,11 +205,12 @@ ${sections.join('\n')}
 | 数据卡 [Dxx] | ${datN} | ${datT ? `${datT.a} / ${datT.b} / ${datT.c}` : '—'} |
 | 案例卡 [Cxx] | ${casN} | — |
 
-## 三、引用闭环（定稿正文实际引用的不重复编号数）
+## 三、引用闭环（${src ? `${src.name} 正文` : '正文'}实际引用的不重复编号数）
 
 - 文献 [Lxx]：${usedL} 个
 - 数据 [Dxx]：${usedD} 个
 - 案例 [Cxx]：${usedC} 个
+${src ? '' : '\n> 无正文源：三项均为 0（**不是「无引用」**，是尚未有正文可比对）。'}
 
 ## 四、M 门 13 项状态
 
@@ -176,21 +220,27 @@ ${mSummary}
 
 ${reportsLine}
 
-## 六、待 T8 终检 + 主人确认项
+## 六、待确认项（阶段：${stageLabel}）
 
-- [ ] 引用闭环：素材卡条数 vs 引用数差异（孤儿、未引用）
+${src && src.kind === 'final' ? `- [ ] 引用闭环：素材卡条数 vs 引用数差异（孤儿、未引用）
 - [ ] 字数：定稿 ${han} 汉字 vs 任务简报目标（±2% 软档）
 - [ ] 信任级别全填：数据卡每条「信任级别」独立段
 - [ ] AI 使用声明：定稿文末 5 节白名单（M-Form-7）
-- [ ] 参考文献编号闭环：定稿引用 [Lxx] 必须在参考文献清单
+- [ ] 参考文献编号闭环：定稿引用 [Lxx] 必须在参考文献清单` : `- [ ] 素材卡数量 vs 任务简报需求（缺角？）
+- [ ] 信任级别全填：数据卡每条「信任级别」独立段
+- [ ] 阶段报告齐备：批判 / 审计 / 复核 / 审稿（按阶段应有）
+- [ ] 信任级别分布异常（A 级占比过高或全 C 级）
+- [ ] （定稿阶段项：字数 ±2% / AI 使用声明 5 节 / [Lxx] 编号闭环——待定稿后判定）`}
 `;
 
   const auditsDir = join(project, 'audits');
   if (!existsSync(auditsDir)) mkdirSync(auditsDir, { recursive: true });
+  // 规范路径固定为 `审计视图-v0.md`（角色卡统一只认这一条路径，避免多版本并存导致读错）；源与阶段写在视图头，重新生成即覆盖。
   const summaryPath = join(auditsDir, '审计视图-v0.md');
   writeFileSync(summaryPath, summary, 'utf8');
   console.log(`\n✓ 审计视图: ${summaryPath}`);
-  console.log(`  - 定稿纯汉字: ${han}`);
+  console.log(`  - 视图源: ${srcRel}（${stageLabel}）`);
+  console.log(`  - 正文纯汉字: ${han}${src ? '' : '（无正文源）'}`);
   console.log(`  - 素材卡: L${litN} D${datN} C${casN}`);
   console.log(`  - 引用闭环: L${usedL} D${usedD} C${usedC}`);
   console.log(`  - 报告: ${reportsLine}`);
@@ -225,7 +275,7 @@ ${reportsLine}
     const Cs = parseCard(join(project, 'cases', '案例卡.md'), refRegexFirst('C'));
 
     let deepSection = '\n\n---\n\n## 七、素材卡全集（--deep-summary 模式，v2.5.2-dsh.7 新增）\n\n';
-    deepSection += `> T7 复核 / T5 修订 / T8 终检可在此段一次性看完全部素材卡标题 + 信任级别 + DOI，无需跳 `;
+    deepSection += `> T4 分析 / T5 修订 / T6 批判 / T7 复核 / T9 审稿 / T8 终检可在此段一次性看完全部素材卡标题 + 信任级别 + DOI，无需跳 `;
     deepSection += `final/证据包/ 逐个 grep。\n\n`;
     if (Ls.length) {
       deepSection += `### 文献卡 [L] 共 ${Ls.length} 条\n`;
@@ -246,7 +296,7 @@ ${reportsLine}
       deepSection += '\n> ⚠️ 未找到素材卡（literature/文献卡.md 或 data/数据卡.md 或 cases/案例卡.md 缺失）\n';
     }
 
-    const deepPath = join(auditsDir, '审计视图-v0.md');
+    const deepPath = summaryPath;
     const prev = readFileSync(deepPath, 'utf8');
     writeFileSync(deepPath, prev + deepSection, 'utf8');
     console.log(`  - 素材卡全集（deep）: L${Ls.length} D${Ds.length} C${Cs.length}`);

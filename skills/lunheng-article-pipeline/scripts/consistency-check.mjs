@@ -1,6 +1,6 @@
 // 论衡插件一致性自检脚本（DSH）— 发布/commit 前运行
 // 用法：node scripts/consistency-check.mjs
-// 覆盖九类漂移（v2.5.2-dsh.5 审计扩为「9 类」；.3 起为 6 类）：
+// 覆盖 17 类漂移（v2.5.2-dsh.15 起；.5 为 9 类，.13 加 ⑩-⑭，.15 加 ⑮-⑰）：
 //   ① 跨文件版本一致性（package.json ↔ SKILL.md frontmatter ↔ 版本头行 ↔ 仓库级文档）
 //   ② 双头版本行 / M-Gate-Report 文件名漂移
 //   ③ 悬空引用（版本一致性检查旧名 / scripts/*.mjs 悬空 / 角色卡索引缺失）
@@ -10,6 +10,14 @@
 //   ⑦ 全量版本头一致性（防单文件版本头漏 bump）
 //   ⑧ cordis.patch.yml + examples/ 版本引用（防安装文档指向未发布版本）
 //   ⑨ .dsh 双写同步 + 污染校验（本地，CI 无该目录自动跳过）
+//   ⑩ 随包脚本白名单集合一致性（防白名单出现 7/8/9 三种口径）
+//   ⑪ CHANGELOG 当前版本段存在性（防 bump 提交漏写 CHANGELOG）
+//   ⑫ 版本点位全量扫描（版本头 / 列表项 / 标题内嵌）
+//   ⑬ docs/ 版本点位（安装 pin / 「当前版本」声明；历史章节跳过）
+//   ⑭ cordis.patch.yml 执行面红线（!!js 只允许 env / baseUrl / 全局 URL 级取值）
+//   ⑮ 派发卡行数上限（每卡 ≤12 行——派发 prompt 最小化的 token 契约）
+//   ⑯ 审计视图三方一致（pipeline-readme 声称 ↔ 角色卡 ↔ 生成脚本，防「已投入未兑现」）
+//   ⑰ 定量节省断言必须有算式/实测出处（防「省 N%」无出处自我繁殖）
 // 退出码 0 = 通过；1 = 有漂移（列在 stderr）
 // (重写用法：node scripts/consistency-check.mjs [--fix]
 //   --fix：自动修复可逆的简单漂移（P2 级，如「（检查）」占位符替换）
@@ -280,6 +288,62 @@ if (existsSync(redlinePatchPath)) {
   if (jsCount > 0 && !pt.includes('执行面披露')) {
     errors.push(`[P2 执行面披露] cordis.patch.yml 用了 ${jsCount} 处 !!js，但文件头未做「执行面披露」说明`);
   }
+}
+
+// ⑮ 派发卡行数上限机械校验（v2.5.2-dsh.15 新增）：文档自称「每卡 ≤12 行」但此前**无任何脚本校验**——
+//    token 优化契约若不可机检，膨胀回潮没人挡（与 ⑩ 白名单同思路）。
+const dispatchPath = join(ROOT, 'references', 'dispatch-cards.md');
+if (existsSync(dispatchPath)) {
+  let cardName = null, cardLines = 0;
+  const flushCard = () => {
+    if (cardName && cardLines > 12) {
+      errors.push(`[P2 派发卡超长] dispatch-cards.md「${cardName}」${cardLines} 行 > 12 行上限（派发 prompt 最小化的 token 契约）`);
+    }
+  };
+  for (const l of readFileSync(dispatchPath, 'utf8').split('\n')) {
+    if (/^#{2,4}\s/.test(l)) { flushCard(); cardName = l.replace(/^#+\s*/, '').trim(); cardLines = 0; }
+    else if (cardName && l.trim() !== '') cardLines++;
+  }
+  flushCard();
+}
+
+// ⑯ 审计视图三方一致（v2.5.2-dsh.15 新增。教训：pipeline-readme 声称「T4/T5/T6/T7/T9 默认只读审计视图」，
+//    但 04/05/06 角色卡根本没写、生成侧脚本又只能在定稿后产出 → 该优化对除 T8 外全部落空，属「已投入未兑现」。
+//    文档、卡片、脚本三者必须同时到位，缺一即报。）
+const VIEW_CONSUMERS = [
+  '00-主控-coordinator.md', '00-主控-扩展职责.md', '04-分析-analyst.md', '05-写作-writer.md',
+  '06-批判-critical-companion.md', '07-审计-auditor.md', '08-终检-finalizer.md', '09-审稿-peer-reviewer.md',
+];
+const pipelinePath = join(ROOT, 'references', 'pipeline-readme.md');
+if (existsSync(pipelinePath) && readFileSync(pipelinePath, 'utf8').includes('审计视图')) {
+  for (const c of VIEW_CONSUMERS) {
+    const p = join(ROOT, 'references', 'agents', c);
+    if (!existsSync(p)) { errors.push(`[P1 角色卡缺失] references/agents/${c} 不存在`); continue; }
+    if (!readFileSync(p, 'utf8').includes('审计视图')) {
+      errors.push(`[P1 审计视图断链] pipeline-readme 声称默认只读审计视图，但角色卡 ${c} 未提及——文档与卡片必须同步`);
+    }
+  }
+  const beSrc = readFileSync(join(ROOT, 'scripts', 'build-evidence-bundle.mjs'), 'utf8');
+  if (!beSrc.includes("'--source'")) {
+    errors.push('[P1 审计视图断链] build-evidence-bundle.mjs 未实现 --source：视图源写死 final/定稿.md 时，T6/T7/T9 在定稿前无视图可读');
+  }
+  if (!/drafts/.test(beSrc)) {
+    errors.push('[P1 审计视图断链] build-evidence-bundle.mjs 未做草稿回退：定稿前无法生成视图');
+  }
+}
+
+// ⑰ 定量节省断言必须有出处（v2.5.2-dsh.15 新增）：防「省 60%+」这类**无算式、无实测**的数字在文档间自我繁殖——
+//    同行或邻行给出算式（=）、对照（vs）、实测/对比/基线 才放行；否则请补算式或改定性表述。
+for (const f of active) {
+  const rel = relative(ROOT, f).replaceAll('\\', '/');
+  const lines = readFileSync(f, 'utf8').split('\n');
+  lines.forEach((l, i) => {
+    const m = l.match(/省(?:略)?\s*\d+(?:\.\d+)?\s*%/);
+    if (!m) return;
+    const ctx = [lines[i - 1] || '', l, lines[i + 1] || ''].join('\n');
+    if (/[=＝]|vs|实测|对比|基线|算式/.test(ctx)) return;
+    errors.push(`[P2 定量断言缺出处] ${rel}:${i + 1} 声称「${m[0]}」但同行/邻行无算式或实测出处——请补算式，或改为定性表述`);
+  });
 }
 
 // ⑧ cordis.patch.yml + examples/ 版本引用（v2.5.2-dsh.5 审计新增：防安装文档指向未发布版本）

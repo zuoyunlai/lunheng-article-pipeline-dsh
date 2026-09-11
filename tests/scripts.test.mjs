@@ -3,7 +3,7 @@
 // 运行：node --test tests/     （CI 在 ubuntu-latest 与 windows-latest 双平台跑）
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync, mkdirSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync, mkdirSync, cpSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
@@ -144,4 +144,97 @@ test('consistency-check --fix：dry-run 不得改写任何文件（旧版一跑�
   assert.ok(!/ReferenceError/.test(r.out), '不得再出现 ReferenceError')
   assert.match(r.out, /dry-run/)
   assert.equal(readFileSync(join(SCRIPTS, 'consistency-check.mjs'), 'utf8'), before)
+})
+
+test('token-cost --top N：按 cacheRead 降序给出排名（旧版只有头注释与 CHANGELOG 承诺，代码里是死变量 topMode=false）', () => {
+  const d = tmp()
+  const home = join(d, 'dshhome')
+  mkdirSync(join(home, 'storages'), { recursive: true })
+  const t = (cacheRead, outputTokens) => ({ uncachedInputTokens: 10, cacheReadTokens: cacheRead, cacheWriteTokens: 20, outputTokens })
+  writeFileSync(join(home, 'storages', 'session_projcache.json'), JSON.stringify({
+    tables: {
+      sessions: {
+        'main-1': { rows: { tokenUsage: { val: { totals: t(5000000, 3000) } } } },
+        'sub-a': { rows: { tokenUsage: { val: { totals: t(20000000, 4000) } } } },
+        'sub-b': { rows: { tokenUsage: { val: { totals: t(100000, 700) } } } },
+      },
+    },
+  }))
+  const base = [join(SCRIPTS, 'token-cost.mjs'), '--dsh-home', home, '--sessions', 'main-1,sub-a,sub-b']
+  const r = run([...base, '--top', '2'])
+  assert.equal(r.code, 0, r.out.slice(0, 300))
+  const j = parseJson(r)
+  assert.equal(j.topByCacheRead.length, 2, 'Top 2 应只给两条')
+  assert.equal(j.topByCacheRead[0].session, 'sub-a', 'cacheRead 最大者必须排第一')
+  assert.ok(j.topByCacheRead[0].cacheReadShareOfTotalPct > j.topByCacheRead[1].cacheReadShareOfTotalPct, 'share 必须递减')
+  assert.ok(j.topByCacheRead[0].costEstimateUsd > 0, '必须给单会话成本估算')
+  // 向后兼容：不传 --top 时输出契约不变（不得凭空多出字段）
+  assert.equal(parseJson(run(base)).topByCacheRead, undefined, '无 --top 时不得输出排名段')
+  // 非法值必须报错，不得静默忽略（与 --price-* 的 NaN 防御同口径）
+  assert.equal(run([...base, '--top', '0']).code, 1, '--top 0 应 exit 1')
+  assert.equal(run([...base, '--top', 'x']).code, 1, '--top x 应 exit 1')
+  assert.equal(run([...base, '--nope']).code, 1, '未知参数应 exit 1（旧版静默忽略）')
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('build-evidence-bundle：无定稿时视图源回退到最新草稿（旧版写死 final/定稿.md → T6/T7/T9 在定稿前根本无视图可读）', () => {
+  const d = tmp()
+  const proj = join(d, 'run', 'proj')
+  mkdirSync(join(proj, 'drafts'), { recursive: true })
+  writeFileSync(join(proj, 'drafts', '初稿-v1.md'), '# 甲\n\n## 摘要\n\n一稿。\n')
+  writeFileSync(join(proj, 'drafts', '初稿-v2.md'), '# 乙\n\n## 摘要\n\n二稿正文 [L01]。\n')
+  const r = run([join(SCRIPTS, 'build-evidence-bundle.mjs'), proj, '--summary'])
+  assert.equal(r.code, 0)
+  const viewPath = join(proj, 'audits', '审计视图-v0.md')
+  const view = readFileSync(viewPath, 'utf8')
+  assert.match(view, /视图源.*初稿-v2\.md/, '应回退到版本号最高的草稿')
+  assert.match(view, /草稿快照/, '必须显式标注草稿快照，防被当定稿字数引用')
+  // 定稿出现后必须优先定稿（草稿仍在也不得回退）
+  mkdirSync(join(proj, 'final'), { recursive: true })
+  writeFileSync(join(proj, 'final', '定稿.md'), '# 定\n\n## 摘要\n\n定稿正文。\n')
+  run([join(SCRIPTS, 'build-evidence-bundle.mjs'), proj, '--summary'])
+  assert.match(readFileSync(viewPath, 'utf8'), /视图源.*定稿\.md/, '定稿必须优先于草稿')
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('build-evidence-bundle：尚无正文也要出素材阶段视图；--source 缺失须 fail fast（旧版直接跳过不生成）', () => {
+  const d = tmp()
+  const proj = join(d, 'run', 'proj')
+  mkdirSync(join(proj, 'data'), { recursive: true })
+  writeFileSync(join(proj, 'data', '数据卡.md'), '# 数据卡\n\n## [D01] 某公报\n信任级别：已发布\n')
+  // --source 指向不存在文件：必须 exit 2，且不得先把证据包复制一半（先于成功运行断言，防被前一次的产物干扰）
+  const bad = run([join(SCRIPTS, 'build-evidence-bundle.mjs'), proj, '--summary', '--source', 'nope.md'])
+  assert.equal(bad.code, 2, '--source 缺失应 exit 2')
+  assert.ok(!existsSync(join(proj, 'final', '证据包')), '不得先复制证据包再报错（fail fast）')
+  const r = run([join(SCRIPTS, 'build-evidence-bundle.mjs'), proj, '--summary'])
+  assert.equal(r.code, 0)
+  const view = readFileSync(join(proj, 'audits', '审计视图-v0.md'), 'utf8')
+  assert.match(view, /无正文源/, '无正文时必须显式标注，不得留空结构冒充')
+  assert.match(view, /素材卡数量/, '素材段必须在（T4 分析/Phase 2 消费）')
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('consistency-check ⑮⑯⑰：新规则必须真的会报（派发卡超长 / 审计视图断链 / 定量断言缺出处）', () => {
+  const d = tmp()
+  const repo = join(d, 'repo')
+  mkdirSync(repo, { recursive: true })
+  cpSync(join(ROOT, 'skills'), join(repo, 'skills'), { recursive: true })
+  for (const f of ['package.json', 'CHANGELOG.md', 'cordis.patch.yml']) cpSync(join(ROOT, f), join(repo, f))
+  const R = join(repo, 'skills', 'lunheng-article-pipeline')
+  // ⑮：把 T2 卡灌到 13 行（超过 12 行上限）
+  const dcPath = join(R, 'references', 'dispatch-cards.md')
+  const filler = Array.from({ length: 10 }, (_, i) => `- 灌水第 ${i + 1} 行`).join('\n')
+  writeFileSync(dcPath, readFileSync(dcPath, 'utf8').replace('## T3 案例检索员', `${filler}\n\n## T3 案例检索员`))
+  // ⑯：抹掉 T4 卡里的「审计视图」字样（文档仍声称默认只读 → 断链）
+  const t4Path = join(R, 'references', 'agents', '04-分析-analyst.md')
+  writeFileSync(t4Path, readFileSync(t4Path, 'utf8').replaceAll('审计视图', '审计报告'))
+  // ⑰：追加一条无算式/无实测出处的百分比断言
+  const tplPath = join(R, 'references', 'templates', '案例卡-template.md')
+  writeFileSync(tplPath, readFileSync(tplPath, 'utf8') + '\n> 本模板可省 77% token。\n')
+  const r = run([join(R, 'scripts', 'consistency-check.mjs')])
+  assert.equal(r.code, 1, '注入 3 处漂移后必须 exit 1')
+  assert.match(r.out, /派发卡超长/, '⑮ 必须捕获派发卡超长')
+  assert.match(r.out, /审计视图断链/, '⑯ 必须捕获角色卡与文档断链')
+  assert.match(r.out, /定量断言缺出处/, '⑰ 必须捕获无出处的百分比断言')
+  rmSync(d, { recursive: true, force: true })
 })

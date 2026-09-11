@@ -3,7 +3,7 @@
 //   node token-cost.mjs --sessions <主会话ID>,<子代理ID1>,<子代理ID2>...   # 项目精确统计（主控传本项目派发的全部会话）
 //   node token-cost.mjs --tree <主会话ID>                                  # 整会话委托树统计（含历史项目）
 //   node token-cost.mjs [--dsh-home <path>] [--price-in N --price-cache N --price-out N]
-//   node token-cost.mjs --top N                  # 显示 cacheRead Top N 会话（用于优化决策）
+//   node token-cost.mjs --top N                  # 追加 cacheRead/成本 Top N 会话排名（与 --sessions/--tree 连用，用于优化决策）
 // 数据源：DSH 会话投影缓存 $DSH_HOME/storages/session_projcache.json（每会话 tokenUsage.totals）
 // 说明：主会话运行中时总量为「截至运行时刻」；成本为估算（默认 DeepSeek 价，--price-* 可覆盖）。
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import os from 'node:os';
 
 const args = process.argv.slice(2);
-const opt = { dshHome: process.env.DSH_HOME || join(os.homedir(), '.dsh'), prices: { in: 0.28, cache: 0.028, out: 0.42 }, ids: null, tree: null };
+const opt = { dshHome: process.env.DSH_HOME || join(os.homedir(), '.dsh'), prices: { in: 0.28, cache: 0.028, out: 0.42 }, ids: null, tree: null, top: 0 };
 // 参数解析：尾随无值/非数字 → 明确报错而非静默 NaN（v2.5.2-dsh.3 审计修复）
 for (let i = 0; i < args.length; i++) {
   const a = args[i];
@@ -26,6 +26,13 @@ for (let i = 0; i < args.length; i++) {
   else if (a === '--price-out') { const v = Number(next()); if (!Number.isFinite(v)) { console.error(`--price-out 需为数字，收到: ${args[i]}`); process.exit(1); } opt.prices.out = v; }
   else if (a === '--sessions') opt.ids = next().split(',').map((s) => s.trim()).filter(Boolean);
   else if (a === '--tree') opt.tree = next();
+  // --top N：Top N 成本排名（v2.5.2-dsh.15 实现——旧版头注释与 CHANGELOG 已宣传该参数，代码里却是死变量 `topMode=false`）
+  else if (a === '--top') {
+    const v = Number(next());
+    if (!Number.isInteger(v) || v <= 0) { console.error(`--top 需为正整数，收到: ${args[i]}`); process.exit(1); }
+    opt.top = v;
+  }
+  else { console.error(`未知参数: ${a}`); process.exit(1); }
 }
 
 // 数据源兼容两种布局（v2.5.2-dsh.10+ 适配）：
@@ -91,13 +98,12 @@ if (opt.tree && !opt.ids) {
   };
   collect(root);
   opt.ids = [...ids];
-const topMode = false;
   // 健全性断言：树模式至少应包含主会话自身（v2.5.2-dsh.3 审计修复：防静默缩成 1 个）
   if (opt.ids.length === 1) {
     console.error(`tree 模式警告：主会话 ${opt.tree} 未找到任何子代理会话（parentSession 链为空）——统计仅含主会话自身，结果可能不完整`);
   }
 } else if (!opt.ids) {
-  console.error('用法: node token-cost.mjs --sessions <id1,id2,...> 或 --tree <主会话ID>');
+  console.error('用法: node token-cost.mjs --sessions <id1,id2,...> 或 --tree <主会话ID> [--top N]');
   process.exit(1);
 }
 
@@ -120,7 +126,14 @@ const costUsd =
   (totals.cacheWriteTokens / 1e6) * opt.prices.in +
   (totals.outputTokens / 1e6) * opt.prices.out;
 
-console.log(JSON.stringify({
+// 单会话成本（与总量同口径：uncachedInput + cacheWrite 按未命中价，cacheRead 按命中价，output 按输出价）
+const sessionCost = (t) =>
+  (t.uncachedInputTokens / 1e6) * opt.prices.in +
+  (t.cacheReadTokens / 1e6) * opt.prices.cache +
+  (t.cacheWriteTokens / 1e6) * opt.prices.in +
+  (t.outputTokens / 1e6) * opt.prices.out;
+
+const out = {
   mode: opt.tree ? 'tree' : 'explicit',
   sessionCount: opt.ids.length,
   tokens: { uncachedInput: totals.uncachedInputTokens, cacheRead: totals.cacheReadTokens, cacheWrite: totals.cacheWriteTokens, output: totals.outputTokens, total: totalTokens },
@@ -128,4 +141,29 @@ console.log(JSON.stringify({
   pricesPerMillion: opt.prices,
   note: '成本为估算（默认 DeepSeek 价，--price-* 可覆盖）；uncachedInput 与 cacheWrite 按未命中价计，cacheRead 按命中价计（缓存写=miss 语义）；主会话为运行中会话，总量为截至运行时刻。',
   rows
-}, null, 2));
+};
+
+// --top N（v2.5.2-dsh.15 实现）：按 cacheRead 降序的 Top N 会话 —— 回答「哪一步最贵 / 优化有没有用」。
+// 这是后续一切 token 优化的量尺：没有排名，优化只能凭感觉（旧版该参数只有注释、无实现）。
+if (opt.top > 0) {
+  const scored = rows
+    .filter((r) => r.tokens)
+    .map((r) => ({
+      session: r.session,
+      label: r.label,
+      cacheRead: r.tokens.cacheReadTokens || 0,
+      uncachedInput: r.tokens.uncachedInputTokens || 0,
+      output: r.tokens.outputTokens || 0,
+      total: (r.tokens.uncachedInputTokens || 0) + (r.tokens.cacheReadTokens || 0) + (r.tokens.cacheWriteTokens || 0) + (r.tokens.outputTokens || 0),
+      costEstimateUsd: Number(sessionCost(r.tokens).toFixed(4)),
+      cacheReadShareOfTotalPct: totals.cacheReadTokens > 0
+        ? Number((((r.tokens.cacheReadTokens || 0) / totals.cacheReadTokens) * 100).toFixed(1))
+        : 0,
+    }))
+    .sort((a, b) => b.cacheRead - a.cacheRead || b.costEstimateUsd - a.costEstimateUsd);
+  out.topByCacheRead = scored.slice(0, opt.top);
+  out.topNote = `按 cacheRead 降序 Top ${Math.min(opt.top, scored.length)}（共 ${scored.length} 个有用量记录的会话；share 为占总量 cacheRead 的百分比）。优化动作应优先针对排名靠前者。`;
+  if (scored.length === 0) out.topNote = '没有任何会话带 tokenUsage 记录（先确认会话 id 是否正确）。';
+}
+
+console.log(JSON.stringify(out, null, 2));
