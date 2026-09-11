@@ -460,3 +460,35 @@ test('consistency-check ④b+⑲：占位符残留 / 版本硬编码 / 契约表
   assert.match(r.out, /契约表：产出者未声明/, '⑲ 必须捕获产出者未声明')
   rmSync(d, { recursive: true, force: true })
 })
+
+test('主人侧三件套与输入模板齐备，且确认单含回填段与 Phase 0 附加块（v2.5.2-dsh.17）', () => {
+  const SK = join(ROOT, 'skills', 'lunheng-article-pipeline')
+  const TPL = join(SK, 'references', 'templates')
+  for (const f of ['进展-主人版-template.md', '主人投喂清单-template.md', 'style-baseline-template.md', '主人确认-template.md', '任务简报-template.md']) {
+    const p = join(TPL, f)
+    assert.ok(existsSync(p), `模板应存在: ${f}`)
+    assert.ok(readFileSync(p, 'utf8').includes('版本：'), `${f} 应有版本头`)
+  }
+  // 确认单：四门 + 改动摘要 + §6 回复回填 + Phase 0 三块
+  const sheet = readFileSync(join(TPL, '主人确认-template.md'), 'utf8')
+  assert.match(sheet, /### 6\. 主人回复/, '必须含主人回复回填段（决策留痕）')
+  assert.match(sheet, /Phase 0 附加块/, '必须含 Phase 0 附加块')
+  assert.match(sheet, /本轮改动摘要/, '必须含改动摘要段')
+  assert.match(sheet, /Phase 0（定题）/, '用途必须覆盖 Phase 0（四门）')
+  assert.match(sheet, /资源预估/, 'Phase 0 块必须含资源预估')
+  assert.match(sheet, /主人待办清单/, 'Phase 0 块必须含主人待办清单')
+  // 投喂清单：4 项收货校验
+  const feed = readFileSync(join(TPL, '主人投喂清单-template.md'), 'utf8')
+  for (const k of ['路径存在且可读', '口径 / 范围 / 时间齐全', '可对外引用性明确', '脱敏与知情同意已确认']) {
+    assert.ok(feed.includes(k), `投喂清单应含校验项: ${k}`)
+  }
+  // 契约表登记（防新产物游离在机检之外）
+  const cs = readFileSync(join(SCRIPTS, 'consistency-check.mjs'), 'utf8')
+  for (const k of ['进展-主人版', '阶段确认-', '主人投喂清单', 'style-baseline']) {
+    assert.ok(cs.includes(`['${k}'`), `交接契约表应登记 ${k}`)
+  }
+  // 主控卡：四门 + 主人侧可见性
+  const coord = readFileSync(join(SK, 'references', 'agents', '00-主控-coordinator.md'), 'utf8')
+  assert.match(coord, /进展-主人版/, '主控卡应声明刷新进展（主人版）')
+  assert.match(coord, /四个\*\*人在环节点|四个\*\*人在环节点|Phase 0（定题）/, '主控卡应把 Phase 0 计入人在环节点')
+})

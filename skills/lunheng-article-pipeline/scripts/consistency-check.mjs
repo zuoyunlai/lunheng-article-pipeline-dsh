@@ -435,27 +435,37 @@ const CONTRACTS = [
   ['G14-检测报告', 'checkers/中文AI痕迹-checker.md', ['09-审稿-peer-reviewer.md', 'audit-checklist-quickref.md', 'build-evidence-bundle.mjs']],
   ['定稿.md', '08-终检-finalizer.md', ['build-evidence-bundle.mjs']],
   ['M-Gate-Report.json', '08-终检-finalizer.md', ['build-evidence-bundle.mjs']],
+  // 主人侧三件套（v2.5.2-dsh.17）：产出者是主控，消费者是主人/运行手册
+  ['进展-主人版', '00-主控-coordinator.md', ['pipeline-readme.md']],
+  ['阶段确认-', '00-主控-扩展职责.md', ['pipeline-readme.md']],
+  ['主人投喂清单', '00-主控-扩展职责.md', ['数据卡-template.md', 'pipeline-readme.md']],
+  ['style-baseline', '00-主控-扩展职责.md', ['05-写作-writer.md', '06-批判-critical-companion.md']],
 ];
 {
   const readLazy = (() => {
     const cache = new Map();
     return (relPath) => {
       if (!cache.has(relPath)) {
-        const p = join(ROOT, 'references', relPath);
-        cache.set(relPath, existsSync(p) ? readFileSync(p, 'utf8') : (relPath === 'build-evidence-bundle.mjs' ? readFileSync(join(ROOT, 'scripts', 'build-evidence-bundle.mjs'), 'utf8') : ''));
+        // 解析顺序：references/<path> → references/agents/<path> → references/templates/<path> → scripts/<path>
+        // （templates 支持见 v2.5.2-dsh.17：契约表要能引用模板文件，如 数据卡-template.md）
+        const cands = [
+          join(ROOT, 'references', relPath),
+          join(ROOT, 'references', 'agents', relPath),
+          join(ROOT, 'references', 'templates', relPath),
+          join(ROOT, 'scripts', relPath),
+        ];
+        const hit = cands.find((p) => existsSync(p));
+        cache.set(relPath, hit ? readFileSync(hit, 'utf8') : '');
       }
       return cache.get(relPath);
     };
   })();
   for (const [artifact, producer, consumers] of CONTRACTS) {
-    const prodText = producer === 'build-evidence-bundle.mjs' ? '' : readLazy('agents/' + producer) || readLazy(producer);
-    if (producer !== 'build-evidence-bundle.mjs' && !prodText.includes(artifact)) {
+    const prodText = readLazy(producer);
+    if (!prodText.includes(artifact)) {
       errors.push(`[P1 契约表：产出者未声明] ${artifact} 的登记产出者 ${producer} 未提及该产物——契约表与角色卡必须同步`);
     }
-    const hit = consumers.find((c) => {
-      const t = c === 'build-evidence-bundle.mjs' ? readLazy('build-evidence-bundle.mjs') : (readLazy('agents/' + c) || readLazy(c) || readLazy('dispatch-cards.md'));
-      return t.includes(artifact);
-    });
+    const hit = consumers.find((c) => readLazy(c).includes(artifact) || readLazy('dispatch-cards.md').includes(artifact));
     if (!hit) {
       errors.push(`[P1 交接断链] ${artifact} 无任何下游读清单/证据包引用（期望消费者之一：${consumers.join(' / ')}）——「文档说有人读、实际读不到」属 P1`);
     }
