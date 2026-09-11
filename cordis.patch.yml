@@ -1,4 +1,4 @@
-# lunheng-article-pipeline bundle patch（DSH 原生插件 v2.5.2-dsh.16）
+# lunheng-article-pipeline bundle patch（DSH 原生插件 v2.5.2-dsh.17）
 #
 # 本文件用 DSH cordis-plugin-include 的 `- insert:` 列表语法在 standard 组合树之上叠加 4 类 patch：
 #   1. 技能 filesystem 提供者（consumer，注入 ctx.skills）：挂载本包 skills/ 目录
