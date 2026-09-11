@@ -59,11 +59,24 @@ dsh --profile web --dump-config   # 应能看到 skill-filesystem-lunheng 行
 # 新开会话后，skill 工具目录应列出 lunheng-article-pipeline
 ```
 
-## 发布
+## 发布（维护者）
+
+> **只打 tag 发布，禁止本地 `npm publish`**（v2.5.2-dsh.13 起）。
+> 本地直发会绕过 CI 的三道门与 OIDC 来源证明（provenance），且 npm 版本不可覆盖 —— 一旦发出无法补救。
 
 ```sh
-npm login     # 首次需登录
-npm publish   # 或 npm publish --access public
+git tag v2.5.2-dsh.N && git push origin v2.5.2-dsh.N
+# 触发 publish.yml：门 1 一致性 → 门 2 打包面 → 门 3 机械卫生 → 脚本回归测试
+#   → tag/版本一致校验 → 幂等守卫（已发布则跳过）→ OIDC 发布 --provenance --tag dsh → 发布后审计（gitHead/dist-tags）
+```
+
+发布前自检（本地同款三道门）：
+
+```sh
+node skills/lunheng-article-pipeline/scripts/consistency-check.mjs
+node scripts/plugin-surface-check.mjs
+node scripts/repo-hygiene-check.mjs
+node --test "tests/**/*.test.mjs"
 ```
 
 ## 文档

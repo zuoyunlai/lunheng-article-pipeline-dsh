@@ -1,32 +1,71 @@
-name: consistency-check
+name: ci
 
 on:
   push:
   pull_request:
+
+# 最小权限（v2.5.2-dsh.13）：CI 只需只读仓库，不需要任何写权限
+permissions:
+  contents: read
+
+# 同一 ref 的旧运行自动取消（省 CI 分钟，避免连续推送互相等待）
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   # DSH 运行时下限为 Node 22.19+/24+（与 package.json 的 engines.node 一致）
   drift-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # Actions 固定到 commit SHA（v2.5.2-dsh.13）：可变 tag 是被上游移动即可放大攻击面的供应链风险
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22.19'
-      - name: 论衡一致性自检（P0-1 四类漂移）
+      - name: 论衡一致性自检（版本点位/白名单/口径/工具名/CHANGELOG 段落）
         run: node skills/lunheng-article-pipeline/scripts/consistency-check.mjs
 
   # 打包面检查：cordis.patch.yml 合法性 / 行 id 唯一 / dsh.bundle.patch 指向 /
-  # package.json 元数据 / 工程红线（与上面的 .md 漂移检查互补，互不重叠）
+  # package.json 元数据 / 工程红线（与 drift-check 互补，互不重叠）
   # node-version 用 24 而非 22.19：Node 22.19 自带的 npm 10.9.3 无法安装本检查所用的
   # dsh-plugin-guide（该包声明 optional peerDependency，npm 10 的 arborist 崩）——
-  # 运行时下限仍由上面的 drift-check（22.19）覆盖；脚本自身另走 pnpm dlx 优先的多策略。
+  # 运行时下限仍由 drift-check（22.19）覆盖；脚本自身另走 pnpm dlx 优先的多策略。
   plugin-surface:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
       - name: 打包面检查（dsh-plugin-dev check，含纯 skill bundle 豁免）
         run: node scripts/plugin-surface-check.mjs
+
+  # 机械卫生门（v2.5.2-dsh.13 新增）：语法 / JSON / YAML 结构 / 行尾 / UTF-8 / 发布包内容
+  # 零依赖（纯 Node 内置 + git/npm CLI），故可跑在运行时下限 22.19 上
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22.19'
+      - name: 仓库机械卫生门
+        run: node scripts/repo-hygiene-check.mjs
+
+  # 随包脚本回归测试（v2.5.2-dsh.13 新增）
+  # 矩阵含 windows-latest：final-check 的 POSIX 崩溃、路径含空格等缺陷**只在非作者平台或跨平台时才暴露**
+  script-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22.19'
+      - name: 随包脚本回归测试（node --test）
+        # 用引号保护的 glob：让 Node 自己展开（bash 与 pwsh 都能原样传递）
+        run: node --test "tests/**/*.test.mjs"

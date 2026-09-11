@@ -1,0 +1,134 @@
+#!/usr/bin/env node
+/**
+ * repo-hygiene-check.mjs —— 仓库机械卫生门（CI 专用，零依赖，不随包分发）
+ *
+ * 为什么存在（v2.5.2-dsh.13 新增，回应第三方审计「CI 覆盖度」）：
+ *   `consistency-check.mjs` 管文档漂移、`plugin-surface-check.mjs` 管打包面契约，
+ *   但**语法/编码/行尾/发布内容**这些「零成本就能机械判定」的东西此前无人守：
+ *   - 9 个随包脚本中 8 个从未被 CI 执行过（含承重的 m-gate-check）；
+ *   - `examples/preset/preset.yml` 从未被任何解析器校验；
+ *   - 35 个文件工作区 CRLF、`.gitignore` 是 GBK——而 npm 打包读工作区。
+ *
+ * 检查项：
+ *   ① git 跟踪文件：*.mjs 逐个 `node --check`（语法）
+ *   ② *.json 逐个 JSON.parse
+ *   ③ *.yml/*.yaml 结构健全（禁制表符缩进 + 关键文件必须含预期键）
+ *   ④ 行尾：git ls-files --eol 不得出现 w/crlf 或 w/mixed（配 .gitattributes）
+ *   ⑤ 编码：文本文件必须为合法 UTF-8（拒绝替换字符/非法序列）
+ *   ⑥ 发布面：npm pack --dry-run --json 必须含关键路径 + 脚本数 == 9
+ *
+ * 退出码：0 = 全通过；1 = 有失败（fail-closed，CI 红灯）
+ * 失败同时输出 GitHub annotation（::error::），无需下载日志即可定位。
+ */
+import { readFileSync, existsSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { join, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
+const isCI = Boolean(process.env.GITHUB_ACTIONS)
+const annotate = (level, msg) => { if (isCI) console.log(`::${level}::${String(msg).replace(/\r?\n/g, ' ').slice(0, 900)}`) }
+
+const fails = []
+const notes = []
+const fail = (id, msg) => { fails.push(`[${id}] ${msg}`); annotate('error', `[${id}] ${msg}`) }
+
+const git = (args) => spawnSync('git', args, { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+const lsOut = git(['ls-files', '-z'])
+if (lsOut.status !== 0) { console.error('git ls-files 失败：' + (lsOut.stderr || '')); process.exit(1) }
+const tracked = lsOut.stdout.split('\0').filter(Boolean)
+
+const isText = (p) => !/\.(png|jpe?g|gif|webp|pdf|tgz|zip|ico|woff2?|ttf|eot|mp4|mp3)$/i.test(p)
+
+// ① 语法：node --check
+let mjs = 0
+for (const p of tracked.filter((f) => f.endsWith('.mjs'))) {
+  if (!existsSync(join(ROOT, p))) continue
+  const r = spawnSync(process.execPath, ['--check', join(ROOT, p)], { encoding: 'utf8' })
+  mjs++
+  if (r.status !== 0) fail('syntax', `${p}: ${(r.stderr || '').split('\n').slice(0, 2).join(' / ')}`)
+}
+notes.push(`① 语法：检查 ${mjs} 个 .mjs`)
+
+// ② JSON
+let jsons = 0
+for (const p of tracked.filter((f) => f.endsWith('.json'))) {
+  const abs = join(ROOT, p)
+  if (!existsSync(abs)) continue
+  jsons++
+  try { JSON.parse(readFileSync(abs, 'utf8')) } catch (e) { fail('json', `${p}: ${e.message}`) }
+}
+notes.push(`② JSON：解析 ${jsons} 个 .json`)
+
+// ③ YAML 结构健全（不引入解析器依赖：禁制表符缩进 + 关键文件预期键）
+const yamls = tracked.filter((f) => /\.(ya?ml)$/.test(f))
+for (const p of yamls) {
+  const abs = join(ROOT, p)
+  if (!existsSync(abs)) continue
+  const text = readFileSync(abs, 'utf8')
+  text.split('\n').forEach((l, i) => {
+    if (/^\t/.test(l)) fail('yaml', `${p}:${i + 1} 缩进使用制表符（YAML 禁止）`)
+  })
+}
+const needKeys = {
+  'cordis.patch.yml': ['insert:', 'dsh'],
+  'examples/preset/preset.yml': ['name:', 'description:'],
+  '.github/workflows/ci.yml': ['jobs:', 'runs-on:'],
+  '.github/workflows/publish.yml': ['jobs:', 'runs-on:'],
+}
+for (const [rel, keys] of Object.entries(needKeys)) {
+  const abs = join(ROOT, rel)
+  if (!existsSync(abs)) { fail('yaml', `关键 YAML 缺失：${rel}`); continue }
+  const text = readFileSync(abs, 'utf8')
+  for (const k of keys) if (!text.includes(k)) fail('yaml', `${rel}: 缺预期键「${k}」`)
+}
+notes.push(`③ YAML：结构检查 ${yamls.length} 个（含 4 个关键文件的预期键）`)
+
+// ④ 行尾
+const eolOut = git(['ls-files', '--eol'])
+let eolBad = 0
+for (const line of (eolOut.stdout || '').split('\n')) {
+  const m = line.match(/w\/(crlf|mixed)/)
+  if (m) { eolBad++; if (eolBad <= 5) fail('eol', `工作区行尾 ${m[1]}：${line.split('\t').pop()}`) }
+}
+if (eolBad === 0) notes.push('④ 行尾：无 w/crlf / w/mixed')
+
+// ⑤ UTF-8
+let utf8Checked = 0
+const dec = new TextDecoder('utf-8', { fatal: true })
+for (const p of tracked.filter(isText)) {
+  const abs = join(ROOT, p)
+  if (!existsSync(abs)) continue
+  utf8Checked++
+  try { dec.decode(readFileSync(abs)) } catch { fail('utf8', `${p}: 非法 UTF-8（可能是 GBK 等本地编码）`) }
+}
+notes.push(`⑤ 编码：UTF-8 校验 ${utf8Checked} 个文本文件`)
+
+// ⑥ 发布面（npm pack --dry-run）
+// 用单命令串 + shell（Windows 上 npm 是 .cmd）：避免 Node 对「shell:true + args 数组」的 DEP0190 告警
+const pack = spawnSync('npm pack --dry-run --json', { cwd: ROOT, encoding: 'utf8', shell: true, maxBuffer: 32 * 1024 * 1024 })
+if (pack.status !== 0) {
+  fail('pack', `npm pack --dry-run 失败：${(pack.stderr || pack.stdout || '').split('\n').slice(-3).join(' / ')}`)
+} else {
+  try {
+    const arr = JSON.parse(pack.stdout.slice(pack.stdout.indexOf('[')))
+    const files = (arr[0]?.files || []).map((f) => f.path)
+    if (files.length === 0) fail('pack', 'npm pack 报告无文件（--json 解析异常？）')
+    const must = ['package.json', 'cordis.patch.yml', 'README.md', 'LICENSE', 'CHANGELOG.md', 'skills/lunheng-article-pipeline/SKILL.md']
+    for (const m of must) if (!files.includes(m)) fail('pack', `发布包缺关键路径：${m}`)
+    const scripts = files.filter((f) => /^skills\/lunheng-article-pipeline\/scripts\/.+\.mjs$/.test(f))
+    if (scripts.length !== 9) fail('pack', `发布包内随包脚本数 ${scripts.length} ≠ 9（白名单不一致）`)
+    notes.push(`⑥ 发布面：${files.length} 个文件 / 随包脚本 ${scripts.length} 个 / 关键路径齐备`)
+  } catch (e) {
+    fail('pack', `npm pack --json 解析失败：${e.message}`)
+  }
+}
+
+console.log('\n=== 仓库机械卫生门（repo-hygiene-check）===')
+for (const n of notes) console.log('  ✓ ' + n)
+if (fails.length) {
+  console.log(`\n✗ 未通过：${fails.length} 项`)
+  for (const f of fails) console.log('  - ' + f)
+  process.exit(1)
+}
+console.log('\n✓ 全部通过')

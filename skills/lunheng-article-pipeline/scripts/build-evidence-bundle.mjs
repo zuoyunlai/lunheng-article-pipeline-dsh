@@ -18,7 +18,7 @@ const wantSummary = args.includes('--summary') || wantDeepSummary;
 const projectIdx = args.indexOf('--project');
 const project = (projectIdx >= 0 && args[projectIdx + 1])
   ? args[projectIdx + 1]
-  : args.find((a, i) => !a.startsWith('--') && i !== projectIdx + 1);
+  : args.find((a) => !a.startsWith('--'));
 if (!project || !existsSync(project)) {
   console.error('用法: node build-evidence-bundle.mjs <run/项目名> [--project <名>] [--summary] [--deep-summary]');
   process.exit(2);

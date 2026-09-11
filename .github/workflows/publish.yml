@@ -10,28 +10,38 @@ permissions:
   id-token: write   # 必须：OIDC 信任发布的令牌
   contents: read
 
+# 同一 tag 的发布不并发（发布是不可逆动作）
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PKG: lunheng-article-pipeline
+
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
+      # Actions 固定到 commit SHA（v2.5.2-dsh.13）：publish 作业持 id-token: write，
+      # 可移动的大版本 tag 一旦被上游改动即可被利用来发布恶意版本
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          # Trusted Publishing 要求 Node >= 22.14 + npm >= 11.5.1（官方文档硬性要求）
-          node-version: 24
+          node-version: '24'   # Trusted Publishing 要求 npm ≥11.5.1；Node 24 自带 npm 已满足（不再 `npm i -g npm@latest`，避免发布环境不可复现）
           registry-url: 'https://registry.npmjs.org'
-          # 官方明确：发布构建不要缓存依赖（本包零依赖，无 package-lock）
 
-      # 仓库无 package-lock.json，用 npm install 而非 npm ci；显式升到最新 npm 保证 OIDC 交换可用
-      - name: 安装依赖
-        run: |
-          npm install --global-style --no-package-lock
-          npm install -g npm@latest
-
-      # 一致性自检（复用现有脚本，与 ci.yml 同门——发布前 P0 漂移必须阻断）
-      - name: 一致性自检
+      # ── 发布前三道门（fail-closed：任一不过即中止，绝不发布未校验内容）────────
+      - name: 门 1/3 一致性自检（版本/白名单/口径/工具名/CHANGELOG 段落）
         run: node skills/lunheng-article-pipeline/scripts/consistency-check.mjs
+
+      - name: 门 2/3 打包面检查（bundle 契约 + package.json 元数据 + 工程红线）
+        run: node scripts/plugin-surface-check.mjs
+
+      - name: 门 3/3 机械卫生门（语法/JSON/YAML/行尾/UTF-8/发布包内容）
+        run: node scripts/repo-hygiene-check.mjs
+
+      - name: 随包脚本回归测试
+        run: node --test "tests/**/*.test.mjs"
 
       # 防误发：git tag 名必须与 package.json version 一致（仅 tag 触发时校验）
       - name: 校验 tag 与版本一致
@@ -45,20 +55,57 @@ jobs:
             exit 1
           fi
 
+      # 幂等守卫（v2.5.2-dsh.13）：该版本已发布 → 跳过发布（含补打历史 tag 的场景），避免 EPUBLISHCONFLICT 噪声
+      - name: 幂等检查（已发布则跳过）
+        id: guard
+        run: |
+          VER="$(node -p "require('./package.json').version")"
+          if npm view "$PKG@$VER" version >/dev/null 2>&1; then
+            echo "已存在于 npm：$PKG@$VER → 跳过发布步骤"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "待发布：$PKG@$VER"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # OIDC 信任发布：无需 NPM_TOKEN，--provenance 附来源证明；
-      # 预发布版（-dsh.N）显式打 dsh tag（仅 tag 触发时发布）
+      # 预发布版（-dsh.N）显式打 dsh tag（仅 tag 触发且未发布时执行）
       - name: 发布到 npm
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') && steps.guard.outputs.skip == 'false'
         run: npm publish --access public --provenance --tag dsh
 
-      # 确保 dsh dist-tag 指向本次版本（OIDC 发布已打 dsh tag，此步为漂移兜底）。
-      # 注意：OIDC 令牌无权修改 dist-tag（npm 只授权 publish），设 latest 需 owner 的
-      # granular+bypass2FA token——故本步只在设置了 NPM_TOKEN secret 时才执行，否则跳过。
-      - name: 确认 dist-tag
-        if: env.NPM_TOKEN != ''
+      # 确保 dist-tag 指向本次版本。OIDC 令牌无权改 dist-tag，故仅当配了 granular token 时执行。
+      # 注意：v2.5.2-dsh.13 起把令牌存在性提升到**步骤级 env 之外的 workflow env**，
+      # 因为 GitHub 的 secrets 上下文在步骤级 `if:` 中求值不可靠（旧写法会静默跳过整步）。
+      - name: 确认 dist-tag（dsh 必打；latest 需 token）
+        if: steps.guard.outputs.skip == 'false'
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           VER="$(node -p "require('./package.json').version")"
-          npm dist-tag add lunheng-article-pipeline@$VER dsh
-          npm dist-tag add lunheng-article-pipeline@$VER latest
+          npm dist-tag add "$PKG@$VER" dsh
+          if [ -n "${NPM_TOKEN}" ]; then
+            npm dist-tag add "$PKG@$VER" latest
+          else
+            echo "::warning::未配置 NPM_TOKEN —— latest 未跟随。OIDC 发布不接受非 tag 动作；如需 latest 同步，请用 granular token 或手工 npm dist-tag add $PKG@$VER latest"
+          fi
+          echo '--- dist-tags 现状 ---'
+          npm dist-tag ls "$PKG"
+
+      # 发布后审计（v2.5.2-dsh.13 新增）：核对 npm 上该版本的 gitHead 与本次提交一致、dist-tag 指向本版本
+      - name: 发布后审计（gitHead / dist-tags 断言）
+        if: startsWith(github.ref, 'refs/tags/') && steps.guard.outputs.skip == 'false'
+        run: |
+          VER="$(node -p "require('./package.json').version")"
+          HEAD="$(git rev-parse HEAD)"
+          GITHEAD="$(npm view "$PKG@$VER" gitHead)"
+          echo "npm gitHead=$GITHEAD  repo HEAD=$HEAD"
+          if [ "$GITHEAD" != "$HEAD" ]; then
+            echo "::error::npm 上 $VER 的 gitHead($GITHEAD) ≠ 本次提交($HEAD) —— 发布产物与 tag 不对应"
+            exit 1
+          fi
+          DSH_TAG="$(npm view "$PKG" dist-tags.dsh)"
+          echo "dist-tags.dsh=$DSH_TAG"
+          if [ "$DSH_TAG" != "$VER" ]; then
+            echo "::warning::dist-tags.dsh=$DSH_TAG ≠ $VER（若已配置 NPM_TOKEN 则不应发生）"
+          fi
