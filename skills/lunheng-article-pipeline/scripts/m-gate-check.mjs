@@ -120,21 +120,42 @@ if (bodyRefs.length === 0) {
 }
 results.push({ gate: 'M-Form-1 引用标注完整性', pass: mform1Pass, detail: mform1Detail, severity: mform1Severity });
 
-// === M-Form-3 临时编号残留（v2.5.2-dsh.5 修订：联动 M-Form-2 跳过）===
-if (firstIdx === -1) {
-  results.push({ gate: 'M-Form-3 临时编号残留', pass: 'SKIP', detail: '文末缺失，M-Form-2 失败优先；M-Form-3 跳过防误判', severity: 'SKIP' });
-} else {
-  const endRefs = new Set((endnote.match(refRe) || []).map(norm));
-  const orphan = [...new Set(bodyRefs.map(norm))].filter((r) => !endRefs.has(r));
+// === M-Form-3 临时编号 / 占位符残留（v2.5.2-dsh.17 重写：消除与 M-Exist-1 的重复计）===
+// 自省审计发现：旧实现算的是「正文有、文末无」的编号（orphan = bodyRefs − endRefs），与
+//   M-Exist-1 的 leaked **是同一个计算**（同一组变量、同一套阈值档位）→ 两项恒同判，属重复门。
+//   「正文 ↔ 文末双向闭环」本就归 M-Exist-1，本项不再重复报。
+// 本项回归名字本身：「临时编号残留」= 定稿里残留的**占位符 / 临时标记**——这是此前的**真实空档**：
+//   `[待补]` 出现在定稿里不会被任何一项抓到（M-Form-4 的禁止清单里没有它）。
+// 边界：编号**位数**不由本项管（`_lib/refs.mjs` 明确允许任意位数，不强制补零）。
+const TEMP_MARKERS = [
+  [/\[(?:待补|待定|待查|待核|待回查|临时|占位|TBD|TODO|PLACEHOLDER)\]/gi, '临时/占位方括号'],
+  // 临时编号本体（errors.md 记的原始形态）：`[L_TBD-1]` / `[D_占位]` / `[L-新1]`
+  // —— 排除合法形态 `[C-主01]`（主人洞察）与纯数字后缀（`[L01-2]` 版本后缀是允许的）
+  [/\[[LDC][-_](?!主\d)[A-Za-z\u4e00-\u9fff][^\]]*\]/g, '临时编号（如 [L_TBD-1]）'],
+  [/【(?:待补|待定|待查|待核|临时)】/g, '中文方头括号占位'],
+  [/（(?:待补|待定|待查|待核|临时)）/g, '圆括号占位'],
+  [/_{3,}/g, '下划线占位'],
+  [/[？?]{2,}/g, '连续问号占位'],
+];
+{
+  const tempCount = TEMP_MARKERS.reduce((a, [re]) => a + ((text.match(re) || []).length), 0);
+  const tempHits = TEMP_MARKERS
+    .map(([re, label]) => [label, (text.match(re) || []).length])
+    .filter(([, n]) => n > 0)
+    .map(([label, n]) => `${label}×${n}`);
   results.push({
     gate: 'M-Form-3 临时编号残留',
-    pass: orphan.length === 0,
-    detail: orphan.length ? `孤儿编号: ${orphan.join(',')}` : '无孤儿',
-    severity: orphan.length > 10 ? 'P0' : (orphan.length > 3 ? 'P1' : (orphan.length > 0 ? 'P2' : '通过')),
+    pass: tempCount === 0,
+    detail: tempCount
+      ? `命中: ${tempHits.join(',')}（定稿不得留占位符 / 临时标记）`
+      : '零占位符残留（正文↔文末编号闭环由 M-Exist-1 负责，本项不重复计）',
+    severity: tempCount >= 3 ? 'P0' : (tempCount > 0 ? 'P1' : '通过'),
   });
 }
 
-// === M-Form-5 过程语言残留（v2.5.2-dsh.5 扩禁词清单：弱 AI 痕；v2.5.2-dsh.9 扩内部流程词）===
+// === M-Form-5 过程语言残留（v2.5.2-dsh.5 扩禁词清单：弱 AI 痕；v2.5.2-dsh.9 扩内部流程词；
+//     v2.5.2-dsh.17 补严重度分级——自省审计发现旧版最高只到 P1，**P0 分支不可达**，
+//     与同族的 M-Form-4（元数据泄露）/ M-Form-9 不一致：过程语言成规模 = 读者看到流水线内部 = 交付级缺陷）===
 const bannedBanned = /v\d+ 稿|初稿|草稿|修订说明|上一版|下一版|(?<!板)卡级|修卡|承重墙|承重案例|批注|待回查|审计环节|流水线|将在[^，。\n]{0,8}订正/g;
 const estRe = /据行业经验估算/g;
 const weakAITrend = /据可靠来源|据悉|据了解|研究显示|专家表示/g;
@@ -153,7 +174,8 @@ results.push({
   gate: 'M-Form-5 过程语言残留',
   pass: hits.length === 0,
   detail: hits.length ? `命中: ${[...new Set(hits)].join(',')}` : '零命中',
-  severity: hits.length > 5 ? 'P1' : (hits.length > 0 ? 'P2' : '通过'),
+  // v2.5.2-dsh.17：补 P0 档（旧版最高 P1 → P0 分支不可达，与 M-Form-4/M-Form-9 同族不一致）
+  severity: hits.length > 10 ? 'P0' : (hits.length > 5 ? 'P1' : (hits.length > 0 ? 'P2' : '通过')),
 });
 
 // === M-Form-4 元数据泄露（v2.5.2-dsh.5 重大修订：黑名单转白名单）===
@@ -188,7 +210,9 @@ results.push({
   gate: 'M-Form-4 元数据泄露',
   pass: leakHits.length === 0,
   detail: leakHits.length ? `命中: ${[...new Set(leakHits)].slice(0, 5).join(',')}` : '正文无内部代码（白名单剥离后）',
-  severity: leakHits.length > 5 ? 'P0' : (leakHits.length > 0 ? 'P1' : '通过'),
+  // v2.5.2-dsh.17：与文档口径对齐——**任一处泄露即 P0**（文档：M-Form-4 是 P0 优先级，
+  // 读者看到论衡内部代码 = 失去学术严肃性；旧版 1-5 处只给 P1，与 M-Form-7「一处违规即 P0」不一致）
+  severity: leakHits.length > 0 ? 'P0' : '通过',
 });
 
 // === M-Form-6 信任级别（v2.5.2-dsh.5 扩字段：双格式 + 描述字段交叉验证）===
@@ -1255,7 +1279,13 @@ if (dataCard) {
   results.push({ gate: 'M-Exist-3 信任级别一致性', pass: false, detail: '数据卡不存在', severity: 'P0' });
 }
 
-// === M-Integrity-1 / M-Integrity-2 联动 ===
+// === M-Integrity-1 T2.5 完整性门（脚本佐证；v2.5.2-dsh.17 补两次关键对账）===
+// 自省审计发现：旧版只核「任务简报存在且有子问题」，严重度恒为 'LLM 兜底' → **永不 P0/P1**；
+//   而 M-Gate-Algorithm 的 M-Integrity-1 明写「单子项失败 P0（信任级别缺失 / 数据条目不足）」——
+//   文档承诺的 P0 在脚本里不可达，「佐证」等于什么也没佐证。现补两次对账（文档步骤 2-6 口径）：
+//     ① 数据条目数（[Dxx] 编号并集 ∪ 表格 `| 1.x |` 行）≥ 任务简报「需找数据点」之和 → 不足 P0
+//     ② 数据卡缺失 → P0；数据卡存在但 M-Form-6（独立信任级别段）未过 → P0
+//   仍保留「最终由主控 L4 跨文件判断」的定位：脚本只判这两项可机械化的对账。
 let briefData = { hasBrief: false, subclaims: 0, minDataPoints: 0, placeholder: 0 };
 try {
   const briefPath = draftPath.replace(/final[\\/]定稿\.md$/, '01-任务简报.md');
@@ -1272,14 +1302,37 @@ try {
     briefData.placeholder = (briefText.match(/需找数据点\s*[≥>]\s*_+/g) || []).length;
   }
 } catch {}
-results.push({
-  gate: 'M-Integrity-1 T2.5 完整性',
-  pass: briefData.hasBrief && briefData.subclaims > 0,
-  detail: briefData.hasBrief
-    ? `任务简报 ${briefData.subclaims} 子问题 / 需找数据点 ${briefData.minDataPoints} 条${briefData.placeholder ? `（${briefData.placeholder} 处占位未填）` : ''}（脚本佐证，主控 L4 跨文件判断）`
-    : '任务简报不存在或缺研究问题段（脚本佐证，主控 L4 跨文件判断）',
-  severity: 'LLM 兜底',
-});
+{
+  // ① 数据条目数（双格式并集；与 M-Gate-Algorithm M-Integrity-1 步骤 2 同口径）
+  let dataEntries = 0;
+  if (dataCard) {
+    const idSet = new Set(dataCardIds(dataCard));
+    const tableRows = (dataCard.match(/^\|\s*\d+\.\d+\s*\|/gm) || []).length;
+    dataEntries = idSet.size + tableRows;
+  }
+  const needsT2 = briefData.minDataPoints;
+  const mForm6 = results.find((r) => r.gate.startsWith('M-Form-6'));
+  const mForm6Bad = !!mForm6 && mForm6.pass !== true;
+  const hardWhy = [];
+  if (!briefData.hasBrief) hardWhy.push('任务简报缺失（无「需找数据点」可比对）');
+  else if (briefData.subclaims === 0) hardWhy.push('任务简报未见子问题（研究问题段缺失）');
+  if (dataCard && needsT2 > 0 && dataEntries < needsT2) {
+    hardWhy.push(`数据条目 ${dataEntries} 条 < 简报需求 ${needsT2} 条（T2.5 步骤 4：数据不完整 → 触发 T2 重检索）`);
+  }
+  if (!dataCard) hardWhy.push('数据卡不存在（T2.5 步骤 1）');
+  if (mForm6Bad) hardWhy.push('信任级别不完整（M-Form-6 未过 → T2.5 步骤 5）');
+  // 「简报缺失 / 缺研究问题段」属差序输入，只记 LLM 兜底；数据侧三项 = 文档承诺的 P0
+  const hardHits = hardWhy.filter((w) => !/任务简报缺失|未见子问题/.test(w)).length;
+  results.push({
+    gate: 'M-Integrity-1 T2.5 完整性',
+    pass: hardWhy.length === 0,
+    detail: briefData.hasBrief
+      ? `任务简报 ${briefData.subclaims} 子问题 / 需找数据点 ${needsT2} 条${briefData.placeholder ? `（${briefData.placeholder} 处占位未填）` : ''}｜数据卡 ${dataEntries} 条`
+        + (hardWhy.length ? ` ｜ 硬问题：${hardWhy.slice(0, 2).join('；')}` : ' ｜ 条目数与信任级别对账通过（脚本佐证，主控 L4 跨文件判断）')
+      : '任务简报不存在（脚本佐证，主控 L4 跨文件判断）',
+    severity: hardHits > 0 ? 'P0' : 'LLM 兜底',
+  });
+}
 
 // === 总判定：exit code + 严重度统计（soft=LLM 兜底不 gate，单独 bucket；total=pass+p0+p1+p2+soft+skips）===
 const skips = results.filter((r) => r.pass === 'SKIP').length;
