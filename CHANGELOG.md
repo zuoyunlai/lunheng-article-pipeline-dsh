@@ -8,7 +8,11 @@
   1. **`2.5.2-dsh.13` 已发布**（2026-09-11T01:18Z）：`_npmUser = GitHub Actions` + `trustedPublisher`（**OIDC 信任发布自 dsh.7 以来首次恢复**）、**含 provenance attestations**、`gitHead = 82e38c9`（与 tag 提交一致）、`dist-tags.dsh → 2.5.2-dsh.13` ✓。`latest` 仍指 `2.5.2-dsh.12`（OIDC 令牌无权改 dist-tag，需维护者 granular token 或手工 `npm dist-tag add lunheng-article-pipeline@2.5.2-dsh.13 latest`）。
   2. **修正 publish.yml 的 dist-tag 步骤（实测暴露）**：旧写法在无 `NPM_TOKEN` 时仍执行 `npm dist-tag add` → 无鉴权 exit 1 → 整步失败，并因 GitHub 默认 `success()` 语义**连带跳过发布后审计**。现改为「只读打印 + 有 token 才写」，且审计步骤加 `always()` 与 `steps.publish.outcome == 'success'` 条件——缺 token 只出 warning，不再把运行弄红。
   3. 发布前新增**打包产物验证**：解包 `npm pack` 产物后确认 `scripts/_lib/` 四个模块随包、且 7 个脚本从解包副本可运行（防「相对 import 未随包」这类打包缺陷；本次为 `_lib` 重构后的必检项）。
-- **待办**：`latest` dist-tag 同步（需 token）；`README.en.md`；冒烟矩阵扩到 macOS；`gitleaks` 接 CI。
+- **`latest` 已同步**（2026-09-11，维护者手工执行）：`dist-tags = {latest: 2.5.2-dsh.13, dsh: 2.5.2-dsh.13}` ✓ —— 裸包名安装现在也拿到 dsh.13。
+- **CI 两项收口（不随包变更，故无需 bump）**：
+  1. 回归测试矩阵扩到 **macos-latest**（三平台）；
+  2. 机械卫生门新增 **⑦ 凭据扫描**：零依赖实现 10 类模式（npm/GitHub/OpenAI/AWS/Slack/GitLab/HuggingFace token、私钥块、`_authToken`），**命中只输出掩码前缀**（不把疑似凭据原文写进 CI 日志——日志本身是泄漏面），并跳过含模式字面量的扫描器自身。
+- **待办（需 bump dsh.14 才能进 npm 包）**：`README.en.md` 英文门面（属随包变更，须与 `files` 白名单一起走一次发布）。
 
 ## 2.5.2-dsh.13（2026-09-11）— 第三方深度审计全量修订
 

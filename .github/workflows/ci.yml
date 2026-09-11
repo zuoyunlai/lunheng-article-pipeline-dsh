@@ -54,12 +54,13 @@ jobs:
         run: node scripts/repo-hygiene-check.mjs
 
   # 随包脚本回归测试（v2.5.2-dsh.13 新增）
-  # 矩阵含 windows-latest：final-check 的 POSIX 崩溃、路径含空格等缺陷**只在非作者平台或跨平台时才暴露**
+  # 矩阵含 windows-latest 与 macos-latest：final-check 的 POSIX 崩溃、路径含空格、
+  # 行尾/编码差异等缺陷**只在非作者平台或跨平台时才暴露**（作者本机为 Windows）
   script-tests:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
