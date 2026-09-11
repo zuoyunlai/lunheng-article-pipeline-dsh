@@ -6,7 +6,7 @@
 
 把一篇深度文章/论文的生产拆成 **9 个独立角色 T1-T9（互不可替代）**（文献/数据/案例/分析/写作/批判/审计/终检/审稿；主控 = T0 调度 + T8 终检亲执行，T8 是独立角色不 spawn 子代理；T9 审稿可选默认选中、学术必选）：Phase 1 三检索员（T1 文献 ∥ T2 数据 ∥ T3 案例）**三方真并行、互不干涉**，T3 **任何量级必 spawn**（含 0 条场景空卡协议）；T6 批判伙伴从反方攻击论证；T9 同行评审 + 期刊匹配；G0-G14 独立审计（含 G14 中文 AI 痕迹闸）+ M 门机械化终检（M-Form 11 / M-Exist 10 / M-Integrity 2）。用 dsh `subagent` 子代理编排，产出有**证据底座、反方论证、独立审计、人工核验节点**的交付物。
 
-> 版本：v2.5.2-dsh.17（DSH 原生插件）。
+> 版本：v17.0.0（DSH 原生插件，尚未发布）。
 
 ## 安装（在目标机器上）
 
@@ -102,7 +102,7 @@ dsh plugin --profile <profile> remove lunheng-article-pipeline
 > 本地直发会绕过 CI 的三道门与 OIDC 来源证明（provenance），且 npm 版本不可覆盖 —— 一旦发出无法补救。
 
 ```sh
-git tag v2.5.2-dsh.N && git push origin v2.5.2-dsh.N   # 一次只推 1 个 tag（GitHub：单次 push >3 个 tag 不触发任何 workflow）
+git tag v17.0.0 && git push origin v17.0.0   # 一次只推 1 个 tag（GitHub：单次 push >3 个 tag 不触发任何 workflow）
 # 触发 publish.yml：门 1 一致性 → 门 2 打包面 → 门 3 机械卫生 → 脚本回归测试
 #   → tag/版本一致校验 → 幂等守卫（已发布则跳过）→ OIDC 发布 --provenance --tag dsh → 发布后审计（gitHead/dist-tags）
 ```

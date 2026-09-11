@@ -35,9 +35,19 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..'); // skills/lunheng-article-pipeline
 const REPO_ROOT = join(ROOT, '..', '..'); // lunheng-article-pipeline-dsh
 
-// ① 版本真源 = package.json；版本头行任意 -dsh.N（v2.5.2-dsh.3 修订：不再硬编码 v2.5.2，防 bump 到 v2.6.0 后失效）
-const VER_HEADER_RE = /^> 版本：v\d+\.\d+\.\d+-dsh\.\d+（DSH/;
-const VER_ANY_RE = /v\d+\.\d+\.\d+-dsh\.\d+/;
+// ① 版本真源 = package.json；版本头行任意 semver（v2.5.2-dsh.3 修订：不再硬编码 v2.5.2，防 bump 后失效）
+// **版本号形态真源（v17.0.0 起迁移为纯 semver：迭代号进 major，如 17.0.0 / 18.0.0 / 修补 17.0.1）**：
+//   ① 必须同时兼容历史形态 `2.5.2-dsh.N`——CHANGELOG 历史段、旧注解、旧安装 pin 里都还有；
+//   ② 每段限 `\d{1,3}`，用于**排除 `2026.09.11` 这类日期串**被误当版本号；
+//   ③ prerelease 段可选（`-dsh.17` / `-rc.1`），因为方案迁移前后两种都要认。
+const SEMVER = String.raw`\d{1,3}\.\d{1,3}\.\d{1,3}(?:-[0-9A-Za-z][0-9A-Za-z.]*)?`;
+const VER_HEADER_RE = new RegExp('^> 版本：v' + SEMVER + '（DSH');
+const VER_ANY_RE = new RegExp('v' + SEMVER);
+// 上游论衡「**规约版本线**」——与 lunheng-article-pipeline 的**包版本**是两条不同的版本线
+// （例：`references/pipeline-readme.md` 标题的 v2.2.14 是规约自身的演进号，随规约改而不随发版改）。
+// 旧规则靠 `-dsh.N` 后缀天然把两者分开；v17.0.0 起包版本迁移为**纯 semver**，形态上不再可分，
+// 故在此**显式登记**规约版本线（**新增该类标题时须登记一行**），仅供规则 ⑫「标题内嵌版本」豁免。
+const UPSTREAM_SPEC_VERSIONS = new Set(['2.2.14']);
 
 function walk(dir, acc = []) {
   for (const name of readdirSync(dir)) {
@@ -125,7 +135,7 @@ if (fixMode) {
 
 const errors = [];
 
-// 版本号归一化：去掉 v 前缀比较（v2.5.2-dsh.3 == 2.5.2-dsh.3）
+// 版本号归一化：去掉 v 前缀比较（v2.5.2-dsh.3 == 2.5.2-dsh.3；v17.0.0 == 17.0.0）
 const normVer = (s) => (s || '').replace(/^v/, '');
 
 // ① 跨文件版本一致性：package.json version 必须等于 SKILL.md frontmatter version + 仓库级文档版本头
@@ -148,8 +158,8 @@ for (const [rel, p] of [
 ]) {
   if (!existsSync(p)) { errors.push(`[P0 版本一致性] 缺文件 ${rel}`); continue; }
   const t = readFileSync(p, 'utf8');
-  const m = t.match(/v?\d+\.\d+\.\d+-dsh\.\d+/);
-  if (!m) errors.push(`[P0 版本一致性] ${rel} 无 -dsh.N 版本号`);
+  const m = t.match(new RegExp('v?' + SEMVER));
+  if (!m) errors.push(`[P0 版本一致性] ${rel} 无版本号（期望「> 版本：vX.Y.Z」）`);
   else if (normVer(m[0]) !== normVer(pkgVer)) errors.push(`[P0 版本一致性] ${rel} 写 ${m[0]} ≠ package.json=${pkgVer}（需 bump）`);
 }
 
@@ -245,7 +255,7 @@ for (const f of files) {
     }
     // ⑦ 全量版本头一致性（v2.5.2-dsh.5 审计新增：防单个文件版本头漏 bump）
     const headerLine = text.split('\n').find((l) => l.startsWith('> 版本：v'));
-    const headerVer = headerLine?.match(/v(\d+\.\d+\.\d+-dsh\.\d+)/)?.[1];
+    const headerVer = headerLine?.match(new RegExp('v(' + SEMVER + ')'))?.[1];
     if (headerVer && normVer(headerVer) !== normVer(pkgVer)) {
       errors.push(`[P0 版本头漂移] ${rel} 版本头 v${headerVer} ≠ package.json=${pkgVer}`);
     }
@@ -284,19 +294,19 @@ for (const f of files) {
   if (isArchive(f)) continue;
   const rel = relative(ROOT, f).replaceAll('\\', '/');
   readFileSync(f, 'utf8').split('\n').forEach((l, i) => {
-    const m = l.match(/^\s*[-*>#]*\s*版本：v?(\d+\.\d+\.\d+-dsh\.\d+)/);
+    const m = l.match(new RegExp('^\\s*[-*>#]*\\s*版本：v?(' + SEMVER + ')'));
     if (m && normVer(m[1]) !== normVer(pkgVer)) {
       errors.push(`[P0 版本点位漂移] ${rel}:${i + 1} 写 ${m[1]} ≠ package.json=${pkgVer}`);
     }
-    const t2 = l.match(/^#\s+\S.*（v?(\d+\.\d+\.\d+-dsh\.\d+)）/);
-    if (t2 && normVer(t2[1]) !== normVer(pkgVer)) {
+    const t2 = l.match(new RegExp('^#\\s+\\S.*（v?(' + SEMVER + ')）'));
+    if (t2 && !UPSTREAM_SPEC_VERSIONS.has(t2[1]) && normVer(t2[1]) !== normVer(pkgVer)) {
       errors.push(`[P1 标题内嵌版本漂移] ${rel}:${i + 1} 写 ${t2[1]} ≠ package.json=${pkgVer}`);
     }
   });
 }
 
 // ⑬ docs/ 版本点位（v2.5.2-dsh.13 新增）：只查**可执行口径**——
-//    ① 安装 pin（`@x.y.z-dsh.N`）；② 「当前版本」声明行。历史章节（版本历史/演进/里程碑等）整体跳过。
+//    ① 安装 pin（`@x.y.z`，含历史 `@x.y.z-dsh.N`）；② 「当前版本」声明行。历史章节（版本历史/演进/里程碑等）整体跳过。
 const docsDir = join(REPO_ROOT, 'docs');
 if (existsSync(docsDir)) {
   for (const f of walk(docsDir)) {
@@ -306,11 +316,11 @@ if (existsSync(docsDir)) {
       const h = l.match(/^#{1,4}\s*(.+)/);
       if (h) inHistory = /版本历史|历史|演进|里程碑|升级记录/.test(h[1]);
       if (inHistory) return;
-      const pin = l.match(/@(\d+\.\d+\.\d+-dsh\.\d+)/);
+      const pin = l.match(new RegExp('@(' + SEMVER + ')'));
       if (pin && normVer(pin[1]) !== normVer(pkgVer)) {
         errors.push(`[P1 docs 安装 pin 漂移] ${rel}:${i + 1} 写 @${pin[1]} ≠ package.json=${pkgVer}`);
       }
-      const cur = l.match(/当前版本\s*\*{0,2}v?(\d+\.\d+\.\d+-dsh\.\d+)/);
+      const cur = l.match(new RegExp('当前版本\\s*\\*{0,2}v?(' + SEMVER + ')'));
       if (cur && normVer(cur[1]) !== normVer(pkgVer)) {
         errors.push(`[P1 docs 当前版本声明漂移] ${rel}:${i + 1} 写 ${cur[1]} ≠ package.json=${pkgVer}`);
       }
@@ -562,12 +572,12 @@ const CONTRACTS = [
 const patchPath = join(REPO_ROOT, 'cordis.patch.yml');
 if (existsSync(patchPath)) {
   const pt = readFileSync(patchPath, 'utf8');
-  const pm = pt.match(/(v?\d+\.\d+\.\d+-dsh\.\d+)/);
+  const pm = pt.match(new RegExp('(v?' + SEMVER + ')'));
   if (pm && normVer(pm[1]) !== normVer(pkgVer)) {
     errors.push(`[P0 版本引用] cordis.patch.yml 头写 ${pm[1]} ≠ package.json=${pkgVer}`);
   }
 }
-// examples/ 只查**安装 pin**（`@x.y.z-dsh.N`）——版本注解行（「… 起」「更正」「修订」「历史」等）豁免，
+// examples/ 只查**安装 pin**（`@x.y.z`，含历史 `@x.y.z-dsh.N`）——版本注解行（「… 起」「更正」「修订」「历史」等）豁免，
 // 因为注解天然会提到相邻版本（v2.5.2-dsh.13 起）
 const exDir = join(REPO_ROOT, 'examples');
 if (existsSync(exDir)) {
@@ -575,7 +585,7 @@ if (existsSync(exDir)) {
     const rel = 'examples/' + relative(exDir, f).replaceAll('\\', '/');
     readFileSync(f, 'utf8').split('\n').forEach((l, i) => {
       if (/起|之前|新增|修订|教训|历史|更正|及以后/.test(l)) return;
-      const pin = l.match(/@(v?\d+\.\d+\.\d+-dsh\.\d+)/);
+      const pin = l.match(new RegExp('@(v?' + SEMVER + ')'));
       if (pin && normVer(pin[1]) !== normVer(pkgVer)) {
         errors.push(`[P0 版本引用] ${rel}:${i + 1} 安装 pin 写 @${pin[1]} ≠ package.json=${pkgVer}`);
       }

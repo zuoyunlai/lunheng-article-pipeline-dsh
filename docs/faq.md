@@ -8,9 +8,22 @@
 
 实测技能可正常加载（`dsh --dump-config` 可见 `skill-filesystem-lunheng` 行，headless 会话技能目录能列出本技能）。
 
-## 版本号为什么是 2.5.2-dsh.N？
+## 版本号为什么是 17.0.0 这种形态？
 
-`-dsh.N` 标记第 N 次 DSH 迭代发布。DSH 版独立维护、独立版本线，版本号不与任何外部版本线共享。
+DSH 版独立维护、独立版本线，版本号不与任何外部版本线共享。**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**：
+
+| 场景 | 版本 |
+|---|---|
+| 本轮迭代 | `17.0.0` |
+| 下一轮迭代 | `18.0.0` |
+| 同一轮内修补 | `17.0.1` |
+| 同一轮内小步改进 | `17.1.0` |
+
+**为什么不能写成 `dsh.17.0`**：npm 强制 [semver](https://semver.org)，`major.minor.patch` 三段必须是数字，`dsh` 只能出现在 `-`（prerelease）或 `+`（build metadata）之后——实测 `npm publish` 会直接以 `Invalid version` 拒绝。
+
+**历史版本号** `2.5.2-dsh.N`（截至 `2.5.2-dsh.17`）沿用语义化基线 `2.5.2` + DSH 迭代后缀；换成纯 semver 是为了**去掉那个与 DSH 迭代无关的数字前缀**，同时保证单调递增（`17.0.0 > 2.5.2-dsh.17`，老用户不会看到「降版」）。
+
+**「dsh 通道」怎么装**：`npm i lunheng-article-pipeline@dsh`（dist-tag `dsh` 始终指向最新 DSH 迭代版）。
 
 ## 封面为什么没有文生图？
 

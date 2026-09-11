@@ -8,7 +8,7 @@ It splits the production of a long article / paper into **9 independent, non-sub
 
 Phase 1 runs three retrieval agents **T1 literature ∥ T2 data ∥ T3 cases truly in parallel**; T3 always spawns (including an explicit "0 cases" empty-card protocol). T6 attacks the argument from the opposing side, T9 adds peer review plus journal matching, and delivery is gated by an independent **G0–G14 audit** (including the **G14 Chinese AI-trace gate**) and the mechanical **M-Gate** (M-Form 11 / M-Exist 10 / M-Integrity 2). Orchestration uses the dsh `subagent` tool. Output is a deliverable with an **evidence base, counter-arguments, an independent audit trail and human checkpoints**.
 
-> Version: v2.5.2-dsh.17 (DSH-native plugin).
+> Version: v17.0.0 (DSH-native plugin).
 
 ## Install (on the target machine)
 
@@ -105,7 +105,7 @@ If you previously copied the skill directory into a skill root (`.dsh/skills/` o
 > A local publish bypasses CI's gates and the OIDC provenance attestation, and npm versions cannot be overwritten.
 
 ```sh
-git tag vX.Y.Z-dsh.N && git push origin vX.Y.Z-dsh.N   # push ONE tag at a time (GitHub runs no workflow when >3 tags are pushed at once)
+git tag vX.Y.Z && git push origin vX.Y.Z   # push ONE tag at a time (GitHub runs no workflow when >3 tags are pushed at once)
 # publish.yml then runs: gate 1 consistency → gate 2 packaging surface → gate 3 mechanical hygiene → script regression tests
 #   → tag/version match → idempotency guard (skip if already published) → OIDC publish --provenance --tag dsh → post-publish audit (gitHead/dist-tags)
 ```

@@ -2,7 +2,7 @@
 
 > **论衡（lunheng-article-pipeline）** 是一个多 Agent 深度长文生产流水线，DeepSeek Harness（dsh）bundle 插件。它不是让一个 AI 直接写文章，而是让一支 **9 个 AI 角色组成的"论文生产小队"** 按既定协议协作：定题 → 三线并行检索 → 分析 → 写作 → 批判 → 审计 → 审稿 → 终检。每一步都有明确产出物、交接报告与质量闸门，最终交付**有证据底座、有反方论证、有独立审计、有人工核验节点**的文章。
 
-> 适用：公众号深度长文、研究报告、学术论文、商业评论、行业分析——任何"要站得住脚"的长内容。当前版本 **v2.5.2-dsh.17**（DSH 独立版本）。
+> 适用：公众号深度长文、研究报告、学术论文、商业评论、行业分析——任何"要站得住脚"的长内容。当前版本 **v17.0.0**（DSH 独立版本）。
 
 ---
 
@@ -166,7 +166,7 @@ dsh plugin --profile web add lunheng-article-pipeline
 ## 获取方式
 
 - **GitHub（DSH bundle）**：https://github.com/zuoyunlai/lunheng-article-pipeline-dsh
-- **npm**：`lunheng-article-pipeline@2.5.2-dsh.17`（`npm i lunheng-article-pipeline@dsh`）
+- **npm**：`lunheng-article-pipeline@dsh`（dist-tag `dsh` = 最新 DSH 迭代版；锁定版本可写 `@17.0.0`，v17.0.0 发布后可用；当前 npm 已发布版 = `2.5.2-dsh.17`）
 - **历史版本线（独立化前）**：https://github.com/zuoyunlai/lunheng-article-pipeline
 
 ---

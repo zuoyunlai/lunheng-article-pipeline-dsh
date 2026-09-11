@@ -11,7 +11,8 @@
 ```sh
 # 1. 在 profile package.json 声明 bundle 依赖
 #    （DSH 会读 dsh.bundle.patch 找到 cordis.patch.yml 加载）
-dsh plugin --profile web add lunheng-article-pipeline@2.5.2-dsh.17
+dsh plugin --profile web add lunheng-article-pipeline@dsh   # 推荐：跟随最新 DSH 迭代版
+# 锁定具体版本：dsh plugin --profile web add lunheng-article-pipeline@17.0.0  （v17.0.0 发布后可用；当前 npm 已发布版 = 2.5.2-dsh.17）
 
 # 2. 设三档 subagent 工具的 provider/model 环境变量
 #    （未设时各档抛错 → 必须显式声明，DSH 安装时提示授权）
@@ -98,7 +99,7 @@ cordis.patch.yml 第一段（id: `skill-filesystem-lunheng`）是 skill filesyst
 ## 6. 升级/降级/卸载
 
 ```sh
-dsh plugin --profile web update lunheng-article-pipeline@2.5.2-dsh.17
+dsh plugin --profile web update lunheng-article-pipeline@dsh
 # 卸载后 subagent 工具和 skill provider 一起消失（因 cordis.patch.yml 整体 - insert 段）
 dsh plugin --profile web remove lunheng-article-pipeline
 ```
