@@ -53,6 +53,15 @@
 - 三个分档工具行仍留在**包级** `cordis.patch.yml`（「装了不坏」优先）。若主人希望「只有选定该预设的会话才有这三个工具」，官方机制是**把同样的行挂进 preset 组合**（`docs/subsystems/tools.md:484-504`、`docs/subsystems/skills.md:13`：preset 的 standing composition 注册落在**该预设的作用域层**；`docs/architecture.md:131` 是入口判据），并可借 `modelSelectionSettings`（`@deepseek-ai/dsh-tool-subagent`，默认关）+ `list_subagent_models` 用官方**模型发现链**替代「改 env 必须重启」。
 - **三步配方 + 每步验证 + 回滚 + 五条已知限制**见 `references/_shared/DSH-集成方案.md` §八。**诚实标注**：官方知识库里**没有任何 preset 组合文件的完整示例**，且组合文件名只有摘要级依据（「preset cordis.yml」vs `agent.cordis.yml`）——配方明确要求「照抄你部署里已存在的预设目录」，并标为**未在真实部署验证**。另：官方**没有**「全局工具行会让每个会话都付 token 成本」的量化陈述，「`modelSelectionSettings` 要求工具行在 preset scope」也**不是官方原文**（是从 `capability-seams.md:491` 推出的）——配方里都如实写了。
 
+### 发布后修正（v18.1.0 发布当天；**只动仓库脚本，未改动已发布产物**）
+
+- **现象**：`v18.1.0` 的 tag 推送后，`publish` 流水线五道门 + 发布 + 发布后审计**全绿**（npm 18.1.0 已带 provenance 发布成功），但同一次推送触发的 `ci` 流水线在 **`macos-latest`** 上红：`script-tests` job 的 `pack-smoke：…` 用例失败，报 `resourceBase 未指向解包技能目录：{"kind":"directory","path":"/private/var/folders/…"}`。
+- **根因**：**macOS 的符号链接 + Node 的 realpath**。`os.tmpdir()` 在 macOS 返回 `/var/folders/…`，而 `/var` 是指向 `/private/var` 的符号链接；`pack-smoke.mjs` 用 `mkdtempSync(tmpdir())` 得到**非规范化**路径，但 Node 解析 ESM 时会 realpath → 入口算出的 `resourceBase.path` 是**规范化**路径 → `resolve(a) === resolve(b)` 字符串比较必然不等（`resolve` 不做符号链接展开）。同一原因还会让脚本喂给 guard 的探测路径与 guard 的受保护根前缀不匹配 → `guard 未否决技能包内写入` 假失败。
+- **为什么本地没发现**：本机是 Windows，`tmpdir()` 与真实路径一致；而这条路径**第一次被 CI 跑到**（v18.0.5 引入 `pack-smoke`，但那一版按主人指示从未推送，故历史上从未在 macOS 上执行过）。**这是「本地全绿 ≠ CI 全绿」的又一实例，且只由平台差异触发。**
+- **修法**：`scripts/pack-smoke.mjs` 新增 `canon()`（`realpathSync` + 异常回退 `resolve`），**解包目录一律先规范化再使用**，`resourceBase` 两侧都用 `canon` 比较。
+- **复现与验证（在 Windows 上复现了 macOS 的失败条件）**：用 **junction** 当 `TEMP`/`TMP`（`E:\HERNESS\run\_symtest\link → real`）→ **修复前**精确复现两处失败（`resourceBase` + `guard`）；**修复后**同一条件下全绿，正常 `tmpdir` 下同样全绿。
+- **影响面（如实）**：`scripts/pack-smoke.mjs` **不在 `files` 白名单内**（仓库级门，不随包分发），故 **npm 上的 18.1.0 产物不受影响**，无需重发；`v18.1.0` tag 上那条 `ci` 红记录属于**仓库门的历史**，无法也不应更改。若主人希望「tag 与全绿提交一一对应」，可另发一个**仅含此修正**的补丁版（内容与 18.1.0 的随包文件一致，仅 `CHANGELOG.md` 不同）。
+
 ### 未做（如实登记，不假装做了）
 
 - **C-2 未改为默认**：换作用域就不再是「装了就可用」，需主人主动选会话预设；且官方无完整示例，不宜把未验证配方变成默认路径。

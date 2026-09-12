@@ -18,7 +18,7 @@
 //   因此不能证明「宿主 loader 会加载本包」；那条由 `tests/bundle-contract.test.mjs`（patch 自注册行）
 //   与 `tests/entry.test.mjs`（apply 真跑）在源码树侧覆盖，本脚本则把同一套断言搬到**发布物**侧。
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -30,6 +30,15 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(HERE, '..')
 const PKG_NAME = 'lunheng-article-pipeline'
 const HOST_CORE_ALLOW = new Set(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh', '@deepseek-ai/dsh-tool-subagent'])
+
+// 路径规范化（v18.1.1，CI 实测踩到）：`mkdtempSync(tmpdir())` 拿到的路径**可能不是真实路径**——
+// macOS 的 `os.tmpdir()` 返回 `/var/folders/…`，而 `/var` 是指向 `/private/var` 的符号链接；
+// Windows 上若 `TEMP` 指向 junction 同理。Node 解析 ESM 时会 `realpath`，于是入口算出的
+// `resourceBase.path` 是**规范化后**的路径。**若这里不规范化，字符串比较必然不等** →
+// 打包产物冒烟在 macOS 上假红灯（v18.1.0 的 tag CI 就是这么红的：`macos-latest` 的
+// 「随包脚本回归测试」job）。同一原因也会让本脚本喂给 guard 的探测路径与 guard 的受保护根
+// 前缀不匹配 → 「guard 未否决技能包内写入」假失败。故：**解包目录一律先规范化再使用**。
+const canon = (p) => { try { return realpathSync(p) } catch { return resolve(p) } }
 
 const problems = []
 const ok = (msg) => console.log(`  ✓ ${msg}`)
@@ -60,7 +69,7 @@ try {
     console.error('→ 退出码 10（环境问题：tar 不可用）')
     process.exit(10)
   }
-  const pkg = join(tmp, 'package')
+  const pkg = canon(join(tmp, 'package'))
 
   // ② 关键文件齐备
   const mustExist = [
@@ -190,7 +199,9 @@ try {
       else bad('正文未剥离 frontmatter（首行仍是 ---）')
       const rb = registered.resourceBase
       const rbPath = rb && typeof rb === 'object' ? rb.path : null
-      if (rbPath && resolve(rbPath) === resolve(join(pkg, 'skills', PKG_NAME))) ok('resourceBase 指向解包后的技能目录')
+      // 两侧都走 canon：入口给的 `resourceBase.path` 由 Node realpath 得到（规范化），
+      // 解包目录也必须是规范化路径才可比（macOS `/var` ↔ `/private/var`、Windows junction）
+      if (rbPath && canon(rbPath) === canon(join(pkg, 'skills', PKG_NAME))) ok('resourceBase 指向解包后的技能目录')
       else bad(`resourceBase 未指向解包技能目录：${JSON.stringify(rb)}`)
       const roleCards = existsSync(join(pkg, 'skills', PKG_NAME, 'references', 'agents'))
         ? readdirSync(join(pkg, 'skills', PKG_NAME, 'references', 'agents')).filter((f) => f.endsWith('.md')).length
