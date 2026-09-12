@@ -2,6 +2,44 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.2.0 — 2026-09-12
+
+> **发布面瘦身**：主人指示「做发布面瘦身。我希望最终用户用的是功能正常的纯插件，不含无用的冗余文件」。本版**只改发布面与文档**——**运行期行为零变更**（M 门 23 项、四道闸门、脚本输出契约、技能注册全部不动）。装包用户拿到的仍然是完整功能，只是不再附带对自己无用的仓库向文件。
+> **先取证再动手**：没有凭感觉删文件，而是对**已发布的 18.1.0 包**做了三项机械体检（脚本 `run/_refgraph-published.mjs` / `run/_dup-scan.mjs` / `run/_inventory-published-18.1.0.mjs`，均只读），结论见下。
+
+### 取证结论：包内**几乎没有**真正的死文件（这决定了裁剪只能从"仓库向文件"下手）
+
+| 体检 | 方法 | 结论 |
+|---|---|---|
+| **引用图** | 对 105 个随包文本文件建引用图（文件名/相对路径出现即算被引用），排除运行期加载集（`cordis.patch.yml` + `lib/**` + `SKILL.md`） | **零引用文件仅 2 个 / 4.5 KB**（`references/templates/文献卡-template-lite.md`、`案例卡-template-lite.md`）；而 `SKILL.md` 明确写「实战用 lite」，故它们**是可用功能**，**未删**。其余 103 个文件全部被引用 |
+| **内容重复** | 全仓 sha256 逐字节比对 | **仅 1 对**：`LICENSE` 与 `skills/lunheng-article-pipeline/LICENSE`（各 1.1 KB）。**保留**——MIT 要求副本随附许可证声明，且「技能目录单独分发」这种部署形态需要它 |
+| **文档重复** | 全仓两两「行集重合度」（≥12 字符的非空行、Jaccard 比值） | **0 对达到 40%** —— 不存在"同一份内容维护两遍"的文档 |
+
+**所以"冗余"的真实所在是：包根塞进了**仓库向文件**（用户装完既不会读、读了还会照着跑不存在的命令）。**
+
+### 裁剪（`package.json` 的 `files` 白名单）
+
+- **移出发布面**：`CHANGELOG.md`（181 KB，单文件占原包 13%）、`CONTRIBUTING.md`（8.9 KB）。
+- **实测数据（`npm pack --dry-run --json`，可复现）**：107 个文件 / 解包 **1404.7 → 1220 KB（−13%）**、tgz **552.1 → 472.9 KB（−14%）**。
+- ⚠️ **如实说明：五语 README 挡不住，也不该挡**——npm **强制包含** 根目录 `README*` 与 `LICENSE`：从 `files` 白名单删掉**无效**、加 `.npmignore` 排除**同样无效**（两者都已实测）。故 `README.{zh,es,pt,hi}.md` 仍在包内（74 KB）——这是 **npm 的规则**，不是本仓疏漏；且多语 README 本就是本仓既定的质量目标（`plugin-surface-check` 的 `readme-five-langs`）。
+- **保留不动（附理由，不是漏掉）**：`docs/token-optimization-plan.md`（被 3 个**运行期**文件引为 token 量级来源：`00-主控-扩展职责.md`、`主人确认-template.md`、`进展-主人版-template.md`）；`references/**` 全部（引用图证明无死文件）；`SECURITY.md` / `LICENSE` / `docs/**`（用户向）。
+
+### 新增机械防线（把"裁剪口径"变成门，而不是靠自觉）
+
+- **`repo-hygiene-check` 规则⑥**：发布面检查从「只查必含」扩展为**必含 + 必不含**。必含升级为运行期最小集（`package.json` / `cordis.patch.yml` / `LICENSE` / `README.md` / `lib/{index,tools,guard,commands}.js` / `SKILL.md` / `AGENTS.md` / `m-gate-check.mjs` / `_lib/exit-guard.mjs`）；**必不含**：`CHANGELOG.md`、`CONTRIBUTING.md`、`scripts/`、`tests/`、`.github/`（谁把仓库向文件加回 `files` 白名单，CI 立刻红）。报告里同时打印解包体积。
+- **`pack-smoke.mjs`**：解包后**直接数盘上内容**（比读 `npm pack --json` 更硬——验的是用户解包后会看到什么），逐条断言 5 项"已裁剪"，并报告解包体积/文件数。
+- **回归用例新增第 ④ 例（对抗）**：在副本仓库里把 `CHANGELOG.md` 加回 `files` 白名单 → `pack-smoke` 必须 exit 1 且点名「发布面污染」。**踩坑记录**：第一版注入是空转的（副本里该文件已被 ② 例删掉，npm 忽略不存在的白名单项 → 仍 exit 0），补上"先让文件真的存在"才有意义——**对抗用例本身也要防"形同虚设"**。
+
+### 文档修正：装包用户不再被指向不存在的文件
+
+- `docs/troubleshooting.md` 开头原本直接让读者「先跑本地四道门（`node scripts/plugin-surface-check.mjs` …）」——**这四条命令在 npm 安装包里根本不存在**（仓库才有）。改为**先分安装形态**：npm/`dsh plugin add` 用户走 `dsh plugin list` / `npm view` / `/lunheng-status` / 技能目录；克隆源码的维护者才跑四道门。另三处提到仓库脚本的地方都加了「源码仓库的」限定。
+- 明确写清：**随包脚本（11 个 + `_lib/`）两种形态都有**——M 门/字数/证据包/终检是功能本体，不参与裁剪。
+
+### 门与验证（本版全绿）
+
+- `consistency-check` 0 漂移 ／ `plugin-surface-check` 11 通过 0 失败 0 提示 ／ `repo-hygiene-check` ⑨ 条（⑥ 含新负清单）／ `pack-smoke`（含 5 条裁剪断言 + 体积报告）／ `node --test` **82 pass / 0 fail**（**扩写**既有用例：`pack-smoke` 那条从 3 段注入加到 4 段，用例总数不变）。
+- 发布物侧复验：`run/_verify-published-18.1.0.mjs` 的同款流程将在本版发版后对 **registry 上那一份**重跑（验的是用户真正装到的东西）。
+
 ## 18.1.0 — 2026-09-12
 
 > **功能发布：第三方审计改进方案「C 组 · 中期偏架构」六条逐条处置**（审计报告 `run/guannian-yu-linian/audits/论衡第三方全量审计-v2.md` §4-C）。四条**已启用**、一条给**可选配方**、一条**仍未接线**（处置表见 `skills/lunheng-article-pipeline/references/_shared/DSH-集成方案.md` §七）。

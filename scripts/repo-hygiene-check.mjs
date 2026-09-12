@@ -15,7 +15,8 @@
  *   ③ *.yml/*.yaml 结构健全（禁制表符缩进 + 关键文件必须含预期键）
  *   ④ 行尾：git ls-files --eol 不得出现 w/crlf 或 w/mixed（配 .gitattributes）
  *   ⑤ 编码：文本文件必须为合法 UTF-8（拒绝替换字符/非法序列）
- *   ⑥ 发布面：npm pack --dry-run --json 必须含关键路径 + 脚本数 == SKILL.md 白名单数
+ *   ⑥ 发布面：npm pack --dry-run --json 必须含关键路径（运行期最小集）+ 脚本数 == SKILL.md 白名单数
+ *      **且不得含仓库向文件**（v18.2.0：CHANGELOG/CONTRIBUTING 与 tests/、仓库 scripts/、.github/ 一律不随包）
  *   ⑦ 凭据扫描（零依赖，10 类模式）
  *   ⑧ 退出码契约表（静态解析 process.exit + exit-guard 兜底检查）
  *   ⑨ 文档词预算门（v18.1.0：逐文件棘轮上限 + ≥12 KB 全覆盖 + 常驻集合计上限）
@@ -158,8 +159,43 @@ if (pack.status !== 0) {
     const arr = JSON.parse(pack.stdout.slice(pack.stdout.indexOf('[')))
     const files = (arr[0]?.files || []).map((f) => f.path)
     if (files.length === 0) fail('pack', 'npm pack 报告无文件（--json 解析异常？）')
-    const must = ['package.json', 'cordis.patch.yml', 'README.md', 'LICENSE', 'CHANGELOG.md', 'skills/lunheng-article-pipeline/SKILL.md']
+    const must = [
+      'package.json',
+      'cordis.patch.yml',
+      'LICENSE',
+      'README.md',
+      // 运行期最小集：入口 + C 组模块 + 技能体 + 随包脚本
+      'lib/index.js',
+      'lib/tools.js',
+      'lib/guard.js',
+      'lib/commands.js',
+      'skills/lunheng-article-pipeline/SKILL.md',
+      'skills/lunheng-article-pipeline/AGENTS.md',
+      'skills/lunheng-article-pipeline/scripts/m-gate-check.mjs',
+      'skills/lunheng-article-pipeline/scripts/_lib/exit-guard.mjs',
+    ]
     for (const m of must) if (!files.includes(m)) fail('pack', `发布包缺关键路径：${m}`)
+
+    // v18.2.0 发布面裁剪（主人指示「最终用户拿到的是功能正常的纯插件，不含无用的冗余文件」）：
+    //   **仓库向文件一律不得随包**——它们对装包用户没有用途，只会让发布物变胖、让用户跑不存在的命令。
+    //   本清单是**机械防线**：谁把 `CHANGELOG.md` 加回 `files` 白名单，这里立刻报（不是靠自觉）。
+    //   边界（如实）：npm **强制包含** 根目录 `README*` 与 `LICENSE`（实测 `files` 删掉、`.npmignore`
+    //   排除均无效）——故五语 README 保留在包内，这是 npm 的规则而非本仓疏漏。
+    const mustNotShipFiles = [
+      'CHANGELOG.md',
+      'CONTRIBUTING.md',
+      'scripts/repo-hygiene-check.mjs',
+      'scripts/plugin-surface-check.mjs',
+      'scripts/pack-smoke.mjs',
+    ]
+    const mustNotShipDirs = ['tests/', 'scripts/', '.github/']
+    for (const m of mustNotShipFiles) {
+      if (files.includes(m)) fail('pack', `发布面污染：${m} 不应随包（仓库向文件；见 CHANGELOG ## 18.2.0 的裁剪口径）`)
+    }
+    for (const d of mustNotShipDirs) {
+      const hit = files.filter((f) => f.startsWith(d))
+      if (hit.length) fail('pack', `发布面污染：${d} 下有 ${hit.length} 个文件随包（如 ${hit[0]}）——仓库向目录不得进发布物`)
+    }
     // 只数**顶层**随包脚本（`scripts/_lib/` 是共享库，不算入口；v2.5.2-dsh.13）
     const scripts = files.filter((f) => /^skills\/lunheng-article-pipeline\/scripts\/[^/]+\.mjs$/.test(f))
     // v2.5.2-dsh.17：脚本数**从 SKILL.md 白名单派生**，不再写死数字（写死会在加脚本时变成噪音红灯；
@@ -169,7 +205,12 @@ if (pack.status !== 0) {
     const declared = (wl.split('=')[1] || '').split('+')[0].split('/').map((s) => s.trim()).filter((s) => /^[a-z0-9][a-z0-9-]*$/.test(s))
     if (declared.length === 0) fail('pack', 'SKILL.md 未声明随包脚本白名单（规则 ⑩ 同源）')
     else if (scripts.length !== declared.length) fail('pack', `发布包内随包脚本数 ${scripts.length} ≠ SKILL.md 白名单 ${declared.length}（白名单不一致）`)
-    notes.push(`⑥ 发布面：${files.length} 个文件 / 随包脚本 ${scripts.length} 个（与 SKILL.md 白名单一致）/ 关键路径齐备`)
+    const unpacked = Number(arr[0]?.unpackedSize ?? 0)
+    notes.push(
+      `⑥ 发布面：${files.length} 个文件 / 随包脚本 ${scripts.length} 个（与 SKILL.md 白名单一致）/ 关键路径齐备` +
+        ` / 仓库向文件零污染（${mustNotShipFiles.length} 个文件 + ${mustNotShipDirs.length} 个目录）` +
+        (unpacked ? `｜解包 ${(unpacked / 1024).toFixed(0)} KB` : ''),
+    )
   } catch (e) {
     fail('pack', `npm pack --json 解析失败：${e.message}`)
   }

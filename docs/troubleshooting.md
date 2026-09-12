@@ -1,15 +1,24 @@
 # 故障排查（troubleshooting）
 
-> 版本：v18.1.0（DSH 原生插件，发布于 2026-09-12）
+> 版本：v18.2.0（DSH 原生插件，发布于 2026-09-12）
 
-安装/验证失败时按「症状 → 原因 → 处置」对照。**先跑本地四道门**：
+安装/验证失败时按「症状 → 原因 → 处置」对照。
+
+**先分清你是哪种安装形态**（这决定了你能跑哪些检查）：
+
+| 你的形态 | 自检手段 |
+|---|---|
+| **npm / `dsh plugin add` 安装包**（绝大多数用户） | `dsh plugin --profile <profile> list`、`npm view lunheng-article-pipeline version`、会话内 `/lunheng-status`、让模型列出技能目录。**注意：安装包里没有仓库级的 `scripts/` 与 `tests/`**，下面那四条命令在你的环境里无法执行（这是刻意的发布面裁剪，见 CHANGELOG `## 18.2.0`）。 |
+| **克隆源码仓库**（维护者 / 想改机制的人） | 跑下面四道门（它们只在仓库里存在）： |
 
 ```sh
-node skills/lunheng-article-pipeline/scripts/consistency-check.mjs   # 仓库一致性
-node scripts/plugin-surface-check.mjs                                # 打包面契约
-node scripts/repo-hygiene-check.mjs                                  # 语法/行尾/UTF-8/发布包
-node --test "tests/**/*.test.mjs"                                    # 随包脚本 + 包入口回归
+node skills/lunheng-article-pipeline/scripts/consistency-check.mjs   # 文档一致性（这个随包，两种形态都有）
+node scripts/plugin-surface-check.mjs                                # 打包面契约（仅仓库）
+node scripts/repo-hygiene-check.mjs                                  # 语法/行尾/UTF-8/发布包（仅仓库）
+node --test "tests/**/*.test.mjs"                                    # 随包脚本 + 包入口回归（仅仓库）
 ```
+
+> **随包脚本**（`skills/lunheng-article-pipeline/scripts/` 下 11 个 + `_lib/`）**两种形态都有**——M 门、字数、证据包、终检等运行期脚本是功能本体的一部分，不会被裁剪。
 
 ---
 
@@ -52,7 +61,7 @@ node --test "tests/**/*.test.mjs"                                    # 随包脚
 ## 5. Node 22.19 下 `npx dsh-plugin-guide` 报 `Cannot read properties of null (reading 'edgesOut')`
 
 - **原因**：Node 22.19 自带 npm 10.9.3，无法安装声明了 **optional peerDependency** 的 `dsh-plugin-guide`（arborist 崩）。
-- **处置**：用 `pnpm dlx dsh-plugin-guide@<ver> …` 替代 `npx`（本仓库的 `scripts/plugin-surface-check.mjs` 已自动优先 pnpm）。
+- **处置**：用 `pnpm dlx dsh-plugin-guide@<ver> …` 替代 `npx`（**源码仓库**里的 `scripts/plugin-surface-check.mjs` 已自动优先 pnpm）。
 
 ## 6. 字数统计与报告对不上
 
@@ -89,14 +98,14 @@ node --test "tests/**/*.test.mjs"                                    # 随包脚
 >
 > **不共用本语义的工具**（以各自头注释为准，均非流水线闸门）：`token-budget`（0 成功 / 1 用法 / 2 项目路径不存在）、`md2html`（10 参数或路径错 / 2 `--strict` 校验失败）、`pdfcheck`（1 结构异常 / 10 参数或路径错）、`token-cost`（0/1）、`normalize-trust-level`（1 = 有未决条目，其自有语义；全部输入路径都不存在 → 10）、`consistency-check` 与仓库两道门（0/1，CI 独立命名空间）。
 >
-> 退出码契约由 `scripts/repo-hygiene-check.mjs` 的**退出码表**机械核验（v18.0.2 新增；**v18.0.5 大修**——旧版只 grep `process.exit(字面量)`、且「表内数字在文件里出现过」近乎恒真，等于没核）。现规则：解析 `process.exit(<字面量|本文件 const|guard 导出常量>)` 的实际取值 → 必须是声明集子集；每个声明码必须能被解析或（动态 exit 时）有字面量；每个读盘脚本**必须 import `_lib/exit-guard.mjs`**，否则判失败。**边界（如实）**：动态计算的退出码静态不可判定，那部分由 `tests/scripts.test.mjs` 的异常路径用例覆盖。
+> 退出码契约由**源码仓库的** `scripts/repo-hygiene-check.mjs` 的**退出码表**机械核验（v18.0.2 新增；**v18.0.5 大修**——旧版只 grep `process.exit(字面量)`、且「表内数字在文件里出现过」近乎恒真，等于没核）。现规则：解析 `process.exit(<字面量|本文件 const|guard 导出常量>)` 的实际取值 → 必须是声明集子集；每个声明码必须能被解析或（动态 exit 时）有字面量；每个读盘脚本**必须 import `_lib/exit-guard.mjs`**，否则判失败。**边界（如实）**：动态计算的退出码静态不可判定，那部分由 `tests/scripts.test.mjs` 的异常路径用例覆盖。
 
 ## 9. CI 绿灯但内容有问题
 
 先确认四道门都跑了：`ci.yml` 的 `drift-check` / `plugin-surface` / `hygiene` / `pack-smoke` / `script-tests`（后者含 **windows / macos** 矩阵）。
 若某类漂移仍漏检，请按 `consistency-check.mjs` 的既有规则样式补规则 + **对抗测试**（注入假漂移确认能抓到，再还原），见 `tests/scripts.test.mjs`。
 
-> **「安装→启动→卸载」这一段曾经没有门**（v18.0.5 补，第三方审计 P1-7）：CI 从来没有 `verify` job，本机 `dsh-plugin-dev verify` 又被 DSH Desktop 的 `dsh` shim（硬编码 `DSH_HOME`，见 §7）与 pnpm 原生依赖策略挡住。现由 **`pack-smoke` job + `scripts/pack-smoke.mjs`** 覆盖「发布物可装载」：`npm pack` → 解包 → 断言自注册行恰一行 / patch 行依赖已声明 / 真跑解包入口的 `apply`（注册名、正文非空、frontmatter 已剥离、`resourceBase` 指向解包目录）/ `tests` 不随包。**它仍不等于官方 verify**（不起真实 profile）——那一段在本机不可达，如实标注。
+> **「安装→启动→卸载」这一段曾经没有门**（v18.0.5 补，第三方审计 P1-7）：CI 从来没有 `verify` job，本机 `dsh-plugin-dev verify` 又被 DSH Desktop 的 `dsh` shim（硬编码 `DSH_HOME`，见 §7）与 pnpm 原生依赖策略挡住。现由 **`pack-smoke` job + 源码仓库的 `scripts/pack-smoke.mjs`** 覆盖「发布物可装载」：`npm pack` → 解包 → 断言自注册行恰一行 / patch 行依赖已声明 / 真跑解包入口的 `apply`（注册名、正文非空、frontmatter 已剥离、`resourceBase` 指向解包目录）/ `tests` 不随包。**它仍不等于官方 verify**（不起真实 profile）——那一段在本机不可达，如实标注。
 
 ## 10. 审计视图（`audits/审计视图-v0.md`）读不到 / 内容像草稿
 

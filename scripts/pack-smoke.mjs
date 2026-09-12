@@ -18,9 +18,9 @@
 //   因此不能证明「宿主 loader 会加载本包」；那条由 `tests/bundle-contract.test.mjs`（patch 自注册行）
 //   与 `tests/entry.test.mjs`（apply 真跑）在源码树侧覆盖，本脚本则把同一套断言搬到**发布物**侧。
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, dirname, resolve } from 'node:path'
+import { join, dirname, resolve, relative } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { installExitGuard } from '../skills/lunheng-article-pipeline/scripts/_lib/exit-guard.mjs'
 
@@ -70,6 +70,18 @@ try {
     process.exit(10)
   }
   const pkg = canon(join(tmp, 'package'))
+
+  // 解包后的**真实文件清单 + 解包体积**（直接数盘上内容，比读 `npm pack --json` 更硬：
+  //   验的是「用户解包后会看到什么」，而不是 npm 自己报的清单）
+  const shipped = []
+  ;(function walk(d) {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const p = join(d, e.name)
+      if (e.isDirectory()) walk(p)
+      else shipped.push(relative(pkg, p).split('\\').join('/'))
+    }
+  })(pkg)
+  const unpackedSize = shipped.reduce((s, rel) => s + statSync(join(pkg, rel)).size, 0)
 
   // ② 关键文件齐备
   const mustExist = [
@@ -213,9 +225,17 @@ try {
     }
   }
 
-  // ⑥ tests/ 不随包
-  if (!existsSync(join(pkg, 'tests'))) ok('tests/ 未随包（files 白名单裁剪生效）')
-  else bad('tests/ 随包了（files 白名单失效）')
+  // ⑥ tests/ 不随包（v18.0.5）＋ 发布面裁剪断言（v18.2.0：主人指示「最终用户拿到的是功能正常的纯插件」）
+  //   ⚠️ 如实边界：npm **强制包含**根目录 `README*` 与 `LICENSE`（实测：从 `files` 白名单删掉、
+  //   或加 `.npmignore` 排除，**均无效**；`npm pack --dry-run --json` 实证）。故五语 README 保留在包内，
+  //   这是 npm 的规则，不是本仓疏漏——不为它俩造假红灯。
+  const mustNotShip = ['CHANGELOG.md', 'CONTRIBUTING.md', 'tests/', 'scripts/', '.github/']
+  for (const m of mustNotShip) {
+    const hit = shipped.filter((f) => (m.endsWith('/') ? f.startsWith(m) : f === m))
+    if (hit.length === 0) ok(`发布面已裁剪：不含 ${m}（${m.endsWith('/') ? '目录' : '仓库向文件'}）`)
+    else bad(`发布面污染：${m} 随包了（${hit.length} 个，如 ${hit[0]}）——仓库向内容不得进发布物`)
+  }
+  ok(`发布物解包体积 ${(unpackedSize / 1024).toFixed(0)} KB / ${shipped.length} 个文件`)
 } finally {
   rmSync(tmp, { recursive: true, force: true })
 }

@@ -736,13 +736,17 @@ test('consistency-check ⑩：随包脚本白名单漏列必须报（v18.0.5 补
   rmSync(d, { recursive: true, force: true })
 })
 
-test('pack-smoke：patch 缺自注册行 / 引用未声明的包必须报（v18.0.5 新增发布物门）', () => {
+test('pack-smoke：patch 缺自注册行 / 引用未声明的包 / 发布面污染 必须报（v18.0.5 新增发布物门；v18.2.0 加裁剪断言）', () => {
   // ① 基线：本仓 pack 出来的产物应通过
   const ok = run([join(ROOT, 'scripts', 'pack-smoke.mjs')])
   assert.equal(ok.code, 0, '本仓发布物应通过 pack-smoke：' + ok.out.slice(-400))
 
   // ② 删掉自注册行 → 必须报（v18.0.0 的真实缺陷形态）
   const { d, repo } = mkRepo({ full: true })
+  // `full` 会整仓复制，含 CHANGELOG.md/CONTRIBUTING.md —— 而 v18.2.0 起它们**不得随包**，
+  // 留着会让 ② ③ 因「发布面污染」而失败（用错误的理由通过断言）。故先按当前发布面清掉，
+  // 让每个注入只检验它自己那一件事。
+  for (const f of ['CHANGELOG.md', 'CONTRIBUTING.md']) rmSync(join(repo, f), { force: true })
   const patchPath = join(repo, 'cordis.patch.yml')
   const patch = readFileSync(patchPath, 'utf8')
   writeFileSync(patchPath, patch.replace(/^\s*- id: lunheng-article-pipeline\n\s*name: lunheng-article-pipeline\n/m, ''))
@@ -755,6 +759,18 @@ test('pack-smoke：patch 缺自注册行 / 引用未声明的包必须报（v18.
   r = run([join(repo, 'scripts', 'pack-smoke.mjs')])
   assert.equal(r.code, 1, '引用未声明包必须 exit 1')
   assert.match(r.out, /未声明/)
+
+  // ④ 把仓库向文件塞回发布面 → 必须报（v18.2.0 裁剪口径的机械防线；防「谁顺手加回 files 白名单」）
+  //   注意：先得让该文件**真的存在于工作区**，否则 npm 会忽略不存在的白名单项（那样注入就是空转，测试形同虚设）
+  writeFileSync(patchPath, patch)
+  writeFileSync(join(repo, 'CHANGELOG.md'), readFileSync(join(ROOT, 'CHANGELOG.md')))
+  const pjPath = join(repo, 'package.json')
+  const pj = readFileSync(pjPath, 'utf8')
+  writeFileSync(pjPath, pj.replace('"LICENSE",', '"LICENSE",\n    "CHANGELOG.md",'))
+  r = run([join(repo, 'scripts', 'pack-smoke.mjs')])
+  assert.equal(r.code, 1, '仓库向文件随包必须 exit 1（注入若为空转说明本用例无效）')
+  assert.match(r.out, /发布面污染/, '必须点名「发布面污染」')
+
   rmSync(d, { recursive: true, force: true })
 })
 
