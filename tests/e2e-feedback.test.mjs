@@ -14,33 +14,12 @@
 //   ⑥ final-check 顺序：证据包必须先刷新（防 M 门读陈旧证据包）
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync, mkdirSync } from 'node:fs'
-import { spawnSync } from 'node:child_process'
-import { tmpdir } from 'node:os'
-import { join, dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
-
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
-const SCRIPTS = join(ROOT, 'skills', 'lunheng-article-pipeline', 'scripts')
-const tmp = () => mkdtempSync(join(tmpdir(), 'lunheng-e2e-'))
-const run = (args) => {
-  const r = spawnSync(process.execPath, args, { encoding: 'utf8', cwd: ROOT })
-  return { code: r.status, out: (r.stdout || '') + (r.stderr || ''), stdout: r.stdout || '' }
-}
-const parseJson = (r) => JSON.parse(r.stdout.slice(r.stdout.indexOf('{')))
-const DRAFT_WITH_ENDNOTES = (bodyTail) => '# 标题\n\n## 摘要\n\n正文 [L01] [L02] [L03] [D01]。\n\n## 一、导论\n\n'
-  + '段落内容。'.repeat(30) + bodyTail
-  + '\n\n## 参考文献\n\n[L01] a\n[L02] b\n[L03] c\n\n## 数据来源\n\n[D01] d\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n'
-const CARD = (name, ids) => `# ${name}\n\n## 📇 索引段\n\n`
-  + ids.map((id) => `[${id}] 主题 ｜ 论点1`).join('\n')
-  + '\n\n## 正文\n\n' + ids.map((id) => `### [${id}] 条目\n信任级别：已发布\n`).join('\n')
+import { writeFileSync, readFileSync, existsSync, rmSync, mkdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { SCRIPTS, run, parseJson, tmp, mkProject, DRAFT_WITH_ENDNOTES, CARD } from './_fixtures.mjs'
 
 test('端到端反哺①：代码块/反引号里的编号与占位符不参与引用闭环与占位符机检', () => {
-  const d = tmp()
-  const proj = join(d, 'run', 'proj')
-  const fin = join(proj, 'final')
-  const ev = join(fin, '证据包')
-  mkdirSync(ev, { recursive: true })
+  const { d, proj, fin, ev } = mkProject()
   // 正文里【讨论】编号与占位符：反引号 + 围栏代码块
   const CODE = '```js\n' + "const t = String(x ?? '');  // 代码里的 ?? 不是占位符\n" + '```\n'
   writeFileSync(join(fin, '定稿.md'), DRAFT_WITH_ENDNOTES(
@@ -56,12 +35,7 @@ test('端到端反哺①：代码块/反引号里的编号与占位符不参与�
 })
 
 test('端到端反哺②：M-Form-8 承重墙锚点必须是结构信号（散文提到「承重墙」不得触发超载）', () => {
-  const d = tmp()
-  const proj = join(d, 'run', 'proj')
-  const fin = join(proj, 'final')
-  const ev = join(fin, '证据包')
-  mkdirSync(ev, { recursive: true })
-  mkdirSync(join(proj, 'analysis'), { recursive: true })
+  const { d, proj, fin, ev } = mkProject({ analysis: true })
   writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n## 一、导论\n\n' + '正文段落。'.repeat(40)
     + '[L01][D01]\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n[D01] d\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
   writeFileSync(join(ev, '文献卡.md'), CARD('文献卡', ['L01']))
@@ -81,12 +55,7 @@ test('端到端反哺②：M-Form-8 承重墙锚点必须是结构信号（散�
 })
 
 test('端到端反哺③：M-Exist-8「关闭状态」清单行不算重复定义（06 卡模板要求逐条列）', () => {
-  const d = tmp()
-  const proj = join(d, 'run', 'proj')
-  const fin = join(proj, 'final')
-  const ev = join(fin, '证据包')
-  mkdirSync(ev, { recursive: true })
-  mkdirSync(join(proj, 'analysis'), { recursive: true })
+  const { d, proj, fin, ev } = mkProject({ analysis: true })
   writeFileSync(join(fin, '定稿.md'), DRAFT_WITH_ENDNOTES(''))
   const C = ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7']
   const entry = '- [P0-C1-1] **标题**\n  - 论点定位：§三\n  - 反方观点：x\n  - 你的论据 [L01]\n  - 攻击强度：高\n  - 建议：加固\n'
@@ -100,13 +69,7 @@ test('端到端反哺③：M-Exist-8「关闭状态」清单行不算重复定�
 })
 
 test('端到端反哺④：M-Exist-9 节标题与条目行并存时结论/实据分别判定（含 ✓ 与「N 节」）', () => {
-  const d = tmp()
-  const proj = join(d, 'run', 'proj')
-  const fin = join(proj, 'final')
-  const ev = join(fin, '证据包')
-  const aud = join(proj, 'audits')
-  mkdirSync(ev, { recursive: true })
-  mkdirSync(aud, { recursive: true })
+  const { d, proj, fin, ev, aud } = mkProject({ audits: true })
   writeFileSync(join(fin, '定稿.md'), DRAFT_WITH_ENDNOTES(''))
   const GALL = ['G0', 'G0.5', 'G1', 'G2', 'G2.5', 'G3', 'G4', 'G4-2', 'G5', 'G6', 'G7', 'G8', 'G9', 'G10', 'G11', 'G12', 'G13', 'G14']
   // 每项：节标题 → 空行 → 条目行（结论与实据都在条目行；G4 用「10 节」量词、结论用 ✓）
@@ -119,12 +82,7 @@ test('端到端反哺④：M-Exist-9 节标题与条目行并存时结论/实据
 })
 
 test('端到端反哺⑤：M-Exist-10 字数预算允许标题换行后出现数字', () => {
-  const d = tmp()
-  const proj = join(d, 'run', 'proj')
-  const fin = join(proj, 'final')
-  const ev = join(fin, '证据包')
-  mkdirSync(ev, { recursive: true })
-  mkdirSync(join(proj, 'analysis'), { recursive: true })
+  const { d, proj, fin, ev } = mkProject({ analysis: true })
   writeFileSync(join(fin, '定稿.md'), DRAFT_WITH_ENDNOTES(''))
   writeFileSync(join(proj, 'analysis', '分析大纲.md'),
     '# 分析大纲\n\n## 一、论点\n\n内容\n\n## 六、写手版精简段\n\n'

@@ -3,20 +3,10 @@
 // 运行：node --test tests/     （CI 在 ubuntu-latest 与 windows-latest 双平台跑）
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync, mkdirSync, cpSync } from 'node:fs'
-import { spawnSync } from 'node:child_process'
+import { writeFileSync, readFileSync, existsSync, rmSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
-
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
-const SCRIPTS = join(ROOT, 'skills', 'lunheng-article-pipeline', 'scripts')
-const run = (args, opts = {}) => {
-  const r = spawnSync(process.execPath, args, { encoding: 'utf8', cwd: opts.cwd || ROOT })
-  return { code: r.status, out: (r.stdout || '') + (r.stderr || ''), stdout: r.stdout || '', stderr: r.stderr || '' }
-}
-const parseJson = (r) => JSON.parse(r.stdout.slice(r.stdout.indexOf('{')))
-const tmp = () => mkdtempSync(join(tmpdir(), 'lunheng-test-'))
+import { join } from 'node:path'
+import { ROOT, SCRIPTS, run, parseJson, tmp, mkProject, mkRepo, MD, mkSvg, DRAFT_WITH_ENDNOTES, CARD } from './_fixtures.mjs'
 
 test('count-chars：缺「## 摘要」时正文口径必须显式标记 degraded（不得静默退化）', () => {
   const d = tmp()
@@ -114,11 +104,7 @@ test('m-gate-check：--report 落盘结构化报告（报告契约闭环）', ()
 })
 
 test('final-check：正斜杠 --report 路径不得崩溃（旧版硬编码反斜杠 → mkdir \'\' ENOENT）', () => {
-  const d = tmp()
-  const proj = join(d, 'run', 'proj')
-  const fin = join(proj, 'final')
-  const ev = join(fin, '证据包')
-  mkdirSync(ev, { recursive: true })
+  const { d, proj, fin, ev } = mkProject()
   writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文。\n')
   const reportRel = 'audits/final.json'
   const r = run([join(SCRIPTS, 'final-check.mjs'), proj, '--no-summary', '--report', join(proj, reportRel)])
@@ -216,12 +202,7 @@ test('build-evidence-bundle：尚无正文也要出素材阶段视图；--source
 })
 
 test('consistency-check ⑮⑯⑰：新规则必须真的会报（派发卡超长 / 审计视图断链 / 定量断言缺出处）', () => {
-  const d = tmp()
-  const repo = join(d, 'repo')
-  mkdirSync(repo, { recursive: true })
-  cpSync(join(ROOT, 'skills'), join(repo, 'skills'), { recursive: true })
-  for (const f of ['package.json', 'CHANGELOG.md', 'cordis.patch.yml']) cpSync(join(ROOT, f), join(repo, f))
-  const R = join(repo, 'skills', 'lunheng-article-pipeline')
+  const { d, repo, R } = mkRepo()
   // ⑮：把 T2 卡灌到 13 行（超过 12 行上限）
   const dcPath = join(R, 'references', 'dispatch-cards.md')
   const filler = Array.from({ length: 10 }, (_, i) => `- 灌水第 ${i + 1} 行`).join('\n')
@@ -241,8 +222,7 @@ test('consistency-check ⑮⑯⑰：新规则必须真的会报（派发卡超�
 })
 
 // ===== v2.5.2-dsh.16：SVG 图件链路 =====
-const MD = '# 标题\n\n## 摘要\n\n正文。\n\n[图1：趋势]\n\n中间段。\n\n[图2：占比]\n\n结尾。\n'
-const mkSvg = (marker) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 500"><text x="10" y="20">${marker}</text></svg>\n`
+// MD / mkSvg / DRAFT_WITH_ENDNOTES / CARD 已移入 `tests/_fixtures.mjs`（v18.0.5 去重，与 e2e 用例共用同一份）
 const mkProj = (d) => {
   const proj = join(d, 'run', 'proj')
   mkdirSync(join(proj, 'final', '图件'), { recursive: true })
@@ -377,12 +357,7 @@ test('build-evidence-bundle：图件随证据包收齐，审计视图给出图�
 })
 
 test('consistency-check ⑱：图件路径口径与「宣称的图件门」必须一致（注入旧路径须报错）', () => {
-  const d = tmp()
-  const repo = join(d, 'repo')
-  mkdirSync(repo, { recursive: true })
-  cpSync(join(ROOT, 'skills'), join(repo, 'skills'), { recursive: true })
-  for (const f of ['package.json', 'CHANGELOG.md', 'cordis.patch.yml']) cpSync(join(ROOT, f), join(repo, f))
-  const R = join(repo, 'skills', 'lunheng-article-pipeline')
+  const { d, repo, R } = mkRepo()
   // ① 旧图件路径口径
   const t8 = join(R, 'references', 'agents', '08-终检-finalizer.md')
   writeFileSync(t8, readFileSync(t8, 'utf8') + '\n> 图件落在 `final/图N-标题.svg`。\n')
@@ -439,12 +414,7 @@ test('build-evidence-bundle：无修订轮时复核报告标 N/A 而非虚假 �
 })
 
 test('consistency-check ④b+⑲：占位符残留 / 版本硬编码 / 契约表断链都必须报（注入验证）', () => {
-  const d = tmp()
-  const repo = join(d, 'repo')
-  mkdirSync(repo, { recursive: true })
-  cpSync(join(ROOT, 'skills'), join(repo, 'skills'), { recursive: true })
-  for (const f of ['package.json', 'CHANGELOG.md', 'cordis.patch.yml']) cpSync(join(ROOT, f), join(repo, f))
-  const R = join(repo, 'skills', 'lunheng-article-pipeline')
+  const { d, repo, R } = mkRepo()
   // ① 占位符残留
   const t5 = join(R, 'references', 'agents', '05-写作-writer.md')
   writeFileSync(t5, readFileSync(t5, 'utf8') + '\n> 校验方式：（命令已剥离·DSH 用 read 推理）\n')
@@ -463,14 +433,6 @@ test('consistency-check ④b+⑲：占位符残留 / 版本硬编码 / 契约表
 })
 
 test('consistency-check ⑳+⑥b：M 门文档节头项数 / 编号跳号 / 文档↔脚本不一致都必须报（注入验证）', () => {
-  const mkRepo = () => {
-    const d = tmp()
-    const repo = join(d, 'repo')
-    mkdirSync(repo, { recursive: true })
-    cpSync(join(ROOT, 'skills'), join(repo, 'skills'), { recursive: true })
-    for (const f of ['package.json', 'CHANGELOG.md', 'cordis.patch.yml']) cpSync(join(ROOT, f), join(repo, f))
-    return { d, R: join(repo, 'skills', 'lunheng-article-pipeline') }
-  }
   const GA = ['references', '_shared', 'M-Gate-Algorithm.md']
 
   // ① 已知漂移形态：节头括注写 10 项，节内已 11 个 ### 子节，且括注带「，含 …」说明
@@ -532,18 +494,9 @@ test('consistency-check ⑳+⑥b：M 门文档节头项数 / 编号跳号 / 文�
 })
 
 test('consistency-check ⑩c：分档工具↔角色映射漂移必须报（注入验证，真源 = model-routing.mjs 的 tool→roles）', () => {
-  const mkRepo = () => {
-    const d = tmp()
-    const repo = join(d, 'repo')
-    mkdirSync(repo, { recursive: true })
-    cpSync(join(ROOT, 'skills'), join(repo, 'skills'), { recursive: true })
-    for (const f of ['package.json', 'CHANGELOG.md', 'cordis.patch.yml', 'README.md']) cpSync(join(ROOT, f), join(repo, f))
-    return { d, repo, R: join(repo, 'skills', 'lunheng-article-pipeline') }
-  }
-
   // ① 旧口径复发：把 T6 批判 / T9 审稿 塞回「强推理档」行（v18.0.3 前 11 处副本的真实漂移形态）
   {
-    const { d, repo, R } = mkRepo()
+    const { d, repo, R } = mkRepo({ readme: true })
     const en = join(repo, 'README.md')
     writeFileSync(en, readFileSync(en, 'utf8').replace('| T4 analyst / T5 writer |', '| T4 analyst / T5 writer / T6 critical / T9 reviewer |'))
     const r = run([join(R, 'scripts', 'consistency-check.mjs')])
@@ -592,12 +545,7 @@ test('consistency-check ⑳：真源仓库自身必须自洽（M-Form 11 / M-Exi
 })
 
 test('m-gate-check M-Form-11：素材按需加载闭环（引了没读 / 幽灵编号 / 无留痕必须报；齐备则过）', () => {
-  const d = tmp()
-  const proj = join(d, 'run', 'proj')
-  const fin = join(proj, 'final')
-  const ev = join(fin, '证据包')
-  mkdirSync(ev, { recursive: true })
-  mkdirSync(join(proj, 'analysis'), { recursive: true })
+  const { d, proj, fin, ev } = mkProject({ analysis: true })
   mkdirSync(join(proj, 'drafts'), { recursive: true })
   writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01] 与 [L02]。\n\n## 参考文献\n\n[L01] x\n[L02] y\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
   writeFileSync(join(ev, '文献卡.md'), '# 文献卡\n\n## 📇 索引段\n\n[L01] a ｜ 主题 ｜ 论点1\n[L02] b ｜ 主题 ｜ 论点1\n\n## 正文\n\n### [L01] a\n信任级别：已发布\n\n### [L02] b\n信任级别：已发布\n')
@@ -642,13 +590,7 @@ test('m-gate-check M-Form-11：素材按需加载闭环（引了没读 / 幽灵�
 })
 
 test('m-gate-check M-Exist-5：闸门记录表（漏项 / 自述当实据 / ✗ 无原因 / 与 M 门报告矛盾必须报）', () => {
-  const d = tmp()
-  const proj = join(d, 'run', 'proj')
-  const fin = join(proj, 'final')
-  const ev = join(fin, '证据包')
-  const aud = join(proj, 'audits')
-  mkdirSync(ev, { recursive: true })
-  mkdirSync(aud, { recursive: true })
+  const { d, proj, fin, ev, aud } = mkProject({ audits: true })
   writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
   writeFileSync(join(aud, '审计报告-v1.md'), '# 审计报告 v1\n\n结论：通过 ✅\n')
   const SK = join(ROOT, 'skills', 'lunheng-article-pipeline')
@@ -700,13 +642,7 @@ test('m-gate-check M-Exist-5：闸门记录表（漏项 / 自述当实据 / ✗ 
 })
 
 test('m-gate-check M-Exist-6：审稿报告评分与期刊匹配（总分≠分项和 / 综合不可复算 / 杜撰刊名）', () => {
-  const d = tmp()
-  const proj = join(d, 'run', 'proj')
-  const fin = join(proj, 'final')
-  const ev = join(fin, '证据包')
-  const aud = join(proj, 'audits')
-  mkdirSync(ev, { recursive: true })
-  mkdirSync(aud, { recursive: true })
+  const { d, proj, fin, ev, aud } = mkProject({ audits: true })
   writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
   writeFileSync(join(proj, '01-任务简报.md'), '# 简报\n\n启用期刊匹配\n')
   const REP = join(aud, '审稿报告-v2.md')
@@ -755,11 +691,7 @@ test('m-gate-check M-Exist-6：审稿报告评分与期刊匹配（总分≠分�
 })
 
 test('m-gate-check M-Exist-7：交付说明 12 固定字段（缺字段 / 空字段 / 缺指纹 / 决策记录漏门必须报）', () => {
-  const d = tmp()
-  const proj = join(d, 'run', 'proj')
-  const fin = join(proj, 'final')
-  const ev = join(fin, '证据包')
-  mkdirSync(ev, { recursive: true })
+  const { d, proj, fin, ev } = mkProject()
   writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
   const DD = join(fin, '交付说明.md')
   const GOOD = `# 交付说明
@@ -853,12 +785,7 @@ test('m-gate-check M-Exist-7：交付说明 12 固定字段（缺字段 / 空字
 })
 
 test('m-gate-check M-Form-8：承重墙超载与虚标必须机检（原为纯 LLM 判断）', () => {
-  const d = tmp()
-  const proj = join(d, 'run', 'proj')
-  const fin = join(proj, 'final')
-  const ev = join(fin, '证据包')
-  mkdirSync(ev, { recursive: true })
-  mkdirSync(join(proj, 'analysis'), { recursive: true })
+  const { d, proj, fin, ev } = mkProject({ analysis: true })
   writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n## 一、导论\n\n' + '正文段落。'.repeat(40) + '[L01][D01]\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n[D01] d\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
   writeFileSync(join(ev, '文献卡.md'), '# 文献卡\n\n## 📇 索引段\n\n[L01] a ｜ 主题 ｜ 论点1\n\n## 正文\n\n### [L01] a\n信任级别：已发布\n')
   writeFileSync(join(ev, '数据卡.md'), '# 数据卡\n\n共 1 条\n\n## 📇 索引段\n\n[D01] d ｜ 主题 ｜ 论点1\n\n## 正文\n\n### [D01] d\n信任级别：已发布\n')
@@ -901,12 +828,7 @@ test('m-gate-check M-Form-8：承重墙超载与虚标必须机检（原为纯 L
 })
 
 test('m-gate-check M-Exist-8：批判报告 C1-C7 覆盖（漏节 / 编号重复 / 要素不足）', () => {
-  const d = tmp()
-  const proj = join(d, 'run', 'proj')
-  const fin = join(proj, 'final')
-  const ev = join(fin, '证据包')
-  mkdirSync(ev, { recursive: true })
-  mkdirSync(join(proj, 'analysis'), { recursive: true })
+  const { d, proj, fin, ev } = mkProject({ analysis: true })
   writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
   const C = ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7']
   const mk = (ids, extra = '') => '# 批判报告 v2\n\n'
@@ -955,13 +877,7 @@ test('m-gate-check M-Exist-8：批判报告 C1-C7 覆盖（漏节 / 编号重复
 })
 
 test('m-gate-check M-Exist-9：审计报告 G0-G14 覆盖（漏项 / 只提不判 / 子项缺）', () => {
-  const d = tmp()
-  const proj = join(d, 'run', 'proj')
-  const fin = join(proj, 'final')
-  const ev = join(fin, '证据包')
-  const aud = join(proj, 'audits')
-  mkdirSync(ev, { recursive: true })
-  mkdirSync(aud, { recursive: true })
+  const { d, proj, fin, ev, aud } = mkProject({ audits: true })
   writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
   const GALL = ['G0', 'G0.5', 'G1', 'G2', 'G2.5', 'G3', 'G4', 'G4-2', 'G5', 'G6', 'G7', 'G8', 'G9', 'G10', 'G11', 'G12', 'G13', 'G14']
   const mk = (gs) => `# 审计报告 v1\n\n结论：通过 ✅\n\n` + gs.map((g) => `- **${g}**：通过（见 引用核验记录；覆盖 5/5）`).join('\n') + '\n'
@@ -1002,12 +918,7 @@ test('m-gate-check M-Exist-9：审计报告 G0-G14 覆盖（漏项 / 只提不�
 })
 
 test('m-gate-check M-Exist-10：大纲 §11 精简段六要素（缺段 / 缺要素 / 假表格）', () => {
-  const d = tmp()
-  const proj = join(d, 'run', 'proj')
-  const fin = join(proj, 'final')
-  const ev = join(fin, '证据包')
-  mkdirSync(ev, { recursive: true })
-  mkdirSync(join(proj, 'analysis'), { recursive: true })
+  const { d, proj, fin, ev } = mkProject({ analysis: true })
   writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
   const OUT = join(proj, 'analysis', '分析大纲.md')
   const SIX = '## 十一、写手版精简段\n\n- 论证主线：X\n- 反方规划要点：Y\n- 字数预算：4000 字\n- 禁做项：Z\n- 承重墙清单：| 论点1 | [C01] |\n- 映射表：| 论点 | 论据 |\n|---|---|\n| 论点1 | [L01] |\n'
@@ -1048,13 +959,7 @@ test('m-gate-check M-Exist-10：大纲 §11 精简段六要素（缺段 / 缺要
 })
 
 test('m-gate-check M-Exist-9：G 项结论必须带实据（只写「通过」→ 软提示）', () => {
-  const d = tmp()
-  const proj = join(d, 'run', 'proj')
-  const fin = join(proj, 'final')
-  const ev = join(fin, '证据包')
-  const aud = join(proj, 'audits')
-  mkdirSync(ev, { recursive: true })
-  mkdirSync(aud, { recursive: true })
+  const { d, proj, fin, ev, aud } = mkProject({ audits: true })
   writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
   const GALL = ['G0', 'G0.5', 'G1', 'G2', 'G2.5', 'G3', 'G4', 'G4-2', 'G5', 'G6', 'G7', 'G8', 'G9', 'G10', 'G11', 'G12', 'G13', 'G14']
   const AUD = join(aud, '审计报告-v1.md')
@@ -1078,13 +983,7 @@ test('m-gate-check M-Exist-9：G 项结论必须带实据（只写「通过」�
 })
 
 test('m-gate-check M-Exist-6：审稿建议可消费性 + 修订回执闭环', () => {
-  const d = tmp()
-  const proj = join(d, 'run', 'proj')
-  const fin = join(proj, 'final')
-  const ev = join(fin, '证据包')
-  const aud = join(proj, 'audits')
-  mkdirSync(ev, { recursive: true })
-  mkdirSync(aud, { recursive: true })
+  const { d, proj, fin, ev, aud } = mkProject({ audits: true })
   mkdirSync(join(proj, 'drafts'), { recursive: true })
   writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
   const REP = join(aud, '审稿报告-v2.md')
@@ -1115,11 +1014,7 @@ test('m-gate-check M-Exist-6：审稿建议可消费性 + 修订回执闭环', (
 })
 
 test('自省审计：splitCard 必须优先标题式条目（索引段行抢先命中会让合规卡判 P0 假阳性）', () => {
-  const d = tmp()
-  const proj = join(d, 'run', 'proj')
-  const fin = join(proj, 'final')
-  const ev = join(fin, '证据包')
-  mkdirSync(ev, { recursive: true })
+  const { d, proj, fin, ev } = mkProject()
   writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01] [D01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n[D01] d\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
   // 8 条**全部合规**的数据卡（带「## 📇 索引段」——索引行 `[D02] …` 在正文条目前面）
   const N = 8
@@ -1135,11 +1030,7 @@ test('自省审计：splitCard 必须优先标题式条目（索引段行抢先�
 })
 
 test('自省审计：M-Form-3 查占位符残留（不再与 M-Exist-1 重复算被引编号）', () => {
-  const d = tmp()
-  const proj = join(d, 'run', 'proj')
-  const fin = join(proj, 'final')
-  const ev = join(fin, '证据包')
-  mkdirSync(ev, { recursive: true })
+  const { d, proj, fin, ev } = mkProject()
   writeFileSync(join(ev, '数据卡.md'), '# 数据卡\n\n## 正文\n\n### [D01] d\n信任级别：已发布\n')
   const DRAFT = (tail) => '# 标题\n\n## 摘要\n\n正文 [L01] [D01]。\n\n## 一、导论\n\n' + '段落。'.repeat(20) + tail
     + '\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n[D01] d\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n'
@@ -1168,11 +1059,7 @@ test('自省审计：M-Form-3 查占位符残留（不再与 M-Exist-1 重复算
 })
 
 test('自省审计：M-Form-4 任一泄露即 P0 / M-Form-5 补 P0 档（旧版分支不可达）', () => {
-  const d = tmp()
-  const proj = join(d, 'run', 'proj')
-  const fin = join(proj, 'final')
-  const ev = join(fin, '证据包')
-  mkdirSync(ev, { recursive: true })
+  const { d, proj, fin, ev } = mkProject()
   writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
   const DRAFT = (tail) => '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 一、导论\n\n' + '段落。'.repeat(20) + tail
     + '\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n'
@@ -1195,11 +1082,7 @@ test('自省审计：M-Form-4 任一泄露即 P0 / M-Form-5 补 P0 档（旧版�
 })
 
 test('自省审计：M-Integrity-1 不再是永久 soft（数据条目不足 → P0）', () => {
-  const d = tmp()
-  const proj = join(d, 'run', 'proj')
-  const fin = join(proj, 'final')
-  const ev = join(fin, '证据包')
-  mkdirSync(ev, { recursive: true })
+  const { d, proj, fin, ev } = mkProject()
   writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01] [D01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n[D01] d\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
   writeFileSync(join(ev, '数据卡.md'), '# 数据卡\n\n## 📇 索引段\n\n[D01] d ｜ 主题 ｜ 论点1\n\n## 正文\n\n### [D01] d\n信任级别：已发布\n')
   const item = () => {
@@ -1392,11 +1275,7 @@ test('model-routing.mjs：按本机 settings.yaml 给档位建议，且跨 provi
 })
 
 test('m-gate-check M-Form-10：索引段缺条必须报（下游按索引定位会漏卡），索引齐则通过', () => {
-  const d = tmp()
-  const proj = join(d, 'run', 'proj')
-  const fin = join(proj, 'final')
-  const ev = join(fin, '证据包')
-  mkdirSync(ev, { recursive: true })
+  const { d, proj, fin, ev } = mkProject()
   writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
   const lit = join(ev, '文献卡.md')
   // 正文 2 条、索引只有 1 条 → 索引缺 L02
@@ -1432,13 +1311,7 @@ test('m-gate-check M-Form-10：索引段缺条必须报（下游按索引定位�
 })
 
 test('m-gate-check M-Exist-4：修订任务书结构 + 审计↔复核编号闭环 + 初轮不得预填「已关闭」', () => {
-  const d = tmp()
-  const proj = join(d, 'run', 'proj')
-  const fin = join(proj, 'final')
-  const ev = join(fin, '证据包')
-  const aud = join(proj, 'audits')
-  mkdirSync(ev, { recursive: true })
-  mkdirSync(aud, { recursive: true })
+  const { d, proj, fin, ev, aud } = mkProject({ audits: true })
   mkdirSync(join(proj, 'drafts'), { recursive: true })
   writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
   const item = () => {
@@ -1535,11 +1408,7 @@ test('主人侧三件套与输入模板齐备，且确认单含回填段与 Phas
 // ── v18.0.2 新增回归（D1 静默失效门 + 退出码契约）─────────────────────────────
 
 test('m-gate-check M-Form-9：审 drafts/初稿-vN.md 时必须从 01-任务简报.md 取「拍板图位数」（v18.0.2 修 D1 静默失效）', () => {
-  const d = tmp()
-  const proj = join(d, 'run', 'proj')
-  const fin = join(proj, 'final')
-  const ev = join(fin, '证据包')
-  mkdirSync(ev, { recursive: true })
+  const { d, proj, fin, ev } = mkProject()
   mkdirSync(join(proj, 'drafts'), { recursive: true })
   // 简报拍板 3 张图；初稿只标 2 个图位 → 期望 M-Form-9 报「图位不足」
   writeFileSync(join(proj, '01-任务简报.md'), '# 任务简报\n\n图位数量：3\n')

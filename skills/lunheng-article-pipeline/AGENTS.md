@@ -39,7 +39,7 @@ Phase 5 终检     → T8 终检（独立角色，主控 T0 以 T8 身份亲完�
   - **禁止写死厂商默认值**：本机实测默认模型可能是任何 provider（例：`minimax-cn-openai`），宿主**无模型级回退**，写错模型 = 该档工具直接不可用。
   - **主控工作流**：Phase 0 跑一次脚本 → 把结论落 `run/<项目>/model-routing.md` → 派发时按表选档位；未启用分层时在进展页如实标注。
   - 已装分档工具时派发必须按角色选工具；未挂载时回退 `subagent`（任何模型配置都能跑）。
-- **子代理产出必须交交接报告**：六要素缺一不可（做了什么/产物在哪/怎么验证/已知问题/下一步 + 状态更新），长时间无产出则主控用 `list_agents` 查看并介入
+- **子代理产出必须交交接报告**：六要素缺一不可（做了什么/产物在哪/怎么验证/已知问题/下一步 + 状态更新）——**定义真源 = `references/glossary.md` §执行韧化协议，字段形态 = `references/templates/交接报告-template.md`**（本行只给名称，不再展开）；长时间无产出则主控用 `list_agents` 查看并介入
 - **子代理失败三段式处理（v2.5.2-dsh.6 修订，教训：测试轮三检索员全失败 + T5 两次结算异常）**：① **落盘校验**——子代理 settle 后主控必跑 `read`/`ls` 检查关键产物是否存在+非空+结构完整，区分「写盘前失败」vs「写盘后失败」vs「任务完成」；② **产物完整 → `send_message` 续接原子代理**（DSH continuable，让它读已落盘产物确认后继续，**不是整任务重派**）；③ **产物缺失 → 才 spawn 新子代理重派**。**连续失败**：先查 DSH 环境（`list_agents` 看是否 `[ready]` 可续接；全失败可能 = DSH 进程状态问题，重启 dsh web 再试）。
 - **status.md / agents-log.md 分文件写入约定（v2.5.2-dsh.5 修订，教训：T1/T2 与主控并发写冲突）**：**状态文件分两层**——① `status.md` 由**主控独占写**（纯状态机表，不允许子代理直接 edit）；② `agents-log.md`（v2.5.2-dsh.5 新增，项目根目录）由**子代理追加写**（每完成一个角色任务追加一段 `### Tn 执行记录` 节）。子代理的进度/完成状态通过「交接报告 + 产物落盘」回报，主控在收到交接报告后统一更新 status.md。**两文件分离目的**：避免子代理追加触发主控 edit status.md 报「file changed since it was read」（测试轮多次遇到的小摩擦）。冲突已发生时：主控先 re-read 再 edit。
 - **执行约定（DSH 精简版）**：状态机 + 交接报告六要素 + G8 自检 + **进度播报三播报**（派发即播报 / 完成即转播 / 卡住即告警，防主人干等；无需心跳/分阶段 ack/预检/8 分钟硬卡；旧版完整韧化协议已移出仓库（历史见 git log），现行规则即本执行约定）
@@ -75,6 +75,7 @@ Phase 5 终检     → T8 终检（独立角色，主控 T0 以 T8 身份亲完�
    - `dsh-plugin-dev check` —— 包面静态门（14 项：patch 合法性 / `package.json` 元数据 / 多语 README 一致性 / 工程红线；**目标 0 fail / 0 warn**）
    - `node --test "tests/**/*.test.mjs"` —— 随包脚本 + **组合包契约** + 入口回归（改脚本输出契约、`cordis.patch.yml`、`package.json` 时**必跑**）
    > **布局提示（v18.0.0）**：`consistency-check.mjs` 支持两种部署布局——**仓库布局**（`<repo>/package.json` + `<repo>/skills/<name>/`）与**技能即包根**（`<skillRoot>/package.json`，本机 `.dsh/skills/<name>/` 部署）；`REPO_ROOT` 自动探测，旧版硬编码「向上两级」会在本机布局下指向 `~/.dsh` 而 ENOENT。
+   > **改「规范」时另查**（v18.0.5，冗余审计 §二.7）：`references/_shared/规范-机械门对照表.md`——**维护者文档**，逐条勾稽「规范写了什么 ↔ 机械门是否覆盖」（两问：有无门 / 是否覆盖全要件）。新增或修改任何规范/机检门时在该表加一行；它刻意不进运行期读清单（角色不读）。
    **仓库级打包面检查**（`cordis.patch.yml` 合法性 / 行 id 唯一 / `dsh.bundle.patch` 指向 / `package.json` 元数据（`main` + `files` 含 `lib` + `packageManager`）/ 五语 README 一致性 / 工程红线；**v18.0.0 起无豁免**，11 通过 / 3 跳过）由 CI 的 `plugin-surface` job 承担，本地复现命令见 `.github/workflows/ci.yml` 与 CHANGELOG 同名条目；**包入口的执行路径**由 `tests/entry.test.mjs` 用最小 ctx 真跑 `apply` 覆盖、**「patch 必须插入本包自注册行」由 `tests/bundle-contract.test.mjs` 覆盖**（静态门不执行入口、也不验 patch 是否引用本包，故这两条不可省——教训 #152 / #154）
 
 ## 开发参考资料（v18.0.0 新增，主人指示：官方资料为以后开发的重要参考）

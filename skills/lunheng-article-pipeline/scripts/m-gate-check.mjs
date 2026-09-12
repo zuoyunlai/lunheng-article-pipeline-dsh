@@ -96,6 +96,65 @@ if (evMissing.length > 0) {
 const text = readFileSync(draftPath, 'utf8');
 const results = [];
 
+// === 定位与解析共用助手（v18.0.5 去重：同一推导此前在脚本内各写 2-9 份）===
+//   来源：`audits/论衡冗余审计-v1.md` §二.2（「同脚本内多份重复实现」）。**行为与去重前逐字等价**——
+//   重构前后由 `run/_mgate-baseline.mjs`（37 组真实项目调用，比对 exit + stdout 哈希 + `--report` JSON 哈希）对账。
+// ① 项目根：`<项目>/final/定稿.md` 与 `<项目>/drafts/初稿-vN.md` 都向上两级得到 `<项目>`
+const projectRoot = dirname(dirname(draftPath));
+// ② 报告目录：先 `<项目>/audits`，再 `<被审文件目录>/audits`，最后（仅 M-Exist-4 需要）证据包目录
+const auditsDirOf = ({ withEv = false } = {}) =>
+  [join(projectRoot, 'audits'), join(dirname(draftPath), 'audits'), ...(withEv ? [evDir] : [])]
+    .find((d) => existsSync(d)) || null;
+// ③ 最新版本化报告：`<前缀>-vN.md` 取 N 最大（N 真源 = 文件名版本号，与 M-Gate-Algorithm §M-Integrity-2 同口径）
+const latestReport = (dir, prefix) => {
+  if (!dir || !existsSync(dir)) return null;   // 目录可能在也可能不在（如 analysis/ 尚未创建）→ 一律记 null，不抛
+  const cands = readdirSync(dir)
+    .map((f) => ({ f, m: f.match(new RegExp(`^${prefix}-v(\\d+)\\.md$`)) }))
+    .filter((x) => x.m).map((x) => ({ f: x.f, n: Number(x.m[1]) }))
+    .sort((a, b) => b.n - a.n);
+  return cands.length ? { path: join(dir, cands[0].f), n: cands[0].n, name: cands[0].f } : null;
+};
+// ④ markdown 表格行切单元格。`protect: true` 先保护「转义竖线 `\|`」与「行内代码块内的竖线」——
+//    v18.0.0 修复（冲突⑩）：验收标准里写正则 `a|b|c` 会被裸 split 切错列 → 误读「关闭状态」。
+const PROTECT_CH = '\u0001';
+const tableCells = (line, { protect = false } = {}) => {
+  const src = protect
+    ? line.replace(/\\\|/g, PROTECT_CH).replace(/`[^`]*`/g, (mm) => mm.replace(/\|/g, PROTECT_CH))
+    : line;
+  return src.split('|').slice(1, -1).map((c) => c.trim().replace(new RegExp(PROTECT_CH, 'g'), '|'));
+};
+const isSeparatorRow = (cells) => cells.every((c) => /^:?-{2,}:?$/.test(c) || c === '');
+// ⑤ 段体范围：返回标题行之后的段体（`body`），边界为下一个标题（默认 `^##`，可调为 `^#{2,4}`）
+const sectionRange = (lines, start, boundary = /^##\s/) => {
+  let end = lines.findIndex((l, i) => i > start && boundary.test(l));
+  if (end === -1) end = lines.length;
+  return { start, end, body: lines.slice(start + 1, end) };
+};
+// ⑥ 「## 📇 索引段」段体（无该标题 → null）
+const indexSection = (lines) => {
+  const start = lines.findIndex((l) => /^##\s*📇\s*索引段/.test(l));
+  return start === -1 ? null : sectionRange(lines, start);
+};
+// ⑦ 素材卡定位：证据包目录优先，其次项目内相对路径；都不在 → null（0 条场景合法，调用方记 N/A）
+const findCard = (name, rel) => {
+  const p = join(evDir, name);
+  if (existsSync(p)) return p;
+  const alt = join(projectRoot, rel);
+  return existsSync(alt) ? alt : null;
+};
+// ⑧ 卡片正文条目编号（`### [L01] 主题` 形态）。三张卡 + 先行者清单的路径口径同 `CARD_SPECS`
+const CARD_SPECS = [
+  ['文献卡.md', 'literature/文献卡.md'],
+  ['数据卡.md', 'data/数据卡.md'],
+  ['案例卡.md', 'cases/案例卡.md'],
+  ['先行者清单.md', 'literature/先行者清单.md'],
+];
+const ENTRY_ID_RE = /^#{2,4}\s*\[([LDC])(\d+)\]/gm;
+const entryIds = (cardText) => new Set([...cardText.matchAll(ENTRY_ID_RE)].map((m) => `[${m[1]}${m[2]}]`));
+// ⑨ 同 ⑧ 但编号形态可配（M-Form-11 需纳入基线 `[D-基-x-NN]` 与先行者 `[先NN]`，v18.0.0 修「漏计 10 条」）
+const idsByToken = (cardText, token) =>
+  new Set([...cardText.matchAll(new RegExp(`^#{2,4}\\s*\\[(${token})\\]`, 'gm'))].map((m) => `[${m[1]}]`));
+
 // === v2.5.2-dsh.5 修订：白名单 5 节 + AI 使用声明（M-Form-2 / M-Form-7 一致）===
 const WHITELIST = ['参考文献', '数据来源', '案例来源', '先行者文献', 'AI 使用声明'];
 
@@ -441,11 +500,10 @@ try {
         const cardIds8 = new Set();
         // v18.0.0：纳入 **先行者清单** —— `[先NN]` 编号不在三张素材卡内（存在 `literature/先行者清单.md`），
   //   否则 ghost 判定会把清单里的 [先01]-[先07] 误判为「清单编造」（假 P0）。
-  for (const [name, rel] of [['文献卡.md', 'literature/文献卡.md'], ['数据卡.md', 'data/数据卡.md'], ['案例卡.md', 'cases/案例卡.md'], ['先行者清单.md', 'literature/先行者清单.md']]) {
-          let p = join(evDir, name);
-          if (!existsSync(p)) { const alt = join(projDir8, rel); p = existsSync(alt) ? alt : null; }
+  for (const [name, rel] of CARD_SPECS) {
+          const p = findCard(name, rel);
           if (!p) continue;
-          for (const m of readFileSync(p, 'utf8').matchAll(/^#{2,4}\s*\[([LDC])(\d+)\]/gm)) cardIds8.add(`[${m[1]}${m[2]}]`);
+          for (const id of entryIds(readFileSync(p, 'utf8'))) cardIds8.add(id);
         }
         if (cardIds8.size > 0) wall8.ghost = [...freq.keys()].filter((id) => !cardIds8.has(id));
       } else {
@@ -589,7 +647,6 @@ if (firstIdx === -1) {
 //   最终以「漏引 / 孤儿」（M-Form-3 / M-Exist-1）的形式在审计阶段才爆出来，返工代价最高。
 // 本项即是模板自己邀请的那条校验：索引段 ↔ 正文条目 ↔ 头部声明条数 三者对账。
 try {
-  const projectDir = dirname(dirname(draftPath));   // <项目>/final/定稿.md → <项目>
   const CARDS = [
     ['文献卡.md', 'literature/文献卡.md'],
     ['数据卡.md', 'data/数据卡.md'],
@@ -600,22 +657,16 @@ try {
   const notes = [];       // 仅备注，**不影响通过/严重度**（如 0 条场景导致的卡片缺失，是合法的）
   let checked = 0;
   for (const [name, rel] of CARDS) {
-    let p = join(evDir, name);
-    if (!existsSync(p)) {
-      const alt = join(projectDir, rel);
-      p = existsSync(alt) ? alt : null;
-    }
+    const p = findCard(name, rel);
     if (!p) { notes.push(`${name} 未找到（0 条场景或尚未进入检索阶段）`); continue; }
     checked++;
-    const lines = readFileSync(p, 'utf8').split('\n');
-    const s = lines.findIndex((l) => /^##\s*📇\s*索引段/.test(l));
-    if (s === -1) { findings.push(`${name}: 缺「## 📇 索引段」标题`); continue; }
-    let e = lines.findIndex((l, i) => i > s && /^##\s/.test(l));
-    if (e === -1) e = lines.length;
-    const indexBlock = lines.slice(s + 1, e).join('\n');
+    const cardText = readFileSync(p, 'utf8');
+    const lines = cardText.split('\n');
+    const idx = indexSection(lines);
+    if (!idx) { findings.push(`${name}: 缺「## 📇 索引段」标题`); continue; }
+    const indexBlock = idx.body.join('\n');
     const idxIds = new Set([...indexBlock.matchAll(/\[([LDC])(\d+)\]/g)].map((m) => m[1] + m[2]));
-    const bodyIds = new Set();
-    for (const l of lines) { const m = l.match(/^#{2,4}\s*\[([LDC])(\d+)\]/); if (m) bodyIds.add(m[1] + m[2]); }
+    const bodyIds = new Set([...entryIds(cardText)].map((id) => id.slice(1, -1)));   // `[L01]` → `L01`（本段口径无方括号）
     const missing = [...bodyIds].filter((x) => !idxIds.has(x));       // 索引缺条 → 下游漏卡（硬）
     const extra = [...idxIds].filter((x) => !bodyIds.has(x));         // 索引悬空（软）
     const thin = indexBlock.split('\n').filter((l) => {
@@ -625,7 +676,7 @@ try {
     if (missing.length) findings.push(`${name}: 索引段缺 ${missing.length} 条（${missing.slice(0, 5).join(',')}）→ 下游按索引定位会漏卡`);
     if (extra.length) softFindings.push(`${name}: 索引段有 ${extra.length} 个编号在正文无对应条目（${extra.slice(0, 5).join(',')}）`);
     if (thin.length) softFindings.push(`${name}: ${thin.length} 行索引信息量不足（需 编号 + 主题 + 支撑论点）`);
-    const headN = readFileSync(p, 'utf8').match(/(?:总条数|合计)[^\d]{0,10}(\d+)\s*条/);
+    const headN = cardText.match(/(?:总条数|合计)[^\d]{0,10}(\d+)\s*条/);
     if (headN && bodyIds.size && Number(headN[1]) !== bodyIds.size) {
       findings.push(`${name}: 头部声明 ${headN[1]} 条 ≠ 正文条目 ${bodyIds.size} 条（best-effort 解析头部声明）`);
     }
@@ -675,18 +726,14 @@ try {
   const cardIndexIds = new Set();
   // v18.0.0：纳入 **先行者清单** —— `[先NN]` 编号不在三张素材卡内（存在 `literature/先行者清单.md`），
   //   否则 ghost 判定会把清单里的 [先01]-[先07] 误判为「清单编造」（假 P0）。
-  for (const [name, rel] of [['文献卡.md', 'literature/文献卡.md'], ['数据卡.md', 'data/数据卡.md'], ['案例卡.md', 'cases/案例卡.md'], ['先行者清单.md', 'literature/先行者清单.md']]) {
-    let p = join(evDir, name);
-    if (!existsSync(p)) { const alt = join(projDir11, rel); p = existsSync(alt) ? alt : null; }
+  for (const [name, rel] of CARD_SPECS) {
+    const p = findCard(name, rel);
     if (!p) continue;
     const t = readFileSync(p, 'utf8');
-    for (const m of t.matchAll(new RegExp('^#{2,4}\\s*\\[(' + REF_TOKEN + ')\\]', 'gm'))) cardEntryIds.add('[' + m[1] + ']');
-    const ls = t.split('\n');
-    const si = ls.findIndex((l) => /^##\s*📇\s*索引段/.test(l));
-    if (si !== -1) {
-      let ei = ls.findIndex((l, i) => i > si && /^##\s/.test(l));
-      if (ei === -1) ei = ls.length;
-      for (const m of ls.slice(si + 1, ei).join('\n').matchAll(new RegExp('\\[(' + REF_TOKEN + ')\\]', 'g'))) cardIndexIds.add('[' + m[1] + ']');
+    for (const id of idsByToken(t, REF_TOKEN)) cardEntryIds.add(id);
+    const idx = indexSection(t.split('\n'));
+    if (idx) {
+      for (const m of idx.body.join('\n').matchAll(new RegExp('\\[(' + REF_TOKEN + ')\\]', 'g'))) cardIndexIds.add('[' + m[1] + ']');
     }
   }
   const findings11 = [];
@@ -713,8 +760,7 @@ try {
       findings11.push('加载清单缺「## 已加载」段标题（机检无从定位加载集）');
       loadedSeg = lt;
     } else {
-      let e11 = ls2.findIndex((l, i) => i > hIdx11 && /^#{2,4}\s/.test(l));
-      if (e11 === -1) e11 = ls2.length;
+      let e11 = sectionRange(ls2, hIdx11, /^#{2,4}\s/).end;
       loadedSeg = ls2.slice(hIdx11 + 1, e11).join('\n');
     }
     const loaded11 = new Set([...loadedSeg.matchAll(new RegExp('\\[(' + REF_TOKEN + ')\\]', 'g'))].map((m) => '[' + m[1] + ']'));
@@ -761,17 +807,9 @@ try {
 // 本项把该契约变成机检：结构完整 + 编号唯一 + 编号在审计↔复核之间双向闭环 + 初轮不得预填「已关闭」。
 try {
   const projectDir2 = dirname(dirname(draftPath));
-  const auditsDir = [join(projectDir2, 'audits'), join(dirname(draftPath), 'audits'), evDir].find((d) => existsSync(d)) || null;
-  const latestOf = (prefix) => {
-    if (!auditsDir) return null;
-    const cands = readdirSync(auditsDir)
-      .map((f) => ({ f, m: f.match(new RegExp(`^${prefix}-v(\\d+)\\.md$`)) }))
-      .filter((x) => x.m).map((x) => ({ f: x.f, n: Number(x.m[1]) }))
-      .sort((a, b) => b.n - a.n);
-    return cands.length ? { path: join(auditsDir, cands[0].f), n: cands[0].n, name: cands[0].f } : null;
-  };
-  const audit = latestOf('审计报告');
-  const review = latestOf('复核报告');
+  const auditsDir = auditsDirOf({ withEv: true });
+  const audit = latestReport(auditsDir, '审计报告');
+  const review = latestReport(auditsDir, '复核报告');
   const revNotes = existsSync(join(projectDir2, 'drafts'))
     ? readdirSync(join(projectDir2, 'drafts')).filter((f) => /^修订说明-.*\.md$/.test(f)) : [];
 
@@ -789,19 +827,9 @@ try {
         const l = lines[i];
         if (/^#{2,4}\s/.test(l)) break;
         if (!/^\s*\|/.test(l)) continue;
-        // v18.0.0 修复（冲突⑩）：单元格内含**裸竖线**（如验收标准写正则 `a|b|c`）会被 split('|') 切列
-        //   → 列错位 → 误读「关闭状态」。实战：T7 首版审计报告 P0-1 的验收标准写了
-        //   `案例检索员|空卡协议|…`，脚本把「空卡协议」读成关闭状态 → 软提示「非固定词」；
-        //   T7 自纠（改用顿号）后消失。现先将**转义竖线 `\|`** 与**行内代码块内的竖线**保护为占位符，切列后再还原。
-        const PROTECT_CH = '\u0001';
-        const protectedLine = l
-          .replace(/\\\|/g, PROTECT_CH)
-          .replace(/`[^`]*`/g, (mm) => mm.replace(/\|/g, PROTECT_CH));
-        const cells = protectedLine
-          .split('|')
-          .slice(1, -1)
-          .map((c) => c.trim().replace(new RegExp(PROTECT_CH, 'g'), '|'));
-        if (cells.every((c) => /^:?-{2,}:?$/.test(c) || c === '')) continue;   // 分隔行
+        // 单元格切列：`protect: true` 保护**转义竖线 `\|`** 与**行内代码块内的竖线**（验收标准可能写正则 `a|b|c`）
+        const cells = tableCells(l, { protect: true });
+        if (isSeparatorRow(cells)) continue;   // 分隔行
         if (!header && cells.some((c) => c.includes('编号'))) { header = cells; continue; }
         if (header) rows.push(cells);
       }
@@ -869,8 +897,8 @@ try {
 // 触发条件：项目已进入 Phase 4（audits/审计报告-*.md 存在）→ 两表单必须有；否则 N/A。
 try {
   const projDir5 = dirname(dirname(draftPath));
-  const auditsDir5 = [join(projDir5, 'audits'), join(dirname(draftPath), 'audits')].find((d) => existsSync(d)) || null;
-  const hasAudit5 = !!auditsDir5 && readdirSync(auditsDir5).some((f) => /^审计报告-v\d+\.md$/.test(f));
+  const auditsDir5 = auditsDirOf();
+  const hasAudit5 = !!latestReport(auditsDir5, '审计报告');
   const tplPath5 = join(skillRoot, 'references', 'templates', '闸门记录-template.md');
   if (!hasAudit5) {
     results.push({ gate: 'M-Exist-5 阶段闸门记录表', pass: true, detail: 'N/A：尚无审计报告（未进入 Phase 4，闸门记录留待 T7.5）', severity: '通过' });
@@ -891,8 +919,8 @@ try {
         if (!cur5) continue;
         if (!/^\s*\|/.test(l)) { if (inTable5) break; continue; }               // 表格结束后不再收集
         inTable5 = true;
-        const c = l.split('|').slice(1, -1).map((x) => x.trim());
-        if (!c.length || c.every((x) => /^:?-{2,}:?$/.test(x) || x === '')) continue;
+        const c = tableCells(l);
+        if (!c.length || isSeparatorRow(c)) continue;
         if (/检查项|^检查$/.test(c[0])) continue;                               // 表头
         if (c[0]) tplItems[cur5].push(c[0]);
       }
@@ -910,7 +938,7 @@ try {
       const ls5 = readFileSync(fp, 'utf8').split('\n');
       const hIdx5 = ls5.findIndex((l) => /^\s*\|/.test(l) && /检查项/.test(l));
       if (hIdx5 === -1) { findings5.push(`闸门记录-${gateId}.md 缺「检查项」表格（表头须含 检查项 / 实据 / 结论）`); continue; }
-      const header5 = ls5[hIdx5].split('|').slice(1, -1).map((x) => x.trim());
+      const header5 = tableCells(ls5[hIdx5]);
       const ci5 = (kw) => header5.findIndex((h) => kw.test(h));
       const iItem = ci5(/检查项/), iEv = ci5(/实据|证据|依据/), iRes = ci5(/结论|判定/), iWhy = ci5(/失败原因|原因|备注/);
       if (iEv === -1 || iRes === -1) { findings5.push(`闸门记录-${gateId}.md 表头须含「实据」「结论」列（现有：${header5.join(' / ')}）`); continue; }
@@ -919,8 +947,8 @@ try {
         const l = ls5[i];
         if (/^#{2,4}\s/.test(l)) break;
         if (!/^\s*\|/.test(l)) continue;
-        const c = l.split('|').slice(1, -1).map((x) => x.trim());
-        if (c.every((x) => /^:?-{2,}:?$/.test(x) || x === '')) continue;
+        const c = tableCells(l);
+        if (isSeparatorRow(c)) continue;
         rows5.push(c);
       }
       const seen = rows5.map((r) => normLabel(r[iItem] || ''));
@@ -1003,19 +1031,12 @@ try {
 // 触发条件：存在 audits/审稿报告-vN.md（T9 可选，未启用 → N/A）。
 try {
   const projDir6 = dirname(dirname(draftPath));
-  const auditsDir6 = [join(projDir6, 'audits'), join(dirname(draftPath), 'audits')].find((d) => existsSync(d)) || null;
-  const latest6 = (() => {
-    if (!auditsDir6) return null;
-    const c = readdirSync(auditsDir6)
-      .map((f) => ({ f, m: f.match(/^审稿报告-v(\d+)\.md$/) }))
-      .filter((x) => x.m).map((x) => ({ f: x.f, n: Number(x.m[1]) }))
-      .sort((a, b) => b.n - a.n);
-    return c.length ? join(auditsDir6, c[0].f) : null;
-  })();
+  const auditsDir6 = auditsDirOf();
+  const latest6 = latestReport(auditsDir6, '审稿报告');
   if (!latest6) {
     results.push({ gate: 'M-Exist-6 审稿报告与期刊匹配', pass: true, detail: 'N/A：无审稿报告（T9 未启用或未到 Phase 4.5）', severity: '通过' });
   } else {
-    const rt = readFileSync(latest6, 'utf8');
+    const rt = readFileSync(latest6.path, 'utf8');
     const findings6 = [];
     const soft6 = [];
     const DIMS = ['原创性', '方法论', '证据强度', '论证结构', '写作质量', '引文规范'];
@@ -1044,8 +1065,8 @@ try {
       for (let i = jHead + 1; i < jLines.length; i++) {
         const l = jLines[i];
         if (!/^\s*\|/.test(l)) break;
-        const c = l.split('|').slice(1, -1).map((x) => x.trim());
-        if (c.every((x) => /^:?-{2,}:?$/.test(x) || x === '')) continue;
+        const c = tableCells(l);
+        if (isSeparatorRow(c)) continue;
         jRows.push(c);
       }
     }
@@ -1057,7 +1078,7 @@ try {
     } else {
       if (jRows.length !== 3) soft6.push(`期刊匹配表 ${jRows.length} 行（应为 Top 3）`);
       if (jRows.length === 0) findings6.push('期刊匹配表存在表头但无数据行');
-      const head6 = jLines[jHead].split('|').slice(1, -1).map((x) => x.trim());
+      const head6 = tableCells(jLines[jHead]);
       const col6 = (kw) => head6.findIndex((h) => kw.test(h));
       const iComp = col6(/综合/), iTheme = col6(/主题/), iStyle = col6(/风格/), iCycle = col6(/审稿周期/), iWhy2 = col6(/推荐理由|理由/);
       let dbText = '';
@@ -1119,7 +1140,7 @@ try {
       gate: 'M-Exist-6 审稿报告与期刊匹配',
       pass: !hard6 && soft6.length === 0,
       detail: [
-        `${latest6.split(/[\\/]/).pop()}｜6 维 ${dimScores.length}/6｜总评分 ${declaredTotal ?? '缺失'}${jHead !== -1 ? `｜期刊表 ${jRows.length} 行` : ''}`,
+        `${latest6.name}｜6 维 ${dimScores.length}/6｜总评分 ${declaredTotal ?? '缺失'}${jHead !== -1 ? `｜期刊表 ${jRows.length} 行` : ''}`,
         hard6 ? `硬问题：${findings6.slice(0, 3).join('；')}` : '评分自洽、期刊匹配可复算',
         soft6.length ? `软提示：${soft6.slice(0, 2).join('；')}` : '',
       ].filter(Boolean).join(' ｜ '),
@@ -1203,17 +1224,7 @@ try {
 try {
   const projDir8c = dirname(dirname(draftPath));
   const revDirs = [join(projDir8c, 'analysis'), join(projDir8c, 'audits'), dirname(draftPath)];
-  const latestRevPath = (() => {
-    for (const d of revDirs) {
-      if (!existsSync(d)) continue;
-      const c = readdirSync(d)
-        .map((f) => ({ f, m: f.match(/^批判报告-v(\d+)\.md$/) }))
-        .filter((x) => x.m).map((x) => ({ f: x.f, n: Number(x.m[1]) }))
-        .sort((a, b) => b.n - a.n);
-      if (c.length) return { path: join(d, c[0].f), name: c[0].f, n: c[0].n };
-    }
-    return null;
-  })();
+  const latestRevPath = revDirs.map((d) => latestReport(d, '批判报告')).find(Boolean) || null;
   if (!latestRevPath) {
     results.push({ gate: 'M-Exist-8 批判报告覆盖', pass: true, detail: 'N/A：无批判报告（轻量档跳过 Phase 3.6 或尚未到该阶段）', severity: '通过' });
   } else {
@@ -1228,9 +1239,7 @@ try {
     for (const c of CIDS) {
       const hi = rl8.findIndex((l) => headLine(c).test(l));
       if (hi === -1) continue;                      // 非标题写法 → 跳过非空判定（避免误伤）
-      let hj = rl8.findIndex((l, i) => i > hi && /^#{2,4}\s/.test(l));
-      if (hj === -1) hj = rl8.length;
-      const secBody = rl8.slice(hi + 1, hj).join('\n').replace(/[\s|*`\-—–:：]/g, '');
+      const secBody = sectionRange(rl8, hi, /^#{2,4}\s/).body.join('\n').replace(/[\s|*`\-—–:：]/g, '');
       if (secBody.length < 40) thin8.push(c);
     }
     // **只统计「条目定义行」（行首即编号）**：06 卡模板要求「批判总结」里再逐条列一次「关闭状态」，
@@ -1288,16 +1297,8 @@ try {
 //   只写「通过」不给依据 = 自称通过 → P2）；G0.5 / G2.5 / G4-2 子项缺失 → P2。
 // 触发条件：存在 audits/审计报告-vN.md；无 → N/A。
 try {
-  const projDir9 = dirname(dirname(draftPath));
-  const auditsDir9 = [join(projDir9, 'audits'), join(dirname(draftPath), 'audits')].find((d) => existsSync(d)) || null;
-  const latest9 = (() => {
-    if (!auditsDir9) return null;
-    const c = readdirSync(auditsDir9)
-      .map((f) => ({ f, m: f.match(/^审计报告-v(\d+)\.md$/) }))
-      .filter((x) => x.m).map((x) => ({ f: x.f, n: Number(x.m[1]) }))
-      .sort((a, b) => b.n - a.n);
-    return c.length ? { path: join(auditsDir9, c[0].f), name: c[0].f } : null;
-  })();
+  const auditsDir9 = auditsDirOf();
+  const latest9 = latestReport(auditsDir9, '审计报告');
   if (!latest9) {
     results.push({ gate: 'M-Exist-9 审计报告 G 项覆盖', pass: true, detail: 'N/A：尚无审计报告（未进入 Phase 4）', severity: '通过' });
   } else {
