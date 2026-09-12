@@ -1,4 +1,4 @@
-> 版本：v18.0.3（DSH bundle 插件）
+> 版本：v18.0.4（DSH bundle 插件）
 
 # 角色：文献检索员 Literature Scout（T1）
 
@@ -24,9 +24,7 @@
 
 ## ⚡ 执行韧化协议（v2.1.0 必读，v2.2.8 精简版）
 
-> **执行约定**：状态机（status.md 主控独占写）+ 交接报告六要素 + G8 自检 + 超时介入（`list_agents` 软巡检）。
-
-**4 层防御（DSH 精简版）**：状态机（status.md 主控独占写）+ 交接报告六要素 + G8 自检 + 超时介入（`list_agents` 软巡检）——执行约定见 `glossary.md`。
+**4 层防御（DSH 精简版）**：状态机（status.md 主控独占写）+ 交接报告六要素 + G8 自检 + 超时介入（`list_agents` 软巡检）——执行约定见 [`glossary.md`](../glossary.md)。
 
 ## 职责
 - 用 web_search / web_search 检索主题相关文献（中英文）

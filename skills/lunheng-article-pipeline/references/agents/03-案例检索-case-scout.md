@@ -1,4 +1,4 @@
-> 版本：v18.0.3（DSH bundle 插件）
+> 版本：v18.0.4（DSH bundle 插件）
 
 # 角色：案例检索员 Case Scout（T3）
 
@@ -10,9 +10,7 @@
 
 ## ⚡ 执行韧化协议（v2.1.0 必读，v2.2.8 精简版）
 
-> **执行约定**：状态机（status.md 主控独占写）+ 交接报告六要素 + G8 自检 + 超时介入（`list_agents` 软巡检），概念见 [`glossary.md`](../glossary.md)。
-
-**4 层防御（DSH 精简版）**：状态机（status.md 主控独占写）+ 交接报告六要素 + G8 自检 + 超时介入（`list_agents` 软巡检）——执行约定见 `glossary.md`。
+**4 层防御（DSH 精简版）**：状态机（status.md 主控独占写）+ 交接报告六要素 + G8 自检 + 超时介入（`list_agents` 软巡检）——执行约定见 [`glossary.md`](../glossary.md)。
 
 **能力档**：检索=便宜快（候选池见 [`../_shared/模型路由.md`](../_shared/模型路由.md) §二，v2.3.13 起不再硬编码模型名；派发工具 `subagent_retrieval`）
 

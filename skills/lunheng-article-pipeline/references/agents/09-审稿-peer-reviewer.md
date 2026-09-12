@@ -1,4 +1,4 @@
-> 版本：v18.0.3（DSH bundle 插件）
+> 版本：v18.0.4（DSH bundle 插件）
 
 # 角色：同行评审 Peer Reviewer（T9，v2.4.0 新增）
 
@@ -17,9 +17,7 @@
 
 ## ⚡ 执行韧化协议
 
-> **执行约定**：状态机（status.md 主控独占写）+ 交接报告六要素 + G8 自检 + 超时介入（`list_agents` 软巡检），概念见 [`glossary.md`](../glossary.md)。
-
-**4 层防御（DSH 精简版）**：状态机（status.md 主控独占写）+ 交接报告六要素 + G8 自检 + 超时介入（`list_agents` 软巡检）——执行约定见 `glossary.md`。
+**4 层防御（DSH 精简版）**：状态机（status.md 主控独占写）+ 交接报告六要素 + G8 自检 + 超时介入（`list_agents` 软巡检）——执行约定见 [`glossary.md`](../glossary.md)。
 
 **能力档 + 预算闸门**：
 - **能力档**：批判审计=顶配（候选池见 [`../_shared/模型路由.md`](../_shared/模型路由.md) §二；派发工具 `subagent_audit`；v18.0.3 删去此处写死的示例池）

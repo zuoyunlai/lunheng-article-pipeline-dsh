@@ -1,4 +1,4 @@
-# lunheng-article-pipeline bundle patch（DSH 原生插件 v18.0.3）
+# lunheng-article-pipeline bundle patch（DSH 原生插件 v18.0.4）
 #
 # 本文件用 DSH cordis-plugin-include 的 `- insert:` 列表语法在 standard 组合树之上叠加 4 行：
 #   1. **本包入口（自注册行）**：`name: lunheng-article-pipeline` → loader 按包名解析到
