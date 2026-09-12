@@ -1,6 +1,6 @@
 # लुन्हेंग (lunheng-article-pipeline) — बहु-एजेंट दीर्घ-लेख पाइपलाइन
 
-> 版本：v18.0.5（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.1.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > 🌐 [English](README.md) ｜ [中文](README.zh.md) ｜ [Español](README.es.md) ｜ [Português](README.pt.md) ｜ **हिन्दी**（यह फ़ाइल）
 
@@ -108,7 +108,7 @@ patch परत दो काम करती है: **इस पैकेज �
 संस्करण **केवल tag से** प्रकाशित होते हैं; स्थानीय `npm publish` वर्जित है (यह CI द्वारों और OIDC provenance को दरकिनार करता है, और npm संस्करण कभी अधिलेखित नहीं हो सकता)।
 
 ```sh
-git tag v18.0.5 && git push origin v18.0.5   # एक बार में एक ही tag (GitHub: >3 tag एक push में कोई workflow नहीं चलाता)
+git tag v18.1.0 && git push origin v18.1.0   # एक बार में एक ही tag (GitHub: >3 tag एक push में कोई workflow नहीं चलाता)
 # publish.yml क्रम: द्वार 1 सुसंगति → द्वार 2 पैकेजिंग → द्वार 3 स्वच्छता → द्वार 4 पैकेज स्मोक → स्क्रिप्ट परीक्षण
 #   → tag/संस्करण समानता → idempotency गार्ड → OIDC publish --provenance --tag dsh → प्रकाशन-पश्चात लेखा-परीक्षा
 ```

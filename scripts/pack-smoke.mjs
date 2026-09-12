@@ -66,6 +66,9 @@ try {
   const mustExist = [
     'package.json',
     'lib/index.js',
+    'lib/tools.js',
+    'lib/guard.js',
+    'lib/commands.js',
     'cordis.patch.yml',
     `skills/${PKG_NAME}/SKILL.md`,
     `skills/${PKG_NAME}/AGENTS.md`,
@@ -107,7 +110,20 @@ try {
     let registered = null
     let effectUsed = false
     let disposerCalled = false
+    // C 组（v18.1.0）：发布物侧同样要覆盖「可选能力」的注册与降级。
+    //   · 这里**故意**提供 tools / commands 服务：guard 与命令不依赖宿主包，应当**真注册**；
+    //   · 而 `@deepseek-ai/dsh-tools` 在临时解包目录里**不可解析**（真实发布物被 profile 安装时的
+    //     常见处境之一），故原生工具必须**安静降级为 0 个**且不拖垮技能注册 —— 正是本脚本要钉住的行为。
+    const captured = { guards: 0, guardFn: null, commands: [], tools: [] }
+    const services = {
+      tools: {
+        register(def) { captured.tools.push(def); return () => {} },
+        guard(fn) { captured.guards += 1; captured.guardFn = fn; return () => {} },
+      },
+      commands: { register(def) { captured.commands.push(def); return () => {} } },
+    }
     const ctx = {
+      get: (n) => services[n],
       effect(fn) {
         effectUsed = true
         const d = fn()
@@ -125,8 +141,45 @@ try {
     } catch (e) {
       bad(`apply 抛错：${e.message}`)
     }
+    // 入口把 C 组的安装放在 `ctx.effect()` 的异步 IIFE 里，等它落定（解包目录在本地磁盘，几毫秒）
+    for (let i = 0; i < 12; i++) await new Promise((r) => setTimeout(r, 20))
     if (effectUsed) ok('注册走 ctx.effect（注册即 effect，卸载可回收）')
     else bad('apply 未使用 ctx.effect —— 卸载无法回收注册')
+
+    // C 组断言（发布物侧）
+    if (captured.guards === 1 && typeof captured.guardFn === 'function') {
+      ok('机制写保护已注册（tools.guard ×1，全局否决能力就位）')
+      const denyInside = captured.guardFn({
+        name: 'write',
+        arguments: { path: join(pkg, 'skills', PKG_NAME, 'SKILL.md') },
+      })
+      if (typeof denyInside === 'string' && /机制文件写保护/.test(denyInside)) {
+        ok('guard 否决发布物内 SKILL.md 的写入（机制级，而非仅文档纪律）')
+      } else {
+        bad(`guard 未否决技能包内写入：${JSON.stringify(denyInside)}`)
+      }
+      if (captured.guardFn({ name: 'write', arguments: { path: join(pkg, 'README.md') } }) === undefined) {
+        ok('guard 放行包外/非机制路径（宁松勿误伤）')
+      } else {
+        bad('guard 误伤非机制路径（会挡住主人正常编辑文档）')
+      }
+    } else {
+      bad(`机制写保护未注册（guards=${captured.guards}）`)
+    }
+    const cmdNames = captured.commands.map((c) => c.name)
+    if (cmdNames.length === 1 && cmdNames[0] === 'lunheng-status') {
+      ok('人类命令已注册：/lunheng-status（不产生模型消息）')
+      const r = captured.commands[0].handler({ rawInput: '', signal: new AbortController().signal })
+      if (r && r.kind === 'success' && typeof r.text === 'string') ok('命令 handler 返回 CommandResult（可读文本）')
+      else bad(`命令 handler 返回形态不符：${JSON.stringify(r)?.slice(0, 160)}`)
+    } else {
+      bad(`人类命令注册异常：${JSON.stringify(cmdNames)}`)
+    }
+    if (captured.tools.length === 0) {
+      ok('原生工具安静降级为 0 个（解包目录无 @deepseek-ai/dsh-tools）——技能注册不受影响')
+    } else {
+      bad(`期望降级为 0 个原生工具，实得 ${captured.tools.length}`)
+    }
     if (registered) {
       if (registered.name === PKG_NAME) ok(`apply 注册技能 name = ${registered.name}`)
       else bad(`apply 注册名 = ${registered.name}`)

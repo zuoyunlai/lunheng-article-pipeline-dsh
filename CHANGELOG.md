@@ -2,6 +2,63 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.1.0 — 2026-09-12
+
+> **功能发布：第三方审计改进方案「C 组 · 中期偏架构」六条逐条处置**（审计报告 `run/guannian-yu-linian/audits/论衡第三方全量审计-v2.md` §4-C）。四条**已启用**、一条给**可选配方**、一条**仍未接线**（处置表见 `skills/lunheng-article-pipeline/references/_shared/DSH-集成方案.md` §七）。
+> **默认行为不变**（主人既定「装了不坏」优先）：M 门 23 项的检查内容、Phase 结构、闸门数量、四道门脚本的输出契约**均未改**；新能力一律**可选**——宿主缺服务/缺包时**只降级**，技能注册与流水线照常（v18.0.0「入口 import 失败 → 技能不注册」的形态不得重演）。**官方依据**均取自 `dsh-plugin-guide/references/official-docs/`（快照 commit `d347e703…`，2026-09-04），行号写进各模块头注释与集成方案，不凭记忆。
+
+### 新增 C-1：两个只读机检脚本 → DSH 原生工具
+
+- **做什么**：入口 `lib/index.js` 在**同一个 `apply` 内**额外注册两个**只读**工具——`lunheng_m_gate`（M 门机械预检）与 `lunheng_char_count`（汉字字数）。实现 `lib/tools.js`。
+- **为什么**：官方 `docs/cookbook/adding-a-tool.md` 要求「**返回一个规范 JSON 值**，不要让调用方从散文里解析 id 与字段」；此前主控只能 `pwsh node scripts/…` 再让模型读 stdout 与 6 个退出码。工具化后规范值、参数校验、`output.render` 人类可读文本、`exec.signal` 取消、Code Mode 调用一次拿齐。
+- **参数错 ≠ 内容错（写死）**：`exit 10`（参数/路径错）与 `70`（内部错误）**不是内容结论**——工具此时 **throw**（官方：throw = 工具失败），**不得**返回一个 `exit:10` 的「规范值」被主控当成「M 门跑过了」。内容判定（`0/1/2/3`）才进返回值。
+- **诚实标注（不许夸大）**：官方 `docs/subsystems/tools.md:370` 明确 canonical value **只在执行期有效**（日志只持久化 `content`/`error`/`meta`），故**工具化不会自动改善审计留痕**——闸门实据真源仍是落盘的 `M-Gate-Report.json`（v18.0.5 已把它与正文指纹绑定）。
+- **为什么不是 patch 行、不要 `exports`/`Config`**：走**动态 `import('@deepseek-ai/dsh-tools')` + `ctx.get('tools')`**（官方 `guide/plugin-dev-guide.md:139`：可选依赖不写 `inject`），`inject` 仍只有 `['skills']`。若为工具而静态 import 宿主包或把 `tools` 写进 `inject`，任何缺该包的 profile 都会**入口 import 失败 → 技能也不注册**（教训 #154）。`package.json` 增 `@deepseek-ai/dsh-tools`（**optional** peer）只为如实声明，不是安装依赖。
+- **三条降级路径**（两条有 CI 门钉住）：宿主无 `tools` 服务 → 不注册；`@deepseek-ai/dsh-tools` 不可解析 → 打印一行说明并跳过；任一模块抛错 → 只丢该能力。`tests/entry.test.mjs` 覆盖「注入契约等价替身真跑两个工具」与「包不可用时的降级」；`pack-smoke.mjs` 覆盖**发布物**侧（解包目录里包不可解析 → 必须安静降级为 0 个工具，且 guard/命令照常注册）。
+
+### 新增 C-4：机制文件写保护从「文档纪律」升级为**机制否决**（部分）
+
+- **做什么**：入口注册全局 `ctx.tools.guard()`（`lib/guard.js`）——`write`/`edit` 类工具命中**机制路径**（技能目录 + `cordis.patch.yml` + 包内 `lib/` + 仓库 `scripts/`）**在分发前即被拒**，返回理由含改进路径（写 `audits/反哺报告-vN.md`）与授权方式。
+- **官方依据**：`docs/subsystems/tools.md:313-324`——`guard()` 返回值**只收紧**权限，后续监听器无法改回允许；plain-context guard **全局生效**。
+- **三条如实声明的缺口**：① **只管工具调用**——`pwsh` 可直接写盘（官方对子进程的围栏是部署级 `ctx.sandbox`，插件改不了别人的 profile），官方**没有** per-path 只读声明 API → 定位是「**比 prompt 强、比机制强制弱**」；② **技能目录部署下不生效**（guard 由入口安装，只有 bundle 部署会跑入口）；③ **授权是主人的动作**——`LUNHENG_ALLOW_MECH_EDIT=1`（宿主环境变量），agent 不得自行声明授权。
+- **宁松勿误伤**：受保护根**不含** `docs/`、`README`、`CHANGELOG`（文档可自由改）；guard 自身异常一律返回 `undefined`（不改变权限）。
+
+### 新增 C-5：`/lunheng-status` 人类命令
+
+- **做什么**：`lib/commands.js` 注册斜杠命令 `/lunheng-status [项目名]`——读 `run/<项目>/status.md` 与 `进展-主人版.md`，**不产生模型消息**（官方 `docs/subsystems/commands.md:5`：interactive adapter 直接 dispatch，不进模型轮次）。省略项目名时取 `run/` 下 `status.md` 最近修改的项目。项目不存在时返回可读提示（不抛错），并列出 `run/` 下现有项目名。
+
+### 新增 C-6：文档词预算门（`repo-hygiene-check` 规则⑨）+ 规则① 扩面
+
+- **动机**：本包的成本结构里，**唯一每次会话恒定的开销就是被载入上下文的文档**（`SKILL.md` 由入口注册 → 每次技能激活都在上下文；`AGENTS.md` 在技能目录内自动生效）。而此前**没有一条门看「涨没涨」**——膨胀是唯一无人反对的方向。官方先例：`official-docs/AGENTS.md` 的 `verify-doc-budgets`。
+- **三条设计**：① 技能目录内所有 **≥12 KB 的 .md 必须登记**上限（新胖文档不能悄悄逃过测量，实测首轮就抓出 `DSH-集成方案.md` 未登记）；② **上限即棘轮**——上限取「当前字节数向上取整到整 KB」，任何增长必须**在同一次提交里显式抬升上限**并在本文件写明理由；③ `SKILL.md` + `AGENTS.md` 另有**常驻集合计**上限（防「瘦 SKILL、肥 AGENTS」换个口袋）。
+- **本轮显式抬升（附理由，规则⑨ 要求的同提交动作）**：`SKILL.md` 30→**32 KB**、`AGENTS.md` 20→**21 KB**、常驻集合计 50→**52 KB**（实测 51.3 KB）。**为什么必须增长**：C 组有四处**运行期事实**必须写进常驻集——① 原生工具「清单里有就优先用、没有就照旧 `pwsh`」；② `/lunheng-status`；③ 写保护已机械化（含 `LUNHENG_ALLOW_MECH_EDIT=1` 与「`pwsh` 不经此门」的残余缺口）；④ 四门提问方式与「子代理问不了」。**同时做了压缩**（退出码段去掉重复叙述，净增 < 1.5 KB）。**长期目标仍是 20 KB**（`target` 字段记录，只报告不判失败）——本轮是**棘轮**，不是瘦身令；瘦身需主人拍板口径。
+- **规则① 扩面（自查发现的真实缺口）**：语法检查此前只扫 `.mjs`，**入口与 C 组新增的 `lib/*.js` 不被任何静态门检查**（唯一下场是「被测试 import」，而 `lib/tools.js` 只在有宿主包时才装载）；扫描集同时改为「git 跟踪 **∪ 未跟踪未忽略**」——因为 `npm pack` **会打包尚未 `git add` 的新文件**，旧规则①看不见它们。
+- **对抗验证**：给 `SKILL.md` 追加 330 B → 规则⑨ 报超限并给出两条合法出路（先瘦身／同提交抬升上限，含建议值）；新建 12.7 KB 未登记 `.md` → 覆盖臂报；新建语法错的未跟踪 `lib/_probe-broken.js` → 规则① 报。三次注入均实测变红，注入物已全部移除（`SKILL.md` 字节数已复核回原值）。
+
+### 变更 C-3：四道人在环闸门改用 `ask_user_question` 提问留痕
+
+- **做什么**：四门（Phase 0 / 2.5 / 3.5 / 5）在写完 `阶段确认-<阶段>.md` 后，主控用 `ask_user_question` **一问**把决策点摆给主人——选项 ≤5，**第一个即主控建议**并在标签末尾加「（推荐）」（官方约定：推荐 = 放最先 + 标注，**无独立推荐字段**）；`multi_select` 默认 false。确认单 **§6 增「提问方式」栏**、新增 **§7**（形态与边界），`00-主控-扩展职责.md` §二十一 与 `SKILL.md` 同步。
+- **为什么**：官方 `docs/tool-catalog.md:18` 记录该工具写入 `tool/call` + `tool/result` 两个事件（问题原文在 `tool/call`，答复在 `tool/result`），**两者都进 append-only 会话日志、可重放**——「问过什么、什么时候问的」不再只存在于对话里。
+- **如实更正（不许把留痕说满）**：官方**没有** `user-questions/*` 专用日志事件——「日志审计事件对」的说法只存在于 `approval/asked` + `approval/decided`。故**§6 的人工回填仍是权威留痕**，工具只是让问答自动进日志。另：早期内部笔记把 `AskUserQuestionIntent` 记成 `{approve: boolean}`，**实为 `{kind:'plan-review', approve: <选项标签字符串>}`**（`docs/subsystems/user-questions.md:35-44`）——本版按官方更正。
+- **两条硬边界**：① **只有主控问得了**——官方 `user-questions.md:136-140`「an owned child has no human answerer and would block forever」，子代理调用被拒（`DELEGATED_CALLER`）→ **闸门必须留在主控**（现状正确，勿外移；T1-T9 只能把「需主人决定」写进交接报告）；② **工具失败 ≠ 主人同意**——无提供方/无人应答时调用**失败**（`NO_PROVIDER`/`ASK_ABORTED`），**不得**当通过，退回书面确认单并在 §6 记失败码。官方未定义超时，故规则是「同一门只问一次、未答复就等」。
+
+### 配方 C-2：分档工具行移入 agent preset（**可选，默认不动**）
+
+- 三个分档工具行仍留在**包级** `cordis.patch.yml`（「装了不坏」优先）。若主人希望「只有选定该预设的会话才有这三个工具」，官方机制是**把同样的行挂进 preset 组合**（`docs/subsystems/tools.md:484-504`、`docs/subsystems/skills.md:13`：preset 的 standing composition 注册落在**该预设的作用域层**；`docs/architecture.md:131` 是入口判据），并可借 `modelSelectionSettings`（`@deepseek-ai/dsh-tool-subagent`，默认关）+ `list_subagent_models` 用官方**模型发现链**替代「改 env 必须重启」。
+- **三步配方 + 每步验证 + 回滚 + 五条已知限制**见 `references/_shared/DSH-集成方案.md` §八。**诚实标注**：官方知识库里**没有任何 preset 组合文件的完整示例**，且组合文件名只有摘要级依据（「preset cordis.yml」vs `agent.cordis.yml`）——配方明确要求「照抄你部署里已存在的预设目录」，并标为**未在真实部署验证**。另：官方**没有**「全局工具行会让每个会话都付 token 成本」的量化陈述，「`modelSelectionSettings` 要求工具行在 preset scope」也**不是官方原文**（是从 `capability-seams.md:491` 推出的）——配方里都如实写了。
+
+### 未做（如实登记，不假装做了）
+
+- **C-2 未改为默认**：换作用域就不再是「装了就可用」，需主人主动选会话预设；且官方无完整示例，不宜把未验证配方变成默认路径。
+- **Phase 内并行仍不用 `workflow` 工具**：该工具的用法说明限定「**仅在用户明确要求 workflow 或大规模多 agent 编排时**使用」，3 个检索员用 `subagent` 手动并行更合规——维持 v18.0.5 的降级判定（主人明确认可后可再议）。
+- **`Config`（Schemastery）不引入**：会重新让入口「解析配置才能启动」，与教训 #154 相反；当前也没有需要暴露给 `cordis.yml` 的可调参数。
+- **P3 全局强调通胀（加粗 / emoji）不动**：大量 emoji 是**机检字面量**（`m-gate-check` 按符号定位），批量清理会破坏契约。
+
+### 门与验证（本版全绿）
+
+- 五道门：`consistency-check`（文档一致性）、`plugin-surface-check`（打包面 11 通过 / 0 失败 / 0 提示 + `[patch-deps]`）、`repo-hygiene-check`（⑨ 条，含新增词预算门）、`pack-smoke`（发布物冒烟，**含 C 组三条断言**）、`node --test "tests/**/*.test.mjs"`（**81 通过 / 0 失败**）；官方 `dsh-plugin-dev check` **11 passed / 0 failed / 0 warned / 3 skipped**。
+- 包面新增文件：`lib/tools.js`、`lib/guard.js`、`lib/commands.js`（均随包，`files` 白名单的 `lib` 目录覆盖；`pack-smoke` 已把三者列入「必须存在」清单）。
+
 ## 18.0.5 — 2026-09-12
 
 > **第三方全量审计（对照官方插件规范）后的修订版**。审计报告：`run/guannian-yu-linian/audits/论衡第三方全量审计-v2.md`（4 路独立只读子审计 + 主控自做的运行面复核；评分 6.7/10，扣分点集中在「**运行时真实性保证**」这一层）。

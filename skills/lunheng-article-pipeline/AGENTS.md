@@ -43,7 +43,7 @@ Phase 5 终检     → T8 终检（独立角色，主控 T0 以 T8 身份亲完�
 - **执行约定（DSH 精简版）**：状态机 + 交接报告六要素 + G8 自检 + **进度播报三播报**（派发即播报 / 完成即转播 / 卡住即告警，防主人干等；无需心跳/分阶段 ack/预检/8 分钟硬卡；旧版完整韧化协议已移出仓库（历史见 git log），现行规则即本执行约定）
 - **阶段闸门（v2.2.1，v2.3.0 改 T5.5→T7.5）**：T2.5（检索→分析）与 T7.5（审计→终检）两道主控 checkpoint，用 `todo_write` + `read` 实现，**不绕过交接直接派发**
 - **闸门留机械证据（v2.5.2-dsh.13；v18.0.2 统一退出码）**：两道闸门与 M 门**不得只凭自述**——交接报告须附**脚本 exit code + 产物路径**（`m-gate-check.mjs … --report <项目>/final/M-Gate-Report.json`）；exit 语义 `0` 通过 / `1` P1 / `2` P0 / `3` 仅 P2·soft·SKIP（需 LLM 复核，不得当通过）/ **`10` 参数或路径错误**（v18.0.2 起闸门脚本的路径错一律 10）；`model-routing.mjs` 另有 **`4`**＝需人工决定（不与 M 门语义共用）
-- **机制文件写保护（v2.5.2-dsh.13；v18.0.0 补授权例外）**：`SKILL.md` / `AGENTS.md` / `references/**` / `scripts/**` / `cordis.patch.yml` 任何角色（含子代理）**默认禁写**；改进动议只写 `audits/反哺报告-vN.md`，由主人在 host shell 手工 apply（**agent 自主改机制文件 = P0 违规，本次交付作废**）。
+- **机制文件写保护（v2.5.2-dsh.13；v18.0.0 补授权例外；v18.1.0 部分机械化）**：`SKILL.md` / `AGENTS.md` / `references/**` / `scripts/**` / `cordis.patch.yml` 任何角色（含子代理）**默认禁写**；改进动议只写 `audits/反哺报告-vN.md`，由主人在 host shell 手工 apply（**agent 自主改机制文件 = P0 违规，本次交付作废**）。**v18.1.0**：bundle 部署下入口注册全局 `ctx.tools.guard()`，write/edit 类工具命中机制路径**在分发前即被拒**（官方 `docs/subsystems/tools.md` 的 `guard()` 语义：只收紧、后续监听器无法改回允许；主人授权例外走 `LUNHENG_ALLOW_MECH_EDIT=1`）。**残余缺口如实声明**：guard 只看**工具调用**，`pwsh`/子进程不经此门（官方无 per-path 只读声明），故为「比 prompt 强、比机制强制弱」——机制文件的可信度仍靠 `git` + 四道门 + 主人 review，不靠 guard。
   > **⚠️ 唯一例外：主人显式授权（v18.0.0）**：当**主人直接指令**要求修订机制文件时（如「你依次全部修订吧」），**不构成越权**——主人是机制文件的所有者，该指令即授权。此时仍须遵守：
   > ① **改前备份**（工作区外 `<DSH_HOME>/_backup/lunheng-<日期>/`，含 `scripts/` + `references/` + `SKILL.md` + `AGENTS.md` 全量）+ 记录行数基线；
   > ② **改中用 `edit` 精确匹配**（禁 `sed -i`）；
@@ -74,6 +74,7 @@ Phase 5 终检     → T8 终检（独立角色，主控 T0 以 T8 身份亲完�
    - `node --test "tests/**/*.test.mjs"` —— 随包脚本 + **组合包契约** + 入口回归（改脚本输出契约、`cordis.patch.yml`、`package.json` 时**必跑**）
    > **布局提示（v18.0.0）**：`consistency-check.mjs` 支持两种部署布局——**仓库布局**（`<repo>/package.json` + `<repo>/skills/<name>/`）与**技能即包根**（`<skillRoot>/package.json`，本机 `.dsh/skills/<name>/` 部署）；`REPO_ROOT` 自动探测，旧版硬编码「向上两级」会在本机布局下指向 `~/.dsh` 而 ENOENT。
    > **改「规范」时另查**（v18.0.5，冗余审计 §二.7）：`references/_shared/规范-机械门对照表.md`——**维护者文档**，逐条勾稽「规范写了什么 ↔ 机械门是否覆盖」（两问：有无门 / 是否覆盖全要件）。新增或修改任何规范/机检门时在该表加一行；它刻意不进运行期读清单（角色不读）。
+   > **文档涨了先看词预算门**（v18.1.0）：`repo-hygiene-check` 规则⑨ 对技能目录内 ≥12 KB 的 .md 逐文件设**棘轮上限**（SKILL.md 30→31 KB 是本轮显式抬升）。**任何文档增长必须在同一次提交里抬升上限并写明理由**；`skills/lunheng-article-pipeline/scripts/` 外的仓库脚本改动不受此门约束。规则① 同时扩面到 `.js` 与**未跟踪文件**（`npm pack` 会打包未 `git add` 的新脚本）。
    **仓库级打包面检查**（`cordis.patch.yml` 合法性 / 行 id 唯一 / `dsh.bundle.patch` 指向 / `package.json` 元数据（`main` + `files` 含 `lib` + `packageManager`）/ 五语 README 一致性 / 工程红线；**v18.0.0 起无豁免**，11 通过 / 3 跳过）由 CI 的 `plugin-surface` job 承担，本地复现命令见 `.github/workflows/ci.yml` 与 CHANGELOG 同名条目；**包入口的执行路径**由 `tests/entry.test.mjs` 用最小 ctx 真跑 `apply` 覆盖、**「patch 必须插入本包自注册行」由 `tests/bundle-contract.test.mjs` 覆盖**（静态门不执行入口、也不验 patch 是否引用本包，故这两条不可省——教训 #152 / #154）
 
 ## 开发参考资料（v18.0.0 新增，主人指示：官方资料为以后开发的重要参考）

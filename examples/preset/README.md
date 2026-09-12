@@ -12,7 +12,7 @@
 ```sh
 # 1. 在 profile 里声明 bundle 依赖（DSH 读 dsh.bundle.patch 找到 cordis.patch.yml 加载）
 dsh plugin --profile web add lunheng-article-pipeline@dsh   # 推荐：跟随最新 DSH 迭代版
-# 锁定具体版本：dsh plugin --profile web add lunheng-article-pipeline@18.0.5
+# 锁定具体版本：dsh plugin --profile web add lunheng-article-pipeline@18.1.0
 
 # 2. （可选）设三档 subagent 工具的 provider/model 环境变量
 #    不设任何变量 = 三档全部继承会话模型（安全默认，单模型用户无需本步）
@@ -90,7 +90,18 @@ agentOptions: !!js "(e => { const p = e.LUNHENG_RETRIEVAL_PROVIDER, m = e.LUNHEN
   `SKILL.md` / `references/` / `scripts/` 齐备；`tests/bundle-contract.test.mjs` 断言「patch 恰有一行 `name == 包名`」。
   两条合起来才是完整防线：前者证明「入口能跑」，后者证明「入口会被加载」。
 
-## 6. 升级/降级/卸载
+## 7. 可选：把三档工具行移进 agent preset（v18.1.0 新增配方，**未在真实部署验证**）
+
+上面的 3 步是**默认路径**：三行 `- insert:` 在**包级** `cordis.patch.yml`，因此**该 profile 的每个会话**都能看到三个分档工具。
+
+若希望「**只有选定了该预设的会话**才有这三个工具」，官方机制是**把同样的行挂到 preset 组合里**（工具注册落在该 preset 的作用域层：`docs/subsystems/tools.md:484-504`、`docs/subsystems/skills.md:13`；`docs/architecture.md:131` 是入口判据）。完整配方（三步 + 每步验证 + 回滚 + 五条已知限制）见
+[`../../skills/lunheng-article-pipeline/references/_shared/DSH-集成方案.md`](../../skills/lunheng-article-pipeline/references/_shared/DSH-集成方案.md) **§八**。
+
+**三个要点先看**：① 官方知识库里**没有任何 preset 组合文件的完整示例**，且预设组合文件名（「preset cordis.yml」vs `agent.cordis.yml`）只有摘要级依据——**照抄你部署里已存在的预设目录**；② **预设只在会话空白期可切**（跑了就别换）；③ 本包**默认不动** patch（「装了不坏」优先），换作用域需要你自己选预设。
+
+---
+
+## 8. 升级/降级/卸载
 
 ```sh
 dsh plugin --profile web update lunheng-article-pipeline@dsh

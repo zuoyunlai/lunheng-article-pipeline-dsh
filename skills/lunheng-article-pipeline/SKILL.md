@@ -1,11 +1,11 @@
 ---
 name: "lunheng-article-pipeline"
-version: "18.0.5"
+version: "18.1.0"
 description: "论衡：DSH 原生多 Agent 深度长文流水线（学术论文 / 商业评论 / 行业分析 / 公众号）。9 个独立角色 T1-T9 + 主控（T0 调度 + T8 终检）；三角验证 + M 门 + G 审计 + 修订回环 ≤2 轮 + 期刊匹配。适用：≥2000 字、证据须可追溯的长文（含 4 个人在环节点、1-3 小时流水线时长）。**不适用**：<2000 字短文与即时问答；文学创作（小说/诗歌/剧本）；需数学推导或实验设计的理工科论文；营销软文；需要一手数据（问卷/访谈/田野/实验）而尚未投喂素材。"
 whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 description（v18.0.5：官方目录只渲染 name + description，本字段对模型不可见，保留仅供工具链与维护者阅读）。"
 ---
 
-> 版本：v18.0.5（DSH bundle 插件）
+> 版本：v18.1.0（DSH bundle 插件）
 > **v2.5.2-dsh.8 角色语义定案（主人指令）**：**9 个角色 T1-T9 各自独立、不可相互替代**——T8 终检不是「主控兼做的杂活」而是独立角色（有独立角色卡），只是执行者由主控担任（**主控 = T0 调度 + T8 终检执行双重身份**），不 spawn 子代理；**T9 审稿可选、默认选中、学术论文必选**。
 
 # 多 Agent 深度长文流水线（论文/深度文章生产）
@@ -30,7 +30,7 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 4. **「（检查）」占位符**：发布包中 shell 示例被净化剥离为「（检查）」——按「人类 host shell 验证示例」处理（`read` 全文 + LLM 推理模拟判定，真实 hash/字数由主人在 host shell 回填）。
 5. **角色体系**：**9 个独立角色 T1-T9 互不可替代**（T1-T3 检索 / T4-T5 加工 / T6-T9 防御）；T8 终检独立角色、由主控 T0 亲执行；T9 审稿可选但**默认选中**（学术**必选**）。
 6. **包形态（v18.0.0 起为可分发的 DSH bundle）**：本包含 `package.json`（声明 `dsh.bundle.patch`）+ `cordis.patch.yml`（bundle 层：**插入本包自注册行** `- id/name: lunheng-article-pipeline`，loader 由此按包名 import 入口 —— **这一行不能删**，删了入口不会被加载、技能注册不上（v18.0.0 缺陷，v18.0.1 修复）+ 3 档 subagent 工具）+ `lib/index.js`（插件入口，`inject=['skills']`，用 `ctx.effect(() => ctx.skills.register({...resourceBase}))` 把 `SKILL.md` 注册为 agent 技能）。**两种部署形态均支持**：① `dsh plugin add` 安装 bundle（技能由入口注册）；② 直接把**技能目录** `skills/lunheng-article-pipeline/` 复制到任一 skill 根（`.dsh/skills/` 项目级 rank 100 / `$DSH_HOME/skills/` 用户级 rank 400）。包面自检：`dsh-plugin-dev check`（14 项，目标 0 fail / 0 warn）+ `node --test "tests/**/*.test.mjs"`（含组合包契约与入口回归）。
-7. **DSH 能力面集成（可选，默认未启用）**：门禁脚本→`defineTool`、Phase 内并行→`workflow` 工具、状态机→`goals`/`planMode` 的迁移方案与契约见 [`references/_shared/DSH-集成方案.md`](references/_shared/DSH-集成方案.md)（**含边界**：人在环节点与闸门决策不得交给 workflow）。
+7. **DSH 能力面集成（v18.1.0 起部分启用）**：**已落地**——门禁脚本→原生只读工具、机制文件写保护→`ctx.tools.guard()`、进展自查→`/lunheng-status`。**仍未启用（按需）**——Phase 内并行→`workflow`、分档工具行→agent preset、状态机→`goals`/`planMode`：契约与**边界**见 [`references/_shared/DSH-集成方案.md`](references/_shared/DSH-集成方案.md)（人在环节点与闸门决策**不得**交给 workflow / 子代理）。
 
 > **快速开始**：[`QUICKSTART.md`](QUICKSTART.md)｜**核心概念（单一真源）**：[`references/glossary.md`](references/glossary.md)｜**自用术语与文档约定**：[`references/glossary.md` §十二](references/glossary.md)。
 
@@ -42,8 +42,9 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 - ✅ **可调用**：当前会话预设提供的工具（本机 standard 预设实测含 read / write / edit / web_search / web_fetch / todo_write / subagent / list_agents / pwsh 等）——DSH 无技能级白名单，工具集由 Agent 预设决定。**调用任何工具前先确认它在当前会话工具清单里**（教训：`read_page`/`bash` 并不存在于本预设，曾被本文档误声明为可用）。
 - ✅ **随包脚本白名单（v2.5.2-dsh.17 复核为 11 个）**：`scripts/*.mjs` = consistency-check / m-gate-check / md2html / pdfcheck / token-cost / count-chars / build-evidence-bundle / final-check / normalize-trust-level / model-routing / token-budget + 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等）——**受限 shell 使用**（另：`_lib` 子目录为共享库，非入口、不单独调用），非「零 exec」；其余命令须经主人同意。
 - ❌ **不做**：凭据访问 / 浏览器自动化 / 定时任务（除白名单脚本与验证命令外，主控默认不执行任意 shell，LLM 推理判定）。
-- 🔒 **机制文件写保护（v2.5.2-dsh.13 新增）**：`SKILL.md` / `AGENTS.md` / `references/**` / `scripts/**` / `cordis.patch.yml` 属**机制文件**——任何角色（含主控与子代理）**不得**用 write/edit 改动；改进动议一律只写 `audits/反哺报告-vN.md`，由主人在 host shell 手工 apply。**改机制文件 = P0 违规，本次交付作废**。
-- 🧾 **闸门必须留机械证据（v2.5.2-dsh.13 新增；v18.0.2 统一退出码；v18.0.5 补异常路径）**：T2.5/T7.5 与 M 门**不得只凭自述**——交接报告须附**脚本 exit code + 产物路径**（如 `m-gate-check.mjs … --report <项目>/final/M-Gate-Report.json` 的 exit 与报告路径）。exit 语义：`0` 通过 / `1` P1 失败 / `2` P0 失败 / `3` 仅 P2·soft·SKIP（需 LLM 复核，**不得**当通过）/ `10` **参数或路径错误**（含**异常路径**：v18.0.5 起所有随包脚本装 `_lib/exit-guard.mjs`，fs 类异常统一映射为 10，不再让未捕获异常退化成 1）/ `70` **内部错误（EX_SOFTWARE，脚本缺陷）**——与任何内容判定无关。**路径错一律 10，不得与 P1 混用**（旧版 `m-gate-check` 把「定稿/证据包不存在」判 1，会让 `final-check` 误渲染成「存在 P1 残留，可触发 T5 修订」）。另：`model-routing.mjs` 用自有码 **`4`**＝需人工决定（旧版 `3` 与 M 门 `3` 撞码）；非闸门工具（`token-budget`/`md2html`/`pdfcheck`/`token-cost`）不共用本语义，见各自头注释与 `docs/troubleshooting.md §8`。
+- 🔒 **机制文件写保护（v2.5.2-dsh.13；v18.1.0 部分机械化）**：`SKILL.md` / `AGENTS.md` / `references/**` / `scripts/**` / `cordis.patch.yml` 属**机制文件**——任何角色（含主控与子代理）**不得**用 write/edit 改动；改进动议只写 `audits/反哺报告-vN.md`，由主人在 host shell apply。**改机制文件 = P0 违规，本次交付作废**。v18.1.0 起 bundle 部署下这条由 prompt 升级为**机制否决**（入口注册全局 `ctx.tools.guard()`，命中即拒绝；主人授权走 `LUNHENG_ALLOW_MECH_EDIT=1`）；**残余缺口**：guard 只看工具调用，`pwsh` 不经此门——「比 prompt 强、比机制强制弱」。详见 `references/_shared/DSH-集成方案.md` §6。
+- 🧾 **闸门必须留机械证据（v2.5.2-dsh.13 新增；v18.0.2 统一退出码；v18.0.5 补异常路径）**：T2.5/T7.5 与 M 门**不得只凭自述**——交接报告须附**脚本 exit code + 产物路径**（如 `m-gate-check.mjs … --report <项目>/final/M-Gate-Report.json` 的 exit 与报告路径）。exit 语义：`0` 通过 / `1` P1 失败 / `2` P0 失败 / `3` 仅 P2·soft·SKIP（需 LLM 复核，**不得**当通过）/ `10` **参数或路径错误**（含**异常路径**：v18.0.5 起所有随包脚本装 `_lib/exit-guard.mjs`，fs 类异常统一映射为 10，不再让未捕获异常退化成 1）/ `70` **内部错误（EX_SOFTWARE，脚本缺陷）**——与任何内容判定无关。**路径错一律 10，不得与 P1 混用**（`m-gate-check` 曾把「定稿/证据包不存在」判 1，`final-check` 会误渲染成「有 P1 残留、可触发 T5 修订」）。另：`model-routing.mjs` 用自有码 **`4`**＝需人工决定（旧版 `3` 与 M 门 `3` 撞码）；非闸门工具（`token-budget`/`md2html`/`pdfcheck`/`token-cost`）不共用本语义，见各自头注释与 `docs/troubleshooting.md §8`。
+- 🛠 **原生工具 / 人类命令（v18.1.0，可选）**：bundle 部署下入口注册**只读**工具 `lunheng_m_gate`（M 门预检，返回 `exit/pass/p0/p1/p2` 规范值）与 `lunheng_char_count`（汉字数）——**清单里有就优先用**（省一次 `pwsh` + stdout 解析），**没有就照旧 `pwsh` 调脚本**；两条路径等价，脚本仍是唯一真源。主人可用 **`/lunheng-status [项目名]`** 自查进展（读 `status.md` + `进展-主人版.md`，**不产生模型消息**）。
 - 🪪 **技能来源自检（v2.5.2-dsh.13；v18.0.0 对齐官方 rank 表；v18.0.5 修两处官方事实）**：启动时用 `read` 核对本文件版本头「> 版本：v…」与期望版本一致；**不一致即停机**并报告主人「技能来源可疑」——同名 skill 按 **rank 就近取胜**，低 rank 会**静默顶替**高 rank 且无告警。官方 rank 表（`docs/subsystems/skills` 子系统契约）：
 
   | rank | source | 根目录 |
@@ -93,7 +94,7 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 
 ## ⚡ 启动速查表
 
-- 版本：v18.0.5｜角色：T0 主控（= T8 终检执行者）＋ T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / T8 终检（主控亲执行）/ T9 审稿（默认选中，学术必选）
+- 版本：v18.1.0｜角色：T0 主控（= T8 终检执行者）＋ T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / T8 终检（主控亲执行）/ T9 审稿（默认选中，学术必选）
 - Phase：0 定题 → 1 检索(T1∥T2∥T3) → 2 分析 → 2.5 大纲(人) → 3 写作 → 3.5 洞察(人) → 3.6 批判 → 4 审计 → 4.5 审稿+G14 → 5 终检(人)
 - 工具：subagent=派发（分档预设按角色选 subagent_retrieval/strong/audit）｜list_agents=查看｜todo_write=计划｜web_search/web_fetch=检索｜pwsh=命令｜edit/write=文件
 - 闸门：T2.5（检索→分析）/ T7.5（审计→终检）；M 门 exit 0；修订回环双轨 ≤2 轮（A 轨）
@@ -169,7 +170,7 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 ## 核心原则
 
 1. **证据底座先行 + 三角验证**：论点必须能映射 [Lxx]+[Dxx]+[Cxx]（涉企业行为/事件必须配案例卡，至少两项齐全）；检索不到标缺口，严禁编造。
-2. **人在环四节点**：P0 定题 / P2.5 大纲 / P3.5 洞察 / P5 终稿 必须主人过目（P3.6 T6 批判是内部动作，主人不介入）。
+2. **人在环四节点**：P0 定题 / P2.5 大纲 / P3.5 洞察 / P5 终稿 必须主人过目（P3.6 T6 批判是内部动作，主人不介入）。**v18.1.0**：四门统一用 `ask_user_question` 提问（选项首个 = 主控建议并标「（推荐）」，回填进确认单 §6）；**子代理问不了**（owned child 无人应答会被拒）——闸门只能留在主控；工具失败 ≠ 同意（退回书面确认单并记失败码）。
 3. **反方论证强制**：每个核心论点配「可能的反驳 + 回应策略」。
 4. **独立审计**：T7 只审不改、与写手分离；引用分级抽验（C 100% / B ≥50% / A ≥10%）；G2.5 案例核验（多源交叉/时间锚点/立场并列）。
 5. **模型分工**：检索便宜快 / 分析写作强推理 / 审计顶配 / 主控路由（按本机可用模型调整）。
