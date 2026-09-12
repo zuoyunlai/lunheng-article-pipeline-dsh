@@ -12,6 +12,8 @@
 //   旧版在卡内完全无信任级别 token 时默认填「已发布」——等于用**最高信任档**掩盖未核验数据，
 //   且会让 M-Form-6 的判定正则机械判过（证据链污染，比误删更隐蔽）。
 //   现在：无 token → 该条**不写**、列入未决清单，脚本以 exit 1 收尾，由 T2/人工显式判定后重跑。
+//   ⚠️ 退出码命名空间（v18.0.2 澄清）：本脚本**不是流水线闸门**，`1` 在本脚本里表示「有未决条目/用法错」，
+//      与 M 门约定（`1`=P1 内容失败 / `10`=参数路径错）**不共用语义**；但「参数/路径错」仍统一用 `10` 以降低误读。
 import { readFileSync, writeFileSync, copyFileSync, existsSync } from 'node:fs';
 import { dataCardIds } from './_lib/refs.mjs';              // 引用编号口径真源
 import { TRUST_COMPLIANT_RE, pickTrustToken } from './_lib/trust.mjs';   // 信任级别口径真源
@@ -22,7 +24,7 @@ const write = rawArgs.includes('--write');
 const files = rawArgs.filter((a) => !a.startsWith('--'));
 if (files.length === 0) {
   console.error('用法: node normalize-trust-level.mjs <数据卡.md> ... [--write]（默认 dry-run，不落盘）');
-  process.exit(1);
+  process.exit(10); // v18.0.2：参数错统一 10（下方「有未决条目」仍为 1，属本脚本自有语义）
 }
 // 信任级别口径已上收到 _lib/trust.mjs（TOKENS / COMPLIANT → TRUST_COMPLIANT_RE / pickTrustToken）
 const unresolved = [];

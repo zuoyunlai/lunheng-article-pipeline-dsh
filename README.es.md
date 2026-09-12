@@ -1,6 +1,6 @@
 # Lunheng (lunheng-article-pipeline) — pipeline multiagente para textos largos
 
-> 版本：v18.0.1（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.0.2（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > Un bundle de DeepSeek Harness (DSH) que registra una skill de agente bajo demanda. La skill convierte la producción de textos largos —artículos académicos, análisis sectorial, comentario económico y artículos extensos— en una **pipeline de 9 roles con intervención humana**.
 
@@ -96,7 +96,7 @@ La capa patch hace dos cosas: **inserta una fila para este paquete** (`- id: lun
 Las versiones se publican **solo por tag**; `npm publish` local está prohibido (evita las puertas de CI y la procedencia OIDC, y una versión npm nunca se puede sobrescribir).
 
 ```sh
-git tag v18.0.1 && git push origin v18.0.0   # un tag por push (GitHub: >3 tags en un push no dispara workflow)
+git tag v18.0.2 && git push origin v18.0.0   # un tag por push (GitHub: >3 tags en un push no dispara workflow)
 # publish.yml ejecuta: puerta 1 consistencia → puerta 2 empaquetado → puerta 3 higiene → tests
 #   → tag/versión iguales → guarda de idempotencia → OIDC publish --provenance --tag dsh → auditoría posterior
 ```

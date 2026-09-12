@@ -25,7 +25,7 @@ const project = args.find((a, i) => !a.startsWith('--') && (reportIdx < 0 || i !
 
 if (!project || !existsSync(project)) {
   console.error('用法: node scripts/final-check.mjs <run/项目名> [--no-summary] [--json] [--report <path>]');
-  process.exit(2);
+  process.exit(10); // v18.0.2 修：参数/路径错误一律 10（旧版 2 与「P0 致命」撞码，且与下方推荐语声称的 else=exit 10 自相矛盾）
 }
 
 const final = join(project, 'final', '定稿.md');

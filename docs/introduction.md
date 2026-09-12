@@ -2,7 +2,7 @@
 
 > **论衡（lunheng-article-pipeline）** 是一个多 Agent 深度长文生产流水线，DeepSeek Harness（dsh）bundle 插件。它不是让一个 AI 直接写文章，而是让一支 **9 个 AI 角色组成的"论文生产小队"** 按既定协议协作：定题 → 三线并行检索 → 分析 → 写作 → 批判 → 审计 → 审稿 → 终检。每一步都有明确产出物、交接报告与质量闸门，最终交付**有证据底座、有反方论证、有独立审计、有人工核验节点**的文章。
 
-> 适用：公众号深度长文、研究报告、学术论文、商业评论、行业分析——任何"要站得住脚"的长内容。当前版本 **v18.0.1**（DSH 独立版本）。
+> 适用：公众号深度长文、研究报告、学术论文、商业评论、行业分析——任何"要站得住脚"的长内容。当前版本 **v18.0.2**（DSH 独立版本）。
 
 ---
 
@@ -152,6 +152,7 @@ dsh plugin --profile web add lunheng-article-pipeline
 
 | 版本 | 内容 |
 |---|---|
+| **v18.0.2** | **冗余审计后的缺陷修复版**：修掉 **M-Form-9 在 Phase 4 静默失效**（「定位任务简报」的第二份旧实现，审 `drafts/初稿-vN.md` 时「图位不足」不判）；统一**退出码**（路径/参数错一律 `10`，`model-routing` 的 `3`→`4` 以避免与 M 门撞码）；脚本数量口径三处统一为指针；补齐规格↔脚本双向漂移；新增两条机检（规则 ⑩b 脚本计数全库对账、卫生门 ⑧ 退出码表） |
 | **v18.0.1** | **缺陷修复版**：补回 `cordis.patch.yml` 的**本包自注册行**——v18.0.0 删旧挂载行时漏补，导致 `dsh plugin add` 装上的包里入口从不被 import、**技能不注册**；新增 `tests/bundle-contract.test.mjs` 机械防守（并反向验证该守卫能抓到已发布的 18.0.0 产物） |
 | **v18.0.0** | 包形态升级为官方插件形态：新增包入口 `lib/index.js`（经 `ctx.skills.register()` 注册技能，`resourceBase` 指向随包技能目录）+ `main`/`files`/`packageManager`/optional peer 补齐；`cordis.patch.yml` 只保留 3 档 subagent 工具（删除技能挂载行与该处加载期 `!!js`）；根 README 五语（英文源 + zh/es/pt/hi）；新增入口回归测试；机检与自检脚本多项缺陷修复（M 门假阳性、`.dsh` 部署布局兼容、`--project` 成本统计） |
 | **v17.0.0**（未单独发布，内容随 v18.0.0 首发） | 版本号方案迁移 `2.5.2-dsh.N` → `N.0.0`（npm 强制 semver，`dsh.17.0` 形态发布不了）+ 端到端测试反哺的 6 处机检假阳性修复 |
@@ -169,7 +170,7 @@ dsh plugin --profile web add lunheng-article-pipeline
 ## 获取方式
 
 - **GitHub（DSH bundle）**：https://github.com/zuoyunlai/lunheng-article-pipeline-dsh
-- **npm**：`lunheng-article-pipeline@dsh`（dist-tag `dsh` = 最新 DSH 迭代版）；锁定具体版本可写 `@18.0.1`
+- **npm**：`lunheng-article-pipeline@dsh`（dist-tag `dsh` = 最新 DSH 迭代版）；锁定具体版本可写 `@18.0.2`
 - **历史版本线（独立化前）**：https://github.com/zuoyunlai/lunheng-article-pipeline
 
 ---

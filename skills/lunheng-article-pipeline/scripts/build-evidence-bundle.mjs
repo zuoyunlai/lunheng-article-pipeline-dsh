@@ -23,7 +23,7 @@ const wantSummary = args.includes('--summary') || wantDeepSummary;
 // --source <path>：显式指定审计视图的正文源（v2.5.2-dsh.15 新增；相对路径按项目目录解析）
 const sourceIdx = args.indexOf('--source');
 const explicitSource = (sourceIdx >= 0 && args[sourceIdx + 1]) ? args[sourceIdx + 1] : null;
-if (sourceIdx >= 0 && !explicitSource) { console.error('--source 缺少值'); process.exit(2); }
+if (sourceIdx >= 0 && !explicitSource) { console.error('--source 缺少值'); process.exit(10); } // v18.0.2：参数/路径错统一 10
 // --project <名> 或第一个位置参数（旧版表达式自引用，--project 的值从未被使用）
 // v2.5.2-dsh.15：位置参数解析必须排除**旗标的值**，否则 `--source drafts/初稿-v1.md <项目>` 会把源路径当成项目
 const projectIdx = args.indexOf('--project');
@@ -35,13 +35,13 @@ const positional = args.filter((a, i) => !a.startsWith('--') && !flagValueIdx.ha
 const project = (projectIdx >= 0 && args[projectIdx + 1]) ? args[projectIdx + 1] : positional[0];
 if (!project || !existsSync(project)) {
   console.error('用法: node build-evidence-bundle.mjs <run/项目名> [--project <名>] [--source <正文路径>] [--summary] [--deep-summary]');
-  process.exit(2);
+  process.exit(10); // v18.0.2：参数/路径错统一 10
 }
 
 // --source 存在性**前置**校验（v2.5.2-dsh.15）：fail fast——否则会先复制完整个证据包才报错
 if (explicitSource) {
   const p0 = existsSync(explicitSource) ? explicitSource : join(project, explicitSource);
-  if (!existsSync(p0)) { console.error(`--source 指定的正文源不存在: ${explicitSource}`); process.exit(2); }
+  if (!existsSync(p0)) { console.error(`--source 指定的正文源不存在: ${explicitSource}`); process.exit(10); } // v18.0.2：路径错 → 10（fail-fast 时机不变）
 }
 
 // 收集规则：源相对路径 → 目标文件名（找不到就跳过并记录）
@@ -150,7 +150,7 @@ if (wantSummary) {
   const resolveSource = () => {
     if (explicitSource) {
       const p = existsSync(explicitSource) ? explicitSource : join(project, explicitSource);
-      if (!existsSync(p)) { console.error(`--source 指定的正文源不存在: ${explicitSource}`); process.exit(2); }
+      if (!existsSync(p)) { console.error(`--source 指定的正文源不存在: ${explicitSource}`); process.exit(10); } // v18.0.2：路径错 → 10
       return { path: p, name: basename(p).replace(/\.md$/, ''), kind: /定稿/.test(basename(p)) ? 'final' : 'draft' };
     }
     const fin = join(project, 'final', '定稿.md');

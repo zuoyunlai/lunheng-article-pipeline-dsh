@@ -165,6 +165,48 @@ for (const p of scanned) {
 }
 notes.push(`⑦ 凭据扫描：${scanned.length} 个文本文件 × ${SECRET_PATTERNS.length} 类模式${secretHits ? '（命中 ' + secretHits + '）' : '，无命中'}`)
 
+// ⑧ 退出码契约表（v18.0.2 新增）
+//    动机：退出码是**被别的组件消费的输出契约**（`final-check` 的推荐语、主控的闸门判定），
+//    实测出现过两类撞码且**此前无门可拦**：
+//      · `m-gate-check` 把「定稿/证据包不存在」判 exit 1 → 伪装成「P1 内容失败」，主控据此去改正文；
+//      · `model-routing` 用 exit 3 表示「需人工决定」→ 与 M 门 3（仅 P2，**可放行**）撞码。
+//    规则：① 脚本内 `process.exit(...)` 用到的数字必须是表内声明的子集；
+//          ② 表内每个码必须在脚本里**以字面量出现**（防表格腐烂成空想）；
+//          ③ 表外脚本一律忽略（CI 专用脚本另有 0/1 命名空间）。
+//    改退出码 ⇒ 必须同步本表 + `docs/troubleshooting.md §8` + 相关测试。
+const EXIT_CONTRACT = {
+  'm-gate-check.mjs': [0, 1, 2, 3, 10],
+  'final-check.mjs': [0, 1, 2, 3, 10],
+  'build-evidence-bundle.mjs': [0, 10],
+  'count-chars.mjs': [0, 10],
+  'normalize-trust-level.mjs': [0, 1, 10],
+  'model-routing.mjs': [0, 1, 4],
+  'consistency-check.mjs': [0, 1],
+  'token-budget.mjs': [0, 1, 2],
+  'token-cost.mjs': [0, 1],
+  'md2html.mjs': [0, 1, 2],
+  'pdfcheck.mjs': [0, 1],
+}
+const scriptDir = join(ROOT, 'skills', 'lunheng-article-pipeline', 'scripts')
+for (const [name, allowed] of Object.entries(EXIT_CONTRACT)) {
+  const p = join(scriptDir, name)
+  if (!existsSync(p)) { fail('exit-code', `退出码表登记的脚本不存在：${name}`); continue }
+  const text = readFileSync(p, 'utf8')
+  const used = new Set()
+  for (const m of text.matchAll(/process\.exit\(([^)]*)\)/g)) {
+    for (const n of m[1].matchAll(/\b\d+\b/g)) used.add(Number(n[0]))
+  }
+  const unexpected = [...used].filter((c) => !allowed.includes(c))
+  if (unexpected.length) {
+    fail('exit-code', `${name}: 使用了表外退出码 ${unexpected.join(', ')}（已声明 ${allowed.join('/')}）——若是有意新增，请同步 repo-hygiene 的 EXIT_CONTRACT 与 docs/troubleshooting.md §8`)
+  }
+  const phantom = allowed.filter((c) => !new RegExp(`\\b${c}\\b`).test(text))
+  if (phantom.length) {
+    fail('exit-code', `${name}: 契约表声明了 ${phantom.join(', ')}，但脚本里找不到该字面量——表格已过期，请核对`)
+  }
+}
+notes.push(`⑧ 退出码表：${Object.keys(EXIT_CONTRACT).length} 个随包脚本的 exit code 与契约一致`)
+
 console.log('\n=== 仓库机械卫生门（repo-hygiene-check）===')
 for (const n of notes) console.log('  ✓ ' + n)
 if (fails.length) {

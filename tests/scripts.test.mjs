@@ -202,9 +202,10 @@ test('build-evidence-bundle：尚无正文也要出素材阶段视图；--source
   const proj = join(d, 'run', 'proj')
   mkdirSync(join(proj, 'data'), { recursive: true })
   writeFileSync(join(proj, 'data', '数据卡.md'), '# 数据卡\n\n## [D01] 某公报\n信任级别：已发布\n')
-  // --source 指向不存在文件：必须 exit 2，且不得先把证据包复制一半（先于成功运行断言，防被前一次的产物干扰）
+  // --source 指向不存在文件：必须 exit 10，且不得先把证据包复制一半（先于成功运行断言，防被前一次的产物干扰）
+  // v18.0.2：参数/路径错统一 10（旧断言为 2 —— 与「P0 致命」撞码，已随退出码统一而更新）
   const bad = run([join(SCRIPTS, 'build-evidence-bundle.mjs'), proj, '--summary', '--source', 'nope.md'])
-  assert.equal(bad.code, 2, '--source 缺失应 exit 2')
+  assert.equal(bad.code, 10, '--source 缺失应 exit 10（v18.0.2 起路径/参数错一律 10）')
   assert.ok(!existsSync(join(proj, 'final', '证据包')), '不得先复制证据包再报错（fail fast）')
   const r = run([join(SCRIPTS, 'build-evidence-bundle.mjs'), proj, '--summary'])
   assert.equal(r.code, 0)
@@ -1488,4 +1489,57 @@ test('主人侧三件套与输入模板齐备，且确认单含回填段与 Phas
   const bogus = run([join(SCRIPTS, 'token-cost.mjs'), '--bogus'])
   assert.equal(bogus.code, 1, '未知参数应 exit 1')
   assert.match(bogus.out, /用法/, '未知参数应附打印用法（旧版只有一行报错）')
+})
+
+// ── v18.0.2 新增回归（D1 静默失效门 + 退出码契约）─────────────────────────────
+
+test('m-gate-check M-Form-9：审 drafts/初稿-vN.md 时必须从 01-任务简报.md 取「拍板图位数」（v18.0.2 修 D1 静默失效）', () => {
+  const d = tmp()
+  const proj = join(d, 'run', 'proj')
+  const fin = join(proj, 'final')
+  const ev = join(fin, '证据包')
+  mkdirSync(ev, { recursive: true })
+  mkdirSync(join(proj, 'drafts'), { recursive: true })
+  // 简报拍板 3 张图；初稿只标 2 个图位 → 期望 M-Form-9 报「图位不足」
+  writeFileSync(join(proj, '01-任务简报.md'), '# 任务简报\n\n图位数量：3\n')
+  writeFileSync(join(ev, '数据卡.md'), '# 数据卡\n\n## 📇 索引段\n\n[D01] 数值 1 ｜ 来源 ｜ 论点1\n\n## 正文\n\n### [D01] 某公报\n信任级别：已发布\n')
+  writeFileSync(join(ev, '文献卡.md'), '# 文献卡\n\n## 📇 索引段\n\n[L01] 某文 ｜ 主题 ｜ 论点1\n\n## 正文\n\n### [L01] 某文\n信任级别：已发布\n')
+  const draft = join(proj, 'drafts', '初稿-v1.md')
+  writeFileSync(draft, '# 标题\n\n## 摘要\n\n正文 [L01][D01]。\n\n[图1：甲]\n\n[图2：乙]\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
+  // 审「初稿」而非 final/定稿.md —— 旧实现下 briefPath 会退回初稿自身 → pledged=0 → 该项静默不判
+  const r = run([join(SCRIPTS, 'm-gate-check.mjs'), draft, ev])
+  const item = parseJson(r).results.find((x) => x.gate.startsWith('M-Form-9'))
+  assert.ok(item, '必须有 M-Form-9 结果项')
+  assert.match(item.detail, /图位不足/, '必须从上级目录的 01-任务简报.md 取到拍板 3 张图并判「图位不足」：' + item.detail)
+  assert.match(item.detail, /记为 3 张/, '报错文案必须写明拍板数来自简报')
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('退出码契约：路径/参数错一律 exit 10（v18.0.2 统一，防与 P1/P0 撞码）', () => {
+  const d = tmp()
+  const proj = join(d, 'run', 'proj')
+  mkdirSync(proj, { recursive: true })
+  // m-gate-check：定稿不存在 / 证据包目录不存在 —— 旧版均为 1（= 「P1 内容失败」），会误导主控去改正文
+  const g1 = run([join(SCRIPTS, 'm-gate-check.mjs'), join(proj, 'final', '定稿.md'), join(proj, 'final', '证据包')])
+  assert.equal(g1.code, 10, 'm-gate-check 定稿/证据包路径不存在应 exit 10')
+  assert.match(g1.out + g1.err, /定稿不存在/, '应给出可读原因')
+  // final-check：项目目录不存在
+  const g2 = run([join(SCRIPTS, 'final-check.mjs'), join(d, 'nope')])
+  assert.equal(g2.code, 10, 'final-check 项目路径不存在应 exit 10')
+  // count-chars：文件不存在 / 缺参
+  const g3 = run([join(SCRIPTS, 'count-chars.mjs'), join(d, 'nope.md')])
+  assert.equal(g3.code, 10, 'count-chars 文件不存在应 exit 10')
+  const g4 = run([join(SCRIPTS, 'count-chars.mjs')])
+  assert.equal(g4.code, 10, 'count-chars 缺参应 exit 10')
+  // normalize-trust-level：缺参（其「有未决条目」仍为 1，属自有语义）
+  const g5 = run([join(SCRIPTS, 'normalize-trust-level.mjs')])
+  assert.equal(g5.code, 10, 'normalize-trust-level 缺参应 exit 10')
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('model-routing：退出码 3 已改为 4（避免与 M 门「仅 P2 可放行」撞码）', () => {
+  const src = readFileSync(join(SCRIPTS, 'model-routing.mjs'), 'utf8')
+  assert.ok(!/process\.exit\(3\)/.test(src), 'model-routing 不得再用 exit 3')
+  assert.match(src, /process\.exit\(anyMissing \? 4 : 0\)/, '缺档位的退出码应为 4')
+  assert.match(src, /返回码：0 = 三档都有主选；4 =/, '头注释必须写明新的返回码语义')
 })

@@ -9,8 +9,8 @@ import { readFileSync, existsSync } from 'node:fs';
 import { HAN_RE as HAN } from './_lib/han.mjs';   // 汉字口径唯一真源（v2.5.2-dsh.13 抽 _lib）
 
 const [, , file, flag] = process.argv;
-if (!file) { console.error('用法: node count-chars.mjs <文件.md> [--full | --summary]'); process.exit(1); }
-if (!existsSync(file)) { console.error(`文件不存在: ${file}`); process.exit(1); }
+if (!file) { console.error('用法: node count-chars.mjs <文件.md> [--full | --summary]'); process.exit(10); } // v18.0.2：参数/路径错统一 10
+if (!existsSync(file)) { console.error(`文件不存在: ${file}`); process.exit(10); } // v18.0.2：同上
 
 const text = readFileSync(file, 'utf8');
 

@@ -292,6 +292,36 @@ if (declaredCount && Number(declaredCount) !== diskScripts.length) {
   errors.push(`[P1 白名单数量不符] SKILL.md 声明 ${declaredCount} 个 ≠ 磁盘 ${diskScripts.length} 个`);
 }
 
+// ⑩b 脚本计数全库对账（v18.0.2 新增）
+//   教训：白名单行写 11 个（正确），而 glossary 写「随包 9 个」、SKILL.md 另一处写「共 10 个」——
+//   规则 ⑩ 只核白名单那一行，另两处长期失真且无门可拦（"多宿主事实"的典型代价）。
+//   本规则把「任何对随包脚本数量的断言」都拉进对账：不等于磁盘真值即 P1。
+//   CHANGELOG 豁免（历史段记录当时事实，不追溯改写）。
+const SCRIPT_COUNT_CLAIMS = [
+  /随包\s*\*{0,2}\s*(\d+)\s*个/g,                        // 「随包 **9 个** `scripts/*.mjs`」
+  /随包脚本[^\n。]{0,8}?(\d+)\s*个/g,                    // 「随包脚本 10 个」/「随包脚本 \| 11 个」
+  /共\s*(\d+)\s*个[^\n。]{0,6}脚本/g,                    // 「共 10 个运行时脚本」
+  /(\d+)\s*个\s*\*{0,2}零依赖[^\n]{0,6}\.mjs/g,          // 五语 README「11 个零依赖 .mjs 机械校验脚本」
+  /(\d+)\s*个\s*\*{0,2}门禁脚本/g,                       // 「11 个门禁脚本」
+];
+const claimTargets = [...active, ...(existsSync(REPO_ROOT) ? walk(REPO_ROOT) : [])];
+for (const f of claimTargets) {
+  if (f.endsWith('CHANGELOG.md')) continue;
+  const rel = relative(REPO_ROOT, f).replaceAll('\\', '/');
+  readFileSync(f, 'utf8').split('\n').forEach((l, i) => {
+    for (const re of SCRIPT_COUNT_CLAIMS) {
+      for (const m of l.matchAll(re)) {
+        if (Number(m[1]) !== diskScripts.length) {
+          errors.push(
+            `[P1 脚本计数漂移] ${rel}:${i + 1} 写 ${m[1]} 个 ≠ 磁盘 ${diskScripts.length} 个（` +
+              `唯一真源 = SKILL.md「随包脚本白名单」行；其余处请改指针或同步数字）`,
+          );
+        }
+      }
+    }
+  });
+}
+
 // ⑪ CHANGELOG 当前版本段存在性（v2.5.2-dsh.13 新增，教训：dsh.12 的 bump 提交标题声称含 CHANGELOG 实际未写）
 const clPath = join(REPO_ROOT, 'CHANGELOG.md');
 if (existsSync(clPath)) {

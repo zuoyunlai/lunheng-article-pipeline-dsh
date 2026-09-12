@@ -6,7 +6,7 @@
 
 ## 版本号约定
 
-**v17.0.0 起：版本号 = 纯语义化版本，迭代号进 major**——`<迭代号>.0.0`（本轮 `18.0.0`；同轮修补 `18.0.1`、小步改进 `18.1.0`）。DSH 版独立维护、独立版本线。
+**v17.0.0 起：版本号 = 纯语义化版本，迭代号进 major**——`<迭代号>.0.0`（本轮 `18.0.0`；同轮修补 `18.0.1` / `18.0.2`、小步改进 `18.1.0`）。DSH 版独立维护、独立版本线。
 
 > **为什么不是 `dsh.17.0`**：npm 强制 semver，三段必须是数字；`dsh` 只能作 prerelease/build 后缀（实测 `npm publish` 对 `dsh.17.0` 直接 `Invalid version`）。
 > **历史形态** `2.5.2-dsh.N`（截至 `2.5.2-dsh.17`）仍被一致性规则 ① 兼容识别（CHANGELOG 历史段与旧注解里都还有）。
@@ -27,7 +27,7 @@
    node --test "tests/**/*.test.mjs"
    ```
 5. 提交并推送分支；
-6. **发布 = 只推 tag**：`git tag v18.0.1 && git push origin v18.0.0`（tag 必须等于 `v` + `package.json.version`，publish 工作流会校验）
+6. **发布 = 只推 tag**：`git tag v18.0.2 && git push origin v18.0.0`（tag 必须等于 `v` + `package.json.version`，publish 工作流会校验）
    - **发布前多跑一步打包产物验证**：`npm pack` 后解包，确认新增脚本/库/入口随包且能从解包副本运行（两条历史教训：`_lib/` 重构后必须确认相对 `import` 未因 `files` 白名单而丢失；入口移入 `lib/` 后必须确认 `apply` 真能读到 `SKILL.md`——后者现由 `tests/entry.test.mjs` 在 CI 里常驻防守）
    - ⚠️ **一次只能推 1 个 tag**：GitHub 对「单次 push 超过 3 个 tag」**不触发任何 workflow**（实测：一次推 4 个 tag → 0 个运行）；
    - ⚠️ **禁止本地 `npm publish`**（会绕过 CI 三道门与 OIDC provenance，且 npm 版本不可覆盖）；
@@ -76,7 +76,7 @@ npm 版本**不可覆盖**：一旦某版本发布，仓库里**不得**再改�
 **发布 = 推 tag**，由 `.github/workflows/publish.yml` 以 **OIDC Trusted Publishing + `--provenance`** 完成：
 
 ```sh
-git tag v18.0.1 && git push origin v18.0.0   # 工作流会校验 tag == v + package.json.version
+git tag v18.0.2 && git push origin v18.0.0   # 工作流会校验 tag == v + package.json.version
 ```
 
 > ⚠️ **不要在本机 `npm publish`**：会绕过 CI 三道门与来源证明，且 npm 版本**不可覆盖**（发错只能 bump 重发）。

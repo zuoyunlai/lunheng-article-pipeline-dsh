@@ -17,7 +17,9 @@
 //   node scripts/model-routing.mjs [--dsh-home <path>] [--json] [--no-probe] [--prefer-remote]
 //     · 默认**自动探测本地 provider**（仅 `127.0.0.1|localhost`，3s 超时，零外发、不读密钥；`--no-probe` 关闭）
 //     · `--prefer-remote`：忽略本地优先，三档全走远端（等价于主人显式选择「不用本地」）
-// 返回码：0 = 三档都有主选；3 = 有档位无候选或本地不可达且无兜底（需人工决定）；1 = 读不到配置
+// 返回码：0 = 三档都有主选；4 = 有档位无候选或本地不可达且无兜底（需人工决定）；1 = 读不到配置
+//   ⚠️ v18.0.2 修：旧版此处用 `3`，与 M 门约定（`3` = 仅 P2·soft·SKIP，**可放行但需复核**）撞码——
+//      按 M 门文档读 `3` 的调用方会把「本脚本需要人工决定」误读成「只是 P2，可继续」。现改用独立码 `4`。
 // 只读：**从不写** settings.yaml / 环境变量 / 任何配置文件；**从不读取或发送 API Key**（远端一律不探测）。
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -145,7 +147,7 @@ for (const [, p] of providers) {
 const usable = inventory.filter((c) => c.reachable);
 if (usable.length === 0) {
   console.error('没有可用模型（本地不可达且无远端候选）——请检查 settings.yaml 的 provider 配置。');
-  process.exit(3);
+  process.exit(4); // v18.0.2：独立码 4（旧版 3 与 M 门「仅 P2 可放行」撞码）
 }
 
 // ── 四档定义（主人指定表；T9 归入「批判审计」档——推断，见文档注）──
@@ -246,7 +248,7 @@ const out = {
   boundary: '原生「按调用选模型」（list_subagent_models + provider/model 参数）需宿主侧服务与 Agent/preset scope，本包不默认开启（缺服务会在加载期抛错）；见 references/_shared/模型路由.md。',
 };
 
-if (wantJson) { console.log(JSON.stringify(out, null, 2)); process.exit(anyMissing ? 3 : 0); }
+if (wantJson) { console.log(JSON.stringify(out, null, 2)); process.exit(anyMissing ? 4 : 0); } // v18.0.2：3 → 4（避免与 M 门 exit 3 撞码）
 
 const pad = (s, n) => String(s).padEnd(n);
 console.log(`\n=== 能力档路由规划（只读；DSH_HOME=${DSH_HOME}）===`);
@@ -279,4 +281,4 @@ console.log(`\n兜底策略：${out.fallbackPolicy}`);
 console.log(`安全默认：${out.safeDefault}`);
 console.log(`一键退路：${out.killSwitch}`);
 console.log(`边界：${out.boundary}\n`);
-process.exit(anyMissing ? 3 : 0);
+process.exit(anyMissing ? 4 : 0); // v18.0.2：3 → 4（避免与 M 门 exit 3 撞码）

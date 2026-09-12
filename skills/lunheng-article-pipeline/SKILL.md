@@ -1,11 +1,11 @@
 ---
 name: "lunheng-article-pipeline"
-version: "18.0.1"
+version: "18.0.2"
 description: "论衡：DSH 原生多 Agent 深度长文流水线（学术论文 / 商业评论 / 行业分析 / 公众号）。9 个独立角色 T1-T9 + 主控（T0 调度 + T8 终检）；三角验证 + M 门 + G 审计 + 修订回环 ≤2 轮 + 期刊匹配。"
 whenToUse: "需要 ≥2000 字、要求证据可追溯的深度长文（学术论文 / 商业评论 / 行业分析 / 公众号深文），且可接受 4 个人在环节点（Phase 0 / 2.5 / 3.5 / 5）与 1-3 小时流水线时长时使用。改用其他方式的情形：<2000 字短文或即时问答；文学创作（小说 / 诗歌 / 剧本）；需数学推导或实验设计的理工科论文；营销软文；需要一手数据（问卷 / 访谈 / 田野 / 实验）但尚未投喂素材。"
 ---
 
-> 版本：v18.0.1（DSH bundle 插件）
+> 版本：v18.0.2（DSH bundle 插件）
 > **v2.5.2-dsh.8 角色语义定案（主人指令）**：**9 个角色 T1-T9 各自独立、不可相互替代**——T8 终检不是「主控兼做的杂活」而是独立角色（有独立角色卡），只是执行者由主控担任（**主控 = T0 调度 + T8 终检执行双重身份**），不 spawn 子代理；**T9 审稿可选、默认选中、学术论文必选**。
 
 # 多 Agent 深度长文流水线（论文/深度文章生产）
@@ -43,7 +43,7 @@ whenToUse: "需要 ≥2000 字、要求证据可追溯的深度长文（学术�
 - ✅ **随包脚本白名单（v2.5.2-dsh.17 复核为 11 个）**：`scripts/*.mjs` = consistency-check / m-gate-check / md2html / pdfcheck / token-cost / count-chars / build-evidence-bundle / final-check / normalize-trust-level / model-routing / token-budget + 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等）——**受限 shell 使用**（另：`_lib` 子目录为共享库，非入口、不单独调用），非「零 exec」；其余命令须经主人同意。
 - ❌ **不做**：凭据访问 / 浏览器自动化 / 定时任务（除白名单脚本与验证命令外，主控默认不执行任意 shell，LLM 推理判定）。
 - 🔒 **机制文件写保护（v2.5.2-dsh.13 新增）**：`SKILL.md` / `AGENTS.md` / `references/**` / `scripts/**` / `cordis.patch.yml` 属**机制文件**——任何角色（含主控与子代理）**不得**用 write/edit 改动；改进动议一律只写 `audits/反哺报告-vN.md`，由主人在 host shell 手工 apply。**改机制文件 = P0 违规，本次交付作废**。
-- 🧾 **闸门必须留机械证据（v2.5.2-dsh.13 新增）**：T2.5/T7.5 与 M 门**不得只凭自述**——交接报告须附**脚本 exit code + 产物路径**（如 `m-gate-check.mjs … --report <项目>/final/M-Gate-Report.json` 的 exit 与报告路径）。exit 语义：`0` 通过 / `1` P1 失败 / `2` P0 失败 / `3` 仅 P2·soft·SKIP（需 LLM 复核，**不得**当通过）/ `10` 参数路径错误。
+- 🧾 **闸门必须留机械证据（v2.5.2-dsh.13 新增；v18.0.2 统一退出码）**：T2.5/T7.5 与 M 门**不得只凭自述**——交接报告须附**脚本 exit code + 产物路径**（如 `m-gate-check.mjs … --report <项目>/final/M-Gate-Report.json` 的 exit 与报告路径）。exit 语义：`0` 通过 / `1` P1 失败 / `2` P0 失败 / `3` 仅 P2·soft·SKIP（需 LLM 复核，**不得**当通过）/ `10` **参数或路径错误**——**路径错一律 10，不得与 P1 混用**（旧版 `m-gate-check` 把「定稿/证据包不存在」判 1，会让 `final-check` 误渲染成「存在 P1 残留，可触发 T5 修订」）。另：`model-routing.mjs` 用自有码 **`4`**＝需人工决定（旧版 `3` 与 M 门 `3` 撞码）；非闸门工具（`token-budget`/`md2html`/`pdfcheck`/`token-cost`）不共用本语义，见各自头注释与 `docs/troubleshooting.md §8`。
 - 🪪 **技能来源自检（v2.5.2-dsh.13；v18.0.0 对齐官方 rank 表）**：启动时用 `read` 核对本文件版本头「> 版本：v…」与期望版本一致；**不一致即停机**并报告主人「技能来源可疑」——同名 skill 按 **rank 就近取胜**，低 rank 会**静默顶替**高 rank 且无告警。官方 rank 表（`docs/subsystems/skills` 子系统契约）：
 
   | rank | source | 根目录 |
@@ -91,7 +91,7 @@ whenToUse: "需要 ≥2000 字、要求证据可追溯的深度长文（学术�
 
 ## ⚡ 启动速查表
 
-- 版本：v18.0.1｜角色：T0 主控（= T8 终检执行者）＋ T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / T8 终检（主控亲执行）/ T9 审稿（默认选中，学术必选）
+- 版本：v18.0.2｜角色：T0 主控（= T8 终检执行者）＋ T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / T8 终检（主控亲执行）/ T9 审稿（默认选中，学术必选）
 - Phase：0 定题 → 1 检索(T1∥T2∥T3) → 2 分析 → 2.5 大纲(人) → 3 写作 → 3.5 洞察(人) → 3.6 批判 → 4 审计 → 4.5 审稿+G14 → 5 终检(人)
 - 工具：subagent=派发（分档预设按角色选 subagent_retrieval/strong/audit）｜list_agents=查看｜todo_write=计划｜web_search/web_fetch=检索｜pwsh=命令｜edit/write=文件
 - 闸门：T2.5（检索→分析）/ T7.5（审计→终检）；M 门 exit 0；修订回环双轨 ≤2 轮（A 轨）
@@ -221,5 +221,5 @@ whenToUse: "需要 ≥2000 字、要求证据可追溯的深度长文（学术�
 ## 📦 本包为「DSH 独立技能包（使用者发布版）」
 
 > - 已移除：历史维护脚本与归档（演进记录见 git log）；`.github/workflows/`（CI 一致性自检 + 发布）
-> - 运行时脚本（主控按需调用，**共 10 个**，单一真源见 §执行能力边界）：consistency-check / m-gate-check / md2html / pdfcheck / token-cost / count-chars / build-evidence-bundle / final-check / normalize-trust-level / model-routing
+> - 运行时脚本（主控按需调用）：**清单与数量见上方 §执行能力边界 的「随包脚本白名单」——该行是唯一真源**（v18.0.2 起，本处不再复述数量与清单；旧版此处写「共 10 个」且漏 `token-budget`，与白名单行的 11 个冲突）
 > - 教训沉淀为「建议待主人 review」，不自动写入共享状态；完整设计见 GitHub 仓库：https://github.com/zuoyunlai/lunheng-article-pipeline-dsh

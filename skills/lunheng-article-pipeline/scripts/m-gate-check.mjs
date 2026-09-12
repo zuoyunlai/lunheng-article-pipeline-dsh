@@ -51,12 +51,28 @@ if (!draftPath || !evDir) {
 }
 if (!existsSync(draftPath)) {
   console.error(`定稿不存在: ${draftPath} —— 请先产出 final/定稿.md 再跑 M 门预检`);
-  process.exit(1);
+  process.exit(10);   // v18.0.2 修：路径错误一律 10（旧版 1 与「P1 内容失败」撞码 → final-check 会误渲染成「存在 P1 残留，可触发 T5 修订」）
 }
 if (!existsSync(evDir)) {
   console.error(`证据包目录不存在: ${evDir} —— 请先收集证据包再跑 M 门预检`);
-  process.exit(1);
+  process.exit(10);   // v18.0.2 修：同上
 }
+
+// === 项目定位共用助手（v18.0.2：从 M-Integrity-1 段提到模块级，供 M-Form-9 复用）===
+// 从给定目录向上查找首个含 `01-任务简报.md` 的目录——兼容 `final/定稿.md` 与 `drafts/初稿-vN.md`
+//   两种被审场景。旧实现用 `draftPath.replace(/final[\\/]定稿\.md$/, …)`，对 drafts/ 不命中
+//   → 把被审正文当简报读（M-Integrity-1 于 v18.0.0 已修，M-Form-9 的第二份拷贝于 v18.0.2 修）。
+const findBriefUpward = (startDir) => {
+  let d = startDir;
+  for (let i = 0; i < 8; i++) {
+    const p = join(d, '01-任务简报.md');
+    if (existsSync(p)) return p;
+    const parent = dirname(d);
+    if (parent === d) break; // 已到文件系统根
+    d = parent;
+  }
+  return null;
+};
 // === 证据包完整性前置提示（v18.0.0 新增；发布前修订为「告警不中止」）===
 // 实战教训：主控首跑误传 `analysis/`（非证据包目录）→ 脚本继续执行并产出 **8 个假 P0**
 //   （「数据卡.md 不在证据包」/「文献卡无对应条目」…），主控需逐项读 detail 文字推断哪些是路径造成的。
@@ -479,8 +495,12 @@ try {
   // 图位数量对账（拍板数取自任务简报，best-effort 解析；解析不到则不判，避免误 P0）
   let pledged = 0, pledgedFrom = '';
   try {
-    const briefPath = draftPath.replace(/final[\\/]定稿\.md$/, '01-任务简报.md');
-    if (existsSync(briefPath)) {
+    // v18.0.2 修（D1，静默失效）：旧实现 `draftPath.replace(/final[\/]定稿\.md$/, …)` 只对 `final/定稿.md`
+    //   生效；被审对象为 `drafts/初稿-vN.md` 时替换不命中 → briefPath 退回正文自身 → pledged 解析不到 → 0
+    //   → **「图位不足」比对在 Phase 4 场景静默不判**（同文件的 M-Integrity-1 曾因同一 bug 失效，其修法即
+    //   findBriefUpward，本处为第二份拷贝）。现统一改用模块级 findBriefUpward。
+    const briefPath = findBriefUpward(dirname(draftPath));
+    if (briefPath && briefPath !== draftPath && existsSync(briefPath)) {
       const b = readFileSync(briefPath, 'utf8');
       const m1 = b.match(/(?:图位|图表)数量\s*[:：]\s*(\d+)/);
       const m2 = b.match(/拍板[^\n。]{0,20}?(\d+)\s*(?:张|个|幅)图/);
@@ -1466,18 +1486,7 @@ try {
   //   **只对 `final/定稿.md` 生效**；被审对象为 `drafts/初稿-vN.md` 时替换不命中 → briefPath 退回初稿自身路径
   //   → 把初稿当简报读 → ① 常驻误报「研究问题段缺失」；② needsT2=0 使「数据条目 ≥ 需求」比较短路
   //   → **该门在 Phase 4 场景事实上静默失效**（实战：本轮审计 drafts/初稿-v1.md 时即如此，因数据远超需求而侥幸无损失）。
-  // 现改为：从被审文件所在目录**向上查找**首个含 `01-任务简报.md` 的目录（兼容 final/ 与 drafts/ 两种场景）。
-  const findBriefUpward = (startDir) => {
-    let d = startDir;
-    for (let i = 0; i < 8; i++) {
-      const p = join(d, '01-任务简报.md');
-      if (existsSync(p)) return p;
-      const parent = dirname(d);
-      if (parent === d) break; // 已到文件系统根
-      d = parent;
-    }
-    return null;
-  };
+  // v18.0.2：实现提到模块级（findBriefUpward），供 M-Form-9 复用——同一 bug 的第二份拷贝已一并修掉。
   const briefPath = findBriefUpward(dirname(draftPath));
   // 自检：解析结果不得与被审正文同路径（同路径 = 「把正文当简报读」）→ 直接报参数/解析错误，禁止静默降级
   if (briefPath && briefPath === draftPath) {

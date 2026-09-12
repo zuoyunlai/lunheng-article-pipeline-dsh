@@ -12,7 +12,7 @@
 ```sh
 # 1. 在 profile 里声明 bundle 依赖（DSH 读 dsh.bundle.patch 找到 cordis.patch.yml 加载）
 dsh plugin --profile web add lunheng-article-pipeline@dsh   # 推荐：跟随最新 DSH 迭代版
-# 锁定具体版本：dsh plugin --profile web add lunheng-article-pipeline@18.0.1
+# 锁定具体版本：dsh plugin --profile web add lunheng-article-pipeline@18.0.2
 
 # 2. （可选）设三档 subagent 工具的 provider/model 环境变量
 #    不设任何变量 = 三档全部继承会话模型（安全默认，单模型用户无需本步）

@@ -1,6 +1,6 @@
 # 论衡 × DSH 能力面集成方案
 
-> **版本**：v18.0.1（新增）
+> **版本**：v18.0.2（新增）
 > **用途**：把论衡的既有机制（11 个门禁脚本 / 并行阶段 / 状态机）**对齐 DSH 已有能力面**，替代平行自建。本文档是**实施方案**——给出契约与示例，改动按需触发，不作为默认执行路径。
 > **依据**：DSH 官方文档 `docs/cookbook/adding-a-tool.md`、`docs/tool-execution-pipeline.md`、`docs/subsystems/*.md`、`docs/capability-seams.md`（知识库副本见 `dsh-plugin-guide/references/official-docs/`）。
 > **当前状态**：三项均**未启用**（默认沿用现状：脚本经 `pwsh` 调用、并行由主控逐次 spawn、状态机为 `status.md`）。
