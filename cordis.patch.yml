@@ -1,4 +1,4 @@
-# lunheng-article-pipeline bundle patch（DSH 原生插件 v18.0.2）
+# lunheng-article-pipeline bundle patch（DSH 原生插件 v18.0.3）
 #
 # 本文件用 DSH cordis-plugin-include 的 `- insert:` 列表语法在 standard 组合树之上叠加 4 行：
 #   1. **本包入口（自注册行）**：`name: lunheng-article-pipeline` → loader 按包名解析到
@@ -60,7 +60,7 @@
         backgroundMode: continuable
         agentOptions: !!js "(e => { const p = e.LUNHENG_RETRIEVAL_PROVIDER, m = e.LUNHENG_RETRIEVAL_MODEL; if (e.LUNHENG_TIERING === 'off' || (!p && !m)) return undefined; return Object.assign({}, p ? { provider: p } : {}, m ? { model: m } : {}); })(process.env)"
 
-# ── 3. 强推理档 subagent（T4/T5/T6+T9 推理强）─────────────────────────────
+# ── 3. 强推理档 subagent（T4 分析 / T5 写作）─────────────────────────────
 - insert:
     - id: tool-subagent-strong
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -70,7 +70,7 @@
         backgroundMode: continuable
         agentOptions: !!js "(e => { const p = e.LUNHENG_STRONG_PROVIDER, m = e.LUNHENG_STRONG_MODEL; if (e.LUNHENG_TIERING === 'off' || (!p && !m)) return undefined; return Object.assign({}, p ? { provider: p } : {}, m ? { model: m } : {}); })(process.env)"
 
-# ── 4. 顶配档 subagent（T7 审计 + G14 检测）────────────────────────────────
+# ── 4. 顶配档 subagent（T6 批判 / T7 审计 / T9 审稿 / G14 检测）────────────
 - insert:
     - id: tool-subagent-audit
       name: '@deepseek-ai/dsh-tool-subagent'

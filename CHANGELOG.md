@@ -2,6 +2,36 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.0.3 — 2026-09-12
+
+> **同轮内的去重 + 口径统一版**（承接 `## 18.0.2` 的冗余审计）：删掉同一事实的多份副本，把每条多副本收敛为「一处真源 + 指针」，并修掉一条**在 14 处副本里方向相反**的角色↔工具映射。**不改任何门禁语义**——M 门 23 项检查内容、退出码契约、G0-G14 清单、Phase 结构与闸门数量全部不动（新增的 ⑩c 是**追加**的文档一致性规则，不改变既有规则判定）。
+
+### 去重（同一事实只留一处 + 指针）
+
+- **机检硬格式 5 份副本 → 1 份真源**：新增 `references/_shared/机检硬格式.md`（图位独占一行 / 引用闭环 / 索引段完整性 / 素材加载清单 / 闸门记录实据 / 文末白名单六段），4 张 `*-template-lite.md` 的内嵌表与 `pipeline-readme.md` 派发话术 §格式硬约束 全部改为指针。
+- **删 3 个孤儿文件**：`references/templates/README-模板拆分方案.md`（模板拆分的历史方案，拆分已完成）、`审稿报告-template.md`（格式真源在 `09-审稿-peer-reviewer.md`）、`先行者清单-template-lite.md`（格式真源在 `01-文献检索-literature-scout.md`）——三者全库无引用者。
+- **能力档表 4 份副本 → 1 份真源**：`SKILL.md` 内嵌的「DSH 默认候选示例」表（与「禁止写死厂商默认值」自相矛盾）、`pipeline-readme.md` §能力分层原则表 + §DSH 分档预设接线表、`operations.md` 模型建议表 → 压缩映射 + 指向 `references/_shared/模型路由.md` §二。真源表不含的「错配后果 / 档位选择理由」保留在各自原处（信息不丢，只是不再重抄一张表）。
+- **删 `operations.md` 的 v2.2.8 硬编码 fallback 链**（`deepseek-v4-pro → MiniMax-M3 → deepseek-v4-flash → glm-5.3`）：与 v2.3.12 起的「能力档 + 候选池」抽象矛盾，兜底链真源 = `scripts/model-routing.mjs` 输出 + `_shared/模型路由.md` §四。
+- **脚本内重复实现**：`count-chars.mjs` / `token-budget.mjs` 各自的汉字计数 → 共用 `_lib/han.mjs` 的 `countHan`（对同一输入输出**逐字节一致**，已用备份副本对账）；`_lib/cards.mjs` 删掉无引用者的 `cardPattern`。
+- **过期数字**：模板体积断言改为实测（`lite 13.0 KB ↔ full 55.2 KB`）；`SKILL.md` 模板清单补全为 **26 个**（v18.0.3 实测）。
+
+### 口径统一（此前「文档层」与「真源」方向相反）
+
+- **分档工具 ↔ 角色映射**（真源 = `scripts/model-routing.mjs` 的 `tool → roles` + `references/_shared/模型路由.md` §二）：`subagent_strong` = **T4 / T5**；`subagent_audit` = **T6 批判 / T7 审计 / T9 审稿 / G14 检测**。此前**14 处副本**（五语 README 各 1 处、`docs/installation.md`、`docs/usage.md`、技能 `README.md`、`examples/preset/README.md`、`cordis.patch.yml` 注释、`SKILL.md` ×2、`pipeline-readme.md`、`docs/introduction.md`）把 T6/T9 列在**强推理档**——按文档派发会拿强推理模型跑顶配批判，且无门可拦。
+- **22 处 / 9 个文件**的「候选池见 SKILL.md 模型分工表」→ 改为指向真源 `references/_shared/模型路由.md` §二：该表在 v18.0.0 前后已迁出 `SKILL.md`，这些指针**长期悬空**（指向不存在的段落）。
+- **删残留的写死模型名**：`06-批判` / `07-审计` / `09-审稿` 三张角色卡里的 `claude-opus-5 → minimax-m3 → deepseek-v4-pro` 示例池（同段文字已声明「v2.3.13 起不再硬编码模型名」，却仍把旧池抄在括号里）；顺带删掉 `07-审计` 里一处空的 `- ` 列表残骸。
+
+### 新增机检（防复发：这条映射漂移此前无门可拦）
+
+- **一致性规则 ⑩c 分档映射全库对账**：从真源 `model-routing.mjs` 现场派生 `tool → roles`，再逐行核对每张表 / 每条 `#   - subagent_x:` 注释里的角色集合（当前 **30 处断言**）；**真源不可派生即 P0**（规则失效不得静默放行）；复合写法 `subagent_retrieval/strong/audit` 不是断言，不误报。配对抗测试：注入旧口径（T6/T9 塞回强推理档）必须报、真源改写导致派生失败必须 P0 报。
+- `AGENTS.md` 里「21 类漂移」这个数字改为指向脚本头规则表——**「加规则忘改数字」本身就是同类漂移**（⑩b 加进 18.0.2 时该数字就没跟着动），去掉数字胜过再维护一个数字。
+
+### 未做 / 延后（如实记录）
+
+- **测试夹具抽取（`tests/_fixtures.mjs`）延后**：`tests/scripts.test.mjs` 里约 150–210 行是各用例重复的临时仓库搭建，可抽公共模块，但**零运行时收益 + 中等风险**（66 个用例的行为基线要整体重测），留待专门一批做，不混进去重版。
+- 官方 `dsh-plugin-dev verify`（`pnpm pack` + 干净 `DSH_HOME` 安装冒烟）在本机仍被 pnpm `ERR_PNPM_IGNORED_BUILDS` 拦下——**本机环境问题，非本包缺陷**（CI 的 verify job 绿）。
+- 官方资料对照后判定的**尚未落地项**：`subagentModelSelection`（原生「按调用选模型」）仍不默认开启（宿主未提供该服务即加载期抛错，详见 `_shared/模型路由.md` §五；主人 2026-09-11 已确认维持现状）。
+
 ## 18.0.2 — 2026-09-11
 
 > **本版是冗余审计（`audits/论衡冗余审计-v1.md`）后的缺陷修复版**：修掉 1 处**静默失效的机检门**、3 类**口径/退出码漂移**，并各配一条机检或回归测试（这些都是"此前无门可拦"的东西）。

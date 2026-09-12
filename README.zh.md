@@ -2,7 +2,7 @@
 
 > 🌐 [English](README.md) ｜ **中文**（本文件）｜ [Español](README.es.md) ｜ [Português](README.pt.md) ｜ [हिन्दी](README.hi.md)
 
-> 版本：v18.0.2（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.0.3（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > 一个 DeepSeek Harness（DSH）bundle 插件，注册一个按需加载的 agent 技能。它把深度长文的生产——学术论文、行业分析、商业评论、公众号深文——变成**带人在环节点的 9 角色流水线**。
 
@@ -108,7 +108,7 @@ patch 层做两件事：**插入一行本包自注册行**（`- id: lunheng-arti
 **只推 tag 发布，禁止本地 `npm publish`**（本地直发会绕过 CI 三道门与 OIDC 来源证明，且 npm 版本不可覆盖）。
 
 ```sh
-git tag v18.0.2 && git push origin v18.0.0   # 一次只推 1 个 tag（GitHub：单次 push >3 个 tag 不触发任何 workflow）
+git tag v18.0.3 && git push origin v18.0.0   # 一次只推 1 个 tag（GitHub：单次 push >3 个 tag 不触发任何 workflow）
 # publish.yml 依次跑：门 1 一致性 → 门 2 打包面 → 门 3 机械卫生 → 脚本回归测试
 #   → tag/版本一致校验 → 幂等守卫 → OIDC 发布 --provenance --tag dsh → 发布后审计
 ```
@@ -158,8 +158,8 @@ DSH 通过 `settings.yaml` 路由模型；`subagent` 继承会话模型，因此
 | 工具 | 角色 | 能力定位 |
 |---|---|---|
 | `subagent_retrieval` | T1 文献 / T2 数据 / T3 案例 | 便宜快 |
-| `subagent_strong` | T4 分析 / T5 写作 / T6 批判 / T9 审稿 | 推理强 |
-| `subagent_audit` | T7 审计 / G14 检测 | 顶配防漏判 |
+| `subagent_strong` | T4 分析 / T5 写作 | 推理强 |
+| `subagent_audit` | T6 批判 / T7 审计 / T9 审稿 / G14 检测 | 顶配防漏判 |
 
 用 `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_PROVIDER` 与 `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_MODEL` 覆盖：provider 与 model 是**独立字段**，跨 provider 时才需同时给；`LUNHENG_TIERING=off` 一键让三档全部退回继承。某档工具未挂载时，派发自动回退 `subagent`。详见 `examples/preset/README.md` 与 `docs/installation.md`。
 

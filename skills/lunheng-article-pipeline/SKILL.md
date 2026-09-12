@@ -1,11 +1,11 @@
 ---
 name: "lunheng-article-pipeline"
-version: "18.0.2"
+version: "18.0.3"
 description: "论衡：DSH 原生多 Agent 深度长文流水线（学术论文 / 商业评论 / 行业分析 / 公众号）。9 个独立角色 T1-T9 + 主控（T0 调度 + T8 终检）；三角验证 + M 门 + G 审计 + 修订回环 ≤2 轮 + 期刊匹配。"
 whenToUse: "需要 ≥2000 字、要求证据可追溯的深度长文（学术论文 / 商业评论 / 行业分析 / 公众号深文），且可接受 4 个人在环节点（Phase 0 / 2.5 / 3.5 / 5）与 1-3 小时流水线时长时使用。改用其他方式的情形：<2000 字短文或即时问答；文学创作（小说 / 诗歌 / 剧本）；需数学推导或实验设计的理工科论文；营销软文；需要一手数据（问卷 / 访谈 / 田野 / 实验）但尚未投喂素材。"
 ---
 
-> 版本：v18.0.2（DSH bundle 插件）
+> 版本：v18.0.3（DSH bundle 插件）
 > **v2.5.2-dsh.8 角色语义定案（主人指令）**：**9 个角色 T1-T9 各自独立、不可相互替代**——T8 终检不是「主控兼做的杂活」而是独立角色（有独立角色卡），只是执行者由主控担任（**主控 = T0 调度 + T8 终检执行双重身份**），不 spawn 子代理；**T9 审稿可选、默认选中、学术论文必选**。
 
 # 多 Agent 深度长文流水线（论文/深度文章生产）
@@ -25,7 +25,7 @@ whenToUse: "需要 ≥2000 字、要求证据可追溯的深度长文（学术�
 
 **结构性要点（DSH 原生）**：
 1. **技能级工具白名单/denied 在 DSH 无效**：工具集由 Agent 预设决定；文档提到的工具以当前会话预设为准（本机 standard 预设实测含 read / write / edit / web_search / web_fetch / todo_write / subagent / subagent_fork / list_agents / pwsh 等；**预设不同则工具集不同，勿假定某工具必然存在**）。
-2. **模型分配（通用自适应）**：路由由 `settings.yaml` 决定，`subagent` 默认继承会话模型；多模型用户可装「分档预设」（`examples/preset/`）：`subagent_retrieval`（T1/T2/T3）/ `subagent_strong`（T4/T5/T6/T9）/ `subagent_audit`（T7/G14）。未装预设或未挂载 → 全部回退 `subagent`（继承会话模型），零配置可用。档位模型经 `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_{PROVIDER,MODEL}` 覆盖（provider 与 model 分离）。
+2. **模型分配（通用自适应）**：路由由 `settings.yaml` 决定，`subagent` 默认继承会话模型；多模型用户可装「分档预设」（`examples/preset/`）：`subagent_retrieval`（T1/T2/T3）/ `subagent_strong`（T4/T5）/ `subagent_audit`（T6/T7/T9/G14——**批判审计档，v18.0.3 统一口径**）。未装预设或未挂载 → 全部回退 `subagent`（继承会话模型），零配置可用。档位模型经 `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_{PROVIDER,MODEL}` 覆盖（provider 与 model 分离）。
 3. **执行约定**：状态机（status.md 主控独占写）+ 交接报告六要素 + G8 自检 + 超时介入（`list_agents` 软巡检）；**无心跳/8 分钟硬卡**（旧版完整韧化协议已移出仓库，历史见 git log）。
 4. **「（检查）」占位符**：发布包中 shell 示例被净化剥离为「（检查）」——按「人类 host shell 验证示例」处理（`read` 全文 + LLM 推理模拟判定，真实 hash/字数由主人在 host shell 回填）。
 5. **角色体系**：**9 个独立角色 T1-T9 互不可替代**（T1-T3 检索 / T4-T5 加工 / T6-T9 防御）；T8 终检独立角色、由主控 T0 亲执行；T9 审稿可选但**默认选中**（学术**必选**）。
@@ -91,7 +91,7 @@ whenToUse: "需要 ≥2000 字、要求证据可追溯的深度长文（学术�
 
 ## ⚡ 启动速查表
 
-- 版本：v18.0.2｜角色：T0 主控（= T8 终检执行者）＋ T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / T8 终检（主控亲执行）/ T9 审稿（默认选中，学术必选）
+- 版本：v18.0.3｜角色：T0 主控（= T8 终检执行者）＋ T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / T8 终检（主控亲执行）/ T9 审稿（默认选中，学术必选）
 - Phase：0 定题 → 1 检索(T1∥T2∥T3) → 2 分析 → 2.5 大纲(人) → 3 写作 → 3.5 洞察(人) → 3.6 批判 → 4 审计 → 4.5 审稿+G14 → 5 终检(人)
 - 工具：subagent=派发（分档预设按角色选 subagent_retrieval/strong/audit）｜list_agents=查看｜todo_write=计划｜web_search/web_fetch=检索｜pwsh=命令｜edit/write=文件
 - 闸门：T2.5（检索→分析）/ T7.5（审计→终检）；M 门 exit 0；修订回环双轨 ≤2 轮（A 轨）
@@ -123,14 +123,9 @@ whenToUse: "需要 ≥2000 字、要求证据可追溯的深度长文（学术�
 
 **触发**：关键词 = 深度长文 / 学术论文 / 商业评论 / 行业分析。命中后主控**必须先走 Phase 0 定题确认**（主题/篇幅/受众/外部服务同意），主人明确「开始」才启动；不得直接 spawn 或写文件。
 
-**模型分档（能力档 + 候选池，不硬编码）**：
-| 档 | 角色 | 需求 | DSH 默认候选示例（按优先级，可经 `LUNHENG_*` 覆盖） |
-|---|---|---|---|
-| 检索 | T1/T2/T3 | 便宜快 | deepseek-v4-flash → glm-4-flash → qwen3-coder |
-| 分析写作 | T4/T5 | 强推理 | deepseek-v4-pro → minimax-m3 |
-| 批判审计 | T6/T7 | 顶配防漏判 | claude-opus-5 → minimax-m3 → deepseek-v4-pro |
-| 主控 | T0 | 稳定路由 | deepseek-v4-pro → deepseek-v4-flash |
-| 终检 | T8 | 主控亲执行 | 不 spawn |
+**模型分档（能力档 + 候选池，不硬编码）**：五个档位 = **检索** T1/T2/T3（便宜快）→ `subagent_retrieval`｜**分析写作** T4/T5（强推理）→ `subagent_strong`｜**批判审计** T6/T7/**T9**/**G14**（顶配防漏判）→ `subagent_audit`｜**主控** T0（稳定路由，**不参与分档**）｜**终检** T8（主控亲执行，不 spawn）。
+
+**真源**：[`references/_shared/模型路由.md`](references/_shared/模型路由.md) —— 能力需求 / 候选池 / 实战选型建议 / 探测方法 / 兜底链全在该文件；**本卡不写候选池与模型名**（v18.0.3 去重：旧版此处内嵌「DSH 默认候选示例」表，与真源及「禁止写死厂商默认值」条款自相矛盾，已删）。
 
 **映射规则**：候选池为示例非硬编码（不存在即跳过）；Phase 0 自检按档选第一个可用模型写入 status.md；**顶配档全不可用 → 显式告知主人（审计/批判降级请示），禁止静默降级**；预算 <$0.1 走下一档并告知。
 
@@ -202,7 +197,8 @@ whenToUse: "需要 ≥2000 字、要求证据可追溯的深度长文（学术�
 ## 角色卡与模板
 
 - **9 个独立角色卡（T1-T9）**：`references/agents/01~09`（00-主控-coordinator.md = T0 调度 + T8 终检双重身份；T8 独立卡 08-终检-finalizer.md，主控亲执行不 spawn；T9 默认选中、学术必选；T3 任何量级必 spawn 含 0 条空卡协议）。
-- **模板**：`references/templates/`（任务简报 / status / 交接报告 / 文献卡 / 数据卡 / 案例卡 / 先行者清单 × full/lite + G14 检测报告 / 审稿报告 / 主人确认 / AI-使用声明 / 修订说明 / 投稿就绪检查表 / 图表-SVG）。
+- **模板**：`references/templates/`（**26 个**，v18.0.3 实测；按用途取用，别整目录读）：`任务简报 / status / 交接报告 / 文献卡 / 数据卡 / 案例卡` 各含 **full + lite**（实战用 lite，培训/字段详解用 full）+ 单文件模板 `先行者清单 / G14检测报告 / 主人确认 / AI-使用声明 / 修订说明 / 投稿就绪检查表 / 图表-SVG / 素材加载清单 / 闸门记录 / 交付说明 / 模型路由表 / 进展-主人版 / 主人投喂清单 / style-baseline`。
+  > v18.0.3：旧版此处只列 15 项（漏 7 个后加模板）；**改模板集合时同步本行**（`ls references/templates/` 为准）。另：`机检硬格式` 表已收口到 [`references/_shared/机检硬格式.md`](references/_shared/机检硬格式.md)。
 - **运行手册**：`references/pipeline-readme.md`（含 T1-T9/G14 派发话术 + M 门 + F 模式 + AI 披露）。
 - **新增文档索引**：字数判定表 / degraded-scenarios / 期刊数据库+匹配算法 / 中文数据源集成 / format-export / case-studies 均位于 `references/_shared/` 与 `references/`（路径见各节链接）。
 

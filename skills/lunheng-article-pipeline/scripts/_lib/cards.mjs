@@ -20,8 +20,7 @@ export const cardHeadingPattern = (id) => new RegExp(`#{2,4}\\s*\\[D${id}\\][^\\
 /** 行内式条目：行首 `[Dxx] …`（v3 头部格式，无标题时回退用）。 */
 export const cardLinePattern = (id) => new RegExp(`\\n\\[D${id}\\][^\\n]*\\n${BODY_TAIL}`)
 
-/** @deprecated 合并形态（保留导出以免下游 import 断裂）；新代码请用 splitCard。 */
-export const cardPattern = (id) => new RegExp(`(?:#{2,4}\\s*\\[D${id}\\]|\\n\\[D${id}\\][^\\n]*\\n)${BODY_TAIL}`)
+// v18.0.3 删除：`cardPattern`（合并形态）为死代码——全库（含本文件）零引用，且自带 @deprecated。
 
 /**
  * 切出某条 [Dxx] 的卡片块。

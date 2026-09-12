@@ -2,7 +2,7 @@
 
 > 🌐 **English** (this file) ｜ [中文](README.zh.md) ｜ [Español](README.es.md) ｜ [Português](README.pt.md) ｜ [हिन्दी](README.hi.md)
 
-> 版本：v18.0.2（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.0.3（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > A DeepSeek Harness (DSH) bundle that registers one on-demand agent skill. The skill turns long-form production — academic papers, industry analysis, business commentary, and long-form articles — into a **9-role pipeline with a human in the loop**.
 
@@ -108,7 +108,7 @@ The patch layer does two things: it **inserts one row for this package** (`- id:
 Releases are **tag-only**; a local `npm publish` is forbidden (it would bypass the CI gates and OIDC provenance, and a published npm version can never be overwritten).
 
 ```sh
-git tag v18.0.2 && git push origin v18.0.0   # push one tag at a time (GitHub: >3 tags in one push triggers no workflow)
+git tag v18.0.3 && git push origin v18.0.0   # push one tag at a time (GitHub: >3 tags in one push triggers no workflow)
 # publish.yml then runs gate 1 consistency → gate 2 packaging surface → gate 3 hygiene → script tests
 #   → tag/version equality → idempotency guard → OIDC publish --provenance --tag dsh → post-publish audit
 ```
@@ -158,8 +158,8 @@ DSH routes models through `settings.yaml`; `subagent` inherits the session model
 | Tool | Roles | Capability |
 |---|---|---|
 | `subagent_retrieval` | T1 literature / T2 data / T3 cases | Cheap and fast |
-| `subagent_strong` | T4 analyst / T5 writer / T6 critical / T9 reviewer | Strong reasoning |
-| `subagent_audit` | T7 auditor / G14 detector | Top tier, no downgrade for cost |
+| `subagent_strong` | T4 analyst / T5 writer | Strong reasoning |
+| `subagent_audit` | T6 critical / T7 auditor / T9 reviewer / G14 detector | Top tier, no downgrade for cost |
 
 Override with `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_PROVIDER` and `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_MODEL`. Provider and model are independent fields; crossing providers requires both. `LUNHENG_TIERING=off` forces every tier back to inheritance. When a tier tool is not mounted, dispatch falls back to `subagent`. See `examples/preset/README.md` and `docs/installation.md`.
 

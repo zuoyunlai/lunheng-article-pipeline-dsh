@@ -1,6 +1,8 @@
 // 论衡插件一致性自检脚本（DSH）— 发布/commit 前运行
 // 用法：node scripts/consistency-check.mjs
-// 覆盖 21 类漂移（v2.5.2-dsh.17 起；.5 为 9 类，.13 加 ⑩-⑭，.15 加 ⑮-⑰，.16 加 ⑱，.17 加 ④b + ⑲ + ⑳）：
+// 覆盖 21 类主规则 + 4 个子规则（编号规则见下；子规则 = ④b 占位符残留 / ⑥b M 门口径 /
+//   ⑩b 脚本计数 / ⑩c 分档映射）——演进：.5 为 9 类，.13 加 ⑩-⑭，.15 加 ⑮-⑰，.16 加 ⑱，
+//   .17 加 ④b + ⑲ + ⑳，18.0.2 加 ⑩b，18.0.3 加 ⑩c。**本数字不做机械门**（改规则时手工同步即可）。
 //   ① 跨文件版本一致性（package.json ↔ SKILL.md frontmatter ↔ 版本头行 ↔ 仓库级文档）
 //   ② 双头版本行 / M-Gate-Report 文件名漂移
 //   ③ 悬空引用（版本一致性检查旧名 / scripts/*.mjs 悬空 / 角色卡索引缺失）
@@ -11,6 +13,8 @@
 //   ⑧ cordis.patch.yml + examples/ 版本引用（防安装文档指向未发布版本）
 //   ⑨ .dsh 双写同步 + 污染校验（本地，CI 无该目录自动跳过）
 //   ⑩ 随包脚本白名单集合一致性（防白名单出现 7/8/9 三种口径）
+//   ⑩b 脚本计数全库对账（任何「随包 N 个脚本」断言 == 磁盘真值）
+//   ⑩c 分档工具 ↔ 角色映射全库对账（真源 = model-routing.mjs 的 tool→roles）
 //   ⑪ CHANGELOG 当前版本段存在性（防 bump 提交漏写 CHANGELOG）
 //   ⑫ 版本点位全量扫描（版本头 / 列表项 / 标题内嵌）
 //   ⑬ docs/ 版本点位（安装 pin / 「当前版本」声明；历史章节跳过）
@@ -320,6 +324,53 @@ for (const f of claimTargets) {
       }
     }
   });
+}
+
+// ⑩c 分档工具 ↔ 角色映射全库对账（v18.0.3 新增）
+//   教训：`subagent_strong` / `subagent_audit` 的角色归属在**11 处副本**里长期分成两种口径——
+//   五语 README + docs/installation + docs/usage + 技能 README + `examples/preset/README.md` 把
+//   T6 批判 / T9 审稿 列在「强推理档」，而真源 `scripts/model-routing.mjs` 的 `roles` 与
+//   `references/_shared/模型路由.md` §二 早已定案 T6/T7/T9/G14 → `subagent_audit`（顶配防漏判档）；
+//   规则 ⑩ 只管脚本白名单那一行，分档映射**无门可拦**——多宿主各写一份表，谁也没对账。
+//   本规则把真源派生的 `tool → roles` 与每一处断言对账：行内出现**恰好一个**独立工具名
+//   （其后不接 `/`，故 `subagent_retrieval/strong/audit` 这类复合写法不算断言）即视为断言，
+//   行内其余 `T\d` / `G14` 编号集合必须与真源集合相等。扫描范围为 markdown 表格行与
+//   `#   - subagent_x: …` 注释行（散文表述不在此规则内）。CHANGELOG 豁免（历史段记录当时事实）。
+const TIER_TOOL_RE = /subagent_(retrieval|strong|audit)(?![a-z/])/;
+const tierTruth = new Map();
+{
+  const routingSrc = readFileSync(join(ROOT, 'scripts', 'model-routing.mjs'), 'utf8');
+  for (const m of routingSrc.matchAll(/tool:\s*'(subagent_(?:retrieval|strong|audit))',\s*roles:\s*\[([^\]]*)\]/g)) {
+    tierTruth.set(m[1], [...new Set([...m[2].matchAll(/T\d+|G14/g)].map((x) => x[0]))].sort());
+  }
+  if (tierTruth.size !== 3) {
+    errors.push(
+      `[P0 分档真源] 无法从 scripts/model-routing.mjs 派生 3 档 tool→roles（实得 ${tierTruth.size} 档）` +
+        '——规则 ⑩c 失效即静默放行，故按 P0 报（真源改了写法就同步本规则的正则）',
+    );
+  }
+}
+if (tierTruth.size === 3) {
+  const scanned = new Set();
+  for (const f of [...active, ...(existsSync(REPO_ROOT) ? walk(REPO_ROOT) : [])]) {
+    if (scanned.has(f) || f.includes('CHANGELOG')) continue;
+    scanned.add(f);
+    const rel = relative(REPO_ROOT, f).replaceAll('\\', '/');
+    readFileSync(f, 'utf8').split('\n').forEach((l, i) => {
+      if (!l.trimStart().startsWith('|') && !/^\s*#\s*-\s*subagent_/.test(l)) return;
+      const tools = [...l.matchAll(new RegExp(TIER_TOOL_RE.source, 'g'))].map((m) => m[0]);
+      if (tools.length !== 1) return;
+      const tool = tools[0];
+      const got = [...new Set([...l.matchAll(/T\d+|G14/g)].map((m) => m[0]))].sort();
+      const want = tierTruth.get(tool);
+      if (got.join('/') !== want.join('/')) {
+        errors.push(
+          `[P1 分档映射漂移] ${rel}:${i + 1} 「${tool}」行写 ${got.join('/') || '（无角色）'}，` +
+            `真源 roles = ${want.join('/')}（真源：scripts/model-routing.mjs + references/_shared/模型路由.md §二）`,
+        );
+      }
+    });
+  }
 }
 
 // ⑪ CHANGELOG 当前版本段存在性（v2.5.2-dsh.13 新增，教训：dsh.12 的 bump 提交标题声称含 CHANGELOG 实际未写）

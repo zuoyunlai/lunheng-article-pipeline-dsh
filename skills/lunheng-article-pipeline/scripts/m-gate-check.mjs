@@ -1454,23 +1454,22 @@ results.push({
   severity: (files.length === 0 || empty.length > 0) ? 'P0' : '通过',
 });
 
-// === M-Exist-3 信任级别一致性（v2.5.2-dsh.5 加严重度评级）===
-let litCard = '', caseCard = '';
-try { litCard = readFileSync(join(evDir, '文献卡.md'), 'utf8'); } catch {}
-try { caseCard = readFileSync(join(evDir, '案例卡.md'), 'utf8'); } catch {}
+// === M-Exist-3 [Dxx] 正文↔数据卡 引用闭环（v2.5.2-dsh.5 加严重度评级；v18.0.3 更名对齐实装）===
+// 命名说明（v18.0.3）：本项旧名「信任级别一致性」，但它**只做引用闭环**（正文 [Dxx] ↔ 数据卡条目），
+//   信任级别由 M-Form-6（独立信任级别段）+ G12（审计层）承担。文档已同步更名（M-Gate-Algorithm.md）。
 if (dataCard) {
-  const intextD = new Set((bodyProse.match(/\[D\d+\]/g) || []).map((s) => s.match(/\d+/)[0]));
-  const cardD = new Set((dataCard.match(/\[D\d+\](?=[^\d])/g) || []).map((s) => s.match(/\d+/)[0]));
+  const intextD = new Set(refsOf(bodyProse, 'D').map((s) => s.match(/\d+/)[0]));
+  const cardD = new Set(dataCardIds(dataCard));   // v18.0.3：改用 _lib/refs.mjs 真源（旧版在此处重写正则）
   const missing = [...intextD].filter((d) => !cardD.has(d));
   const mExist3Sev = missing.length > 5 ? 'P0' : (missing.length > 2 ? 'P1' : (missing.length > 0 ? 'P2' : '通过'));
   results.push({
-    gate: 'M-Exist-3 信任级别一致性',
+    gate: 'M-Exist-3 引用闭环',
     pass: missing.length === 0,
     detail: missing.length ? `正文引 [Dxx] ${missing.length} 条在数据卡中无对应条目` : '全部 [Dxx] 在数据卡有对应',
     severity: mExist3Sev,
   });
 } else {
-  results.push({ gate: 'M-Exist-3 信任级别一致性', pass: false, detail: '数据卡不存在', severity: 'P0' });
+  results.push({ gate: 'M-Exist-3 引用闭环', pass: false, detail: '数据卡不存在', severity: 'P0' });
 }
 
 // === M-Integrity-1 T2.5 完整性门（脚本佐证；v2.5.2-dsh.17 补两次关键对账）===

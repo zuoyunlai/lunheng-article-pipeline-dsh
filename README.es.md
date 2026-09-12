@@ -1,6 +1,6 @@
 # Lunheng (lunheng-article-pipeline) — pipeline multiagente para textos largos
 
-> 版本：v18.0.2（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.0.3（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > Un bundle de DeepSeek Harness (DSH) que registra una skill de agente bajo demanda. La skill convierte la producción de textos largos —artículos académicos, análisis sectorial, comentario económico y artículos extensos— en una **pipeline de 9 roles con intervención humana**.
 
@@ -96,7 +96,7 @@ La capa patch hace dos cosas: **inserta una fila para este paquete** (`- id: lun
 Las versiones se publican **solo por tag**; `npm publish` local está prohibido (evita las puertas de CI y la procedencia OIDC, y una versión npm nunca se puede sobrescribir).
 
 ```sh
-git tag v18.0.2 && git push origin v18.0.0   # un tag por push (GitHub: >3 tags en un push no dispara workflow)
+git tag v18.0.3 && git push origin v18.0.0   # un tag por push (GitHub: >3 tags en un push no dispara workflow)
 # publish.yml ejecuta: puerta 1 consistencia → puerta 2 empaquetado → puerta 3 higiene → tests
 #   → tag/versión iguales → guarda de idempotencia → OIDC publish --provenance --tag dsh → auditoría posterior
 ```
@@ -146,8 +146,8 @@ DSH enruta modelos mediante `settings.yaml`; `subagent` hereda el modelo de la s
 | Herramienta | Roles | Capacidad |
 |---|---|---|
 | `subagent_retrieval` | T1 bibliografía / T2 datos / T3 casos | Rápido y económico |
-| `subagent_strong` | T4 análisis / T5 redacción / T6 crítica / T9 revisión | Razonamiento fuerte |
-| `subagent_audit` | T7 auditoría / detector G14 | Máximo nivel, sin degradar por coste |
+| `subagent_strong` | T4 análisis / T5 redacción | Razonamiento fuerte |
+| `subagent_audit` | T6 crítica / T7 auditoría / T9 revisión / detector G14 | Máximo nivel, sin degradar por coste |
 
 Sobrescriba con `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_PROVIDER` y `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_MODEL`: proveedor y modelo son campos independientes (cruzar proveedores exige ambos) y `LUNHENG_TIERING=off` devuelve los tres niveles a la herencia. Cuando una herramienta de nivel no está montada, el envío recae en `subagent`. Véase `examples/preset/README.md` y `docs/installation.md`.
 

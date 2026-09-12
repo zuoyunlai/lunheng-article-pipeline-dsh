@@ -531,6 +531,47 @@ test('consistency-check ⑳+⑥b：M 门文档节头项数 / 编号跳号 / 文�
   }
 })
 
+test('consistency-check ⑩c：分档工具↔角色映射漂移必须报（注入验证，真源 = model-routing.mjs 的 tool→roles）', () => {
+  const mkRepo = () => {
+    const d = tmp()
+    const repo = join(d, 'repo')
+    mkdirSync(repo, { recursive: true })
+    cpSync(join(ROOT, 'skills'), join(repo, 'skills'), { recursive: true })
+    for (const f of ['package.json', 'CHANGELOG.md', 'cordis.patch.yml', 'README.md']) cpSync(join(ROOT, f), join(repo, f))
+    return { d, repo, R: join(repo, 'skills', 'lunheng-article-pipeline') }
+  }
+
+  // ① 旧口径复发：把 T6 批判 / T9 审稿 塞回「强推理档」行（v18.0.3 前 11 处副本的真实漂移形态）
+  {
+    const { d, repo, R } = mkRepo()
+    const en = join(repo, 'README.md')
+    writeFileSync(en, readFileSync(en, 'utf8').replace('| T4 analyst / T5 writer |', '| T4 analyst / T5 writer / T6 critical / T9 reviewer |'))
+    const r = run([join(R, 'scripts', 'consistency-check.mjs')])
+    assert.equal(r.code, 1, '映射漂移必须 exit 1')
+    assert.match(r.out, /分档映射漂移/, '⑩c 必须抓出强推理档行多出 T6/T9')
+    assert.match(r.out, /subagent_strong/, '⑩c 报错须点名漂移的工具')
+    rmSync(d, { recursive: true, force: true })
+  }
+
+  // ② 真源不可派生 → P0（规则失效必须响，不得静默放行）
+  {
+    const { d, R } = mkRepo()
+    const mr = join(R, 'scripts', 'model-routing.mjs')
+    writeFileSync(mr, readFileSync(mr, 'utf8').replace("tool: 'subagent_audit'", "toolName: 'subagent_audit'"))
+    const r = run([join(R, 'scripts', 'consistency-check.mjs')])
+    assert.equal(r.code, 1, '真源不可派生必须 exit 1')
+    assert.match(r.out, /分档真源/, '⑩c 派生失败须按 P0 报（否则整条映射门静默失效）')
+    rmSync(d, { recursive: true, force: true })
+  }
+
+  // ③ 反向断言：真源仓库自身的 30 处断言齐整时，⑩c 不得误报（防止把散文/复合写法误当断言）
+  {
+    const r = run([join(ROOT, 'skills', 'lunheng-article-pipeline', 'scripts', 'consistency-check.mjs')])
+    assert.doesNotMatch(r.out, /分档映射漂移/, '真源仓库当前应零漂移（复合写法 subagent_retrieval\/strong\/audit 不得被当作断言）')
+  }
+})
+
+
 test('consistency-check ⑳：真源仓库自身必须自洽（M-Form 11 / M-Exist 10 / M-Integrity 2 == 节内子节数）', () => {
   const SK = join(ROOT, 'skills', 'lunheng-article-pipeline')
   const ga = readFileSync(join(SK, 'references', '_shared', 'M-Gate-Algorithm.md'), 'utf8')

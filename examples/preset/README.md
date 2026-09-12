@@ -12,7 +12,7 @@
 ```sh
 # 1. 在 profile 里声明 bundle 依赖（DSH 读 dsh.bundle.patch 找到 cordis.patch.yml 加载）
 dsh plugin --profile web add lunheng-article-pipeline@dsh   # 推荐：跟随最新 DSH 迭代版
-# 锁定具体版本：dsh plugin --profile web add lunheng-article-pipeline@18.0.2
+# 锁定具体版本：dsh plugin --profile web add lunheng-article-pipeline@18.0.3
 
 # 2. （可选）设三档 subagent 工具的 provider/model 环境变量
 #    不设任何变量 = 三档全部继承会话模型（安全默认，单模型用户无需本步）
@@ -48,8 +48,8 @@ dsh headless --profile web "列出当前可见的技能"
 # name: 论衡分档
 # description: 三档 subagent 工具按角色能力分模型
 #   - subagent_retrieval: T1/T2/T3 便宜快
-#   - subagent_strong: T4/T5/T6/T9 推理强
-#   - subagent_audit: T7 审计 + G14 顶配（不得为省钱降档）
+#   - subagent_strong: T4/T5 推理强
+#   - subagent_audit: T6 批判 / T7 审计 / T9 审稿 / G14 检测 顶配（不得为省钱降档）
 #   - 模型经 LUNHENG_*_PROVIDER + LUNHENG_*_MODEL 环境变量覆盖
 ```
 

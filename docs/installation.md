@@ -52,13 +52,13 @@ dsh --profile <headless-profile> "请调用 skill 工具列出你可见的技能
 
 ## 分档预设（按角色分模型，可选，通用化）
 
-**单模型用户无需任何配置**——默认所有角色继承会话模型，任何模型配置都能跑。分档只对「配了多个模型、想按角色能力分档」的用户有意义（检索便宜快 / 分析写作批判审稿推理强 / 审计顶配）：
+**单模型用户无需任何配置**——默认所有角色继承会话模型，任何模型配置都能跑。分档只对「配了多个模型、想按角色能力分档」的用户有意义（检索便宜快 / 分析写作推理强 / 批判审计审稿顶配）：
 
 | 工具 | 角色 | 能力定位 | 默认 provider/model（可覆盖） |
 |---|---|---|---|
 | `subagent_retrieval` | T1 文献 / T2 数据 / T3 案例 | 便宜快 | 继承父会话（设 `LUNHENG_RETRIEVAL_*` 才分档） |
-| `subagent_strong` | T4 分析 / T5 写作 / T6 批判 / T9 审稿 | 推理强 | 继承父会话（设 `LUNHENG_STRONG_*` 才分档） |
-| `subagent_audit` | T7 审计 / G14 检测 | 顶配防漏判 | 继承父会话（设 `LUNHENG_AUDIT_*` 才分档） |
+| `subagent_strong` | T4 分析 / T5 写作 | 推理强 | 继承父会话（设 `LUNHENG_STRONG_*` 才分档） |
+| `subagent_audit` | T6 批判 / T7 审计 / T9 审稿 / G14 检测 | 顶配防漏判 | 继承父会话（设 `LUNHENG_AUDIT_*` 才分档） |
 
 **分档随 bundle 生效，无需复制任何预设目录**（`examples/preset/` 只是说明文档，不含可加载的 `agent.cordis.yml`）：安装本包即在 profile 里插入上述三档工具行。
 

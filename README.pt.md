@@ -1,6 +1,6 @@
 # Lunheng (lunheng-article-pipeline) — pipeline multiagente para textos longos
 
-> 版本：v18.0.2（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.0.3（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > Um bundle do DeepSeek Harness (DSH) que registra uma skill de agente sob demanda. A skill transforma a produção de textos longos — artigos acadêmicos, análise setorial, comentário econômico e artigos extensos — em uma **pipeline de 9 papéis com participação humana**.
 
@@ -96,7 +96,7 @@ A camada patch faz duas coisas: **insere uma linha para este pacote** (`- id: lu
 As versões são publicadas **apenas por tag**; `npm publish` local é proibido (contorna os portões de CI e a proveniência OIDC, e uma versão npm nunca pode ser sobrescrita).
 
 ```sh
-git tag v18.0.2 && git push origin v18.0.0   # uma tag por push (GitHub: >3 tags em um push não dispara workflow)
+git tag v18.0.3 && git push origin v18.0.0   # uma tag por push (GitHub: >3 tags em um push não dispara workflow)
 # publish.yml executa: portão 1 consistência → portão 2 empacotamento → portão 3 higiene → testes
 #   → tag/versão iguais → guarda de idempotência → OIDC publish --provenance --tag dsh → auditoria posterior
 ```
@@ -146,8 +146,8 @@ O DSH roteia modelos por `settings.yaml`; `subagent` herda o modelo da sessão, 
 | Ferramenta | Papéis | Capacidade |
 |---|---|---|
 | `subagent_retrieval` | T1 bibliografia / T2 dados / T3 casos | Rápido e barato |
-| `subagent_strong` | T4 análise / T5 redação / T6 crítica / T9 revisão | Raciocínio forte |
-| `subagent_audit` | T7 auditoria / detector G14 | Nível máximo, sem degradar por custo |
+| `subagent_strong` | T4 análise / T5 redação | Raciocínio forte |
+| `subagent_audit` | T6 crítica / T7 auditoria / T9 revisão / detector G14 | Nível máximo, sem degradar por custo |
 
 Substitua com `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_PROVIDER` e `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_MODEL`: provedor e modelo são campos independentes (cruzar provedores exige ambos) e `LUNHENG_TIERING=off` devolve os três níveis à herança. Quando uma ferramenta de nível não está montada, o despacho recai em `subagent`. Veja `examples/preset/README.md` e `docs/installation.md`.
 

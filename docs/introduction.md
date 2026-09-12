@@ -2,7 +2,7 @@
 
 > **论衡（lunheng-article-pipeline）** 是一个多 Agent 深度长文生产流水线，DeepSeek Harness（dsh）bundle 插件。它不是让一个 AI 直接写文章，而是让一支 **9 个 AI 角色组成的"论文生产小队"** 按既定协议协作：定题 → 三线并行检索 → 分析 → 写作 → 批判 → 审计 → 审稿 → 终检。每一步都有明确产出物、交接报告与质量闸门，最终交付**有证据底座、有反方论证、有独立审计、有人工核验节点**的文章。
 
-> 适用：公众号深度长文、研究报告、学术论文、商业评论、行业分析——任何"要站得住脚"的长内容。当前版本 **v18.0.2**（DSH 独立版本）。
+> 适用：公众号深度长文、研究报告、学术论文、商业评论、行业分析——任何"要站得住脚"的长内容。当前版本 **v18.0.3**（DSH 独立版本）。
 
 ---
 
@@ -108,7 +108,7 @@ Phase 1 一次性并行派出 **T1 文献 ∥ T2 数据 ∥ T3 案例** 三个�
 DSH 下的三个关键适配：
 
 1. **执行约定精简**：历史机制（心跳/分阶段 ack/8 分钟硬卡）在 DSH 下移除，改为「状态机 + 交接报告六要素 + G8 自检 + 超时介入（`list_agents`）」——贴合 DSH 的子代理机制，不空转轮询。
-2. **分档预设（按角色分模型）**：装「论衡分档」会话预设后，检索角色走 `subagent_retrieval`（默认 `deepseek-v4-flash`，便宜快）、分析/写作/批判/审稿走 `subagent_strong`、审计/G14 检测走 `subagent_audit`，模型经 `LUNHENG_*_PROVIDER` + `LUNHENG_*_MODEL` 环境变量覆盖（provider 与 model 分离）；未装预设则全部继承会话模型，流水线照常运行——**任何模型配置都能跑**。
+2. **分档预设（按角色分模型）**：装「论衡分档」会话预设后，检索角色走 `subagent_retrieval`（便宜快）、分析/写作走 `subagent_strong`、**批判/审稿/审计/G14 检测**走 `subagent_audit`（顶配防漏判），模型经 `LUNHENG_*_PROVIDER` + `LUNHENG_*_MODEL` 环境变量覆盖（provider 与 model 分离）；未装预设则全部继承会话模型，流水线照常运行——**任何模型配置都能跑**。
 3. **子代理异常兜底**：failed 通知时主控按「验产物 → 验 status → 验口径」三步处理，不默认重跑；静默/循环自动检测 + 换档重派（实战沉淀）。
 
 ---
@@ -170,7 +170,7 @@ dsh plugin --profile web add lunheng-article-pipeline
 ## 获取方式
 
 - **GitHub（DSH bundle）**：https://github.com/zuoyunlai/lunheng-article-pipeline-dsh
-- **npm**：`lunheng-article-pipeline@dsh`（dist-tag `dsh` = 最新 DSH 迭代版）；锁定具体版本可写 `@18.0.2`
+- **npm**：`lunheng-article-pipeline@dsh`（dist-tag `dsh` = 最新 DSH 迭代版）；锁定具体版本可写 `@18.0.3`
 - **历史版本线（独立化前）**：https://github.com/zuoyunlai/lunheng-article-pipeline
 
 ---

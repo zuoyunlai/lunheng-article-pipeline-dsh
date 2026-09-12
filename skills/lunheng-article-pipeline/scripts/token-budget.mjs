@@ -19,6 +19,7 @@
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { homedir } from 'node:os';
+import { countHan } from './_lib/han.mjs';   // 汉字口径唯一真源（v18.0.3 起）
 
 const args = process.argv.slice(2);
 if (args.includes('-h') || args.includes('--help')) {
@@ -53,7 +54,8 @@ if (projArg && !existsSync(projArg)) {
 }
 
 // ---- token 估算（口径见头注释）----
-const hanCount = (s) => (s.match(/[\u4e00-\u9fff]/g) || []).length;
+// v18.0.3：汉字口径改走 _lib/han.mjs 真源（旧版在此重写 /[\u4e00-\u9fff]/g）
+const hanCount = countHan;
 const asciiCount = (s) => (s.match(/[\x00-\x7F]/g) || []).length;
 const estTokens = (s) => {
   const han = hanCount(s), ascii = asciiCount(s);

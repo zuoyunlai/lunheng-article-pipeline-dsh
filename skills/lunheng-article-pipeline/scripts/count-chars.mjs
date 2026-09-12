@@ -6,7 +6,7 @@
 // 口径：纯中文字符数（Unicode 汉字 \u4e00-\u9fff），不含标点/数字/英文/引用编号
 // 用途：写手写完即跑（替代 LLM 推理估算）；T7 G8 字数核验；T8 终检权威回填
 import { readFileSync, existsSync } from 'node:fs';
-import { HAN_RE as HAN } from './_lib/han.mjs';   // 汉字口径唯一真源（v2.5.2-dsh.13 抽 _lib）
+import { countHan, HAN_RE as HAN } from './_lib/han.mjs';   // 汉字口径唯一真源（v2.5.2-dsh.13 抽 _lib；v18.0.3 计数改走 countHan）
 
 const [, , file, flag] = process.argv;
 if (!file) { console.error('用法: node count-chars.mjs <文件.md> [--full | --summary]'); process.exit(10); } // v18.0.2：参数/路径错统一 10
@@ -26,7 +26,7 @@ if (flag === '--summary') {
       const after = start + `## ${s}`.length;
       const next = text.indexOf('\n## ', after);
       if (next >= 0) end = next;
-      sections[s] = (text.slice(start, end).match(HAN) || []).length;
+      sections[s] = countHan(text.slice(start, end));   // v18.0.3：改用 _lib/han.mjs 的 countHan（旧版在此内联 match）
     } else {
       sections[s] = 0;
     }
@@ -40,8 +40,8 @@ if (flag === '--summary') {
     const i = text.indexOf(`## ${s}`, bodyFrom);
     if (i >= 0 && i < bodyEnd) bodyEnd = i;
   }
-  const bodyCount = (text.slice(bodyFrom, bodyEnd).match(HAN) || []).length;
-  const totalCount = (text.match(HAN) || []).length;
+  const bodyCount = countHan(text.slice(bodyFrom, bodyEnd));   // v18.0.3：走 _lib 真源
+  const totalCount = countHan(text);                            // v18.0.3：同上
   // 各章节 H2/H3 标题 + 字数（top 10 节）
   const headingRe = /^(#{2,3})\s+(.+)$/gm;
   const headingCounts = [];
@@ -54,7 +54,7 @@ if (flag === '--summary') {
     nextRe.lastIndex = start;
     const next = nextRe.exec(text);
     const end = next ? next.index : text.length;
-    const han = (text.slice(start, end).match(HAN) || []).length;
+    const han = countHan(text.slice(start, end));   // v18.0.3：走 _lib 真源
     headingCounts.push({ level: m[1], title, hanChars: han });
   }
   console.log(JSON.stringify({
@@ -94,7 +94,7 @@ if (flag !== '--full') {
   target = text.slice(from, to);
 }
 
-const count = (target.match(HAN) || []).length;
+const count = countHan(target);   // v18.0.3：走 _lib/han.mjs 真源（旧版在此内联 match）
 console.log(JSON.stringify({
   file,
   scope: flag === '--full' ? 'full(全文纯汉字)' : 'body(正文区纯汉字: 摘要后~文末节前)',

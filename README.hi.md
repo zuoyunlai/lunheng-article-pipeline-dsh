@@ -1,6 +1,6 @@
 # लुन्हेंग (lunheng-article-pipeline) — बहु-एजेंट दीर्घ-लेख पाइपलाइन
 
-> 版本：v18.0.2（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.0.3（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > एक DeepSeek Harness (DSH) बंडल जो माँग पर एक एजेंट स्किल पंजीकृत करता है। यह स्किल दीर्घ लेखन — शोध-पत्र, उद्योग विश्लेषण, व्यावसायिक समीक्षा और लंबे लेख — को **मानव-सहभागिता वाली 9-भूमिका पाइपलाइन** में बदल देती है।
 
@@ -96,7 +96,7 @@ patch परत दो काम करती है: **इस पैकेज �
 संस्करण **केवल tag से** प्रकाशित होते हैं; स्थानीय `npm publish` वर्जित है (यह CI द्वारों और OIDC provenance को दरकिनार करता है, और npm संस्करण कभी अधिलेखित नहीं हो सकता)।
 
 ```sh
-git tag v18.0.2 && git push origin v18.0.0   # एक बार में एक ही tag (GitHub: >3 tag एक push में कोई workflow नहीं चलाता)
+git tag v18.0.3 && git push origin v18.0.0   # एक बार में एक ही tag (GitHub: >3 tag एक push में कोई workflow नहीं चलाता)
 # publish.yml क्रम: द्वार 1 सुसंगति → द्वार 2 पैकेजिंग → द्वार 3 स्वच्छता → स्क्रिप्ट परीक्षण
 #   → tag/संस्करण समानता → idempotency गार्ड → OIDC publish --provenance --tag dsh → प्रकाशन-पश्चात लेखा-परीक्षा
 ```
@@ -146,8 +146,8 @@ DSH में मॉडल मार्ग `settings.yaml` तय करता �
 | साधन | भूमिकाएँ | क्षमता |
 |---|---|---|
 | `subagent_retrieval` | T1 साहित्य / T2 आँकड़े / T3 प्रकरण | सस्ता और तेज़ |
-| `subagent_strong` | T4 विश्लेषण / T5 लेखन / T6 समालोचना / T9 समीक्षा | प्रबल तर्कण |
-| `subagent_audit` | T7 लेखा-परीक्षा / G14 संसूचक | शीर्ष स्तर, लागत घटाकर नहीं |
+| `subagent_strong` | T4 विश्लेषण / T5 लेखन | प्रबल तर्कण |
+| `subagent_audit` | T6 समालोचना / T7 लेखा-परीक्षा / T9 समीक्षा / G14 संसूचक | शीर्ष स्तर, लागत घटाकर नहीं |
 
 `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_PROVIDER` और `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_MODEL` से अधिलेखन करें: प्रदाता और मॉडल स्वतंत्र क्षेत्र हैं (प्रदाता बदलने पर दोनों आवश्यक), और `LUNHENG_TIERING=off` तीनों स्तरों को विरासत पर लौटा देता है। स्तर-साधन अनुपलब्ध हो तो प्रेषण `subagent` पर लौटता है। देखें `examples/preset/README.md` और `docs/installation.md`।
 
