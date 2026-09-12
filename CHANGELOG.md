@@ -15,6 +15,12 @@
 - **诚实标注（不许夸大）**：官方 `docs/subsystems/tools.md:370` 明确 canonical value **只在执行期有效**（日志只持久化 `content`/`error`/`meta`），故**工具化不会自动改善审计留痕**——闸门实据真源仍是落盘的 `M-Gate-Report.json`（v18.0.5 已把它与正文指纹绑定）。
 - **为什么不是 patch 行、不要 `exports`/`Config`**：走**动态 `import('@deepseek-ai/dsh-tools')` + `ctx.get('tools')`**（官方 `guide/plugin-dev-guide.md:139`：可选依赖不写 `inject`），`inject` 仍只有 `['skills']`。若为工具而静态 import 宿主包或把 `tools` 写进 `inject`，任何缺该包的 profile 都会**入口 import 失败 → 技能也不注册**（教训 #154）。`package.json` 增 `@deepseek-ai/dsh-tools`（**optional** peer）只为如实声明，不是安装依赖。
 - **三条降级路径**（两条有 CI 门钉住）：宿主无 `tools` 服务 → 不注册；`@deepseek-ai/dsh-tools` 不可解析 → 打印一行说明并跳过；任一模块抛错 → 只丢该能力。`tests/entry.test.mjs` 覆盖「注入契约等价替身真跑两个工具」与「包不可用时的降级」；`pack-smoke.mjs` 覆盖**发布物**侧（解包目录里包不可解析 → 必须安静降级为 0 个工具，且 guard/命令照常注册）。
+- ⚠️ **本版内实测到并修掉的一处真缺陷（不许省略）**：首版 `lib/tools.js` 在 `output.schema` 里写了 `required`（根 1 处 + 数组 `items` 1 处）。用**宿主真实的 `defineTool`**（从本机已装 DSH 包目录取，`run/_cgroup-real-definetool.mjs`）一灌即抛
+  `JsonSchemaError: unsupported JSON schema: schema.required is not supported by the value schema DSL`。
+  **为什么危险**：`defineTool()` 是**定义期**抛错 → 两个工具**永不注册**；而入口的降级 `catch` 会把它吞成一行提示（技能照常注册）→ 于是「81 个测试全绿 + 生产里两个工具都不存在」可以同时成立。**用替身 `defineTool` 的测试看不见这一类问题**。
+  **根因（读宿主源码确认）**：`@deepseek-ai/dsh-tools` 的 `defineTool` 不是直接吃 JSON Schema，而是先编译**作者期 DSL**——只认 `type/oneOf/properties/additionalProperties/items/enum/const` + 注解 `description/title/default/examples`；`type:'object'` **必须显式** `additionalProperties`；**`required` 只在「参数属性」层可用**（源码 `lib/index.js:600-608` 的 property 分支 `allowRequired:true`），`output.schema` 走 `compileValueSchema`（同文件 `:770-783`，`allowRequired:false`）→ **任何层级的 `required` 都会被拒**。
+  **修法与防线**：移除两处 `required`（`output.schema` 全程不用）；新增 CI 用例**「工具定义必须符合宿主 value schema DSL」**——按上述规则做结构断言（不依赖宿主包，裸仓库可跑），并带**反向自证**（把 `required` 注回、把 `additionalProperties` 删掉两个探测样例必须被判违规，防断言恒真）。**对抗验证**：把 `required` 注回 `output.schema` → 用例变红并点名「DSL 不支持该关键字」（`run/_adv-dsl-required.mjs`，注入物已还原）。
+  **顺带得到的结论**：`tests/entry.test.mjs` 用替身是**必要的**（裸仓库没有宿主包），但替身**只验证「我们的行为」，不验证「我们的声明能否被宿主接受」**——后者只能靠「真实包探测（人工，记录在案）+ 按源码规则写结构断言（CI）」。这是本轮 C-1 最值得记住的一条。
 
 ### 新增 C-4：机制文件写保护从「文档纪律」升级为**机制否决**（部分）
 

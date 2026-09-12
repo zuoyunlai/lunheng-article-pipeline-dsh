@@ -174,6 +174,70 @@ test('C 组降级：宿主缺 @deepseek-ai/dsh-tools 时，工具安装失败但
   assert.equal(regs.length, 0)
 })
 
+// ===== 宿主 value schema DSL 合规（v18.1.0 追加；这是**真实踩到过**的缺陷类别）=====
+// 背景：`@deepseek-ai/dsh-tools` 的 `defineTool` 不直接吃 JSON Schema，而是先编译**作者期 DSL**：
+//   · 只认这些关键字：`type` / `oneOf` / `properties` / `additionalProperties` / `items` / `enum` / `const`
+//     + 注解 `description` / `title` / `default` / `examples`（源码 `lib/index.js` 的 `assertAuthorKeys`）；
+//   · `type: 'object'` **必须显式写** `additionalProperties: true|false`，否则报错；
+//   · **`required` 只在「参数属性」层可用**（源码 :600-608 的 property 分支 `allowRequired:true`，且值必须是
+//     布尔 `true`）；`output.schema` 走 `compileValueSchema`（:770-783，`allowRequired:false`）→
+//     **任何层级的 `required` 都会被拒**。
+// 为什么必须钉在 CI 里：违规的表现是 `defineTool()` **定义期抛错 → 工具永不注册**，而入口的降级 catch
+//   会把它吞成一行提示（技能照常注册），于是「测试全绿 + 生产无工具」同时成立。
+//   **本包实测**：首版 `lib/tools.js` 在 `output.schema` 里用了 `required`（根 + 数组 items 两处），
+//   用真实 `defineTool` 一灌即抛 `unsupported JSON schema: schema.required is not supported by the value schema DSL`。
+//   用的是「契约等价替身」的测试**看不见**这一类问题，故此处按 DSL 规则做**结构断言**（不依赖宿主包，CI 可跑）。
+const DSL_VALUE_KEYS = new Set(['type', 'oneOf', 'properties', 'additionalProperties', 'items', 'enum', 'const', 'description', 'title', 'default', 'examples'])
+const DSL_TYPES = new Set(['object', 'array', 'string', 'number', 'integer', 'boolean', 'null', 'json'])
+/** 按宿主 DSL 规则走一遍 schema，返回违规清单（空 = 合规）。 */
+function dslViolations(node, path, { inParameters = false } = {}) {
+  const bad = []
+  if (!node || typeof node !== 'object' || Array.isArray(node)) return [`${path}: 必须是 schema 对象`]
+  for (const k of Object.keys(node)) {
+    if (k === 'required' && inParameters) continue
+    if (!DSL_VALUE_KEYS.has(k)) bad.push(`${path}.${k}: DSL 不支持该关键字（${k === 'required' ? 'required 只在参数属性层可用，output.schema 全程禁用' : '非白名单'}）`)
+  }
+  if (node.oneOf) {
+    if (node.type) bad.push(`${path}: type 与 oneOf 不能同时声明`)
+    node.oneOf.forEach((b, i) => bad.push(...dslViolations(b, `${path}.oneOf[${i}]`)))
+    return bad
+  }
+  if (node.type !== undefined && (Array.isArray(node.type) || !DSL_TYPES.has(node.type))) bad.push(`${path}.type: 必须是单个受支持的类型字符串`)
+  if (node.type === 'object') {
+    if (typeof node.additionalProperties !== 'boolean') bad.push(`${path}.additionalProperties: object 必须显式声明布尔值`)
+    for (const [k, v] of Object.entries(node.properties || {})) bad.push(...dslViolations(v, `${path}.properties.${k}`))
+  }
+  if (node.type === 'array') bad.push(...dslViolations(node.items, `${path}.items`))
+  return bad
+}
+
+test('C 组：工具定义必须符合宿主 value schema DSL（required 只在参数层；object 必须显式 additionalProperties）', async () => {
+  const { installLunhengTools } = await import(pathToFileURL(join(PACKAGE_ROOT, 'lib', 'tools.js')).href)
+  const regs = []
+  const ctx = { get: (n) => (n === 'tools' ? { register: (d) => { regs.push(d); return () => {} } } : undefined) }
+  await installLunhengTools(ctx, {
+    skillRoot: join(PACKAGE_ROOT, 'skills', 'lunheng-article-pipeline'),
+    defineToolFactory: async () => ({ defineTool: (def) => def }),
+  })
+  assert.equal(regs.length, 2)
+  for (const t of regs) {
+    const bad = [...dslViolations(t.output?.schema, `${t.name}.output.schema`)]
+    // `parameters` 本身是**属性映射**（`{ 参数名: schema }`），逐个参数按其自身 schema 走（此处 required 合法）
+    for (const [k, v] of Object.entries(t.parameters || {})) {
+      bad.push(...dslViolations(v, `${t.name}.parameters.${k}`, { inParameters: true }))
+      // 参数层额外规则：`required` 存在时必须是 === true（官方 :602「must be true when present」）
+      if ('required' in v && v.required !== true) bad.push(`${t.name}.parameters.${k}.required: 只能是 true（缺省即非必填）`)
+    }
+    assert.deepEqual(bad, [], `工具 ${t.name} 的 schema 不符合宿主 DSL：\n  - ${bad.join('\n  - ')}`)
+    assert.equal(typeof t.description, 'string', `${t.name} 必须有 description`)
+  }
+  // 反向自证：把 required 放回 output.schema 必须被判违规（防这个断言本身恒真）
+  const probe = dslViolations({ type: 'object', additionalProperties: false, properties: {}, required: ['x'] }, 'probe')
+  assert.ok(probe.length > 0, '探测样例必须被判违规（否则本规则形同虚设）')
+  const probe2 = dslViolations({ type: 'object', properties: {} }, 'probe2')
+  assert.ok(probe2.some((m) => /additionalProperties/.test(m)), '缺 additionalProperties 必须被判违规')
+})
+
 test('C 组：机制写保护 guard —— 技能包内路径否决、包外放行、主人授权时放行', async () => {
   const mod = await import(pathToFileURL(ENTRY).href)
   const { ctx, captured } = makeCtx({ tools: true })
