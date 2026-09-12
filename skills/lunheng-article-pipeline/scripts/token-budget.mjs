@@ -20,6 +20,8 @@ import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { homedir } from 'node:os';
 import { countHan } from './_lib/han.mjs';   // 汉字口径唯一真源（v18.0.3 起）
+import { installExitGuard } from './_lib/exit-guard.mjs';   // 退出码硬化（v18.0.5）：fs 类异常 → 10，内部错误 → 70
+installExitGuard();
 
 const args = process.argv.slice(2);
 if (args.includes('-h') || args.includes('--help')) {
@@ -149,6 +151,11 @@ if (wantRoles) {
   const sdir = join(dshHome, 'storages', 'session_projcache', 'sessions');
   const legacy = join(dshHome, 'storages', 'session_projcache.json');
   const sessions = [];
+  // v18.0.5（第三方审计 P2-11）：与 token-cost.mjs 统一为「目录式优先」并显式告警两布局并存——
+  //   旧版此处目录优先、token-cost 单文件优先，同机两份报表取不同快照且都静默 exit 0。
+  if (existsSync(sdir) && existsSync(legacy)) {
+    console.error(`⚠️ 检测到两种会话投影布局并存：${sdir}（优先）与 ${legacy}（忽略）——本脚本一律以目录式为准（与 token-cost.mjs 同判序）`);
+  }
   if (existsSync(sdir)) {
     for (const f of readdirSync(sdir).filter((x) => x.endsWith('.json'))) {
       try {

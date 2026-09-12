@@ -1,6 +1,8 @@
 # लुन्हेंग (lunheng-article-pipeline) — बहु-एजेंट दीर्घ-लेख पाइपलाइन
 
-> 版本：v18.0.4（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.0.5（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+
+> 🌐 [English](README.md) ｜ [中文](README.zh.md) ｜ [Español](README.es.md) ｜ [Português](README.pt.md) ｜ **हिन्दी**（यह फ़ाइल）
 
 > एक DeepSeek Harness (DSH) बंडल जो माँग पर एक एजेंट स्किल पंजीकृत करता है। यह स्किल दीर्घ लेखन — शोध-पत्र, उद्योग विश्लेषण, व्यावसायिक समीक्षा और लंबे लेख — को **मानव-सहभागिता वाली 9-भूमिका पाइपलाइन** में बदल देती है।
 
@@ -89,15 +91,25 @@ patch परत दो काम करती है: **इस पैकेज �
 
 ### Documentation
 
-`docs/installation.md` (स्थापना व सत्यापन) · `docs/usage.md` (उपयोग प्रवाह) · `docs/architecture.md` (संरचना) · `docs/introduction.md` (परिचय) · `docs/faq.md` (सामान्य प्रश्न) · `docs/troubleshooting.md` (लक्षण → कारण → उपाय) · `SECURITY.md` (विश्वास-सीमा) · `CHANGELOG.md` · `CONTRIBUTING.md`।
+| फ़ाइल | सामग्री |
+|---|---|
+| `docs/installation.md` | स्थापना व सत्यापन |
+| `docs/usage.md` | उपयोग प्रवाह (चरण व आर्टिफ़ैक्ट संरचना) |
+| `docs/architecture.md` | संरचना (9 भूमिकाएँ, त्रिकोणीय प्रमाण, G0–G14 लेखा-परीक्षा, M-gate) |
+| `docs/introduction.md` | प्लगइन परिचय |
+| `docs/faq.md` | सामान्य प्रश्न |
+| `docs/troubleshooting.md` | स्थापना/सत्यापन समस्या-निवारण (लक्षण → कारण → उपाय) |
+| `SECURITY.md` | सुरक्षा नीति व विश्वास-सीमा |
+| `CHANGELOG.md` | संस्करण इतिहास |
+| `CONTRIBUTING.md` | रखरखाव व प्रकाशन मार्गदर्शिका |
 
 ### Publishing (maintainers)
 
 संस्करण **केवल tag से** प्रकाशित होते हैं; स्थानीय `npm publish` वर्जित है (यह CI द्वारों और OIDC provenance को दरकिनार करता है, और npm संस्करण कभी अधिलेखित नहीं हो सकता)।
 
 ```sh
-git tag v18.0.4 && git push origin v18.0.0   # एक बार में एक ही tag (GitHub: >3 tag एक push में कोई workflow नहीं चलाता)
-# publish.yml क्रम: द्वार 1 सुसंगति → द्वार 2 पैकेजिंग → द्वार 3 स्वच्छता → स्क्रिप्ट परीक्षण
+git tag v18.0.5 && git push origin v18.0.5   # एक बार में एक ही tag (GitHub: >3 tag एक push में कोई workflow नहीं चलाता)
+# publish.yml क्रम: द्वार 1 सुसंगति → द्वार 2 पैकेजिंग → द्वार 3 स्वच्छता → द्वार 4 पैकेज स्मोक → स्क्रिप्ट परीक्षण
 #   → tag/संस्करण समानता → idempotency गार्ड → OIDC publish --provenance --tag dsh → प्रकाशन-पश्चात लेखा-परीक्षा
 ```
 

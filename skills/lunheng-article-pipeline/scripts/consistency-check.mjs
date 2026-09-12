@@ -26,6 +26,7 @@
 //   ④b 占位符残留（「命令已剥离·DSH 用 read 推理」零容忍）
 //   ⑲ 交接契约表（每个声明产出的产物须被产出者声明 + 被下游读清单/证据包引用；版本化报告不得写死 -v1.md）
 //   ⑳ M 门文档自洽（M-Gate-Algorithm.md 节头括注项数 == 节内 ### 子节数 == 脚本 gate 标签数；子节编号连续）
+//   ㉑ 五语 README 结构镜像（切换器行 + 表格行数 + ## 标题数，五份必须一致）
 // 退出码 0 = 通过；1 = 有漂移（列在 stderr）
 // (重写用法：node scripts/consistency-check.mjs [--fix]
 //   --fix：自动修复可逆的简单漂移（P2 级，如「（检查）」占位符替换）
@@ -34,6 +35,16 @@ const fixMode = process.argv.includes('--fix');
 import { readFileSync, readdirSync, statSync, existsSync, writeFileSync, copyFileSync } from 'node:fs';
 import { join, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { installExitGuard } from './_lib/exit-guard.mjs';   // 退出码硬化（v18.0.5）
+installExitGuard();
+// v18.0.5（第三方审计 P2）：未知参数此前被静默忽略（`--nope` → exit 0「自检通过」），
+//   拼错 `--fix` 会静默走**只读模式**（想自动修却没修，且无提示）。现在显式拒绝。
+for (const a of process.argv.slice(2)) {
+  if (a !== '--fix') {
+    console.error(`未知参数: ${a}\n用法: node scripts/consistency-check.mjs [--fix]`);
+    process.exit(1);
+  }
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..'); // 技能根（两种布局下均正确）
@@ -334,9 +345,24 @@ for (const f of claimTargets) {
 //   规则 ⑩ 只管脚本白名单那一行，分档映射**无门可拦**——多宿主各写一份表，谁也没对账。
 //   本规则把真源派生的 `tool → roles` 与每一处断言对账：行内出现**恰好一个**独立工具名
 //   （其后不接 `/`，故 `subagent_retrieval/strong/audit` 这类复合写法不算断言）即视为断言，
-//   行内其余 `T\d` / `G14` 编号集合必须与真源集合相等。扫描范围为 markdown 表格行与
-//   `#   - subagent_x: …` 注释行（散文表述不在此规则内）。CHANGELOG 豁免（历史段记录当时事实）。
+//   行内其余 `T\d` / `G14` 编号集合必须与真源集合相等。
+//   扫描范围（v18.0.5 扩）：markdown **表格行**、`#   - subagent_x: …` 注释行，以及
+//   **`.yml` / `.yaml` / `.json` 里任意含单个工具名的行**（第三方审计 P2-1：`examples/preset/preset.yml`
+//   就是漏网的那一处——旧版只 walk `.md`）。CHANGELOG 豁免（历史段记录当时事实）。
+//   **边界（如实）**：纯散文式表述（只写角色不写工具名，如「分析写作批判审稿 T4-T6+T9」）无法机械判定，
+//   不在本规则内——那类只能靠人读；已修的那处已加真源指针防复发。
 const TIER_TOOL_RE = /subagent_(retrieval|strong|audit)(?![a-z/])/;
+const walkAny = (dir, acc = []) => {
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    const st = statSync(p);
+    if (st.isDirectory()) {
+      if (name === '.git' || name === 'node_modules') continue;
+      walkAny(p, acc);
+    } else if (/\.(md|ya?ml|json)$/.test(name)) acc.push(p);
+  }
+  return acc;
+};
 const tierTruth = new Map();
 {
   const routingSrc = readFileSync(join(ROOT, 'scripts', 'model-routing.mjs'), 'utf8');
@@ -352,22 +378,35 @@ const tierTruth = new Map();
 }
 if (tierTruth.size === 3) {
   const scanned = new Set();
-  for (const f of [...active, ...(existsSync(REPO_ROOT) ? walk(REPO_ROOT) : [])]) {
+  for (const f of [...active, ...(existsSync(REPO_ROOT) ? walkAny(REPO_ROOT) : [])]) {
     if (scanned.has(f) || f.includes('CHANGELOG')) continue;
     scanned.add(f);
     const rel = relative(REPO_ROOT, f).replaceAll('\\', '/');
+    const isYaml = /\.(ya?ml|json)$/.test(f);
     readFileSync(f, 'utf8').split('\n').forEach((l, i) => {
-      if (!l.trimStart().startsWith('|') && !/^\s*#\s*-\s*subagent_/.test(l)) return;
-      const tools = [...l.matchAll(new RegExp(TIER_TOOL_RE.source, 'g'))].map((m) => m[0]);
-      if (tools.length !== 1) return;
-      const tool = tools[0];
-      const got = [...new Set([...l.matchAll(/T\d+|G14/g)].map((m) => m[0]))].sort();
-      const want = tierTruth.get(tool);
-      if (got.join('/') !== want.join('/')) {
-        errors.push(
-          `[P1 分档映射漂移] ${rel}:${i + 1} 「${tool}」行写 ${got.join('/') || '（无角色）'}，` +
-            `真源 roles = ${want.join('/')}（真源：scripts/model-routing.mjs + references/_shared/模型路由.md §二）`,
-        );
+      // markdown：只认表格行与 `#   - subagent_x:` 注释行（避免散文误判）
+      // yaml/json：任意行只要含工具名即视为断言；**一行多档**时按分隔符切段逐段判定
+      //   （v18.0.5：`examples/preset/preset.yml` 的档位描述常把三档写在一行）
+      const parts = isYaml
+        ? l.split(/[｜|、；;]|\s\/\s/)
+        : [l];
+      if (!isYaml && !l.trimStart().startsWith('|') && !/^\s*#\s*-\s*subagent_/.test(l)) return;
+      if (l.trimStart().startsWith('#')) return;   // yaml 里的注释行不判（说明性文字）
+      for (const part of parts) {
+        const tools = [...part.matchAll(new RegExp(TIER_TOOL_RE.source, 'g'))].map((m) => m[0]);
+        if (tools.length !== 1) continue;
+        const tool = tools[0];
+        const got = [...new Set([...part.matchAll(/T\d+|G14/g)].map((m) => m[0]))].sort();
+        // yaml/json：只有**同时**出现角色编号才视为「映射断言」（`toolName: subagent_retrieval` 这类
+        // 单纯引用工具名不算断言——那正是 patch 的行配置，不是角色归属表）
+        if (isYaml && got.length === 0) continue;
+        const want = tierTruth.get(tool);
+        if (got.join('/') !== want.join('/')) {
+          errors.push(
+            `[P1 分档映射漂移] ${rel}:${i + 1} 「${tool}」行写 ${got.join('/') || '（无角色）'}，` +
+              `真源 roles = ${want.join('/')}（真源：scripts/model-routing.mjs + references/_shared/模型路由.md §二）`,
+          );
+        }
       }
     });
   }
@@ -702,6 +741,46 @@ if (existsSync(dshSkillDir)) {
     if (existsSync(join(dshSkillDir, poll))) {
       errors.push(`[P1 .dsh 污染] 技能目录含仓库级条目 ${poll}（应只含技能包本体）`);
     }
+  }
+}
+
+// ㉑ 五语 README 结构镜像（v18.0.5 新增，第三方审计 P2-7）
+//   背景：官方 `readme-consistency` 只比对 `##` 标题字符串——反事实实测：整份 es 换成英文副本仍 PASS；
+//   删整节正文、把「11 scripts」改成 99、把版本改成 v9.9.9 也全 PASS。实测过的真实后果是
+//   es/pt/hi 三份**掉了语言切换器**、`### Documentation` 的 9 行表被压成一行散文（表行 33 vs 44）。
+//   本规则把「结构镜像」的**可机械判定部分**纳入：
+//     ① 五份都必须含 `🌐` 语言切换器行；
+//     ② 五份的**表格行数**必须相等（官方 i18n 文档：结构须镜像——表行列数 / 列表项数）；
+//     ③ 五份的 `##` 标题数必须相等（官方门已覆盖字符串层面，这里再钉数量，防「删掉一节还 PASS」）。
+//   边界（如实）：无法判定**译文语义**是否与中文版一致（那需要人读或 LLM 复核），故只钉结构。
+const fiveLangs = ['README.md', 'README.zh.md', 'README.es.md', 'README.pt.md', 'README.hi.md'];
+const langStats = [];
+for (const f of fiveLangs) {
+  const p = join(REPO_ROOT, f);
+  if (!existsSync(p)) { errors.push(`[P1 五语 README] 缺 ${f}`); continue; }
+  const t = readFileSync(p, 'utf8');
+  const lines = t.split('\n');
+  langStats.push({
+    f,
+    switcher: /🌐/.test(t),
+    rows: lines.filter((l) => l.startsWith('|')).length,
+    h2: lines.filter((l) => /^## /.test(l)).length,
+  });
+}
+if (langStats.length > 1) {
+  for (const s of langStats) {
+    if (!s.switcher) errors.push(`[P1 五语 README] ${s.f} 缺语言切换器行（\`> 🌐 …\`）——非中文用户找不到其它语言版本`);
+  }
+  const rowSet = new Set(langStats.map((s) => s.rows));
+  if (rowSet.size > 1) {
+    errors.push(
+      `[P1 五语 README] 表格行数不一致：${langStats.map((s) => `${s.f}=${s.rows}`).join(' / ')}` +
+        '——官方 i18n 规范要求结构镜像（表行列数一致），行数差异说明某语言漏了整张表',
+    );
+  }
+  const h2Set = new Set(langStats.map((s) => s.h2));
+  if (h2Set.size > 1) {
+    errors.push(`[P1 五语 README] \`##\` 标题数不一致：${langStats.map((s) => `${s.f}=${s.h2}`).join(' / ')}——某语言可能整节缺失`);
   }
 }
 

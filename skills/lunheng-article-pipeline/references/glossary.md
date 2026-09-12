@@ -1,4 +1,4 @@
-> 版本：v18.0.4（DSH bundle 插件）
+> 版本：v18.0.5（DSH bundle 插件）
 
 
 # 论衡核心概念词汇表
@@ -281,7 +281,7 @@
 - **Web 检索**：web_search / web_fetch
 - **子代理编排**：subagent（后台可续接）/ subagent_fork（继承上下文）/ list_agents
 - **规划**：todo_write
-- **命令执行**：pwsh（Windows）/ bash（Linux）——论衡主流程默认不执行任意 shell（LLM 推理判定），白名单例外：**随包脚本白名单**（清单与数量见 `SKILL.md` §执行能力边界 的白名单行，**唯一真源**）+ 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等，主控执行、受沙箱约束），需其他命令时经主人同意（v2.5.2-dsh.5 审计修订：如实声明，非「零 exec」；**v18.0.2：本处原写「9 个」已过期，改为指针**，数量由 `consistency-check.mjs` 规则 ㉑ 与 `SKILL.md` 白名单行机械对账）
+- **命令执行**：pwsh（Windows）/ bash（Linux）——论衡主流程默认不执行任意 shell（LLM 推理判定），白名单例外：**随包脚本白名单**（清单与数量见 `SKILL.md` §执行能力边界 的白名单行，**唯一真源**）+ 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等，主控执行、受沙箱约束），需其他命令时经主人同意（v2.5.2-dsh.5 审计修订：如实声明，非「零 exec」；**v18.0.2：本处原写「9 个」已过期，改为指针**，数量由 `consistency-check.mjs` 规则 **⑩（白名单集合）+ ⑩b（计数全库对账）** 与 `SKILL.md` 白名单行机械对账——v18.0.5 更正：本处旧写「规则 ㉑」**并不存在**，全库规则编号止于 ⑳）
 
 ### ❌ 不使用的工具（DSH 下无对应或需另配）
 - **浏览器控制 / 定时任务 / 技能维护**：browser / cron / skill_workshop（无对应）

@@ -30,15 +30,18 @@ jobs:
           node-version: '24'   # Trusted Publishing 要求 npm ≥11.5.1；Node 24 自带 npm 已满足（不再 `npm i -g npm@latest`，避免发布环境不可复现）
           registry-url: 'https://registry.npmjs.org'
 
-      # ── 发布前三道门（fail-closed：任一不过即中止，绝不发布未校验内容）────────
-      - name: 门 1/3 一致性自检（版本/白名单/口径/工具名/CHANGELOG 段落）
+      # ── 发布前四道门（fail-closed：任一不过即中止，绝不发布未校验内容）────────
+      - name: 门 1/4 一致性自检（版本/白名单/口径/工具名/CHANGELOG 段落）
         run: node skills/lunheng-article-pipeline/scripts/consistency-check.mjs
 
-      - name: 门 2/3 打包面检查（bundle 契约 + package.json 元数据 + 工程红线）
+      - name: 门 2/4 打包面检查（bundle 契约 + package.json 元数据 + patch 行依赖 + 工程红线）
         run: node scripts/plugin-surface-check.mjs
 
-      - name: 门 3/3 机械卫生门（语法/JSON/YAML/行尾/UTF-8/发布包内容）
+      - name: 门 3/4 机械卫生门（语法/JSON/YAML/行尾/UTF-8/发布包内容/退出码契约）
         run: node scripts/repo-hygiene-check.mjs
+
+      - name: 门 4/4 打包产物冒烟（npm pack → 解包 → 入口 apply 真跑）
+        run: node scripts/pack-smoke.mjs
 
       - name: 随包脚本回归测试
         run: node --test "tests/**/*.test.mjs"

@@ -13,11 +13,15 @@
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { analyzeSvg, figureNoOf, figurePlaceholders } from './_lib/svg.mjs';
+import { installExitGuard, requireExistingFile, requireExistingDir } from './_lib/exit-guard.mjs'; // 退出码硬化（v18.0.5）
+installExitGuard();
 
 const argv = process.argv.slice(2);
 const figDirIdx = argv.indexOf('--fig-dir');
 const figDir = figDirIdx >= 0 && argv[figDirIdx + 1] ? argv[figDirIdx + 1] : null;
-if (figDirIdx >= 0 && !figDir) { console.error('--fig-dir 缺少值'); process.exit(1); }
+// v18.0.5（第三方审计 P1-1/口径统一）：**参数与路径错一律 10**（与全库契约一致；退出码 2 保留给
+//   「结构/图件异常」这类内容判定）。旧版这里全用 1，与「1 = P1 内容失败」撞义。
+if (figDirIdx >= 0 && !figDir) { console.error('--fig-dir 缺少值'); process.exit(10); }
 const strict = argv.includes('--strict');
 const positional = argv.filter((a, i) => !a.startsWith('--') && !(figDirIdx >= 0 && i === figDirIdx + 1));
 const mdPath = positional[0];
@@ -26,13 +30,13 @@ let svgFile = positional[2] || null;
 
 if (!mdPath || !htmlPath) {
   console.error('用法: node md2html.mjs <md> <html> [--fig-dir <图件目录>] [<svgFile>] [--strict]');
-  process.exit(1);
+  process.exit(10);
 }
-if (!existsSync(mdPath)) { console.error(`Markdown 不存在: ${mdPath}`); process.exit(1); }
-if (mdPath === htmlPath) { console.error('输入输出不能是同一文件（会覆盖源文件）'); process.exit(1); }
-if (svgFile && !existsSync(svgFile)) { console.error(`SVG 文件不存在: ${svgFile}`); process.exit(1); }
-if (figDir && !existsSync(figDir)) { console.error(`图件目录不存在: ${figDir}`); process.exit(1); }
-if (figDir && svgFile) { console.error('--fig-dir 与位置参数 <svgFile> 不能同时使用（前者按图号配图）'); process.exit(1); }
+requireExistingFile(mdPath, 'Markdown');                                    // 10（含「传目录」）
+if (mdPath === htmlPath) { console.error('输入输出不能是同一文件（会覆盖源文件）'); process.exit(10); }
+if (svgFile) requireExistingFile(svgFile, 'SVG 文件');
+if (figDir) requireExistingDir(figDir, '图件目录');
+if (figDir && svgFile) { console.error('--fig-dir 与位置参数 <svgFile> 不能同时使用（前者按图号配图）'); process.exit(10); }
 
 const md = readFileSync(mdPath, 'utf8');
 

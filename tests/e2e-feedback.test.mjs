@@ -102,3 +102,35 @@ test('端到端反哺⑥：final-check 步骤顺序必须是「先刷新证据�
   assert.ok(iEv > 0 && iGate > 0, '两个步骤都应通过 push 进入 steps 数组')
   assert.ok(iEv < iGate, 'build-evidence-bundle 必须排在 m-gate-check 之前（否则 M 门读到上一次收集的陈旧证据包）')
 })
+
+// v18.0.5（第三方审计 P1-4/③）：上面那条断言的是**源码文本形态**（挪动代码即失效/误报）。
+//   本用例改为**真跑** final-check 并断言 `steps` 的实际顺序 —— 行为断言才防得住回归。
+test('端到端反哺⑥b（行为断言）：final-check 实跑的 steps 顺序必须「先刷新证据包、再跑 M 门」', () => {
+  const { d, proj, fin, ev } = mkProject()
+  writeFileSync(join(fin, '定稿.md'), DRAFT_WITH_ENDNOTES(''))
+  writeFileSync(join(ev, '文献卡.md'), CARD('文献卡', ['L01', 'L02', 'L03']))
+  writeFileSync(join(ev, '数据卡.md'), CARD('数据卡', ['D01']))
+  const r = run([join(SCRIPTS, 'final-check.mjs'), proj, '--json'])
+  const j = parseJson(r)
+  const names = (j.steps || []).map((s) => s.step)
+  const iEv = names.findIndex((n) => n.startsWith('build-evidence-bundle'))
+  const iGate = names.findIndex((n) => n.startsWith('m-gate-check'))
+  assert.ok(iEv >= 0 && iGate >= 0, '两步都应出现在实跑 steps：' + JSON.stringify(names))
+  assert.ok(iEv < iGate, 'build-evidence-bundle 必须先于 m-gate-check：' + JSON.stringify(names))
+  rmSync(d, { recursive: true, force: true })
+})
+
+// v18.0.5（第三方审计 P1-1）：子步骤**没跑起来**（spawn 失败）过去被记成 exit 1 → 报告输出
+//   「存在 P1 残留，可触发 T5 修订一轮」——把环境问题说成内容问题。现改为 70（EX_SOFTWARE）+ 独立推荐语。
+test('端到端反哺⑥c（行为断言）：子步骤 spawn 失败必须是 EX_SOFTWARE(70)，不得伪装成「P1 残留」', () => {
+  const { d, proj, fin, ev } = mkProject()
+  writeFileSync(join(fin, '定稿.md'), DRAFT_WITH_ENDNOTES(''))
+  writeFileSync(join(ev, '文献卡.md'), CARD('文献卡', ['L01', 'L02', 'L03']))
+  // PATH 置空 → 子脚本 spawn ENOENT（本用例只关心退出码语义，不关心跑到哪一步）
+  const r = run([join(SCRIPTS, 'final-check.mjs'), proj, '--json'], { env: { ...process.env, PATH: '' } })
+  const j = JSON.parse(String(r.stdout || '').slice(String(r.stdout || '').indexOf('{')))
+  assert.equal(j.exit, 70, 'spawn 失败应记 70：' + JSON.stringify(j.steps))
+  assert.match(j.summary.recommendation, /内部错误|EX_SOFTWARE/, '推荐语必须与内容判定区分：' + j.summary.recommendation)
+  assert.doesNotMatch(j.summary.recommendation, /T5 修订/, '不得把环境问题说成「可触发 T5 修订」')
+  rmSync(d, { recursive: true, force: true })
+})

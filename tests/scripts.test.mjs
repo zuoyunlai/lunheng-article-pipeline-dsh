@@ -589,6 +589,188 @@ test('m-gate-check M-Form-11：素材按需加载闭环（引了没读 / 幽灵�
   rmSync(d, { recursive: true, force: true })
 })
 
+// ===== v18.0.5：补齐 M 门回归网（第三方审计 P1-4 —— 9 项「改坏实现也不变红」的盲区）=====
+// 要求：**注入真实缺陷 → 对应门必须变红**。此前 M-Form-1/2/6/7/8、M-Exist-1/2/3 在用例集中
+// 没有回归网（35 个变异实验里有 10 个不变红），故专门补齐；夹具统一走 `_fixtures.mjs`。
+const DRAFT_OK = '# 标题\n\n## 摘要\n\n摘要若干字。\n\n## 一、导论\n\n'
+  + '正文 [L01] [D01] [C01] [先01]。'.repeat(12)
+  + '\n\n## 参考文献\n\n[L01] a\n\n## 数据来源\n\n[D01] d\n\n## 案例来源\n\n[C01] c\n\n## 先行者文献\n\n[先01] p\n\n## AI 使用声明\n\nAI。\n'
+const cardOk = (name, ids) => `# ${name}\n\n## 📇 索引段\n\n`
+  + ids.map((id) => `[${id}] 主题 ｜ 论点1`).join('\n')
+  + '\n\n## 正文\n\n' + ids.map((id) => `### [${id}] 条目\n信任级别：已发布\n`).join('\n')
+const setupCards = (ev) => {
+  writeFileSync(join(ev, '文献卡.md'), cardOk('文献卡', ['L01']))
+  writeFileSync(join(ev, '数据卡.md'), cardOk('数据卡', ['D01']))
+  writeFileSync(join(ev, '案例卡.md'), cardOk('案例卡', ['C01']))
+}
+const gateOf = (draft, ev, prefix) => {
+  const r = run([join(SCRIPTS, 'm-gate-check.mjs'), draft, ev])
+  const it = parseJson(r).results.find((x) => x.gate.startsWith(prefix))
+  assert.ok(it, `找不到门 ${prefix}`)
+  return it
+}
+
+test('m-gate-check M-Form-2 / M-Form-7：文末五节缺失与**顺序**都必须报（v18.0.5 补回归网）', () => {
+  const { d, fin, ev } = mkProject()
+  setupCards(ev)
+  const draft = join(fin, '定稿.md')
+  writeFileSync(draft, DRAFT_OK)
+  assert.equal(gateOf(draft, ev, 'M-Form-2').pass, true, '五节齐全应通过')
+  assert.equal(gateOf(draft, ev, 'M-Form-7').pass, true, '顺序正确应通过')
+  // ① 删掉最后一节 → 存在性失败（P0）
+  writeFileSync(draft, DRAFT_OK.replace('\n## AI 使用声明\n\nAI。\n', '\n'))
+  const it2 = gateOf(draft, ev, 'M-Form-2')
+  assert.equal(it2.pass, false, '缺「AI 使用声明」必须报')
+  assert.equal(it2.severity, 'P0')
+  assert.match(it2.detail, /AI 使用声明/)
+  // ② 仅顺序对调（成员资格仍全白名单）→ M-Form-7 违序 P1
+  writeFileSync(draft, DRAFT_OK.replace(
+    '## 数据来源\n\n[D01] d\n\n## 案例来源\n\n[C01] c',
+    '## 案例来源\n\n[C01] c\n\n## 数据来源\n\n[D01] d',
+  ))
+  const it7 = gateOf(draft, ev, 'M-Form-7')
+  assert.equal(it7.pass, false, '文末五节错序必须报')
+  assert.equal(it7.severity, 'P1')
+  assert.match(it7.detail, /顺序违规/)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('m-gate-check M-Exist-1：正文↔文末双向对比（漏引 / 孤儿都必须报；v18.0.5 补回归网）', () => {
+  const { d, fin, ev } = mkProject()
+  setupCards(ev)
+  const draft = join(fin, '定稿.md')
+  writeFileSync(draft, DRAFT_OK)
+  assert.equal(gateOf(draft, ev, 'M-Exist-1').pass, true, '齐备应通过')
+  // ① 正文引 [L99]，文末没有 → 漏引
+  writeFileSync(draft, DRAFT_OK.replace('正文 [L01] [D01] [C01] [先01]。', '正文 [L01] [D01] [C01] [先01] [L99]。'))
+  let it = gateOf(draft, ev, 'M-Exist-1')
+  assert.equal(it.pass, false, '文末漏引必须报：' + it.detail)
+  assert.match(it.detail, /漏引 [1-9]/)
+  // ② 文末多一条 [L02] 而正文不引 → 孤儿
+  writeFileSync(draft, DRAFT_OK.replace('## 参考文献\n\n[L01] a', '## 参考文献\n\n[L01] a\n[L02] b'))
+  it = gateOf(draft, ev, 'M-Exist-1')
+  assert.equal(it.pass, false, '文末孤儿必须报：' + it.detail)
+  assert.match(it.detail, /孤儿 [1-9]/)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('m-gate-check M-Form-6：数据卡条目缺独立「信任级别」段必须报（有则过；v18.0.5 补回归网）', () => {
+  const { d, fin, ev } = mkProject()
+  setupCards(ev)
+  const draft = join(fin, '定稿.md')
+  writeFileSync(draft, DRAFT_OK)
+  assert.equal(gateOf(draft, ev, 'M-Form-6').pass, true, '信任级别齐备应通过')
+  writeFileSync(join(ev, '数据卡.md'), cardOk('数据卡', ['D01']).replace('信任级别：已发布\n', ''))
+  const it = gateOf(draft, ev, 'M-Form-6')
+  assert.equal(it.pass, false, '缺独立信任级别段必须报：' + it.detail)
+  assert.match(it.detail, /独立段缺失/)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('m-gate-check M-Form-8：论点段缺 [Lxx] / 承重墙超载与幽灵编号都必须报（v18.0.5 补回归网）', () => {
+  const { d, proj, fin, ev } = mkProject({ analysis: true })
+  setupCards(ev)
+  const draft = join(fin, '定稿.md')
+  writeFileSync(draft, DRAFT_OK)
+  assert.equal(gateOf(draft, ev, 'M-Form-8').pass, true, '齐备应通过')
+  // ① 论点段只有 [D01]/[C01]（无 L）→ 段缺 L
+  writeFileSync(draft, '# 标题\n\n## 摘要\n\n摘要若干字。\n\n## 一、导论\n\n'
+    + '正文 [D01] [C01]。'.repeat(12)
+    + DRAFT_OK.slice(DRAFT_OK.indexOf('\n\n## 参考文献')))
+  let it = gateOf(draft, ev, 'M-Form-8')
+  assert.equal(it.pass, false, '论点段缺 [Lxx] 必须报：' + it.detail)
+  assert.match(it.detail, /缺\[Lxx\]|L_missing|段缺/)
+  // ② 承重墙超载（同一编号 3 论点）+ 幽灵编号（卡片里不存在）
+  writeFileSync(draft, DRAFT_OK)
+  writeFileSync(join(proj, 'analysis', '分析大纲.md'),
+    '# 分析大纲\n\n## 一、承重墙清单\n\n| 论点 | 承重证据 top1 |\n|---|---|\n| 论点1 | [C01] |\n| 论点2 | [C01] |\n| 论点3 | [C01] |\n| 论点4 | [L99] |\n')
+  it = gateOf(draft, ev, 'M-Form-8')
+  assert.equal(it.pass, false, '超载/幽灵必须报：' + it.detail)
+  assert.match(it.detail, /超载|不存在/)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('m-gate-check M-Exist-2 / M-Exist-3：空文件、悬空引用、证据包布局异常（v18.0.5 补回归网）', () => {
+  const { d, fin, ev } = mkProject()
+  setupCards(ev)
+  const draft = join(fin, '定稿.md')
+  writeFileSync(draft, DRAFT_OK)
+  assert.equal(gateOf(draft, ev, 'M-Exist-2').pass, true)
+  assert.equal(gateOf(draft, ev, 'M-Exist-3').pass, true)
+  // ① 证据包里放 0 字节 .md → P0
+  writeFileSync(join(ev, '空卡.md'), '')
+  let it = gateOf(draft, ev, 'M-Exist-2')
+  assert.equal(it.pass, false, '空文件必须报')
+  assert.equal(it.severity, 'P0')
+  assert.match(it.detail, /空文件/)
+  rmSync(join(ev, '空卡.md'))
+  // ② 正文引 [D99]（卡里没有）→ M-Exist-3 报
+  writeFileSync(draft, DRAFT_OK.replace('正文 [L01] [D01] [C01] [先01]。', '正文 [L01] [D01] [C01] [先01] [D99]。'))
+  it = gateOf(draft, ev, 'M-Exist-3')
+  assert.equal(it.pass, false, '悬空引用必须报：' + it.detail)
+  assert.match(it.detail, /D99|无对应条目/)
+  // ③ 布局异常（顶层无 .md、卡在子目录）：单列一条 P1；有回退的门仍能定位卡片（不再互相矛盾）
+  const proj2 = join(d, 'run', 'proj2')
+  const ev2 = join(proj2, 'final', '证据包')
+  mkdirSync(join(ev2, 'data'), { recursive: true })
+  mkdirSync(join(ev2, 'literature'), { recursive: true })
+  writeFileSync(join(ev2, 'data', '数据卡.md'), cardOk('数据卡', ['D01']))
+  writeFileSync(join(ev2, 'literature', '文献卡.md'), cardOk('文献卡', ['L01']))
+  writeFileSync(join(proj2, 'final', '定稿.md'), DRAFT_OK)
+  const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(proj2, 'final', '定稿.md'), ev2])
+  const res = parseJson(r).results
+  const ex2 = res.find((x) => x.gate.startsWith('M-Exist-2'))
+  assert.equal(ex2.severity, 'P1', '布局异常应单列 P1（不与「真缺卡」同判 P0）：' + ex2.detail)
+  assert.match(ex2.detail, /布局异常/)
+  const fm10 = res.find((x) => x.gate.startsWith('M-Form-10'))
+  assert.match(fm10.detail, /已查 [1-9]/, '带 projectRoot 回退的门仍应定位到卡片（v18.0.5 修口径分裂）')
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('consistency-check ⑩：随包脚本白名单漏列必须报（v18.0.5 补回归网）', () => {
+  const { d, R } = mkRepo()
+  writeFileSync(join(R, 'scripts', 'new-tool.mjs'), '// 新增脚本（未登记白名单）\n')
+  const r = run([join(R, 'scripts', 'consistency-check.mjs')])
+  assert.equal(r.code, 1, '白名单漏列必须 exit 1')
+  assert.match(r.out, /白名单/, '必须点名白名单不一致')
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('pack-smoke：patch 缺自注册行 / 引用未声明的包必须报（v18.0.5 新增发布物门）', () => {
+  // ① 基线：本仓 pack 出来的产物应通过
+  const ok = run([join(ROOT, 'scripts', 'pack-smoke.mjs')])
+  assert.equal(ok.code, 0, '本仓发布物应通过 pack-smoke：' + ok.out.slice(-400))
+
+  // ② 删掉自注册行 → 必须报（v18.0.0 的真实缺陷形态）
+  const { d, repo } = mkRepo({ full: true })
+  const patchPath = join(repo, 'cordis.patch.yml')
+  const patch = readFileSync(patchPath, 'utf8')
+  writeFileSync(patchPath, patch.replace(/^\s*- id: lunheng-article-pipeline\n\s*name: lunheng-article-pipeline\n/m, ''))
+  let r = run([join(repo, 'scripts', 'pack-smoke.mjs')])
+  assert.equal(r.code, 1, '缺自注册行必须 exit 1')
+  assert.match(r.out, /自注册行/)
+
+  // ③ patch 引用未声明的包 → 必须报（宿主改名即整树起不来）
+  writeFileSync(patchPath, patch.replace(/name: '@deepseek-ai\/dsh-tool-subagent'/g, "name: '@deepseek-ai/dsh-tool-nonexistent'"))
+  r = run([join(repo, 'scripts', 'pack-smoke.mjs')])
+  assert.equal(r.code, 1, '引用未声明包必须 exit 1')
+  assert.match(r.out, /未声明/)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('build-evidence-bundle：多版本报告必须取**最大**版本（清空后断言，v18.0.5 修「假测试」）', () => {
+  const { d, proj, fin, ev, aud } = mkProject({ audits: true })
+  writeFileSync(join(fin, '定稿.md'), DRAFT_OK)
+  writeFileSync(join(proj, '01-任务简报.md'), '# 简报\n\n子问题 A：x。\n需找数据点 ≥1\n')
+  writeFileSync(join(ev, '数据卡.md'), cardOk('数据卡', ['D01']))
+  writeFileSync(join(aud, '审计报告-v1.md'), '# 审计报告 v1\n\nG0：通过\n')
+  writeFileSync(join(aud, '审计报告-v3.md'), '# 审计报告 v3\n\nG0：通过\n')
+  run([join(SCRIPTS, 'build-evidence-bundle.mjs'), proj, '--summary'])
+  assert.ok(existsSync(join(ev, '审计报告-v3.md')), '应收录 v3（版本取最大）')
+  assert.ok(!existsSync(join(ev, '审计报告-v1.md')), '只应收录最大版本；v1 出现即说明排序退化（旧用例的断言可被上次运行残留满足）')
+  rmSync(d, { recursive: true, force: true })
+})
+
 test('m-gate-check M-Exist-5：闸门记录表（漏项 / 自述当实据 / ✗ 无原因 / 与 M 门报告矛盾必须报）', () => {
   const { d, proj, fin, ev, aud } = mkProject({ audits: true })
   writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')

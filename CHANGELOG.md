@@ -2,6 +2,55 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.0.5 — 2026-09-12
+
+> **第三方全量审计（对照官方插件规范）后的修订版**。审计报告：`run/guannian-yu-linian/audits/论衡第三方全量审计-v2.md`（4 路独立只读子审计 + 主控自做的运行面复核；评分 6.7/10，扣分点集中在「**运行时真实性保证**」这一层）。
+> 本版**逐条修订 P0 / P1 / P2 / P3 与改进方案 A、B 组**；不改 M 门 23 项的**检查内容**、不改 Phase 结构与闸门数量。行为对账：同批真实项目在 v18.0.4 与 v18.0.5 上**逐门比对**，除下表列出的有意变更外**判定完全一致**（`run/_compare-v1804-v1805.mjs`：门数 22=22、exit 码全同）。
+
+### 修复：P0 —— T8 裁定未与「所审正文」绑定（报告可为旧结论放行）
+
+- **现象（审计实测）**：在真实项目副本里改一段正文后重跑，进程 `exit=2`、`script_exit_raw=2`，但落盘 `M-Gate-Report.json` 的 `exit` **仍是旧裁定的 0**，`build-evidence-bundle` 生成的审计视图写 `通过 16/22 ｜ P0: 2 ｜ exit: 0`——**同屏自相矛盾**，而该视图被 8 个角色当闸门真源读；连带 M-Exist-5 的「闸门 ↔ 报告矛盾」分支**永久不可达**。
+- **修法**：报告新增 `verdict_scope`（`draft_sha256` + `draft_bytes`）；写入时**只有指纹一致**才保留 T8 裁定的 `exit`，否则置 `verdict_stale: true` + `verdict_stale_reason`，落盘改用本次**机械值**并 stderr 明示「旧裁定已过期，请重裁」；审计视图渲染为 `exit: <机械值>（T8 裁定已过期，原裁定 N）`；M-Exist-5 在 `verdict_stale` 时回退比对 `script_exit_raw` 并报 P0 提示。
+
+### 修复：P1 —— 七条（全部配回归用例）
+
+1. **退出码在异常路径上撞码**（与 v18.0.2 修的类别同型）：新增 `scripts/_lib/exit-guard.mjs`，**11 个随包脚本全部 import**：fs 类未捕获异常统一 `10`、其余内部错误 `70`（EX_SOFTWARE，与内容判定彻底分开）；`count-chars <目录>`、`m-gate-check <目录> <目录>`、`build-evidence-bundle --source <目录>`、`final-check <文件当项目>` 等改为**入口 `statSync().isFile()/.isDirectory()` 前置校验**（实测全部由 `exit 1` 变为 `10`）。
+2. **`final-check` 子步骤 spawn 失败被记成「P1 残留」**：改为 `70` + 独立推荐语（实测 `PATH=''` 场景：旧版 `exit 1` +「可触发 T5 修订一轮」→ 新版 `70` +「内部错误，与正文内容无关」）。
+3. **证据包布局口径分裂**：`findCard()` 增加「证据包内相对路径」档（`evDir/<rel>`），M-Form-6 / M-Exist-2 / M-Exist-3 统一走它；新增**布局异常单独一条 finding**（`M-Exist-2`，P1）——`test-paper-01` 由 4 条互相矛盾的 P0 变为「1 条布局异常 + 真实问题」，`M-Exist-3` 从假 P0 变通过。
+4. **`count-chars --summary` 不带 degraded**：正文区起点退化标记**提到 summary 分支之前**（两模式共用）；顺带修 `avgPerSection` 除零（旧版 JSON 变 `null`）、UTF-16 BOM 输入改为**响亮拒绝**（旧版静默给 `hanChars: 0`）、未知参数（`--ful`）显式拒绝（旧版静默走默认口径）。
+5. **测试网 10 项盲区**：新增 10 个用例覆盖 M-Form-1/2/6/7/8、M-Exist-1/2/3、consistency ⑩ 与 pack-smoke；「取最大版本」的**假测试**（断言可被上一次运行残留满足）改为「断言 v3 在、v1 不在」。**对抗验证**：注入 5 处实现缺陷（顺序断言失效 / 空文件判定失效 / 悬空引用判定失效 / 双向对比失效 / 信任级别判定失效）→ **5/5 变红**（此前 10/10 不变红）。
+6. **门自身自证**（第三方审计独立命中，本版重写）：`repo-hygiene-check` 规则⑧ 从「grep `process.exit(字面量)` + 全文数字匹配（近乎恒真）」改为**解析实参**——字面量、本文件 `const`、`exit-guard` 导出常量三级解析；解析结果必须是声明集子集；每个声明码必须可解析（动态 exit 才退回字面量并如实标注）；**每个读盘脚本必须 import guard**，否则判失败；`exit-guard` 必须真在盘且导出契约常量。对抗验证：把「路径错」改回 `exit 1` → 报；删 guard import → 报；删 guard 模块 → 报。
+7. **patch 引用未声明的核心包**：`package.json` 增 `@deepseek-ai/dsh-tool-subagent`（optional peer，与 `@deepseek-ai/dsh` 同版本区间）；`plugin-surface-check.mjs` 新增自加检查 **`[patch-deps]`**——patch 里每个行 `name` 必须是本包名、已声明依赖或宿主核心包白名单，否则**阻塞发布**（官方 `manifest-peers` 只扫源码 import，看不到 patch 行名；负对照已证宿主改名即整树起不来）。
+
+### 新增：P1 —— 安装→启动→卸载 这一段补上门（此前 CI 与本机都没有）
+
+- 新增 `scripts/pack-smoke.mjs` + CI job **`pack-smoke`** + `publish.yml` 门 4/4：`npm pack` → 解包 → 断言关键文件齐备 / 自注册行恰一行 / patch 行依赖已声明 / `tests` 不随包 / **真跑解包后 `lib/index.js` 的 `apply`**（注册名、正文非空、frontmatter 已剥离、`resourceBase` 指向解包目录、11 张角色卡齐）。对抗验证：删自注册行 → 报；patch 引用不存在的包 → 报。
+- ⚠️ **如实更正**：`CHANGELOG` 旧文曾写「CI 的 verify job 绿」——**CI 从来没有 verify job**（本次已就地更正）。官方 `dsh-plugin-dev verify` 在本机仍不可达，原因**不止** pnpm：DSH Desktop 的 `dsh.cmd` 硬编码 `DSH_HOME`，使 verify 声称的「干净 mkdtemp profile」失效（会把依赖装进真实 `~/.dsh/profiles/compat`）。`pack-smoke` 覆盖「发布物可装载」，**仍不等于官方 verify**。
+
+### 口径与文档：P2 / P3（12 + 10 项）
+
+- **分档映射第 15 处漏网**：`examples/preset/preset.yml` 把 T6/T9 写在强推理档 → 改为「分析写作 T4-T5 / 批判审计 T6+T7+T9+G14」并加真源指针；规则 ⑩c **扫描面扩到 `.yml/.yaml/.json`**（一行多档按分隔符切段逐段判定）。对抗验证：两种旧口径写法均被报出，真源口径不报。
+- **SKILL.md 两处官方事实错**（已核宿主源码）：① `version` **不会**落进 `metadata`（只有 `metadata:` 键会；顶层键被丢弃）；② 本包 bundle 形态经 `ctx.skills.register()` 注册，rank 恒为 **`RUNTIME_RANK = 250`**，**不是 600**——由此更正两个反直觉后果：项目级副本（100）会**静默顶替**已装 bundle，而「拷到 `~/.dsh/skills`（400）覆盖 bundle」**不成立**；自检判据改为「读到的绝对路径 + 版本头」。
+- **否定路由前置**：官方目录只渲染 `name` + `description`（原文：「不包含…路由提示」），故「何时不该用」并入 `description`（`whenToUse` 保留但注明对模型不可见）。
+- **五语 README 结构镜像**：es/pt/hi 补回语言切换器行与 `### Documentation` 9 行表（表行 33 → **44**，五份一致）；修 es/pt 的 `each side's account` 误译；新增规则 **㉑**（切换器 + 表格行数 + `##` 标题数五份必须一致）。对抗验证：删 hi 切换器 → 报。
+- **发布命令推错 tag（7 处）**：`git tag vX && git push origin v18.0.0` → 推送目标改为与 tag 一致；README 的发布步骤同步为「四道门」。
+- **字数口径冲突**：`字数判定表.md` 原写「正文=引言起至结语（不含关键词）」，与 `count-chars.mjs` 实现（`## 摘要` 之后，**含关键词**）不一致——按**脚本为真源**收敛，并给出同口径的 pwsh 复核片段（差值是关键词那几十字，但在 1%/5% 阈值上足以翻转 P1/P2）。
+- **篇幅分层两套阈值**：`QUICKSTART.md` / `任务简报-template-lite.md` 的「轻量 ≤4000 / 中段 4000-8000 / 重量 8000+」改为指向 `SKILL.md` 的四档真源；`pipeline-readme.md` 的「轻量档 ≤2000 / ≤3000」统一为「2000-3000 轻量档」「<2000 简化直写」。
+- **`交付说明` 字段数 12 vs 两处「11」**、**G 项数**（改为「15 主项 + 3 子项 = G0.5/G2.5/G4-2」，与 M-Exist-9 同口径）、**`docs/troubleshooting.md §8` 的 `--source` 退出码 2→10**（该节自相矛盾）、**`glossary.md` 悬空规则号「㉑」→ ⑩/⑩b**、**启动必读清单两处不一致**（SKILL.md 为真源、AGENTS.md 改指针并补 §十二）、**T0 扩展卡 `00-主控-扩展职责.md` 补进 SKILL.md 角色卡索引**（此前只能从 coordinator 卡的指针到达）、**QUICKSTART 的「纯 skill」与 bundle 安装自相矛盾 + 空 TL;DR** → 均已修。
+- **SVG 消毒缺口（安全）**：未加引号的 `on*=` 既不剥离也不告警、且被 `md2html` 原样写进导出 HTML → 补 `/\son\w+\s*=\s*[^"'\s>]+/gi`（实测 `onload=alert(1)` / `<rect onclick=alert(x)/>` 现在都剥离并告警，干净文件不受影响）。
+- **两份 token 脚本数据源判序相反**（`token-cost` 单文件优先 vs `token-budget` 目录优先，同机两份报表取不同快照且都 exit 0 无告警）→ 统一为**目录式优先**并加「两布局并存」显式告警。
+- **三档「一键退路」不摘工具行**：`LUNHENG_TIERING=off` 旧版只让 `agentOptions` 变 undefined，三行仍挂树（实测工具数恒 29）→ 三行加 `disabled: !!js "process.env.LUNHENG_TIERING === 'off'"`（与宿主自用写法一致）。⚠️ **未验证**：本机 `--dump-config` 只打印**声明行**（判定实验：把三行改成恒真后 dump 里依旧在），故「off 是否真摘掉三行」在本机无法坐实；退化行为安全（宿主若忽略该键 = 与 18.0.4 完全一致）。
+- **新增机检：编码事故的第二道网**。本轮修订中我用 PowerShell `Get-Content | Set-Content` 往返改 `examples/preset/preset.yml`，把它写成了本地编码——规则⑤（fatal UTF-8 解码）**确实抓到了**；但同类事故更隐蔽的形态是「合法 UTF-8 但含 U+FFFD 替换字符」（字符已丢失、解码不报错），故规则⑤ 增加 **U+FFFD 零容忍**。对抗验证：注入 1 个 U+FFFD → 报。**教训**：改 UTF-8 文件只用 `edit`/`write` 工具或 Node `fs`（`\uFFFD` / GBK 往返不可逆）。
+
+### 未做（如实记录，附理由）
+
+- **把机检脚本暴露成原生 `defineTool`**（审计改进方案 C 组）：属**新增能力**而非缺陷修复，会改变插件对外表面（新增工具、需 Schemastery `Config`、`manifest-peers` 判定变化），需独立回归与安装冒烟 → 建议单独一版（v18.1）。官方依据与最小改造方案见审计报告 §4C。**另注**：官方 `tools.md` 明确 canonical value 只在执行期有效，故「改成工具」**不会**自动改善审计留痕——闸门实据真源仍是落盘的 `M-Gate-Report.json`（本版已把它修对）。
+- **分档工具行移入可选 agent preset**（C 组）：同上，属部署形态变更，且与「装了不坏」的既定取向冲突，需主人决策。
+- **四道闸门改用 `ask_user_question` 留痕**（C 组）：收益明确（决策进入 `tool/call ↔ tool/result` 日志对），但需改派发话术与模板，且 `headless` 下无人类应答者要保留降级分支——建议与 C 组一起做。
+- **`ctx.tools.guard()` 机制化写保护**（C 组）：只能覆盖 `write`/`edit`（`pwsh` 仍可写文件，官方无 per-path 只读声明），属「比 prompt 强、比机制强制弱」的部分强制，需先与主人对齐预期。
+- **词预算门**（C-6）：本版未做——SKILL.md 现 30.5 KB（审计指出它从「瘦身到 16.9 KB」回涨到 28.5 KB），加门需先定目标值并真的减重，否则只是把现状钉成上限。
+- **P3 风格项**：全局强调通胀（4,189 处加粗 / 2,134 emoji）**不动**——大量 emoji 是**机检字面量**（如 `## 📇 索引段`），批量清理会直接破坏契约；只能逐处人工判断，收益纯可读性、风险契约破坏。审计视图里的文件名注入面（Windows 下仅能插入 `（）「」` 类误导文案）同理留待专门处理。
+
 ## 18.0.4 — 2026-09-12
 
 > **收口版**（v18.0.3 的补漏）：v18.0.3 把「机检硬格式」的副本改成指针，却留下 **4 处指向旧表的悬空指针**（最刺眼的一处写在 `SKILL.md` 摘要里，仍称「四份模板顶部已列机检硬格式表」——表已搬走）；同时清掉冗余审计 §二.5 的「同一句连写两遍」。**纯文档层修正，不动脚本与任何门禁判定**（四道门与 66 个用例仍是同一套）。
@@ -50,7 +99,7 @@
 ### 未做 / 延后（如实记录）
 
 - **测试夹具抽取（`tests/_fixtures.mjs`）延后**：`tests/scripts.test.mjs` 里约 150–210 行是各用例重复的临时仓库搭建，可抽公共模块，但**零运行时收益 + 中等风险**（66 个用例的行为基线要整体重测），留待专门一批做，不混进去重版。
-- 官方 `dsh-plugin-dev verify`（`pnpm pack` + 干净 `DSH_HOME` 安装冒烟）在本机仍被 pnpm `ERR_PNPM_IGNORED_BUILDS` 拦下——**本机环境问题，非本包缺陷**（CI 的 verify job 绿）。
+- 官方 `dsh-plugin-dev verify`（`pnpm pack` + 干净 `DSH_HOME` 安装冒烟）在本机跑不通——**本机环境问题，非本包缺陷**。~~（CI 的 verify job 绿）~~ **该说法已于 v18.0.5 更正**：CI 从来没有 verify job（`.github/workflows/` 全目录无 `verify`），这句话当时是错的；v18.0.5 起改由 CI 的 `pack-smoke` job 覆盖「发布物可装载」这一段（仍不等于官方 verify，见 `## 18.0.5`）。
 - 官方资料对照后判定的**尚未落地项**：`subagentModelSelection`（原生「按调用选模型」）仍不默认开启（宿主未提供该服务即加载期抛错，详见 `_shared/模型路由.md` §五；主人 2026-09-11 已确认维持现状）。
 
 ## 18.0.2 — 2026-09-11

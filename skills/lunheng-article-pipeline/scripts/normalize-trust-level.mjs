@@ -18,6 +18,8 @@ import { readFileSync, writeFileSync, copyFileSync, existsSync } from 'node:fs';
 import { dataCardIds } from './_lib/refs.mjs';              // 引用编号口径真源
 import { TRUST_COMPLIANT_RE, pickTrustToken } from './_lib/trust.mjs';   // 信任级别口径真源
 import { splitCard } from './_lib/cards.mjs';               // 卡片切块口径真源
+import { installExitGuard } from './_lib/exit-guard.mjs';   // 退出码硬化（v18.0.5）
+installExitGuard();   // 传目录等 fs 类异常 → 10（旧版未捕获 EISDIR → exit 1 = 与「有未决条目」撞义）
 
 const rawArgs = process.argv.slice(2);
 const write = rawArgs.includes('--write');
@@ -28,9 +30,15 @@ if (files.length === 0) {
 }
 // 信任级别口径已上收到 _lib/trust.mjs（TOKENS / COMPLIANT → TRUST_COMPLIANT_RE / pickTrustToken）
 const unresolved = [];
+// v18.0.5（第三方审计 P2）：本脚本按批量语义设计（缺文件「跳过」），但**全部输入都不存在**时会
+//   静默以 exit 0 收场——调用方（主控）会以为「已规范化 0 条 = 没有需要规范化的卡」。
+//   现收紧：一个都没处理到且至少一个输入缺失 → exit 10（参数/路径错），并给明确提示。
+let processed = 0;
+let missing = 0;
 
 for (const file of files) {
-  if (!existsSync(file)) { console.error(`跳过（不存在）: ${file}`); continue; }
+  if (!existsSync(file)) { console.error(`跳过（不存在）: ${file}`); missing++; continue; }
+  processed++;
   let text = readFileSync(file, 'utf8');
   const ids = dataCardIds(text);
   let changed = 0;
@@ -59,6 +67,12 @@ for (const file of files) {
   } else {
     console.log(`· ${file}: 无需改动`);
   }
+}
+
+// v18.0.5：全部输入都不存在 → 参数/路径错（10），不要以 exit 0 佯装成功
+if (processed === 0 && missing > 0) {
+  console.error(`\n✗ ${missing} 个输入路径都不存在，未处理任何文件——退出码 10（参数或路径错误）。请核对路径后重跑。`);
+  process.exit(10);
 }
 
 if (unresolved.length > 0) {

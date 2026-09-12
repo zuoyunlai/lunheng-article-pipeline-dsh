@@ -37,7 +37,7 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -196,6 +196,36 @@ if (WAIVERS.length === 0) {
 const failed = checks.filter((c) => c.status === 'fail').length
 const passed = checks.filter((c) => c.status === 'pass').length
 const warned = checks.filter((c) => c.status === 'warn').length
+
+// ── 本包自加的补充检查（v18.0.5，第三方审计 P1-6）─────────────────────────────
+// 动机：`dsh-plugin-dev check` 的 `manifest-peers` 只扫**源码 import**——不看 `cordis.patch.yml` 里
+//   `name:` 引用了哪些包。于是本包 patch 里的三行 `@deepseek-ai/dsh-tool-subagent` **没有任何声明**，
+//   而负对照实测：把行名改成不存在的包 → `failed to import loader entry …` → **整棵 profile 起不来**。
+// 规则：patch 里每个 `name:` 必须是①本包自己的名字（自注册行）②`dependencies`/`peerDependencies`
+//   里声明过的包，或③显式白名单里的宿主核心包（宿主标准组合树自带、无法也不该由本包声明版本）。
+const HOST_CORE_ALLOW = new Set(['@deepseek-ai/dsh-base'])
+const pkgPath = path.join(ROOT, 'package.json')
+const patchPath = path.join(ROOT, 'cordis.patch.yml')
+if (existsSync(pkgPath) && existsSync(patchPath)) {
+  const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
+  const declared = new Set([
+    pkg.name,
+    ...Object.keys(pkg.dependencies || {}),
+    ...Object.keys(pkg.peerDependencies || {}),
+    ...HOST_CORE_ALLOW,
+  ])
+  const patchText = readFileSync(patchPath, 'utf8')
+  const rowNames = [...patchText.matchAll(/^\s*-?\s*name:\s*['"]?([^'"\s#]+)['"]?\s*$/gm)].map((m) => m[1])
+  const undeclared = [...new Set(rowNames)].filter((n) => !declared.has(n))
+  for (const n of undeclared) {
+    blocking.push(
+      `[patch-deps] cordis.patch.yml 的行 name「${n}」既不是本包名，也没在 package.json 的 dependencies/peerDependencies 里声明——宿主升级改名/移除该包时，组合树 import 失败会让整个 profile 起不来（请在 peerDependencies 声明，或加入本文件的 HOST_CORE_ALLOW 白名单并写明理由）`,
+    )
+  }
+  console.log(
+    `\n自加补充检查（v18.0.5）：\n${undeclared.length === 0 ? '✓' : '✗'} [patch-deps] patch 行 name ${rowNames.length} 处，均已在 package.json 声明或属宿主核心包白名单`,
+  )
+}
 
 if (blocking.length > 0) {
   console.log(`\n✗ 打包面检查未通过：${blocking.length} 个未豁免问题（fail ${failed} / pass ${passed} / warn ${warned}）`)

@@ -1,4 +1,4 @@
-# lunheng-article-pipeline bundle patch（DSH 原生插件 v18.0.4）
+# lunheng-article-pipeline bundle patch（DSH 原生插件 v18.0.5）
 #
 # 本文件用 DSH cordis-plugin-include 的 `- insert:` 列表语法在 standard 组合树之上叠加 4 行：
 #   1. **本包入口（自注册行）**：`name: lunheng-article-pipeline` → loader 按包名解析到
@@ -54,6 +54,15 @@
 - insert:
     - id: tool-subagent-retrieval
       name: '@deepseek-ai/dsh-tool-subagent'
+      # v18.0.5（第三方审计 P2-12）：`LUNHENG_TIERING=off` 此前只让 agentOptions 变 undefined，
+      #   **三行仍挂在组合树里**（实测每个会话的工具数恒为 29）——用户以为关了，其实只是"不分档但仍多 3 个工具"。
+      #   官方支持**行级**门控（`disabled` 在挂载决策期按 loader 上下文插值，宿主自用先例：
+      #   `app.asar.unpacked/cordis.patch.yml` 的 `disabled: !!js process.platform === 'linux'`），故加这一行。
+      #   ⚠️ **未验证**（v18.0.5 如实标注）：本机 `--dump-config` **只打印声明行**（判定实验：把三行 disabled
+      #   改成恒真后 dump 里三行依旧在），因此「off 是否真的摘掉三行」无法在本机证实；DSH Desktop 的
+      #   dsh shim 又硬编码 DSH_HOME、无法用干净 profile 做组合树实测。**退化行为是安全的**：若宿主忽略该键，
+      #   行为与 v18.0.4 完全一致（三行仍在、模型继承）。要坐实请在能起 headless 的环境看真实工具清单。
+      disabled: !!js "process.env.LUNHENG_TIERING === 'off'"
       config:
         provider: spawn
         toolName: subagent_retrieval
@@ -64,6 +73,7 @@
 - insert:
     - id: tool-subagent-strong
       name: '@deepseek-ai/dsh-tool-subagent'
+      disabled: !!js "process.env.LUNHENG_TIERING === 'off'"
       config:
         provider: spawn
         toolName: subagent_strong
@@ -74,6 +84,7 @@
 - insert:
     - id: tool-subagent-audit
       name: '@deepseek-ai/dsh-tool-subagent'
+      disabled: !!js "process.env.LUNHENG_TIERING === 'off'"
       config:
         provider: spawn
         toolName: subagent_audit

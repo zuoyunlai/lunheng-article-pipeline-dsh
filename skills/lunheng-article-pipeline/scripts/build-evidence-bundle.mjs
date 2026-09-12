@@ -15,6 +15,8 @@ import { countHan } from './_lib/han.mjs';                        // 汉字口�
 import { refCardPairRegex, refRegexFirst, refsOf } from './_lib/refs.mjs';   // 引用编号口径真源
 import { TRUST_COMPLIANT_RE } from './_lib/trust.mjs';            // 信任级别口径真源
 import { figurePlaceholders, figureNoOf } from './_lib/svg.mjs';  // 图位/图号口径真源（v2.5.2-dsh.16）
+import { installExitGuard, requireExistingFile, requireExistingDir } from './_lib/exit-guard.mjs'; // 退出码硬化（v18.0.5）
+installExitGuard();   // fs 类异常 → 10（旧版传目录给 --source 会未捕获 EISDIR → exit 1）
 
 const args = process.argv.slice(2);
 const wantDeepSummary = args.includes('--deep-summary');
@@ -37,11 +39,14 @@ if (!project || !existsSync(project)) {
   console.error('用法: node build-evidence-bundle.mjs <run/项目名> [--project <名>] [--source <正文路径>] [--summary] [--deep-summary]');
   process.exit(10); // v18.0.2：参数/路径错统一 10
 }
+requireExistingDir(project, '项目目录');   // v18.0.5：项目必须是目录（传文件 → 明确 10，而非后续 mkdir 崩溃）
 
 // --source 存在性**前置**校验（v2.5.2-dsh.15）：fail fast——否则会先复制完整个证据包才报错
+// v18.0.5（第三方审计 P1-1）：同时校验**是文件**——旧版只判存在，传目录会走到 readFileSync 才炸（EISDIR → exit 1）
 if (explicitSource) {
   const p0 = existsSync(explicitSource) ? explicitSource : join(project, explicitSource);
   if (!existsSync(p0)) { console.error(`--source 指定的正文源不存在: ${explicitSource}`); process.exit(10); } // v18.0.2：路径错 → 10（fail-fast 时机不变）
+  requireExistingFile(p0, '--source 指定的正文源');
 }
 
 // 收集规则：源相对路径 → 目标文件名（找不到就跳过并记录）
@@ -216,7 +221,13 @@ if (wantSummary) {
   if (mReportPath) {
     try {
       const m = JSON.parse(readFileSync(mReportPath, 'utf8'));
-      mSummary = `通过 ${m.pass || 0}/${m.total || 12} | P0: ${m.p0 || 0} | P1: ${m.p1 || 0} | P2: ${m.p2 || 0} | LLM 兜底: ${m.soft || m.llm || 0} | exit: ${m.exit ?? '?'}`;
+      // v18.0.5（第三方审计 P0-1）：报告里的 `exit` 可能是**已过期的 T8 裁定值**——若正文指纹与裁定不符
+      //   （`verdict_stale: true`），必须显式渲染机械值 + 过期标注，否则视图会与同屏的 P0/P1 计数自相矛盾。
+      const mech = typeof m.script_exit_raw === 'number' ? m.script_exit_raw : null;
+      const exitText = m.verdict_stale === true && mech !== null
+        ? `exit: ${mech}（T8 裁定已过期，原裁定 ${m.exit ?? '?'}；须就本版正文重裁）`
+        : `exit: ${m.exit ?? '?'}`;
+      mSummary = `通过 ${m.pass || 0}/${m.total || 12} | P0: ${m.p0 || 0} | P1: ${m.p1 || 0} | P2: ${m.p2 || 0} | LLM 兜底: ${m.soft || m.llm || 0} | ${exitText}`;
     } catch (e) {
       mSummary = `（M-Gate-Report-v0.json 解析失败: ${e.message}）`;
     }

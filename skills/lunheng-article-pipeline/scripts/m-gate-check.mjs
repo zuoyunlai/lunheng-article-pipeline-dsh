@@ -15,12 +15,15 @@
 // 配套：M-Gate-Algorithm.md「机械化脚本化」段
 // 严重度评级（v2.5.2-dsh.5 引入）：gate fail 时按 P0/P1/P2 分级；单子项失败子项数 ≤2 → P2 可放行
 import { readFileSync, readdirSync, statSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { refsOf, dataCardIds } from './_lib/refs.mjs';                 // 引用编号口径真源
 import { TRUST_COMPLIANT_RE, TRUST_LOOSE_RE } from './_lib/trust.mjs'; // 信任级别口径真源
 import { splitCard } from './_lib/cards.mjs';                          // 卡片切块口径真源
 import { analyzeSvg, svgTextNumbers, figureNoOf, figurePlaceholders } from './_lib/svg.mjs'; // SVG 图件口径真源
+import { installExitGuard, requireExistingFile, requireExistingDir } from './_lib/exit-guard.mjs'; // 退出码硬化（v18.0.5）
+installExitGuard();   // 必须在任何 readFileSync 之前：fs 类异常 → 10，其余内部错误 → 70（避免与「1 = P1 内容失败」撞义）
 
 // 本脚本自身所在目录（用于读取技能包内的真源，如闸门记录模板 / 期刊数据库；v2.5.2-dsh.17）
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -57,6 +60,10 @@ if (!existsSync(evDir)) {
   console.error(`证据包目录不存在: ${evDir} —— 请先收集证据包再跑 M 门预检`);
   process.exit(10);   // v18.0.2 修：同上
 }
+// v18.0.5 修（第三方审计 P1-1）：旧的 `existsSync` 只判「存在」——传目录/传错类型的路径会走到
+//   `readFileSync` 才炸（EISDIR/ENOTDIR），未捕获异常 = exit 1 = 被读成「P1 内容失败」。现在前置判类型。
+requireExistingFile(draftPath, '定稿');
+requireExistingDir(evDir, '证据包目录');
 
 // === 项目定位共用助手（v18.0.2：从 M-Integrity-1 段提到模块级，供 M-Form-9 复用）===
 // 从给定目录向上查找首个含 `01-任务简报.md` 的目录——兼容 `final/定稿.md` 与 `drafts/初稿-vN.md`
@@ -94,6 +101,12 @@ if (evMissing.length > 0) {
 }
 
 const text = readFileSync(draftPath, 'utf8');
+// 被审正文指纹（v18.0.5 新增，第三方审计 P0-1）：T8 裁定必须**绑定它所审的那一版正文**，
+//   否则旧裁定会在正文被改动后继续放行（实测：正文追加一段后机械 exit=2，落盘 exit 仍为 0，
+//   审计视图同屏显示「P0: 2 ｜ exit: 0」，而该视图被 8 个角色当闸门真源读）。
+//   指纹用**内容哈希 + 字节数**（不含 mtime：证据包会复制/重写文件，mtime 不可靠）。
+const draftSha256 = createHash('sha256').update(readFileSync(draftPath)).digest('hex');
+const draftBytes = readFileSync(draftPath).length;
 const results = [];
 
 // === 定位与解析共用助手（v18.0.5 去重：同一推导此前在脚本内各写 2-9 份）===
@@ -135,10 +148,16 @@ const indexSection = (lines) => {
   const start = lines.findIndex((l) => /^##\s*📇\s*索引段/.test(l));
   return start === -1 ? null : sectionRange(lines, start);
 };
-// ⑦ 素材卡定位：证据包目录优先，其次项目内相对路径；都不在 → null（0 条场景合法，调用方记 N/A）
+// ⑦ 素材卡定位：证据包根扁平名 → 证据包子目录（旧版 build-evidence-bundle 的按相对路径拷贝形态）
+//    → 项目内规范相对路径；都不在 → null（0 条场景合法，调用方记 N/A）
+//    v18.0.5（第三方审计 P1-2）：加第二档——实测 `test-paper-01` 的证据包是 `证据包/{data,literature,…}/卡.md`
+//    的嵌套形态，旧 resolver 看不到它，而「只认扁平名」的门（M-Form-6/M-Exist-2/3）报「卡不在证据包」、
+//    「有 projectRoot 回退」的门（M-Form-10/11）报「已查 N 张卡」——同一次运行互相矛盾。
 const findCard = (name, rel) => {
-  const p = join(evDir, name);
-  if (existsSync(p)) return p;
+  const flat = join(evDir, name);
+  if (existsSync(flat)) return flat;
+  const sub = rel.includes('/') ? join(evDir, rel) : null;   // 证据包内的相对路径形态
+  if (sub && existsSync(sub)) return sub;
   const alt = join(projectRoot, rel);
   return existsSync(alt) ? alt : null;
 };
@@ -154,6 +173,36 @@ const entryIds = (cardText) => new Set([...cardText.matchAll(ENTRY_ID_RE)].map((
 // ⑨ 同 ⑧ 但编号形态可配（M-Form-11 需纳入基线 `[D-基-x-NN]` 与先行者 `[先NN]`，v18.0.0 修「漏计 10 条」）
 const idsByToken = (cardText, token) =>
   new Set([...cardText.matchAll(new RegExp(`^#{2,4}\\s*\\[(${token})\\]`, 'gm'))].map((m) => `[${m[1]}]`));
+// ⑩ 证据包布局体检（v18.0.5 新增，第三方审计 P1-2）
+//   契约：`build-evidence-bundle.mjs` 把素材卡**扁平拷进** `final/证据包/`。若证据包是按子目录组织的
+//   （如 `证据包/data/数据卡.md`），旧脚本里「只认扁平名」的门（M-Form-6 / M-Exist-2 / M-Exist-3）
+//   会报「卡不在证据包」，而「有 projectRoot 回退」的门（M-Form-10/11）却报「已查 3 张卡」——
+//   同一次运行给出互相矛盾的 P0。现在：所有门统一走 `findCard()`；布局异常**单独**成一条 finding。
+const NESTED_HINTS = ['analysis', 'audits', 'cases', 'data', 'literature'];
+const evidenceLayout = (() => {
+  let top = [];
+  try { top = readdirSync(evDir).filter((f) => f.endsWith('.md')); } catch { return { flat: 0, nestedDirs: [], anomaly: null }; }
+  let nestedDirs = [];
+  try { nestedDirs = readdirSync(evDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name); } catch {}
+  const nestedDirsWithMd = nestedDirs.filter((d) => NESTED_HINTS.includes(d))
+  const anomaly = top.length === 0 && nestedDirsWithMd.length > 0
+    ? `证据包顶层无 .md，仅子目录 ${nestedDirsWithMd.join('/')}——契约要求素材卡扁平位于证据包根（build-evidence-bundle 的产出形态）`
+    : null;
+  return { flat: top.length, nestedDirs: nestedDirsWithMd, anomaly };
+})();
+const layoutAnomaly = evidenceLayout.anomaly;
+// 递归列出证据包内的 .md（供 M-Exist-2 统计；布局异常另有独立 finding，不再重复计 P0）
+const walkMd = (dir) => {
+  const out = [];
+  let entries = [];
+  try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return out; }
+  for (const e of entries) {
+    const p = join(dir, e.name);
+    if (e.isDirectory()) out.push(...walkMd(p));
+    else if (e.name.endsWith('.md')) out.push(p);
+  }
+  return out;
+};
 
 // === v2.5.2-dsh.5 修订：白名单 5 节 + AI 使用声明（M-Form-2 / M-Form-7 一致）===
 const WHITELIST = ['参考文献', '数据来源', '案例来源', '先行者文献', 'AI 使用声明'];
@@ -390,7 +439,12 @@ results.push({
 
 // === M-Form-6 信任级别（v2.5.2-dsh.5 扩字段：双格式 + 描述字段交叉验证）===
 let dataCard = '';
-try { dataCard = readFileSync(join(evDir, '数据卡.md'), 'utf8'); } catch {}
+// v18.0.5 修（第三方审计 P1-2）：改用统一 resolver `findCard()`（evDir 扁平 → 项目内规范相对路径），
+//   与 M-Form-10/11 同口径。旧版只认 `join(evDir,'数据卡.md')`，在「证据包按子目录组织」的项目上
+//   会与 M-Form-10「已查 3 张卡」互相矛盾（实测 test-paper-01：同一次运行同时报
+//   「数据卡.md 不在证据包」与「已查 3 张卡」）。
+const dataCardPath6 = findCard('数据卡.md', 'data/数据卡.md');
+try { if (dataCardPath6) dataCard = readFileSync(dataCardPath6, 'utf8'); } catch {}
 if (dataCard) {
   const uniqueDataIds = dataCardIds(text);
   const trustLevelMiss = [];
@@ -426,7 +480,14 @@ if (dataCard) {
   }
   results.push({ gate: 'M-Form-6 信任级别', pass: mform6Pass, detail: mform6Detail, severity: mform6Severity });
 } else {
-  results.push({ gate: 'M-Form-6 信任级别', pass: false, detail: '数据卡.md 不在证据包', severity: 'P0' });
+  results.push({
+    gate: 'M-Form-6 信任级别',
+    pass: false,
+    detail: layoutAnomaly
+      ? `数据卡.md 定位失败（证据包布局异常：${layoutAnomaly}）`
+      : '数据卡.md 不在证据包（也不在项目 data/ 目录）',
+    severity: 'P0',
+  });
 }
 
 // === M-Form-8 三角验证（v2.5.2-dsh.5 修订：每论点强制含 L + coverage ≥ 2）===
@@ -964,7 +1025,11 @@ try {
         const ev = (r[iEv] || '').replace(/<[^>]*>/g, '').trim();   // 去掉 <…> 模板占位符：未填 = 不是证据
         const res = (r[iRes] || '').trim();
         // 实据必须是机械证据：路径 / exit code / 命令 / 哈希；纯自述不接受
-        const evLooksReal = /[\\/]|exit|node\s|m-gate|sha256|\.json|\.md|\.svg|\d/.test(ev) && !/^(已|未)?(检查|核对|确认|自查)(完)?(毕|过)?$/.test(ev.replace(/\s/g, ''));
+        //   v18.0.5 修（第三方审计 P1-5）：删掉原先的裸 `\d`——它让「已检查 1 次」这类自述通过，
+        //   与文档「不接受『已检查』这类自述」直接冲突。现在数字必须带量词/单位或与路径/命令/哈希同现。
+        const evLooksReal =
+          /[\\/]|exit\s*\d|node\s+\S+\.mjs|m-gate|sha256|\.json|\.md|\.svg|\d+\s*(?:条|个|处|项|篇|例|%|倍|字|轮|步|节|章|页|行|次|份|组|种|点)/.test(ev) &&
+          !/^(已|未)?(检查|核对|确认|自查)(完)?(毕|过)?$/.test(ev.replace(/\s/g, ''));
         if (ev.replace(/[\s.。…-]/g, '').length < 3 || !evLooksReal) {
           findings5.push(`${gateId}「${item}」的实据列不是机械证据（须写路径 / exit code / 命令，而非「已检查」自述）：现为「${ev.slice(0, 24)}」`);
         }
@@ -990,11 +1055,20 @@ try {
             //   ② 判定依赖上一次跑分 → 形成「跑分低→判 P0→闸门不过→再跑分……」的自引用循环。
             // 现规则：**优先采信 T8 裁定段**（`_t8_conclusion`）——存在且 `true_p0 === 0` / `true_p1 === 0`
             //   时，闸门与报告视为一致（放行）；仅在无 T8 裁定段时才回退比对脚本 exit。
+            // v18.0.5 加（第三方审计 P0-1）：T8 裁定**只在绑定同一版正文时**才算数——报告带
+            //   `verdict_stale === true`（正文指纹与裁定时不符）时，回退比对 `script_exit_raw`，
+            //   避免「旧裁定永久放行」使本分支永不可达。
             const t8 = rj._t8_conclusion;
-            const t8Clean = t8 && Number(t8.true_p0) === 0 && Number(t8.true_p1) === 0;
+            const t8Clean = t8 && Number(t8.true_p0) === 0 && Number(t8.true_p1) === 0 && rj.verdict_stale !== true;
+            const mechanicalExit = typeof rj.script_exit_raw === 'number' ? rj.script_exit_raw : rj.exit;
             if (t8Clean) {
               soft5.push(
                 `闸门 ↔ 报告对账：已按 T8 裁定段放行（true_p0=0 / true_p1=0；脚本 script_exit_raw=${rj.script_exit_raw ?? rj.exit}）`,
+              );
+            } else if (t8 && rj.verdict_stale === true) {
+              contradict5 = true;
+              findings5.push(
+                `闸门记录-T7.5 全判 ✓，但 M-Gate-Report.json 的 T8 裁定段**已过期**（verdict_stale=true：${rj.verdict_stale_reason || '正文指纹不符'}）且本次机械值 script_exit_raw = ${mechanicalExit}——须 T8 就**本版正文**重新裁定（P0）`,
               );
             } else if (typeof rj.exit === 'number' && rj.exit !== 0) {
               contradict5 = true;
@@ -1151,8 +1225,10 @@ try {
   results.push({ gate: 'M-Exist-6 审稿报告与期刊匹配', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
 }
 
-// === M-Exist-7 交付说明字段齐备（v2.5.2-dsh.17 新增）===
-// 依据：`deliverables.md` 定义了 `final/交付说明.md` 的 **11 个固定字段**（T8 终检时机械填充），
+// === M-Exist-7 交付说明字段齐备（v2.5.2-dsh.17 新增；v18.0.5 更正字段数为 12）===
+// 依据：`deliverables.md` 定义了 `final/交付说明.md` 的 **12 个固定字段**（T8 终检时机械填充；
+//   dsh.17 由 11 显式化为 12——「证据包指纹」升为第 9 个、「终检结论」补两道闸门结论行；
+//   v18.0.5 修第三方审计 P2-5：本节注释与模板头当时仍写 11，与模板实际 12 节自相矛盾），
 //   但既无模板也无机检——每个项目的交付说明字段名与齐备程度全凭主控临场发挥，主人复核时
 //   缺项不可发现（「固定字段」名不副实）。本项逐字段核验：存在 + 非空 + 证据包指纹占位符 +
 //   主人决策记录覆盖四门（缺回填须显式标注「未留痕」，不得静默省略）。
@@ -1202,7 +1278,7 @@ try {
       gate: 'M-Exist-7 交付说明字段齐备',
       pass: !hard7 && soft7.length === 0,
       detail: [
-        `12 固定字段（11 字段 + 证据包指纹）实到 ${FIELD_KEYWORDS.length - findings7.filter((x) => x.startsWith('缺固定字段')).length}/11${/\[哈希校验待主人回填\]|sha256\s*[:：]?\s*[0-9a-f]{16,}/i.test(dt) ? ' + 指纹✓' : ' + 指纹✗'}`,
+        `12 固定字段（11 关键词字段 + 证据包指纹）实到 ${FIELD_KEYWORDS.length - findings7.filter((x) => x.startsWith('缺固定字段')).length}/${FIELD_KEYWORDS.length}${/\[哈希校验待主人回填\]|sha256\s*[:：]?\s*[0-9a-f]{16,}/i.test(dt) ? ' + 证据包指纹✓' : ' + 证据包指纹✗'}`,
         hard7 ? `硬问题：${findings7.slice(0, 3).join('；')}` : '固定字段齐备且有内容',
         soft7.length ? `软提示：${soft7.slice(0, 2).join('；')}` : '',
       ].filter(Boolean).join(' ｜ '),
@@ -1445,14 +1521,18 @@ try {
   results.push({ gate: 'M-Exist-10 大纲 §11 精简段', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
 }
 
-// === M-Exist-2 证据包完整性 ===
-const files = readdirSync(evDir).filter((f) => f.endsWith('.md')).map((f) => join(evDir, f));
-const empty = files.filter((f) => statSync(f).size === 0);
+// === M-Exist-2 证据包完整性（v18.0.5：递归统计 + 布局异常单列）===
+const files = walkMd(evDir);
+const empty = files.filter((f) => { try { return statSync(f).size === 0; } catch { return false } });
+const relOf = (f) => f.slice(evDir.length + 1).replaceAll('\\', '/');
 results.push({
   gate: 'M-Exist-2 证据包完整性',
-  pass: files.length > 0 && empty.length === 0,
-  detail: `${files.length} 个 .md 文件` + (empty.length ? `，空文件: ${empty.map((f) => f.split(/[\\/]/).pop()).join(',')}` : '，均非空'),
-  severity: (files.length === 0 || empty.length > 0) ? 'P0' : '通过',
+  pass: files.length > 0 && empty.length === 0 && !layoutAnomaly,
+  detail:
+    `${files.length} 个 .md 文件` +
+    (empty.length ? `，空文件: ${empty.map(relOf).join(',')}` : '，无空文件') +
+    (layoutAnomaly ? ` ｜ 布局异常（P1）：${layoutAnomaly}` : ''),
+  severity: (files.length === 0 || empty.length > 0) ? 'P0' : (layoutAnomaly ? 'P1' : '通过'),
 });
 
 // === M-Exist-3 [Dxx] 正文↔数据卡 引用闭环（v2.5.2-dsh.5 加严重度评级；v18.0.3 更名对齐实装）===
@@ -1470,7 +1550,12 @@ if (dataCard) {
     severity: mExist3Sev,
   });
 } else {
-  results.push({ gate: 'M-Exist-3 引用闭环', pass: false, detail: '数据卡不存在', severity: 'P0' });
+  results.push({
+    gate: 'M-Exist-3 引用闭环',
+    pass: false,
+    detail: layoutAnomaly ? `数据卡定位失败（证据包布局异常：${layoutAnomaly}）` : '数据卡不存在（证据包与项目 data/ 均无）',
+    severity: 'P0',
+  });
 }
 
 // === M-Integrity-1 T2.5 完整性门（脚本佐证；v2.5.2-dsh.17 补两次关键对账）===
@@ -1578,17 +1663,21 @@ const report = {
   pass, p0, p1, p2, soft, skips,
   results: wantSummary ? results.filter((r) => !r.pass && r.severity !== 'LLM 兜底') : results,  // --summary 仅保留硬失败项，省 token
   exit: exitCode,
+  // 被审正文指纹（v18.0.5）：T8 裁定段据此判断「是否仍适用于本版正文」
+  verdict_scope: { draft_sha256: draftSha256, draft_bytes: draftBytes },
 };
 console.log(JSON.stringify(report, null, 2));
 if (reportPath) {
   try {
     mkdirSync(dirname(reportPath), { recursive: true });
-    // === T8 裁定段保留（v18.0.0 新增，防自引用循环）===
+    // === T8 裁定段保留 + 指纹绑定（v18.0.0 新增；v18.0.5 加指纹，修第三方审计 P0-1）===
     // 背景：`final-check.mjs` 会串联调用本脚本并 `--report final/M-Gate-Report.json`，
     //   旧实现直接覆写 → **冲掉 T8 手写的 `_t8_llm_review` / `_t8_conclusion`** →
     //   M-Exist-5 的「闸门 ↔ 报告」对账失去 T8 裁定依据（并因脚本 exit ≠ 0 而误报 P0）。
-    // 现规则：写入前读取既有报告，**保留 T8 裁定两段**；同时把脚本机械值另存 `script_exit_raw`，
-    //   并在存在 T8 裁定时**保留 T8 的 `exit` 裁定值**（脚本值只进 `script_exit_raw`）。
+    // 规则：写入前读取既有报告，保留 T8 裁定两段 + 脚本值另存 `script_exit_raw`；
+    //   **仅当既有报告的 `verdict_scope.draft_sha256` 与本次正文指纹一致时**才保留 T8 的 `exit` 裁定值。
+    //   v18.0.5 修（P0-1）：旧版不看指纹 → 正文改动后旧裁定继续放行，落盘 `exit` 恒为 0，
+    //   审计视图出现「P0: 2 ｜ exit: 0」；现改为指纹不符即 `verdict_stale: true` + 落盘改用机械值。
     let out = { ...report, script_exit_raw: report.exit }; // 脚本机械值始终另存（v18.0.0）
     if (existsSync(reportPath)) {
       try {
@@ -1597,13 +1686,27 @@ if (reportPath) {
         for (const k of ['_t8_llm_review', '_t8_conclusion']) if (prev[k]) keep[k] = prev[k];
         if (Object.keys(keep).length > 0) {
           out = { ...report, ...keep, script_exit_raw: report.exit };
-          if (typeof prev.exit === 'number') out.exit = prev.exit; // 保留 T8 裁定值
+          const prevSha = prev.verdict_scope?.draft_sha256;
+          const sameDraft = typeof prevSha === 'string' && prevSha === draftSha256;
+          if (sameDraft) {
+            if (typeof prev.exit === 'number') out.exit = prev.exit; // 保留 T8 裁定值（正文未变，裁定仍有效）
+            out.verdict_stale = false;
+            console.error(`· 已保留既有 T8 裁定段（exit=${out.exit}，本次脚本值 script_exit_raw=${report.exit}；正文指纹一致）`);
+          } else {
+            // 正文已变（或旧报告无指纹）→ 旧裁定不再适用于本版正文：保留裁定原文供追溯，但落盘用**机械值**
+            out.verdict_stale = true;
+            out.verdict_stale_reason = prevSha
+              ? `被审正文已变更（旧 sha256=${prevSha.slice(0, 12)}…，本次=${draftSha256.slice(0, 12)}…）→ 旧 T8 裁定不适用于本版正文`
+              : '既有报告无 verdict_scope 指纹（v18.0.5 之前写入）→ 无法证明裁定适用于本版正文';
+            console.error(
+              `⚠️ T8 裁定已过期：${out.verdict_stale_reason}\n` +
+                `   落盘 exit 改用本次机械值 ${report.exit}（旧裁定值 ${prev.exit ?? 'n/a'} 仅在 _t8_conclusion 中保留供追溯）；` +
+                `请 T8 重新裁定后写入新的 _t8_conclusion。`,
+            );
+          }
           if (typeof prev.script_exit_raw === 'number' && prev.script_exit_raw !== report.exit) {
             out.script_exit_raw_prev = prev.script_exit_raw; // 留痕：上一次脚本原值
           }
-          console.error(
-            `· 已保留既有 T8 裁定段（exit=${out.exit}，本次脚本值 script_exit_raw=${report.exit}）`,
-          );
         }
       } catch {}
     }

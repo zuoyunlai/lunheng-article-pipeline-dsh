@@ -10,6 +10,8 @@
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import os from 'node:os';
+import { installExitGuard } from './_lib/exit-guard.mjs';   // 退出码硬化（v18.0.5）：fs 类异常 → 10，内部错误 → 70
+installExitGuard();
 
 const args = process.argv.slice(2);
 const opt = { dshHome: process.env.DSH_HOME || join(os.homedir(), '.dsh'), prices: { in: 0.28, cache: 0.028, out: 0.42 }, ids: null, tree: null, top: 0, project: null };
@@ -51,15 +53,19 @@ for (let i = 0; i < args.length; i++) {
 // 数据源兼容两种布局（v2.5.2-dsh.10+ 适配）：
 //   旧版单文件  $DSH_HOME/storages/session_projcache.json  { tables.sessions: { id: { rows: {...} } } }
 //   新版目录式  $DSH_HOME/storages/session_projcache/sessions/<id>.json（每会话一个投影缓存，含 record.rows）
+// v18.0.5（第三方审计 P2-11）：**判序改为「目录优先」并与 `token-budget.mjs` 统一**——旧版这里
+//   单文件优先、token-budget 目录优先，同一台机器上两份报表取的数据源不同（实测夹具：一读 legacy
+//   一读目录，数字互不可比且都 exit 0 无告警）。另加「两种布局并存」显式告警。
 const projDir = join(opt.dshHome, 'storages', 'session_projcache');
 const legacyFile = join(opt.dshHome, 'storages', 'session_projcache.json');
 const sessions = {};
 let cacheDesc = '';
-if (existsSync(legacyFile)) {
-  const cache = JSON.parse(readFileSync(legacyFile, 'utf8'));
-  Object.assign(sessions, cache.tables?.sessions || {});
-  cacheDesc = legacyFile;
-} else if (existsSync(join(projDir, 'sessions')) && statSync(join(projDir, 'sessions')).isDirectory()) {
+const hasDirLayout = existsSync(join(projDir, 'sessions')) && statSync(join(projDir, 'sessions')).isDirectory();
+const hasLegacy = existsSync(legacyFile);
+if (hasDirLayout && hasLegacy) {
+  console.error(`⚠️ 检测到两种会话投影布局并存：${join(projDir, 'sessions')}（优先）与 ${legacyFile}（忽略）——升级残留会让不同脚本读到不同快照，本脚本一律以**目录式**为准`);
+}
+if (hasDirLayout) {
   const sdir = join(projDir, 'sessions');
   cacheDesc = sdir;
   for (const f of readdirSync(sdir)) {
@@ -70,8 +76,12 @@ if (existsSync(legacyFile)) {
       sessions[key] = rec.record || rec;
     } catch {}
   }
+} else if (hasLegacy) {
+  const cache = JSON.parse(readFileSync(legacyFile, 'utf8'));
+  Object.assign(sessions, cache.tables?.sessions || {});
+  cacheDesc = legacyFile;
 } else {
-  console.error('找不到会话投影缓存（已尝试单文件与目录式布局）: ' + projDir); process.exit(1);
+  console.error('找不到会话投影缓存（已尝试目录式与单文件两种布局）: ' + projDir); process.exit(1);
 }
 
 // === --project 模式（v18.0.0 新增，P2-1）===

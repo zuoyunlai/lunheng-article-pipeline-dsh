@@ -1,6 +1,8 @@
 # Lunheng (lunheng-article-pipeline) — pipeline multiagente para textos longos
 
-> 版本：v18.0.4（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.0.5（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+
+> 🌐 [English](README.md) ｜ [中文](README.zh.md) ｜ [Español](README.es.md) ｜ **Português**（este arquivo）｜ [हिन्दी](README.hi.md)
 
 > Um bundle do DeepSeek Harness (DSH) que registra uma skill de agente sob demanda. A skill transforma a produção de textos longos — artigos acadêmicos, análise setorial, comentário econômico e artigos extensos — em uma **pipeline de 9 papéis com participação humana**.
 
@@ -34,7 +36,7 @@ Regra prática: pergunte se a evidência já está **publicada**. Se estiver, Lu
 |---|---|
 | Fichas bibliográficas `[Lxx]` | Fontes publicadas com grau de confiança A/B/C e lista de precursores |
 | Fichas de dados `[Dxx]` | Números com fonte, ano, vigência, nível de confiança e números conflitantes lado a lado |
-| Fichas de casos `[Cxx]` | Estrutura do evento (quem/quando/o quê/versão de cada parte), ou marcador explícito `[C-空]` |
+| Fichas de casos `[Cxx]` | Estrutura do evento (quem/quando/o quê/o relato de cada parte), ou marcador explícito `[C-空]` |
 | Esboço de análise | Fio argumentativo, mapeamento afirmação-evidência, plano de contra-argumentos, evidência portante |
 | Rascunhos | Versões sucessivas com limpeza de vestígios de IA, cada uma de um redator independente |
 | Relatórios | Relatório crítico (C1–C7), auditoria (G0–G14), revisão por pares (6 dimensões + periódicos) |
@@ -89,15 +91,25 @@ A camada patch faz duas coisas: **insere uma linha para este pacote** (`- id: lu
 
 ### Documentation
 
-`docs/installation.md` (instalação e verificação) · `docs/usage.md` (fluxo de uso) · `docs/architecture.md` (arquitetura) · `docs/introduction.md` (introdução) · `docs/faq.md` (perguntas frequentes) · `docs/troubleshooting.md` (sintoma → causa → correção) · `SECURITY.md` (limite de confiança) · `CHANGELOG.md` · `CONTRIBUTING.md`.
+| Arquivo | Conteúdo |
+|---|---|
+| `docs/installation.md` | Instalação e verificação |
+| `docs/usage.md` | Fluxo de uso (fases e estrutura de artefatos) |
+| `docs/architecture.md` | Arquitetura (9 papéis, evidência triangular, auditoria G0–G14, M-gate) |
+| `docs/introduction.md` | Introdução do plugin |
+| `docs/faq.md` | Perguntas frequentes |
+| `docs/troubleshooting.md` | Resolução de problemas de instalação/verificação (sintoma → causa → correção) |
+| `SECURITY.md` | Política de segurança e limite de confiança |
+| `CHANGELOG.md` | Histórico de versões |
+| `CONTRIBUTING.md` | Guia de manutenção e publicação |
 
 ### Publishing (maintainers)
 
 As versões são publicadas **apenas por tag**; `npm publish` local é proibido (contorna os portões de CI e a proveniência OIDC, e uma versão npm nunca pode ser sobrescrita).
 
 ```sh
-git tag v18.0.4 && git push origin v18.0.0   # uma tag por push (GitHub: >3 tags em um push não dispara workflow)
-# publish.yml executa: portão 1 consistência → portão 2 empacotamento → portão 3 higiene → testes
+git tag v18.0.5 && git push origin v18.0.5   # uma tag por push (GitHub: >3 tags em um push não dispara workflow)
+# publish.yml executa: portão 1 consistência → portão 2 empacotamento → portão 3 higiene → portão 4 teste de fumaça do pacote → testes
 #   → tag/versão iguais → guarda de idempotência → OIDC publish --provenance --tag dsh → auditoria posterior
 ```
 

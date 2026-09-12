@@ -1,11 +1,16 @@
 // 论衡 PDF 校验脚本（v2.5.2-dsh 补丁）：验证导出 PDF 有效（页/中文字体/图像嵌入）
 // 用法：node pdfcheck.mjs <定稿.pdf>
 // 配套：format-export.md「三-b 无 pandoc 环境降级路径」；原始字节直查 + FlateDecode 流解压双检
+// 退出码（v18.0.5 拆开，第三方审计 P3）：0 有效｜1 结构异常（页数/字体/CIDFont 不足，**内容判定**）｜10 参数/路径错
+//   —— 旧版参数错与结构异常同用 1，调用方无法区分「你没给对文件」与「PDF 本身不合格」。
 import { readFileSync } from 'node:fs';
 import { inflateSync } from 'node:zlib';
+import { installExitGuard, requireExistingFile } from './_lib/exit-guard.mjs';
+installExitGuard();
 
 const pdfPath = process.argv[2];
-if (!pdfPath) { console.error('用法: node pdfcheck.mjs <pdf>'); process.exit(1); }
+if (!pdfPath) { console.error('用法: node pdfcheck.mjs <pdf>'); process.exit(10); }
+requireExistingFile(pdfPath, 'PDF 文件');   // 不存在/是目录/无权限 → 10
 const buf = readFileSync(pdfPath);
 const latin = buf.toString('latin1');
 

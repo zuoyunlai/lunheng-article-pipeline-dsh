@@ -14,6 +14,8 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { installExitGuard, requireExistingDir, EXIT_USAGE, EXIT_INTERNAL } from './_lib/exit-guard.mjs'; // 退出码硬化（v18.0.5）
+installExitGuard();   // fs 类异常 → 10；其余内部错误 → 70（不再让崩溃伪装成「1 = P1 内容残留」）
 
 const args = process.argv.slice(2);
 const wantJson = args.includes('--json');
@@ -27,6 +29,7 @@ if (!project || !existsSync(project)) {
   console.error('用法: node scripts/final-check.mjs <run/项目名> [--no-summary] [--json] [--report <path>]');
   process.exit(10); // v18.0.2 修：参数/路径错误一律 10（旧版 2 与「P0 致命」撞码，且与下方推荐语声称的 else=exit 10 自相矛盾）
 }
+requireExistingDir(project, '项目目录');   // v18.0.5：传文件当项目 → 立即 10（旧版会走到 mkdirSync ENOTDIR 崩溃 → exit 1）
 
 const final = join(project, 'final', '定稿.md');
 const evDir = join(project, 'final', '证据包');
@@ -59,8 +62,13 @@ const parsedOutputs = {};
 for (const step of steps) {
   if (!wantJson) console.log(`\n========== [${step.name}] ==========`);
   const r = spawnSync(step.cmd, step.args, { stdio: ['ignore', 'pipe', 'pipe'], shell: false, encoding: 'utf8' });
-  const ok = r.status === 0;
-  summary.push({ step: step.name, exit: r.status, ok });
+  // v18.0.5（第三方审计 P1-1）：`r.status === null` 表示**子进程根本没跑起来**（spawn 失败：node 不在 PATH、
+  //   EACCES 等）。旧版把它记成 exit=1 → 报告说「⚠️ 存在 P1 残留，可触发 T5 修订一轮」——纯属误导。
+  //   现在：spawn 失败记 `EXIT_INTERNAL`（70）并给出独立推荐语（属环境/脚本问题，不是内容问题）。
+  const spawnFailed = r.status === null && (r.error || r.signal);
+  const statusVal = spawnFailed ? EXIT_INTERNAL : r.status;
+  const ok = statusVal === 0;
+  summary.push({ step: step.name, exit: statusVal, ok, ...(spawnFailed ? { spawnError: String(r.error?.message || r.signal) } : {}) });
   // 解析子脚本的 JSON 输出（捕获整段 stdout，从头找第一个 { 到末尾找最后一个 }）
   if (step.parse) {
     const stdout = (r.stdout || '').trim();
@@ -85,8 +93,8 @@ for (const step of steps) {
     }
   }
   if (!ok && !step.opt) {
-    if (!wantJson) console.error(`\n❌ [${step.name}] 非零退出 ${r.status}（硬依赖，主控必须修复）`);
-    exitCode = r.status || 1;
+    if (!wantJson) console.error(`\n❌ [${step.name}] 非零退出 ${statusVal}（硬依赖，主控必须修复）`);
+    exitCode = statusVal || 1;
     break;
   }
 }
@@ -124,6 +132,8 @@ const report = {
       ? '❌ 终检存在 P0 致命问题，禁止标记终检完成'
       : exitCode === 3
       ? '🔍 仅 P2 / LLM兜底 / SKIP 残留（无 P0/P1）——须 T8 逐项复核后以 T8 裁定值放行（不得当作失败，也不得无条件当作通过）'
+      : exitCode === EXIT_INTERNAL
+      ? '🛠️ 内部错误（EX_SOFTWARE 70）——子步骤未跑起来或脚本缺陷，**与正文内容无关**；核对上面的 spawnError/栈后重跑'
       : '⛔ 参数/路径错误（exit 10）——检查 m-gate-check 的证据包目录参数',
   },
 };

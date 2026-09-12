@@ -95,14 +95,26 @@ if (eolBad === 0) notes.push('④ 行尾：无 w/crlf / w/mixed')
 
 // ⑤ UTF-8
 let utf8Checked = 0
+let replacementHits = 0
 const dec = new TextDecoder('utf-8', { fatal: true })
 for (const p of tracked.filter(isText)) {
   const abs = join(ROOT, p)
   if (!existsSync(abs)) continue
   utf8Checked++
   try { dec.decode(readFileSync(abs)) } catch { fail('utf8', `${p}: 非法 UTF-8（可能是 GBK 等本地编码）`) }
+  // v18.0.5 新增（教训：本轮修订中我用 PowerShell `Get-Content|Set-Content` 往返改 preset.yml，
+  //   把文件写成了本地编码 → 规则⑤（fatal 解码）**确实抓到了**；但**同一类事故的更隐蔽形态**是
+  //   「已经是合法 UTF-8、却含 U+FFFD 替换字符」——那是不可逆的字符丢失，解码不会报错，
+  //   scan 起来像正常文本。故加这一条：任何文本文件不得含 U+FFFD（`\uFFFD`）。
+  const text = readFileSync(abs, 'utf8')
+  const n = (text.match(/\uFFFD/g) || []).length
+  if (n > 0) {
+    replacementHits += n
+    const line = text.split('\n').findIndex((l) => l.includes('\uFFFD')) + 1
+    fail('utf8-replacement', `${p}:${line}: 含 ${n} 个 U+FFFD 替换字符（字符已丢失，通常是编码往返转换造成——请从 git blob 或备份恢复该文件，不要手改）`)
+  }
 }
-notes.push(`⑤ 编码：UTF-8 校验 ${utf8Checked} 个文本文件`)
+notes.push(`⑤ 编码：UTF-8 校验 ${utf8Checked} 个文本文件${replacementHits === 0 ? '（无 U+FFFD 替换字符）' : `（❗ 命中 U+FFFD ${replacementHits} 处）`}`)
 
 // ⑥ 发布面（npm pack --dry-run）
 // 用单命令串 + shell（Windows 上 npm 是 .cmd）：避免 Node 对「shell:true + args 数组」的 DEP0190 告警
@@ -165,47 +177,101 @@ for (const p of scanned) {
 }
 notes.push(`⑦ 凭据扫描：${scanned.length} 个文本文件 × ${SECRET_PATTERNS.length} 类模式${secretHits ? '（命中 ' + secretHits + '）' : '，无命中'}`)
 
-// ⑧ 退出码契约表（v18.0.2 新增）
+// ⑧ 退出码契约表（v18.0.2 新增；v18.0.5 大修——第三方审计 P1-5 指出旧版「声称与能力不符」）
 //    动机：退出码是**被别的组件消费的输出契约**（`final-check` 的推荐语、主控的闸门判定），
 //    实测出现过两类撞码且**此前无门可拦**：
 //      · `m-gate-check` 把「定稿/证据包不存在」判 exit 1 → 伪装成「P1 内容失败」，主控据此去改正文；
 //      · `model-routing` 用 exit 3 表示「需人工决定」→ 与 M 门 3（仅 P2，**可放行**）撞码。
-//    规则：① 脚本内 `process.exit(...)` 用到的数字必须是表内声明的子集；
-//          ② 表内每个码必须在脚本里**以字面量出现**（防表格腐烂成空想）；
-//          ③ 表外脚本一律忽略（CI 专用脚本另有 0/1 命名空间）。
-//    改退出码 ⇒ 必须同步本表 + `docs/troubleshooting.md §8` + 相关测试。
+//    旧版只做两件事：`process.exit(字面量)` ∈ 声明集、以及「表内数字在文件里出现过」（近乎恒真）
+//      → **运行时真实退出码（异常路径一律 1）完全不可见**，且规则自身形同虚设。
+//    v18.0.5 起改为真核验：
+//      ① 解析 `process.exit(<arg>)`：字面量直接用；**标识符**按「本文件 const」→「`_lib/exit-guard.mjs` 导出」
+//         两级解析（这样 `process.exit(EXIT_USAGE)` 也能被看见）；
+//      ② 解析结果必须是声明集的子集（**这是本规则的主要锋芒**：新加一个 `process.exit(1)` 当路径错会被抓）；
+//      ③ 声明集里每个码要么被解析出来、要么在文件里以字面量出现过——**动态 exit 的计算结果无法静态判定**
+//         （如 `process.exit(p0 > 0 ? 2 : …)`），此时退化为「字面量出现即认」并在输出里如实标注该脚本是动态的；
+//         码 `0` 一律豁免（正常返回不写 `process.exit(0)`）；
+//      ④ 异常路径：每个读盘脚本**必须** import `exit-guard`（未 import = 兜底缺失 = 判失败），
+//         且 `_lib/exit-guard.mjs` 必须真在盘并导出契约里的两个常量。
+//    边界（如实）：本规则能拦「静态可解析的撞码」与「兜底缺失」，**不能**拦动态计算出的错误码——
+//      那由 `tests/scripts.test.mjs` 的异常路径用例（传目录/传文件/PATH 置空）覆盖。
+const GUARD = '_lib/exit-guard.mjs'
 const EXIT_CONTRACT = {
-  'm-gate-check.mjs': [0, 1, 2, 3, 10],
-  'final-check.mjs': [0, 1, 2, 3, 10],
-  'build-evidence-bundle.mjs': [0, 10],
-  'count-chars.mjs': [0, 10],
-  'normalize-trust-level.mjs': [0, 1, 10],
-  'model-routing.mjs': [0, 1, 4],
-  'consistency-check.mjs': [0, 1],
-  'token-budget.mjs': [0, 1, 2],
-  'token-cost.mjs': [0, 1],
-  'md2html.mjs': [0, 1, 2],
-  'pdfcheck.mjs': [0, 1],
+  'm-gate-check.mjs': [0, 1, 2, 3, 10, 70],
+  'final-check.mjs': [0, 1, 2, 3, 10, 70],
+  'build-evidence-bundle.mjs': [0, 10, 70],
+  'count-chars.mjs': [0, 10, 70],
+  'normalize-trust-level.mjs': [0, 1, 10, 70],
+  'model-routing.mjs': [0, 1, 4, 10, 70],
+  'consistency-check.mjs': [0, 1, 10, 70],
+  'token-budget.mjs': [0, 1, 2, 10, 70],
+  'token-cost.mjs': [0, 1, 10, 70],
+  'md2html.mjs': [0, 2, 10, 70],
+  'pdfcheck.mjs': [0, 1, 10, 70],
 }
 const scriptDir = join(ROOT, 'skills', 'lunheng-article-pipeline', 'scripts')
+const dynamicScripts = []
+const guardPath = join(scriptDir, GUARD)
+if (!existsSync(guardPath)) {
+  fail('exit-code', `缺少 ${GUARD}——退出码硬化的实现不在盘（契约里 10/70 的语义无处可查）`)
+} else {
+  const gt = readFileSync(guardPath, 'utf8')
+  for (const [name, val] of [['EXIT_USAGE', 10], ['EXIT_INTERNAL', 70]]) {
+    if (!new RegExp(`export const ${name} = ${val}\\b`).test(gt)) {
+      fail('exit-code', `${GUARD} 未按契约导出 ${name} = ${val}（契约表与 troubleshooting §8 都引它）`)
+    }
+  }
+}
 for (const [name, allowed] of Object.entries(EXIT_CONTRACT)) {
   const p = join(scriptDir, name)
   if (!existsSync(p)) { fail('exit-code', `退出码表登记的脚本不存在：${name}`); continue }
   const text = readFileSync(p, 'utf8')
-  const used = new Set()
-  for (const m of text.matchAll(/process\.exit\(([^)]*)\)/g)) {
-    for (const n of m[1].matchAll(/\b\d+\b/g)) used.add(Number(n[0]))
+  // ① 解析本文件里的 `const X = <数字>`（含顶层与函数内声明）
+  const localConsts = new Map()
+  for (const m of text.matchAll(/const\s+([A-Za-z_$][\w$]*)\s*=\s*(\d+)\b/g)) localConsts.set(m[1], Number(m[2]))
+  // ② 解析 guard 模块导出的常量
+  const guardConsts = new Map()
+  if (existsSync(guardPath)) {
+    for (const m of readFileSync(guardPath, 'utf8').matchAll(/export\s+const\s+([A-Za-z_$][\w$]*)\s*=\s*(\d+)\b/g)) {
+      guardConsts.set(m[1], Number(m[2]))
+    }
   }
-  const unexpected = [...used].filter((c) => !allowed.includes(c))
+  const resolved = new Set()
+  let dynamicExit = false
+  for (const m of text.matchAll(/process\.exit(?:Code)?\(([^)]*)\)/g)) {
+    const arg = m[1].trim()
+    for (const n of arg.matchAll(/\b\d+\b/g)) resolved.add(Number(n[0]))
+    for (const id of arg.matchAll(/\b([A-Za-z_$][\w$]*)\b/g)) {
+      const nm = id[1]
+      if (localConsts.has(nm)) {
+        resolved.add(localConsts.get(nm))
+      } else if (guardConsts.has(nm)) {
+        resolved.add(guardConsts.get(nm))
+      } else if (!/^\d+$/.test(arg)) {
+        dynamicExit = true // 运行时算出来的值（如 anyMissing ? 4 : 0 / p0>0?2:…）——静态看不见
+      }
+    }
+  }
+  const usesGuard = text.includes(GUARD)
+  if (usesGuard) { resolved.add(10); resolved.add(70) }   // 异常路径由 guard 统一映射（fs → 10；其余 → 70）
+  const unexpected = [...resolved].filter((c) => !allowed.includes(c))
   if (unexpected.length) {
     fail('exit-code', `${name}: 使用了表外退出码 ${unexpected.join(', ')}（已声明 ${allowed.join('/')}）——若是有意新增，请同步 repo-hygiene 的 EXIT_CONTRACT 与 docs/troubleshooting.md §8`)
   }
-  const phantom = allowed.filter((c) => !new RegExp(`\\b${c}\\b`).test(text))
+  // 动态 exit：静态不可判定 → 退化为「文件里出现过即认」，并在 note 里如实标注（不假装核验过）
+  const phantom = allowed.filter((c) => c !== 0 && !resolved.has(c) && !(dynamicExit && new RegExp(`\\b${c}\\b`).test(text)))
   if (phantom.length) {
-    fail('exit-code', `${name}: 契约表声明了 ${phantom.join(', ')}，但脚本里找不到该字面量——表格已过期，请核对`)
+    fail('exit-code', `${name}: 契约表声明了 ${phantom.join(', ')}，但脚本里既解析不出、也无字面量——表格已过期，请核对`)
   }
+  if (!usesGuard) {
+    fail('exit-code', `${name}: 未 import ${GUARD}——异常路径会退回 Node 默认的 exit 1，与「1 = P1 内容失败」撞义（v18.0.5 起每个读盘脚本都必须装 guard）`)
+  }
+  if (dynamicExit) dynamicScripts.push(name)
 }
-notes.push(`⑧ 退出码表：${Object.keys(EXIT_CONTRACT).length} 个随包脚本的 exit code 与契约一致`)
+notes.push(
+  `⑧ 退出码表：${Object.keys(EXIT_CONTRACT).length} 个随包脚本的退出码契约已核（静态解析 + guard 兜底检查）` +
+    (dynamicScripts.length ? `；动态 exit（静态不可判定，仅核字面量）：${dynamicScripts.join(', ')}` : ''),
+)
 
 console.log('\n=== 仓库机械卫生门（repo-hygiene-check）===')
 for (const n of notes) console.log('  ✓ ' + n)

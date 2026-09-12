@@ -14,6 +14,10 @@ const DANGEROUS = [
   [/<iframe[\s\S]*?<\/iframe>/gi, '含 <iframe> 块（已剥离）'],
   [/\son\w+\s*=\s*"[^"]*"/gi, '含事件属性 on*（已剥离）'],
   [/\son\w+\s*=\s*'[^']*'/gi, '含事件属性 on*（已剥离）'],
+  // v18.0.5（第三方审计 P2-9）：**未加引号**的事件属性此前既不剥离也不告警——`onload=alert(1)`、
+  //   `<rect onclick=alert(x)/>` 会被 md2html 原样写进导出 HTML（打开即执行），而文档声称 on* 一律剥离。
+  //   必须放在有引号的两条**之后**，避免把 `onload="x"` 的引号内容截断。
+  [/\son\w+\s*=\s*[^"'\s>]+/gi, '含事件属性 on*（未加引号，已剥离）'],
   [/javascript:/gi, '含 javascript: 协议（已剥离）'],
 ];
 

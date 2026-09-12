@@ -53,6 +53,22 @@ jobs:
       - name: 仓库机械卫生门
         run: node scripts/repo-hygiene-check.mjs
 
+  # 打包产物冒烟（v18.0.5 新增，第三方审计 P1-7）：`npm pack` → 解包 → **真跑解包后入口的 apply**，
+  # 断言「自注册行恰一行 / patch 行名已声明 / 技能注册 / frontmatter 剥离 / resourceBase 指向解包目录 /
+  # tests 不随包」。补的是此前**没有任何 job 覆盖**的「发布物能不能被装载」这一段
+  # （v18.0.0「装了但技能不注册」正是发生在这些门都够不到的地方）。
+  # 注意：它**不等于**官方 `dsh-plugin-dev verify`（不启动真实 profile）——本机 verify 受 DSH Desktop
+  # 的 dsh shim（硬编码 DSH_HOME）与 pnpm 原生依赖策略阻断，故用等效冒烟替代并在文档里如实标注。
+  pack-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: 打包产物冒烟（npm pack → 解包 → 入口 apply）
+        run: node scripts/pack-smoke.mjs
+
   # 随包脚本回归测试（v2.5.2-dsh.13 新增）
   # 矩阵含 windows-latest 与 macos-latest：final-check 的 POSIX 崩溃、路径含空格、
   # 行尾/编码差异等缺陷**只在非作者平台或跨平台时才暴露**（作者本机为 Windows）

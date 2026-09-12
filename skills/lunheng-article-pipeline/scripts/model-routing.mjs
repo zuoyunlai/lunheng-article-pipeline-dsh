@@ -24,11 +24,31 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import os from 'node:os';
+import { installExitGuard } from './_lib/exit-guard.mjs';   // 退出码硬化（v18.0.5）
+installExitGuard();
 
 const args = process.argv.slice(2);
 const wantJson = args.includes('--json');
 const noProbe = args.includes('--no-probe');
 const preferRemote = args.includes('--prefer-remote');
+// v18.0.5（第三方审计 P2）：未知参数与「缺值」此前被静默忽略（`--nope` 直接当无事发生，exit 0），
+//   拼错的旗标会静默走进默认路径。现在显式拒绝并给用法（本脚本 1 = 用法/环境错，4 = 需人工决定）。
+const KNOWN = new Set(['--json', '--no-probe', '--prefer-remote', '--dsh-home']);
+for (let i = 0; i < args.length; i++) {
+  const a = args[i];
+  if (a === '--dsh-home') {
+    if (!args[i + 1]) {
+      console.error('--dsh-home 缺少值\n用法: node scripts/model-routing.mjs [--dsh-home <path>] [--json] [--no-probe] [--prefer-remote]');
+      process.exit(1);
+    }
+    i++; // 跳过旗标取值（它不是位置参数，别当成未知参数）
+    continue;
+  }
+  if (!KNOWN.has(a)) {
+    console.error(`未知参数: ${a}\n用法: node scripts/model-routing.mjs [--dsh-home <path>] [--json] [--no-probe] [--prefer-remote]`);
+    process.exit(1);
+  }
+}
 const homeIdx = args.indexOf('--dsh-home');
 const DSH_HOME = (homeIdx >= 0 && args[homeIdx + 1]) ? args[homeIdx + 1] : (process.env.DSH_HOME || join(os.homedir(), '.dsh'));
 const settingsPath = join(DSH_HOME, 'settings.yaml');

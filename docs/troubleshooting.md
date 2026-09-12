@@ -1,6 +1,6 @@
 # 故障排查（troubleshooting）
 
-> 版本：v18.0.4（DSH 原生插件，发布于 2026-09-11）
+> 版本：v18.0.5（DSH 原生插件，发布于 2026-09-11）
 
 安装/验证失败时按「症状 → 原因 → 处置」对照。**先跑本地四道门**：
 
@@ -67,7 +67,7 @@ node --test "tests/**/*.test.mjs"                                    # 随包脚
 
 ## 8. exit code 怎么看
 
-**闸门脚本的约定（v18.0.2 起全库统一）**：
+**闸门脚本的约定（v18.0.2 起全库统一；v18.0.5 补异常路径与内部错误）**：
 
 | 码 | 含义 |
 |---|---|
@@ -75,20 +75,28 @@ node --test "tests/**/*.test.mjs"                                    # 随包脚
 | 1 | 存在 P1 失败 |
 | 2 | 存在 P0 失败 |
 | 3 | 仅 P2 / LLM 兜底 / SKIP —— **需 LLM 复核，不得当作通过** |
-| 10 | **参数或路径错误（不是内容问题）** —— `m-gate-check` / `final-check` / `build-evidence-bundle` / `count-chars` / `normalize-trust-level` 均用此码 |
+| 10 | **参数或路径错误（不是内容问题）** —— 全部随包脚本均用此码，**含异常路径**（`_lib/exit-guard.mjs` 把 fs 类未捕获异常统一映射为 10） |
+| 70 | **内部错误（EX_SOFTWARE，脚本缺陷）** —— `exit-guard` 对非 fs 类未捕获异常使用；与内容判定无关，请连同命令与栈回报 issue |
 
 > ⚠️ **v18.0.2 修掉的两处撞码**（都会误导主控）：
 > 1. `m-gate-check.mjs` 旧版把「定稿不存在 / 证据包目录不存在」判 `exit 1`，而 `1` = 「P1 内容失败」→ 主控据此触发 T5 修订，实际只是路径传错。现统一 `10`。
 > 2. `model-routing.mjs` 旧版用 `3` 表示「有档位无候选 / 需人工决定」，与 M 门 `3`（仅 P2，**可放行**）撞码。现改用独立码 **`4`**。
 >
-> **不共用本语义的工具**（以各自头注释为准，均非流水线闸门）：`token-budget`（0 成功 / 1 用法 / 2 项目路径不存在）、`md2html`（1 参数错 / 2 `--strict` 校验失败）、`pdfcheck`（0/1）、`token-cost`（0/1）、`normalize-trust-level`（1 = 有未决条目，其自有语义）、`consistency-check` 与仓库两道门（0/1，CI 独立命名空间）。
+> ⚠️ **v18.0.5 修掉的三类「异常路径」误导**（第三方审计 P1-1，均已在 `tests` 里钉住）：
+> 3. **未捕获异常退化成 1**：`count-chars <目录>`、`m-gate-check <目录> <目录>`、`build-evidence-bundle --source <目录>`、`final-check <文件当项目>` 等在旧版都会 `EISDIR/ENOTDIR` 崩溃 → Node 默认 `exit 1` → 被读成「P1 内容残留」。现：入口 `statSync().isFile()/.isDirectory()` 前置校验 + 顶层 `uncaughtException` 兜底，一律 `10`。
+> 4. **子步骤没跑起来被记成 1**：`PATH` 为空等 spawn 失败在旧版记 `exit: null → 1`，`final-check` 还会打印「⚠️ 存在 P1 残留，可触发 T5 修订一轮」（把环境问题说成内容问题）。现记 **`70`** 并给独立推荐语。
+> 5. **未知参数被静默忽略**：`--ful`（拼错）、`--nope` 等旧版直接当无事发生（`exit 0`，走默认口径）。现 `count-chars` / `model-routing` / `consistency-check` 显式拒绝并给用法。
 >
-> 退出码契约由 `scripts/repo-hygiene-check.mjs` 的**退出码表**机械核验（v18.0.2 新增）——改动退出码会红灯，须同步该表与本节。
+> **不共用本语义的工具**（以各自头注释为准，均非流水线闸门）：`token-budget`（0 成功 / 1 用法 / 2 项目路径不存在）、`md2html`（10 参数或路径错 / 2 `--strict` 校验失败）、`pdfcheck`（1 结构异常 / 10 参数或路径错）、`token-cost`（0/1）、`normalize-trust-level`（1 = 有未决条目，其自有语义；全部输入路径都不存在 → 10）、`consistency-check` 与仓库两道门（0/1，CI 独立命名空间）。
+>
+> 退出码契约由 `scripts/repo-hygiene-check.mjs` 的**退出码表**机械核验（v18.0.2 新增；**v18.0.5 大修**——旧版只 grep `process.exit(字面量)`、且「表内数字在文件里出现过」近乎恒真，等于没核）。现规则：解析 `process.exit(<字面量|本文件 const|guard 导出常量>)` 的实际取值 → 必须是声明集子集；每个声明码必须能被解析或（动态 exit 时）有字面量；每个读盘脚本**必须 import `_lib/exit-guard.mjs`**，否则判失败。**边界（如实）**：动态计算的退出码静态不可判定，那部分由 `tests/scripts.test.mjs` 的异常路径用例覆盖。
 
 ## 9. CI 绿灯但内容有问题
 
-先确认三道门都跑了：`ci.yml` 的 `drift-check` / `plugin-surface` / `hygiene` / `script-tests`（后者含 **windows** 矩阵）。
+先确认四道门都跑了：`ci.yml` 的 `drift-check` / `plugin-surface` / `hygiene` / `pack-smoke` / `script-tests`（后者含 **windows / macos** 矩阵）。
 若某类漂移仍漏检，请按 `consistency-check.mjs` 的既有规则样式补规则 + **对抗测试**（注入假漂移确认能抓到，再还原），见 `tests/scripts.test.mjs`。
+
+> **「安装→启动→卸载」这一段曾经没有门**（v18.0.5 补，第三方审计 P1-7）：CI 从来没有 `verify` job，本机 `dsh-plugin-dev verify` 又被 DSH Desktop 的 `dsh` shim（硬编码 `DSH_HOME`，见 §7）与 pnpm 原生依赖策略挡住。现由 **`pack-smoke` job + `scripts/pack-smoke.mjs`** 覆盖「发布物可装载」：`npm pack` → 解包 → 断言自注册行恰一行 / patch 行依赖已声明 / 真跑解包入口的 `apply`（注册名、正文非空、frontmatter 已剥离、`resourceBase` 指向解包目录）/ `tests` 不随包。**它仍不等于官方 verify**（不起真实 profile）——那一段在本机不可达，如实标注。
 
 ## 10. 审计视图（`audits/审计视图-v0.md`）读不到 / 内容像草稿
 
@@ -97,7 +105,7 @@ node --test "tests/**/*.test.mjs"                                    # 随包脚
   - 旧版（≤ dsh.14）该脚本**写死 `final/定稿.md`**，定稿前直接跳过 → 升级到 dsh.15 后 T6/T7/T9 才真正读得到。
 - **视图头写着「草稿快照」是正常的**：草稿阶段的字数/引用闭环只代表那一轮；**定稿阶段必须重新生成**（`--source final/定稿.md`）后才能当定稿口径引用。
 - **源的版本 ≠ 被审版本**：显式 `--source <被审正文路径>` 重新生成后再派发，不要拿旧视图审新稿。
-- **`--source` 指向不存在的文件**：脚本 exit **2** 并**不复制证据包**（fail fast，避免半成品目录）。
+- **`--source` 指向不存在的文件**：脚本 exit **10**（v18.0.5 更正：本节旧版写 2，与同节表格「参数或路径错误一律 10」自相矛盾；实际一直是 10）并**不复制证据包**（fail fast，避免半成品目录）。指向**目录**同样 exit 10（必须先 `statSync().isFile()` 就拦住）。
 
 ## 11. `token-cost.mjs` 参数报错 / 想看哪个角色最贵
 

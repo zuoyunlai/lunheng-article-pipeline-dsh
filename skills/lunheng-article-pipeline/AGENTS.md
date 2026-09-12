@@ -3,10 +3,8 @@
 > **DSH 说明**：本手册为 DSH 原生手册。所用 DSH 工具：subagent / list_agents / send_message / web_search / web_fetch / todo_write / pwsh / edit / write 等；结构性差异见 `SKILL.md` 的「🔧 DSH 环境说明」章节。
 
 ## 启动时必读
-1. `references/pipeline-readme.md` — 流水线运行手册（含复制即用的派发话术）
-2. `references/glossary.md` — 核心概念词汇表（单一真源：角色/三层防御/数据信任/教训体系）
-3. `references/glossary.md` **§十二 本技能自用术语与文档约定** — 承重墙/三角验证/M 门等术语的确切含义，以及与官方文档规范的刻意偏离说明（v18.0.0 新增）
-4. `memory/YYYY-MM-DD.md` — 今日/昨日记录（如有）
+
+> **清单真源 = `SKILL.md` §启动清单**（v18.0.5 收敛：此前本处 4 项与 SKILL 3 项不一致——一方漏 §十二、一方漏 `MEMORY.md`）。要点复述（**以 SKILL.md 为准**）：① `references/pipeline-readme.md` 的「流水线全景 / 派发话术 / 模型配置」三节；② `references/glossary.md`（按需查节；**§十二 本技能自用术语与文档约定** 属改机制前必读）；③ `MEMORY.md` + `memory/YYYY-MM-DD.md`（主人偏好与最近关注）。
 
 > **包形态（v18.0.0 起）**：**包根**含 `package.json`（`main` → `lib/index.js` + `dsh.bundle.patch` → `cordis.patch.yml`）、`lib/index.js`（**入口**：读随包 `skills/lunheng-article-pipeline/SKILL.md`，经 `ctx.skills.register()` 注册为 agent 技能，`inject=['skills']` + `resourceBase` 指向技能目录，注册即 effect、卸载自动清理）、`cordis.patch.yml`（**① 插入本包自注册行** `- id: lunheng-article-pipeline / name: lunheng-article-pipeline`——loader 靠这一行按包名 import 入口，**删了它技能就不注册**（v18.0.0 缺陷，v18.0.1 修复）+ ② 3 档 subagent 工具）。两种部署均受支持：① `dsh plugin add` 装 bundle（技能由入口注册）；② 把 **`skills/lunheng-article-pipeline/` 技能目录**复制到任一 skill 根（项目级 `.dsh/skills/` rank 100 / 用户级 `$DSH_HOME/skills/` rank 400）。**包面自检**：`dsh-plugin-dev check`（14 项：11 通过 / 3 跳过——**v18.0.0 起无豁免**，目标 0 fail / 0 warn）+ `node --test "tests/**/*.test.mjs"`。
 

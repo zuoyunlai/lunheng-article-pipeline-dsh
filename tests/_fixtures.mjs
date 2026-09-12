@@ -15,8 +15,13 @@ export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 export const SCRIPTS = join(ROOT, 'skills', 'lunheng-article-pipeline', 'scripts')
 
 // 跑一个随包脚本：返回 exit code + 合并输出 + 分离的 stdout/stderr（v18.0.5 起两个测试文件共用同一实现）
+// opts.env 可整体替换子进程环境（用于 spawn 失败 / 缺环境变量等场景）
 export const run = (args, opts = {}) => {
-  const r = spawnSync(process.execPath, args, { encoding: 'utf8', cwd: opts.cwd || ROOT })
+  const r = spawnSync(process.execPath, args, {
+    encoding: 'utf8',
+    cwd: opts.cwd || ROOT,
+    ...(opts.env ? { env: opts.env } : {}),
+  })
   return { code: r.status, out: (r.stdout || '') + (r.stderr || ''), stdout: r.stdout || '', stderr: r.stderr || '' }
 }
 export const parseJson = (r) => JSON.parse(r.stdout.slice(r.stdout.indexOf('{')))
@@ -38,14 +43,24 @@ export const mkProject = ({ analysis = false, audits = false, drafts = false, ex
   return { d, proj, fin, ev, aud }
 }
 
-// 仓库骨架（consistency-check 注入用例专用）：把技能体 + 包级文件复制到 `<tmp>/repo/`
-export const mkRepo = ({ extraFiles = [], readme = false } = {}) => {
+// 仓库骨架（consistency-check / pack-smoke 等「仓库级门」的注入用例专用）
+//   · 默认只复制门所需的最小集（技能体 + 包级清单）——多数用例够用、跑得快
+//   · `full: true` 复制整仓（除 .git / node_modules / *.tgz）——供 `pack-smoke.mjs` 这类
+//     需要 lib/ + repo scripts/ + files 白名单里全部产物的门使用（v18.0.5 新增）
+export const mkRepo = ({ extraFiles = [], readme = false, full = false } = {}) => {
   const d = tmp()
   const repo = join(d, 'repo')
   mkdirSync(repo, { recursive: true })
-  cpSync(join(ROOT, 'skills'), join(repo, 'skills'), { recursive: true })
-  const files = ['package.json', 'CHANGELOG.md', 'cordis.patch.yml', ...(readme ? ['README.md'] : []), ...extraFiles]
-  for (const f of files) cpSync(join(ROOT, f), join(repo, f))
+  if (full) {
+    cpSync(ROOT, repo, {
+      recursive: true,
+      filter: (src) => !/[\\/]\.git([\\/]|$)/.test(src) && !/[\\/]node_modules([\\/]|$)/.test(src) && !src.endsWith('.tgz'),
+    })
+  } else {
+    cpSync(join(ROOT, 'skills'), join(repo, 'skills'), { recursive: true })
+    const files = ['package.json', 'CHANGELOG.md', 'cordis.patch.yml', ...(readme ? ['README.md'] : []), ...extraFiles]
+    for (const f of files) cpSync(join(ROOT, f), join(repo, f))
+  }
   return { d, repo, R: join(repo, 'skills', 'lunheng-article-pipeline') }
 }
 

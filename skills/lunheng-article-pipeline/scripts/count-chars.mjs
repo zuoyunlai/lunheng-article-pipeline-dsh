@@ -7,12 +7,47 @@
 // 用途：写手写完即跑（替代 LLM 推理估算）；T7 G8 字数核验；T8 终检权威回填
 import { readFileSync, existsSync } from 'node:fs';
 import { countHan, HAN_RE as HAN } from './_lib/han.mjs';   // 汉字口径唯一真源（v2.5.2-dsh.13 抽 _lib；v18.0.3 计数改走 countHan）
+import { installExitGuard, requireExistingFile } from './_lib/exit-guard.mjs'; // 退出码硬化（v18.0.5）
+installExitGuard();   // 传目录/权限错 → exit 10（旧版未捕获 EISDIR → exit 1 = 被读成「P1 内容失败」）
 
 const [, , file, flag] = process.argv;
 if (!file) { console.error('用法: node count-chars.mjs <文件.md> [--full | --summary]'); process.exit(10); } // v18.0.2：参数/路径错统一 10
 if (!existsSync(file)) { console.error(`文件不存在: ${file}`); process.exit(10); } // v18.0.2：同上
+requireExistingFile(file, '待统计文件');   // v18.0.5：必须是文件（目录 → 10，不再等到 readFileSync 炸）
+// 未知 flag（如 `--ful` 拼错）静默降级会走错口径 —— v18.0.5 改为显式拒绝（第三方审计 P3）
+if (flag !== undefined && !['--full', '--summary'].includes(flag)) {
+  console.error(`未知参数: ${flag}\n用法: node count-chars.mjs <文件.md> [--full | --summary]`);
+  process.exit(10);
+}
+
+// 编码体检（v18.0.5，第三方审计 P2）：UTF-16 文件用 utf8 读会得到大量替换字符 → 汉字数静默为 0
+//   （实测 UTF-16 文案「正文。」→ hanChars 0 且无任何告警）。契约是 UTF-8（.gitattributes / 卫生门），
+//   非 UTF-8 一律响亮失败，不要给一个看起来正常但错误的数字。
+{
+  const probe = readFileSync(file);
+  if (probe.length >= 2 && ((probe[0] === 0xff && probe[1] === 0xfe) || (probe[0] === 0xfe && probe[1] === 0xff))) {
+    console.error(`${file}: 检测到 UTF-16 BOM —— 本脚本只接受 UTF-8（契约见 .gitattributes）。请转码后重跑。`);
+    process.exit(10);
+  }
+  if (probe.length > 0 && probe[0] === 0xef && probe[1] === 0xbb && probe[2] === 0xbf) {
+    console.error(`⚠️ ${file}: 含 UTF-8 BOM（机检硬格式要求无 BOM），本次按 UTF-8 正常统计`);
+  }
+}
 
 const text = readFileSync(file, 'utf8');
+
+// 正文区起点退化（缺「## 摘要」）的标记计算（v18.0.5：从默认分支**提到 summary 之前**——旧版
+//   `--summary` 在标记逻辑之前就 process.exit(0)，导致该模式口径失真却**不带 degraded 标记**，
+//   正是 v2.5.2-dsh.13 专门要消灭的静默退化；第三方审计 P1-3）。
+const abstractStart = text.indexOf('## 摘要');
+const bodyStartIdx = abstractStart >= 0 ? abstractStart + '## 摘要'.length : 0;
+const degraded = abstractStart < 0;
+if (degraded && flag !== '--full') {
+  console.error(`⚠️ ${file}：未找到「## 摘要」，正文区起点退化为文件开头（口径已失真）——请补写摘要，或改用 --full 明确按全文统计`);
+}
+const degradedFields = degraded && flag !== '--full'
+  ? { degraded: true, degradedReason: '缺「## 摘要」→ 正文区起点退化为文件开头' }
+  : {};   // `--full` 不受正文区起点影响，故不标 degraded（v18.0.5：与既有契约一致）
 
 if (flag === '--summary') {
   // 分段：标题/摘要/关键词/正文/参考文献/数据来源/案例来源/先行者文献/AI 使用声明
@@ -32,8 +67,7 @@ if (flag === '--summary') {
     }
   }
   // 正文区 = 摘要之后到第一个文末节之前
-  const bodyStart = text.indexOf('## 摘要');
-  const bodyFrom = bodyStart >= 0 ? bodyStart + '## 摘要'.length : 0;
+  const bodyFrom = bodyStartIdx;
   // 找最近的文末节作为 body 终点
   let bodyEnd = text.length;
   for (const s of segs) {
@@ -66,25 +100,24 @@ if (flag === '--summary') {
     sectionsByHeading: headingCounts.slice(0, 15),
     density: {
       bodyRatio: totalCount > 0 ? +(bodyCount / totalCount * 100).toFixed(1) : 0,
-      avgPerSection: headingCounts.length > 0 ? Math.round(bodyCount / headingCounts.filter((s) => s.level === '##').length) : 0,
+      // v18.0.5：分母为 0 时给 0（旧版 Infinity → JSON.stringify 变 null，看着像「缺失」）——第三方审计 P3
+      avgPerSection: (() => {
+        const h2 = headingCounts.filter((s) => s.level === '##').length;
+        return h2 > 0 ? Math.round(bodyCount / h2) : 0;
+      })(),
     },
+    ...degradedFields,   // v18.0.5：--summary 也必须带 degraded 标记（旧版在标记前就 exit 0）
   }, null, 2));
   process.exit(0);
 }
 
 let target = text;
-let degraded = false;
 if (flag !== '--full') {
   // 正文区：## 摘要 之后 到 ## 参考文献（或文末）之前
   // v2.5.2-dsh.13 修订（第三方审计 P1）：无「## 摘要」时旧版静默把起点退化为文件开头（口径前移、
   // 若文末节标记也缺失则等于全文），却仍自称 body(正文区) → 双口径坍缩、字数分级系统性偏大。
-  // 现在：显式置 degraded 标记并在 stderr 告警，让 T7/T8 可机械识别。
-  const start = text.indexOf('## 摘要');
-  const from = start >= 0 ? start + '## 摘要'.length : 0;
-  if (start < 0) {
-    degraded = true;
-    console.error(`⚠️ ${file}：未找到「## 摘要」，正文区起点退化为文件开头（口径已失真）——请补写摘要，或改用 --full 明确按全文统计`);
-  }
+  // 现在：显式置 degraded 标记并在 stderr 告警（计算已提到 summary 之前，两模式共用）。
+  const from = bodyStartIdx;
   const endMarkers = ['## 参考文献', '## 数据来源', '## 案例来源', '## 先行者文献', '## AI 使用声明'];
   let to = text.length;
   for (const m of endMarkers) {
@@ -99,6 +132,6 @@ console.log(JSON.stringify({
   file,
   scope: flag === '--full' ? 'full(全文纯汉字)' : 'body(正文区纯汉字: 摘要后~文末节前)',
   hanChars: count,
-  ...(degraded ? { degraded: true, degradedReason: '缺「## 摘要」→ 正文区起点退化为文件开头' } : {}),
+  ...degradedFields,
 }, null, 2));
 process.exit(0);
