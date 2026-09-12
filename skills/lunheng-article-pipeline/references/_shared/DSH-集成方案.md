@@ -1,6 +1,6 @@
 # 论衡 × DSH 能力面集成方案
 
-> **版本**：v18.2.0（C 组落地；§一–§六 为 v18.0.2 原文，§七–§八 为 v18.2.0 新增）
+> **版本**：v18.2.1（C 组落地；§一–§六 为 v18.0.2 原文，§七–§八 为 v18.2.1 新增）
 > **用途**：把论衡的既有机制（11 个门禁脚本 / 并行阶段 / 状态机 / 人在环闸门）**对齐 DSH 已有能力面**，替代平行自建。§一–§六 是**实施方案**，§七 是**落地状态表**，§八 是**可选配方**。
 > **依据**：DSH 官方文档 `docs/cookbook/adding-a-tool.md`、`docs/tool-execution-pipeline.md`、`docs/subsystems/*.md`、`docs/capability-seams.md`（知识库副本见 `dsh-plugin-guide/references/official-docs/`；行号对快照 commit `d347e703…`）。
 > **当前状态**：**C 组四项已启用**（原生只读工具 / `ctx.tools.guard()` 写保护 / `/lunheng-status` / 词预算门）、一项给配方（分档工具行→agent preset）、一项仍未接线（Phase 内并行→`workflow`，依官方用法限定「仅在用户明确要求 workflow 或大规模编排时」用，故**降级为按需**）。

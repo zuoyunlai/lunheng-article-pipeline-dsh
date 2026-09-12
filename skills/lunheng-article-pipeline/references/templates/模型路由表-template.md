@@ -1,6 +1,6 @@
 # 模型路由表 — <项目名>
 
-> 版本：v18.2.0（DSH bundle 插件）
+> 版本：v18.2.1（DSH bundle 插件）
 > 来源：`node scripts/model-routing.mjs --json`（**只读脚本**：探测本机 provider×模型、本地可达性，并按四档能力表出建议）
 > 位置：`run/<项目名>/model-routing.md`　｜　产出者：**主控**（Phase 0 定题时落盘；本机模型/provider 变化或发生回退时更新）
 > 用途：① 派发时按表选工具档位；② 交付说明「成本指标」引用本表说明「各角色实际用哪个模型」；③ 回退留痕。

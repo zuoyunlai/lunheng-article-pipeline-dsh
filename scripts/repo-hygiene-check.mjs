@@ -375,13 +375,13 @@ const DOC_BUDGET = {
   'skills/lunheng-article-pipeline/references/memory/lessons.md': [19456, 19456, '教训库（只增，需定期合并同类项）'],
   'skills/lunheng-article-pipeline/references/templates/任务简报-template.md': [19456, 19456, '任务简报模板（full 版）'],
   'skills/lunheng-article-pipeline/references/agents/06-批判-critical-companion.md': [17408, 17408, 'T6 批判卡'],
-  'skills/lunheng-article-pipeline/references/deliverables.md': [16384, 16384, '交付边界 + F1-F9 + 闸门（按需加载）'],
+  'skills/lunheng-article-pipeline/references/deliverables.md': [17408, 16384, '交付边界 + F1-F9 + 闸门（按需加载）——v18.2.1 显式抬升 16→17 KB：补「文末编号必须沿用素材卡真编号」硬要求'],
   'skills/lunheng-article-pipeline/README.md': [15360, 15360, '技能目录 README（人类入口）'],
   'skills/lunheng-article-pipeline/QUICKSTART.md': [15360, 15360, '快速开始'],
   'skills/lunheng-article-pipeline/references/agents/04-分析-analyst.md': [14336, 14336, 'T4 分析卡'],
   'skills/lunheng-article-pipeline/references/agents/02-数据检索-data-scout.md': [13312, 13312, 'T2 数据检索卡'],
   'skills/lunheng-article-pipeline/references/agents/03-案例检索-case-scout.md': [13312, 13312, 'T3 案例检索卡'],
-  'skills/lunheng-article-pipeline/references/agents/09-审稿-peer-reviewer.md': [13312, 13312, 'T9 审稿卡'],
+  'skills/lunheng-article-pipeline/references/agents/09-审稿-peer-reviewer.md': [14336, 13312, 'T9 审稿卡——v18.2.1 显式抬升 13→14 KB：补 M-Exist-6 六维机检契约警示（防派发时改写维度名）'],
 }
 const ALWAYS_RESIDENT = [
   'skills/lunheng-article-pipeline/SKILL.md',

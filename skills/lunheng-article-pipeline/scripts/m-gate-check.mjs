@@ -527,7 +527,12 @@ try {
       //   旧实现用 /承重墙/ 全行匹配 → 命中**散文里的「承重墙」三字**（例：禁做项列表写「不出现…承重墙…」）
       //   → 该行非标题 → 走「猜后续 60 行」兜底 → 把论点-论据映射表也当承重墙清单 → 同一编号 ×3 → **误报超载**。
       //   现只认：① 标题行（##/### … 承重墙…）；② 含「承重证据 top1」标记的行。
-      const wallAnchor = (l) => /^#{2,4}\s/.test(l) ? /承重墙|承重证据/.test(l) : /承重证据\s*top\s*1/i.test(l);
+      // v18.2.1 再收紧（本轮 v18.2.0 短测试实测踩到，属旧修复未覆盖的同类形态）：
+      //   旧式 `/承重墙|承重证据/` 对**标题行做全行匹配**，会命中
+      //   「### 论点-论据映射表（写手版；**M-Form-8 承重墙清单**）」——括号里**提及**了承重墙，
+      //   于是把论据映射表当承重墙清单读（该表一行含多个编号）→ 同一编号计 3 次 → 误报「承重墙超载」。
+      //   故标题行锚点改为**必须以关键词开头**；行内式锚点（非标题）仍只认「承重证据 top1」。
+      const wallAnchor = (l) => /^#{2,4}\s/.test(l) ? /^#{2,4}\s*(承重墙|承重证据|承重清单)/.test(l) : /承重证据\s*top\s*1/i.test(l);
       const sIdx = ol.findIndex(wallAnchor);
       if (sIdx !== -1) {
         wall8.checked = true;
@@ -824,14 +829,40 @@ try {
       let e11 = sectionRange(ls2, hIdx11, /^#{2,4}\s/).end;
       loadedSeg = ls2.slice(hIdx11 + 1, e11).join('\n');
     }
-    const loaded11 = new Set([...loadedSeg.matchAll(new RegExp('\\[(' + REF_TOKEN + ')\\]', 'g'))].map((m) => '[' + m[1] + ']'));
+    // v18.2.1：**支持范围写法** `[D01]-[D08]`（本轮实测踩到）——旧实现只按单编号全量匹配，
+    //   范围写法只命中首尾两项，中间的 D02–D07 被判「引了没读 = 引用不可信」（假 P0）。
+    //   范围展开在**同一字母**内进行；起止倒序或跨度 > 30 视为笔误，不展开（如实计入 findings）。
+    const expandRanges = (seg) => {
+      const extra = new Set();
+      const bad = [];
+      for (const m of seg.matchAll(/\[([LDC])(\d+)\]\s*[-–—~至]\s*\[([LDC])(\d+)\]/g)) {
+        const [, a, n1, b, n2] = m
+        if (a !== b) { bad.push(m[0]); continue }
+        const lo = Number(n1), hi = Number(n2)
+        if (hi < lo || hi - lo > 30) { bad.push(m[0]); continue }
+        for (let i = lo; i <= hi; i++) extra.add(`[${a}${String(i).padStart(n1.length, '0')}]`)
+      }
+      return { extra, bad }
+    }
+    const { extra: rangeIds, bad: badRanges } = expandRanges(loadedSeg)
+    const loaded11 = new Set([
+      ...[...loadedSeg.matchAll(new RegExp('\\[(' + REF_TOKEN + ')\\]', 'g'))].map((m) => '[' + m[1] + ']'),
+      ...rangeIds,
+    ])
+    if (badRanges.length) soft11.push(`加载清单含无法展开的范围写法：${badRanges.slice(0, 3).join(' ')}（请改为逐项列出）`)
     const notLoaded = [...cited11].filter((x) => !loaded11.has(x));
     const ghost = [...loaded11].filter((x) => cardEntryIds.size > 0 && !cardEntryIds.has(x));
     const unused = [...loaded11].filter((x) => !cited11.has(x));
     if (notLoaded.length) findings11.push(`正文引用但清单未记「已加载」：${notLoaded.slice(0, 6).join(',')}（引了没读 = 引用不可信）`);
     if (ghost.length) findings11.push(`清单里的编号在卡片中无对应条目：${ghost.slice(0, 6).join(',')}（清单与素材卡不一致）`);
     if (unused.length) soft11.push(`${unused.length} 个编号「读了但正文未引用」（${unused.slice(0, 5).join(',')}）——白读即为上下文浪费`);
-    if (cardIndexIds.size >= 20 && loaded11.size / cardIndexIds.size > 0.9) {
+    //   v18.2.1（本轮实测反哺）：原阈值「卡池 ≥20 且加载率 >90%」在**短文 + 小卡池**场景必然误报——
+    //   短测试卡池 20 条、正文引用 18 条（=90%）即触发「疑似整卡通读」，但短文本来就要用到大部分素材，
+    //   这不是选择性不足。改为双条件：卡池 ≥30（有选择空间）**且** 正文 ≥3000 汉字（长文才有整卡通读的
+    //   token 代价）才提示；否则如实跳过（不静默——下方 note 里写明因何未启用该软提示）。
+    const bodyHan11 = (body.match(/[\u4e00-\u9fff]/g) || []).length
+    const ratioCheckOn = cardIndexIds.size >= 30 && bodyHan11 >= 3000
+    if (ratioCheckOn && loaded11.size / cardIndexIds.size > 0.9) {
       soft11.push(`已加载 ${loaded11.size} / 索引 ${cardIndexIds.size} 条（>90%）——选择性不足，疑似整卡通读（该条优化即为此设）`);
     }
     const ver11 = lt.match(/对应(?:正文)?版本[：:]\s*v?(\d+)/);
@@ -1028,7 +1059,7 @@ try {
         //   v18.0.5 修（第三方审计 P1-5）：删掉原先的裸 `\d`——它让「已检查 1 次」这类自述通过，
         //   与文档「不接受『已检查』这类自述」直接冲突。现在数字必须带量词/单位或与路径/命令/哈希同现。
         const evLooksReal =
-          /[\\/]|exit\s*\d|node\s+\S+\.mjs|m-gate|sha256|\.json|\.md|\.svg|\d+\s*(?:条|个|处|项|篇|例|%|倍|字|轮|步|节|章|页|行|次|份|组|种|点)/.test(ev) &&
+          /[\\/]|exit\s*[=:：]?\s*\d|node\s+\S+\.mjs|m-gate|sha256|\.json|\.md|\.svg|\d+\s*(?:条|个|处|项|篇|例|%|倍|字|轮|步|节|章|页|行|次|份|组|种|点)/.test(ev) &&
           !/^(已|未)?(检查|核对|确认|自查)(完)?(毕|过)?$/.test(ev.replace(/\s/g, ''));
         if (ev.replace(/[\s.。…-]/g, '').length < 3 || !evLooksReal) {
           findings5.push(`${gateId}「${item}」的实据列不是机械证据（须写路径 / exit code / 命令，而非「已检查」自述）：现为「${ev.slice(0, 24)}」`);
@@ -1590,9 +1621,12 @@ try {
     const sSub = [...briefText.matchAll(/^[\s|]*S(\d+)\s/gm)].map((m) => `S${m[1]}`);
     briefData.subclaims = new Set([...letterSub, ...sSub]).size;
     // 需找数据点：已填数字「≥N」求和；占位符「≥____」单列计数（模板未填时如实提示，而非误报 0）
-    briefData.minDataPoints = [...briefText.matchAll(/需找数据点\s*[≥>]\s*(\d+)/g)]
+    // v18.2.1：**容忍「需找数据点：≥ 3」这类带冒号/破折号的写法**——模板给的是无冒号形态，
+    //   但主控手写简报时极易补一个冒号，旧正则 `需找数据点\s*[≥>]` 在「…点：≥」上直接失配
+    //   → 需求总数记 0 → M-Integrity-1 假报「任务简报未见数据需求」（本轮实测踩到）。
+    briefData.minDataPoints = [...briefText.matchAll(/需找数据点[^\d≥>]{0,4}[≥>]\s*(\d+)/g)]
       .map((m) => parseInt(m[1], 10)).reduce((a, b) => a + b, 0);
-    briefData.placeholder = (briefText.match(/需找数据点\s*[≥>]\s*_+/g) || []).length;
+    briefData.placeholder = (briefText.match(/需找数据点[^\d≥>]{0,4}[≥>]\s*_+/g) || []).length;
   }
 } catch {}
 {

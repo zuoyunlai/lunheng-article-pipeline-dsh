@@ -2,7 +2,7 @@
 
 > 🌐 [English](README.md) ｜ **中文**（本文件）｜ [Español](README.es.md) ｜ [Português](README.pt.md) ｜ [हिन्दी](README.hi.md)
 
-> 版本：v18.2.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.2.1（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > 一个 DeepSeek Harness（DSH）bundle 插件，注册一个按需加载的 agent 技能。它把深度长文的生产——学术论文、行业分析、商业评论、公众号深文——变成**带人在环节点的 9 角色流水线**。
 
@@ -108,7 +108,7 @@ patch 层做两件事：**插入一行本包自注册行**（`- id: lunheng-arti
 **只推 tag 发布，禁止本地 `npm publish`**（本地直发会绕过 CI 三道门与 OIDC 来源证明，且 npm 版本不可覆盖）。
 
 ```sh
-git tag v18.2.0 && git push origin v18.2.0   # 一次只推 1 个 tag（GitHub：单次 push >3 个 tag 不触发任何 workflow）
+git tag v18.2.1 && git push origin v18.2.1   # 一次只推 1 个 tag（GitHub：单次 push >3 个 tag 不触发任何 workflow）
 # publish.yml 依次跑：门 1 一致性 → 门 2 打包面 → 门 3 机械卫生 → 门 4 打包产物冒烟 → 脚本回归测试
 #   → tag/版本一致校验 → 幂等守卫 → OIDC 发布 --provenance --tag dsh → 发布后审计
 ```

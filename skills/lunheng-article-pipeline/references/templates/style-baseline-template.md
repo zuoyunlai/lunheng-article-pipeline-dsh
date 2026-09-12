@@ -1,6 +1,6 @@
 # 风格基线（style-baseline）— <项目名>
 
-> 版本：v18.2.0（DSH bundle 插件）
+> 版本：v18.2.1（DSH bundle 插件）
 > 用途：主人在 Phase 0 勾选「风格基线」后，由**主控**按本模板产出；T5 按它调整文风、T6 校验「风格漂移」、T7 抽查偏离（P2）。
 > 位置：`run/<项目名>/style-baseline.md`　｜　产出者：主控（Phase 0 之后、Phase 3 之前）
 

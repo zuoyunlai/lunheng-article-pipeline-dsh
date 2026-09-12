@@ -1025,6 +1025,51 @@ test('m-gate-check M-Form-8：承重墙超载与虚标必须机检（原为纯 L
   rmSync(d, { recursive: true, force: true })
 })
 
+test('m-gate-check v18.2.1：承重墙锚点收紧 + 需找数据点容忍冒号 + 范围写法 + exit= 实据（本轮实战反哺）', () => {
+  // 本用例的 4 个场景全部来自 v18.2.0 短测试实战踩点（详见 CHANGELOG ## 18.2.1）：
+  //   ① 大纲标题里**提及**「承重墙」不得被当成承重墙清单锚点（旧式全行匹配会把论据映射表当清单 → 误报超载）；
+  //   ② 任务简报「需找数据点：≥ 3」带冒号也必须被识别（否则需求总数记 0 → M-Integrity-1 假 P0）；
+  //   ③ 素材加载清单的范围写法 `[L01]-[L03]` 必须展开（否则中间编号被判「引了没读」→ 假 P0）；
+  //   ④ 闸门记录实据写 `exit=2` 也必须算机械证据（旧正则只认 `exit 2`）。
+  const { d, proj, fin, ev } = mkProject({ analysis: true, audits: true })
+  writeFileSync(join(fin, '定稿.md'),
+    '# 标题\n\n## 摘要\n\n## 一、导论\n\n' + '正文段落。'.repeat(40) + '[L01][L02][L03][D01]\n\n'
+    + '## 参考文献\n\n[L01] a\n[L02] b\n[L03] c\n\n## 数据来源\n\n[D01] d\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
+  writeFileSync(join(ev, '文献卡.md'), '# 文献卡\n\n## 📇 索引段\n\n[L01] a\n[L02] b\n[L03] c\n\n## 正文\n\n### [L01] a\n信任级别：已发布\n\n### [L02] b\n信任级别：已发布\n\n### [L03] c\n信任级别：已发布\n')
+  writeFileSync(join(ev, '数据卡.md'), '# 数据卡\n\n## 📇 索引段\n\n[D01] d\n\n## 正文\n\n### [D01] d\n信任级别：已发布\n')
+  writeFileSync(join(ev, '案例卡.md'), '# 案例卡\n\n## 📇 索引段\n\n\n## 正文\n')
+  // ② 简报：带冒号的「需找数据点：≥ 3」
+  writeFileSync(join(proj, '01-任务简报.md'), '# 简报\n\n子问题 A：x。\n子问题 B：y。\n需找数据点：≥ 3 条\n')
+  // ① 大纲：只有「提及」承重墙的标题 + 表内同编号 3 次（若锚点误命中 → 会报超载）
+  writeFileSync(join(proj, 'analysis', '分析大纲.md'),
+    '# 分析大纲\n\n## 一、论点映射\n\n| 论点 | 论据 |\n|---|---|\n| 论点1 | [L01] |\n\n### 论点-论据映射表（写手版；M-Form-8 承重墙清单）\n\n| 论点1 | [L01] |\n| 论点2 | [L01] |\n| 论点3 | [L01] |\n')
+  // ③ 加载清单：范围写法
+  writeFileSync(join(proj, 'analysis', '素材加载清单.md'), '# 清单\n\n## 已加载\n\n| 编号 | 位置 |\n|---|---|\n| [L01]-[L03] | §1 |\n| [D01] | §1 |\n')
+  // ④ 闸门记录：实据用 `exit=2` 形态 + 表头含 检查项/实据/结论
+  const rows = (items) => items.map((t) => `| ${t} | \`x.json\` exit=2 | ✓ |  |`).join('\n')
+  writeFileSync(join(proj, 'audits', '闸门记录-T2.5.md'),
+    `# 记录\n\n| 检查项 | 实据 | 结论 | 失败原因 |\n|---|---|---|---|\n${rows(['数据卡文件存在', '数据条目数（双格式并集去重）', '任务简报数据需求总数', '数据条目数 ≥ 需求总数', '信任级别完整性（M-Form-6）', '信任级别一致性（M-Exist-3）', '数据卡头部声明 vs 实际计数', '证据包哈希占位符（可选验证）'])}\n`)
+  writeFileSync(join(proj, 'audits', '闸门记录-T7.5.md'),
+    `# 记录\n\n| 检查项 | 实据 | 结论 | 失败原因 |\n|---|---|---|---|\n${rows(['审计报告最新版存在', 'P0/P1 清单已列', 'M 门全部 exit 0', '证据包指纹占位符', '信任级别一致性（M-Exist-3）', '论文交付物 vs 报告独立隔离', '修订轮由独立写手执行'])}\n`)
+  const item = (prefix) => {
+    const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), join(proj, 'final', '证据包')])
+    return parseJson(r).results.find((x) => x.gate.startsWith(prefix))
+  }
+  // ① 提及「承重墙」的标题不得被当锚点 → 不出现「承重墙超载」
+  const f8 = item('M-Form-8')
+  assert.ok(!/承重墙超载/.test(f8.detail), '标题里提及承重墙不得被当锚点：' + f8.detail)
+  // ② 带冒号的「需找数据点：≥ 3」被识别（需求总数 3 而非 0）
+  const mi1 = item('M-Integrity-1')
+  assert.match(mi1.detail, /需找数据点 3 条/, '冒号写法必须被识别：' + mi1.detail)
+  // ③ 范围写法展开 → [L02] 不得被判「引了没读」
+  const f11 = item('M-Form-11')
+  assert.ok(!/引了没读/.test(f11.detail), '范围写法必须展开：' + f11.detail)
+  // ④ `exit=2` 算机械证据 → 不得报「不是机械证据」
+  const e5 = item('M-Exist-5')
+  assert.ok(!/不是机械证据/.test(e5.detail), 'exit= 形态必须算机械证据：' + e5.detail)
+  rmSync(d, { recursive: true, force: true })
+})
+
 test('m-gate-check M-Exist-8：批判报告 C1-C7 覆盖（漏节 / 编号重复 / 要素不足）', () => {
   const { d, proj, fin, ev } = mkProject({ analysis: true })
   writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
