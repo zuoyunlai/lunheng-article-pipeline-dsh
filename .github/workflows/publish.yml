@@ -28,6 +28,7 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '24'   # Trusted Publishing 要求 npm ≥11.5.1；Node 24 自带 npm 已满足（不再 `npm i -g npm@latest`，避免发布环境不可复现）
+          package-manager-cache: false # v5 把默认值反转为 true；本仓库无 lockfile 且不 pnpm install（v18.2.4 审计 F.1 维持不缓存）
           registry-url: 'https://registry.npmjs.org'
 
       # ── 发布前四道门（fail-closed：任一不过即中止，绝不发布未校验内容）────────
