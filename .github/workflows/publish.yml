@@ -81,9 +81,18 @@ jobs:
       # dist-tag 核对与补打。要点（v2.5.2-dsh.13 实测修正）：
       #   ① OIDC 发布已由 `npm publish --tag dsh` 自动把 dsh 指向本次版本 —— **不需要**再 add 一次；
       #   ② 无 token 时 `npm dist-tag add` 会因无鉴权而 exit 1，把整步（并连带跳过发布后审计）弄红 ——
-      #      故本步改为「先只读打印，有 token 才写」，永不因缺 token 而失败。
+      #      故本步改为「先只读打印，有 token 才写」，**缺** token 时永不失败。
+      # v18.2.4 两处修正（实测：v18.2.4 发布时 CI 侧 NPM_TOKEN 已失效 → 本步 E401 红）：
+      #   ③ **触发条件补 dispatch**：旧条件只有 `skip == 'false'`，而本工作流的 `workflow_dispatch`
+      #      自称用途是「手动补 dist-tag（如 latest 未跟随最新版时）」——可手动跑时目标版本**早已发布**
+      #      → 幂等守卫必然把 skip 置真 → 本步被**整个跳过** → **文档承诺的手工补救路径从来不会执行**。
+      #      这是「文档声称强于事实」的又一例，只有真的需要补救时才暴露。现改为「待发布」或「手动 dispatch」都跑。
+      #   ④ **失败必须可操作（区分「缺」与「失效」）**：缺 token 仍是 warning（设计如此）；但 token
+      #      **存在却失效**（E401 = 已撤销/过期）是真问题——它让 latest 静默卡在旧版。故捕获后打
+      #      `::error::` 并给出**可直接复制**的补救命令，仍 exit 1（fail-closed，不把「latest 没跟上」伪装成成功）。
+      #      v18.2.4 即由维护者在有凭据的机器上执行该命令补齐（latest / dsh 均已 → 18.2.4）。
       - name: 核对 dist-tag（只读；有 token 才补打 latest）
-        if: steps.guard.outputs.skip == 'false'
+        if: steps.guard.outputs.skip == 'false' || github.event_name == 'workflow_dispatch'
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
@@ -91,9 +100,12 @@ jobs:
           echo '--- 发布后 dist-tags ---'
           npm view "$PKG" dist-tags --json
           if [ -n "${NPM_TOKEN}" ]; then
-            npm dist-tag add "$PKG@$VER" dsh
-            npm dist-tag add "$PKG@$VER" latest
-            echo "已同步 dsh + latest → $VER"
+            if npm dist-tag add "$PKG@$VER" dsh && npm dist-tag add "$PKG@$VER" latest; then
+              echo "已同步 dsh + latest → $VER"
+            else
+              echo "::error::NPM_TOKEN 存在但鉴权失败（E401 = 令牌已失效或被撤销）——latest 可能仍停在旧版。发布本身已成功、**无需重发**；请在维护者有凭据的机器上执行：npm dist-tag add $PKG@$VER latest && npm dist-tag add $PKG@$VER dsh，并在 npm 侧换发细粒度 token 后 gh secret set NPM_TOKEN"
+              exit 1
+            fi
           else
             echo "::warning::未配置 NPM_TOKEN —— 仅 dsh 指向本次版本（由 npm publish --tag dsh 自动完成）；latest 仍指旧版。安装请用 $PKG@dsh，或由维护者手工执行：npm dist-tag add $PKG@$VER latest"
           fi
