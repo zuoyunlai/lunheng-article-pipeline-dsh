@@ -96,6 +96,64 @@ test('consistency-check ⑨：.dsh 镜像与真源 size 相同但内容不同时
   rmSync(d, { recursive: true, force: true })
 })
 
+// v18.2.4（主人指令「修」；第三方审计「门必须覆盖它声称覆盖的规范」）：补两类**实测漏检**的回归网。
+// 为什么必须有：这两处此前**全靠人工记得刷**——门绿不等于版本点位齐，而「版本头替换天生等长」，
+// 漂移在字节数上完全不可见（与 v18.2.3 修掉的 size 假绿同源）。两个用例都用「注入前不报 / 注入后必报」，
+// 不依赖基线退出码，从而在「夹具恰好已漂移」时也不会假绿。
+test('consistency-check ①/⑦ 补面：内联 `git tag vX.Y.Z` 与 package.json 不一致时必须报（v18.2.4 新增）', () => {
+  const { d, repo } = mkRepo({ readme: true, extraFiles: ['CONTRIBUTING.md'] })
+  const cc = join(repo, 'skills', 'lunheng-article-pipeline', 'scripts', 'consistency-check.mjs')
+
+  const base = run([cc]).out
+  assert.doesNotMatch(base, /内联 tag 版本漂移/, '夹具基线不应报内联 tag 漂移：' + base.slice(-400))
+
+  const p = join(repo, 'README.md')
+  const before = readFileSync(p, 'utf8')
+  const after = before.replace(/git tag v\d+\.\d+\.\d+/, 'git tag v18.0.4')
+  assert.notEqual(after, before, '夹具假设 README.md 含 `git tag vX.Y.Z` 内联发布示例')
+  writeFileSync(p, after)
+
+  const bad = run([cc]).out
+  assert.match(
+    bad,
+    /\[P1 内联 tag 版本漂移\]/,
+    '内联 tag 版本漂移必须被报（旧的四条版本规则全跑在技能目录内、全都扫不到仓库根这 7 处）：' + bad.slice(-400),
+  )
+  // 负向：普通散文里的历史版本注记**不得**被误判（那些必须允许保留旧号）
+  const prose = before.replace(/git tag v\d+\.\d+\.\d+/, 'git tag v18.0.4') + '\n<!-- 历史注记：v18.0.0 引入，v18.2.3 修订 -->\n'
+  writeFileSync(p, prose)
+  const bad2 = run([cc]).out
+  assert.equal(
+    (bad2.match(/内联 tag 版本漂移/g) || []).length,
+    1,
+    '应恰好只报内联 tag 那一处，散文里的历史注记不得连带命中：' + bad2.slice(-400),
+  )
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('consistency-check ⑫：加粗版版本头 `> **版本**：vX.Y.Z` 漂移必须报（v18.2.4 新增）', () => {
+  const { d, R } = mkRepo()
+  const cc = join(R, 'scripts', 'consistency-check.mjs')
+
+  const base = run([cc]).out
+  assert.doesNotMatch(base, /版本点位漂移/, '夹具基线不应报版本点位漂移：' + base.slice(-400))
+
+  const p = join(R, 'references', 'glossary.md')
+  const before = readFileSync(p, 'utf8')
+  // 旧正则 `[-*>#]*\s*版本：` 在标记与 `版本：` 之间不许夹 `**` → 加粗形态整条逃逸
+  const after = before.replace(/^>\s*版本：v[\d.]+/m, '> **版本**：v18.0.0')
+  assert.notEqual(after, before, '夹具假设 glossary.md 首行是 `> 版本：vX.Y.Z`')
+  writeFileSync(p, after)
+
+  const bad = run([cc]).out
+  assert.match(
+    bad,
+    /\[P0 版本点位漂移\][^\n]*glossary\.md/,
+    '加粗版版本头漂移必须被报（旧正则漏检，实测该形态一直是人工刷的）：' + bad.slice(-400),
+  )
+  rmSync(d, { recursive: true, force: true })
+})
+
 test('normalize-trust-level：缺 token 必须拒绝推断并以 exit 1 收尾（旧版默认填「已发布」）', () => {
   const d = tmp()
   const f = join(d, '卡.md')

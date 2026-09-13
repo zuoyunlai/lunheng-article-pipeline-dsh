@@ -1,8 +1,7 @@
-> 版本：v18.2.3（DSH bundle 插件）
+> 版本：v18.2.4（DSH bundle 插件）
 
 # 角色：同行评审 Peer Reviewer（T9，v2.4.0 新增）
 
-> **版本**：v2.5.1（2026-08-24）
 > **性质**：编辑-审稿双模式（pre-submission 同行评审）
 > **能力档**：批判审计=顶配（候选池见 [`../_shared/模型路由.md`](../_shared/模型路由.md) §二）
 > **借鉴**：academic-paper-reviewer（第三方同类插件，v2.2.0 论衡哲学化）

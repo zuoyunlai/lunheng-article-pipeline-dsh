@@ -1,12 +1,13 @@
 # 安全策略（SECURITY）
 
-> 版本：v18.2.3（DSH 原生插件，发布于 2026-09-12）
+> 版本：v18.2.4（DSH 原生插件，发布于 2026-09-13）
 
 ## 上报漏洞
 
 发现安全问题时**请勿开公开 issue**。请通过以下任一私密渠道上报：
 
-- GitHub **Private vulnerability reporting**（仓库 → Security → Report a vulnerability）
+- GitHub **Private vulnerability reporting**（推荐）：<https://github.com/zuoyunlai/lunheng-article-pipeline-dsh/security/advisories/new>
+  > **v18.2.4 复核（第三方审计 D.2）**：该开关此前**没开**——`GET /repos/…/private-vulnerability-reporting` 返回 `{"enabled":false}`，即本节旧文写的「仓库 → Security → Report a vulnerability」**当时是个死链**（公开仓库上尤其糟：报告者照文档走却找不到入口，只剩开公开 issue 一途）。现已开启并核验为 `{"enabled":true}`。
 - 邮件：`zuoyunlai@outlook.com`（标题加 `[SECURITY] lunheng-article-pipeline`）
 
 请在报告中给出：受影响版本（`package.json` 的 `version`）、复现步骤、影响面判断、以及你期望的披露时限。
@@ -32,6 +33,8 @@
 - **幂等守卫**：目标版本已存在于 npm 时跳过发布。
 - **发布后审计**：断言 `npm view <pkg>@<ver> gitHead` == 本次提交 SHA，且 `dist-tags.dsh` 指向该版本。
 - 历史版本 `2.5.2-dsh.8`–`.12` 为**本地手工发布、无 provenance**（已在 `CHANGELOG.md` 记录）；自 `2.5.2-dsh.13` 起恢复 tag + OIDC 流程。
+- **`NPM_TOKEN` 的用途与治理（v18.2.4 增补，第三方审计 G.1）**：发布本身走 OIDC、**不需要** token；该 secret **只**用于发布后 `npm dist-tag add … latest` 这一步——OIDC 覆盖的是 `npm publish`，而 `npm dist-tag` 仍需写鉴权（工作流注释已记实测：无 token 时该命令因无鉴权 exit 1；故工作流写成「无 token 只告警、不失败」，latest 由维护者手工补打）。
+  > **治理要求**：① 用**细粒度 token**、只授本包写权限、设最短有效期；② 定期轮换；③ **一旦出现在聊天记录 / 日志 / 截图 / CI 输出中即视为已泄露**，立即 revoke 并重发；④ 该 token 永远不得打印（`publish.yml` 只经 `env:` 传递，不 `echo`）。
 
 ## 支持的版本
 

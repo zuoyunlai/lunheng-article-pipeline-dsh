@@ -191,6 +191,31 @@ for (const [rel, p] of repoTargets) {
   else if (normVer(m[0]) !== normVer(pkgVer)) errors.push(`[P0 版本一致性] ${rel} 写 ${m[0]} ≠ package.json=${pkgVer}（需 bump）`);
 }
 
+// ①/⑦ 补面（v18.2.4 新增，第三方审计「门必须覆盖它声称覆盖的规范」；主人指令「修」）：
+//   **内联发布示例 `git tag vX.Y.Z && git push origin vX.Y.Z` 此前不在任何门里**。
+//   它既非 `版本：` 前缀、也非安装 pin，而版本扫描的其余规则全都跑在**技能目录**（`files = walk(ROOT)`）
+//   —— 这 7 处却全在仓库根文件（`CONTRIBUTING.md` 2 处 + 5 语 README 各 1 处），故**四条版本规则全都扫不到**。
+//   `CONTRIBUTING.md` §版本号约定 早就记了这个漏点，代价是「每次 bump 靠人工记得刷」（截至 v18.2.3 已刷四次）。
+//   故在此**与规则①/⑦ 同址**补扫（同属「仓库级文件版本点位」这一件事，不新增规则号 → 门数表述无需连带改）。
+//   只认 `git tag` / `git push origin` 两种形态，不碰散文里的历史注记（那些必须允许留旧号）。
+const inlineTagTargets = isRepoLayout
+  ? [
+      ...['README.md', 'README.zh.md', 'README.es.md', 'README.pt.md', 'README.hi.md'].map((f) => [f, join(REPO_ROOT, f)]),
+      ['CONTRIBUTING.md', join(REPO_ROOT, 'CONTRIBUTING.md')],
+      ['SECURITY.md', join(REPO_ROOT, 'SECURITY.md')],
+    ]
+  : [];
+for (const [rel, p] of inlineTagTargets) {
+  // 缺文件不在此报（规则① 与 ㉑ 已各报一次）——此处只负责「文件在、但内联 tag 写旧版」这一件事
+  if (!existsSync(p)) continue
+  readFileSync(p, 'utf8').split('\n').forEach((l, i) => {
+    const m = l.match(new RegExp('git (?:tag|push origin) v?(' + SEMVER + ')'));
+    if (m && normVer(m[1]) !== normVer(pkgVer)) {
+      errors.push(`[P1 内联 tag 版本漂移] ${rel}:${i + 1} 写 ${m[1]} ≠ package.json=${pkgVer}（每次 bump 必手工刷新此处）`);
+    }
+  });
+}
+
 for (const f of files) {
   const rel = relative(ROOT, f).replaceAll('\\', '/');
   const text = readFileSync(f, 'utf8');
@@ -423,11 +448,17 @@ if (existsSync(clPath)) {
 }
 
 // ⑫ 版本点位全量扫描（v2.5.2-dsh.13 新增：旧规则 ⑦ 只认 `> 版本：` 开头，漏检 `- 版本：`/标题内嵌等形态）
+// v18.2.4 修订（第三方审计「门必须覆盖它声称覆盖的规范」；主人指令「修」）：补一类**实测漏检**。
+//   · 漏点 B —— **加粗版版本头 `> **版本**：vX.Y.Z`**：旧正则 `[-*>#]*\s*版本：` 在标记与 `版本：`
+//     之间**不允许夹 `**`**，故 `DSH-集成方案.md` / `规范-机械门对照表.md` 两处实际一直是人工刷的、
+//     门判不到（人工一疏忽即静默停在旧版本）。修法：把 `**` 纳入可选标记（`\*{0,2}`）。
+//   （漏点 A「内联 git tag」在**仓库级文件**里，不在本规则的扫描面内——已补在规则①/⑦ 同址，
+//     见上方 `inlineTagTargets`。本注释保留此交叉指引，防后来者以为它在此处。）
 for (const f of files) {
   if (isArchive(f)) continue;
   const rel = relative(ROOT, f).replaceAll('\\', '/');
   readFileSync(f, 'utf8').split('\n').forEach((l, i) => {
-    const m = l.match(new RegExp('^\\s*[-*>#]*\\s*版本：v?(' + SEMVER + ')'));
+    const m = l.match(new RegExp('^\\s*[-*>#]*\\s*\\*{0,2}版本\\*{0,2}：v?(' + SEMVER + ')'));
     if (m && normVer(m[1]) !== normVer(pkgVer)) {
       errors.push(`[P0 版本点位漂移] ${rel}:${i + 1} 写 ${m[1]} ≠ package.json=${pkgVer}`);
     }

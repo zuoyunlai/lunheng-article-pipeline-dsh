@@ -1,6 +1,6 @@
 # लुन्हेंग (lunheng-article-pipeline) — बहु-एजेंट दीर्घ-लेख पाइपलाइन
 
-> 版本：v18.2.3（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.2.4（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > 🌐 [English](README.md) ｜ [中文](README.zh.md) ｜ [Español](README.es.md) ｜ [Português](README.pt.md) ｜ **हिन्दी**（यह फ़ाइल）
 
@@ -108,7 +108,7 @@ patch परत दो काम करती है: **इस पैकेज �
 संस्करण **केवल tag से** प्रकाशित होते हैं; स्थानीय `npm publish` वर्जित है (यह CI द्वारों और OIDC provenance को दरकिनार करता है, और npm संस्करण कभी अधिलेखित नहीं हो सकता)।
 
 ```sh
-git tag v18.2.3 && git push origin v18.2.3   # एक बार में एक ही tag (GitHub: >3 tag एक push में कोई workflow नहीं चलाता)
+git tag v18.2.4 && git push origin v18.2.4   # एक बार में एक ही tag (GitHub: >3 tag एक push में कोई workflow नहीं चलाता)
 # publish.yml क्रम: द्वार 1 सुसंगति → द्वार 2 पैकेजिंग → द्वार 3 स्वच्छता → द्वार 4 पैकेज स्मोक → स्क्रिप्ट परीक्षण
 #   → tag/संस्करण समानता → idempotency गार्ड → OIDC publish --provenance --tag dsh → प्रकाशन-पश्चात लेखा-परीक्षा
 ```
@@ -124,7 +124,7 @@ dsh --profile web --dump-config   # "# == lunheng-article-pipeline" परत �
 
 नया `dsh` `dsh.bundle` घोषणा देखते ही निर्भरता को `dsh.profile.bundles` में जोड़ देता है — स्थापित करें और `dsh web` पुनः आरंभ करें। केवल शुद्ध npm/pnpm स्थापना या पुराने संस्करणों में मैनुअल प्रविष्टि चाहिए।
 
-**सादे स्किल निर्देशिका के रूप में** (स्थापना नहीं, तत्काल पुनःलोड):
+**सादे स्किल निर्देशिका के रूप में** (स्थापना नहीं; होस्ट स्किल-मूल की निगरानी करता है और बदलाव पर तुरंत ताज़ा करता है — मोड एक का `SKILL.md` entry के `apply` समय पढ़ा गया स्नैपशॉट है, इसलिए सामग्री बदलने पर प्लगइन पुनःलोड या नया सत्र आवश्यक है):
 
 ```sh
 # स्किल निर्देशिका (रिपॉज़िटरी रूट नहीं) को किसी भी DSH स्किल-मूल में प्रतिलिपि करें:

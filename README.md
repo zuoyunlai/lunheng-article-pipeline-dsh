@@ -2,7 +2,7 @@
 
 > 🌐 **English** (this file) ｜ [中文](README.zh.md) ｜ [Español](README.es.md) ｜ [Português](README.pt.md) ｜ [हिन्दी](README.hi.md)
 
-> 版本：v18.2.3（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.2.4（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > A DeepSeek Harness (DSH) bundle that registers one on-demand agent skill. The skill turns long-form production — academic papers, industry analysis, business commentary, and long-form articles — into a **9-role pipeline with a human in the loop**.
 
@@ -108,7 +108,7 @@ The patch layer does two things: it **inserts one row for this package** (`- id:
 Releases are **tag-only**; a local `npm publish` is forbidden (it would bypass the CI gates and OIDC provenance, and a published npm version can never be overwritten).
 
 ```sh
-git tag v18.2.3 && git push origin v18.2.3   # push one tag at a time (GitHub: >3 tags in one push triggers no workflow)
+git tag v18.2.4 && git push origin v18.2.4   # push one tag at a time (GitHub: >3 tags in one push triggers no workflow)
 # publish.yml then runs gate 1 consistency → gate 2 packaging surface → gate 3 hygiene → gate 4 pack smoke → script tests
 #   → tag/version equality → idempotency guard → OIDC publish --provenance --tag dsh → post-publish audit
 ```
@@ -124,7 +124,7 @@ dsh --profile web --dump-config   # shows the "# == lunheng-article-pipeline" la
 
 A modern `dsh` adds the dependency to `dsh.profile.bundles` automatically once it sees the `dsh.bundle` declaration — install and restart `dsh web`. Only plain npm/pnpm installs or older builds need the manual `dsh.profile.bundles` entry.
 
-**As a plain skill directory** (no install, hot-reloaded):
+**As a plain skill directory** (no install; the host watches the skill root and refreshes it on change — mode one's `SKILL.md` is a snapshot read at entry `apply` time, so content edits need a plugin reload or a new session):
 
 ```sh
 # Copy the SKILL directory (not the repository root) into any DSH skill root:

@@ -1,4 +1,4 @@
-# lunheng-article-pipeline bundle patch（DSH 原生插件 v18.2.3）
+# lunheng-article-pipeline bundle patch（DSH 原生插件 v18.2.4）
 #
 # 本文件用 DSH cordis-plugin-include 的 `- insert:` 列表语法在 standard 组合树之上叠加 4 行：
 #   1. **本包入口（自注册行）**：`name: lunheng-article-pipeline` → loader 按包名解析到
@@ -56,14 +56,34 @@
       name: '@deepseek-ai/dsh-tool-subagent'
       # v18.0.5（第三方审计 P2-12）：`LUNHENG_TIERING=off` 此前只让 agentOptions 变 undefined，
       #   **三行仍挂在组合树里**（实测每个会话的工具数恒为 29）——用户以为关了，其实只是"不分档但仍多 3 个工具"。
-      #   官方支持**行级**门控（`disabled` 在挂载决策期按 loader 上下文插值，宿主自用先例：
-      #   `app.asar.unpacked/cordis.patch.yml` 的 `disabled: !!js process.platform === 'linux'`），故加这一行。
-      #   ⚠️ **未验证**（v18.0.5 如实标注）：本机 `--dump-config` **只打印声明行**（判定实验：把三行 disabled
-      #   改成恒真后 dump 里三行依旧在），因此「off 是否真的摘掉三行」无法在本机证实；DSH Desktop 的
-      #   dsh shim 又硬编码 DSH_HOME、无法用干净 profile 做组合树实测。**退化行为是安全的**：若宿主忽略该键，
-      #   行为与 v18.0.4 完全一致（三行仍在、模型继承）。要坐实请在能起 headless 的环境看真实工具清单。
+      #   官方支持**行级**门控，故加这一行。
+      #   ✅ **v18.2.4 已由宿主源码证实**（此前 v18.0.5 只能标注「未验证」——因 `--dump-config` 只打印
+      #   声明行，判定实验「改成恒真后 dump 里三行依旧在」证明的是 dump 不反映裁剪，不是键无效）：
+      #     · `disabled` 是 loader 的**一等选项**：`@deepseek-ai/cordis-plugin-loader` 的
+      #       `src/config/entry.ts:19` 声明 `disabled?: boolean | null`；
+      #     · `disabledOf()`（同文件 :104-107）对 `!!js` 形求值——
+      #       `isJsExpr(options.disabled) ? Boolean(this.evaluate(options.disabled.__jsExpr)) : Boolean(options.disabled)`，
+      #       即「表达式求值为假 = 该行禁用」，判定只取决于表达式取值本身；
+      #     · `refresh()`（:124-128）首行即 `if (this.disabled) return` → **不进 init，行不装载**；
+      #     · `update()`（:181-189）在 `_disabled(candidate)` 为真时 `_dispose(previous)` → 热更新该键
+      #       会**主动卸载**已装载的 fiber（不是只对新会话生效）。
+      #   宿主自用先例（同键同形）：DSH Desktop 随包的 `cordis.patch.yml`
+      #   —— `disabled: !!js process.platform === 'linux'`。
+      #   ⚠️ **残留不确定（如实保留）**：以上证明的是「loader 按该键裁剪行」；**本机 `--dump-config` 仍只
+      #   打印声明行**，且 DSH Desktop 的 dsh shim 硬编码 DSH_HOME、无法用干净 profile 实测组合树，
+      #   故「off 时工具数是否真的少 3」仍需在能起 headless 的环境核对真实工具清单。
+      #   退化行为安全：即便某版本忽略该键，行为与 v18.0.4 一致（三行仍在、模型继承）——不产生错误语义。
       disabled: !!js "process.env.LUNHENG_TIERING === 'off'"
       config:
+        # ✅ v18.2.4：`provider: spawn` 的**合法性已证实**（v18.0.5 起列为「待问 DSH 官方」的开放问题，现已结案）：
+        #   ① 官方 `config-catalog`（生成自 `packages/subagent/tool-subagent/src/index.ts:48`）的
+        #      `@deepseek-ai/dsh-tool-subagent` Config 注释原文即「The `ctx.subagents` provider name
+        #      to start runs on (e.g. `spawn`, `acp`)」——`spawn` 是被点名的合法取值；
+        #   ② 该名来自 `@deepseek-ai/dsh-subagent-spawn-in-process`：注册名默认 `spawn`
+        #      （`Config = z.object({ providerName: z.string().default('spawn') })`，其 lib/index.js:13 + :42）；
+        #   ③ 本包同时用的 `backgroundMode: continuable` **要求** provider 具备 `prepareContinuable` 能力
+        #      （官方 `subsystems/subagent.zh.md`：缺该方法的 provider 上发起可继续 start 会被拒），
+        #      而该 provider **确有** `prepareContinuable()`（其 lib/index.js:37）→ 能力配对成立。
         provider: spawn
         toolName: subagent_retrieval
         backgroundMode: continuable

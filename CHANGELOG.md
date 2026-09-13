@@ -2,6 +2,59 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.2.4 — 2026-09-13
+
+> **性质**：DSH 官方开发工程师视角的**包面审计**（主人指令「修」）落地批次。审计结论 **A−**：包形态、可逆注册、降级面、四道门均达标；缺陷集中在两类——**入口对边界输入不设防**、**文档声称强于事实**。
+> **机制文件改动依据主人显式授权**（原话「修」），按 `AGENTS.md` §机制文件写保护 5 条安全流程执行（改前备份至 `<DSH_HOME>/_backup/lunheng-20260913-prev1824/` + 行数基线 / `edit` 精确匹配 / 改后逐门验证 / 全量可回滚 / 本条如实标注）。
+
+### 修复：入口（`lib/index.js`、`lib/tools.js`）
+
+- **C.1（P1）frontmatter 解析对行尾与编码不设防**：旧判定是 `text.startsWith('---\n')`，而 `readFileSync(p,'utf8')` **不做行尾归一** → `SKILL.md` 一旦是 CRLF 行尾（Windows `core.autocrlf=true` 检出、或编辑器另存为 CRLF）或带 BOM，判定即为假 → frontmatter 整块**静默**退化成内置兜底 description，且 `whenToUse` **不再注册**——而 description 恰是模型侧路由的**唯一依据**（官方技能目录只渲染 name + description）。
+  - **为什么既有测试看不见**：原断言只要求「description 非空」「whenToUse 是非空字符串」，而**兜底 description 同样非空** → 它只在仓库那份 LF 文件上恰好通过；行尾一变即失效且全绿。教训：**断言「字段存在」≠ 断言「字段来自真源」**。
+  - **修法**：行尾（CRLF / 孤立 CR）+ BOM 归一后再解析；改用显式匹配「首行须为成行 `---` 且须有成行闭合 `---`」（缺闭合 = 不猜，走兜底）。
+- **C.2（P2）解析失败静默**：退回兜底时**没有任何信号**。现输出一行 `warn`，点名文件路径与三类常见成因（CRLF / 前置空行 / BOM）。
+- **C.3（P3）状态行无条件写 stderr**：入口 3 条「已注册 / 已启用」+ `lib/tools.js` 1 条「工具未启用」**无条件** `console.error`，宿主每次启动都刷屏。现统一走 reporter：宿主带 Cordis `logger` 时走正规日志面（`info` / `warn`），无 logger 时退回 `console.error`（宁可见勿静默）；`LUNHENG_QUIET=1` 可静音**信息行**，但**降级告警不静音**（静默降级正是 v18.0.0 事故的形态）。
+- **E.2 宿主违约形态**：ctx 缺 `skills`（`inject` 声明的**硬依赖**）时旧路径抛 `Cannot read properties of undefined (reading 'register')`。现改为响亮点名后**跳过注册**，C 组可选能力（原生工具 / 机制写保护 / 人类命令）照常安装——一句话能说清的事不该以 TypeError 形态出现，更不该连带丢掉另外三项能力。
+- **自证（本轮实测，非推断）**：C.2 的首版实现**漏写了成功分支的 `parsed: true`** → 连真源 SKILL.md 也触发「未解析」告警。用 `node -e` 直跑入口复现后修正。**这正是「只跑门、不看输出」会漏掉的那一类**。
+
+### 加固：机械门（`consistency-check.mjs`）
+
+- **两处版本点位盲区**（原为 `CONTRIBUTING.md` 记录的「已知漏点，靠人工记得刷」）：
+  - **漏点 A：内联 `git tag vX.Y.Z`**。版本扫描的其余规则全跑在**技能目录**（`files = walk(ROOT)`），而这 7 处（`CONTRIBUTING.md` 2 处 + 5 语 README 各 1 处）全在**仓库根** → 四条版本规则**全都扫不到**。已在**规则①/⑦ 同址**补扫（只认 `git tag` / `git push origin` 两种形态，判 P1；散文中的历史注记不误伤）。
+  - **漏点 B：加粗版版本头 `> **版本**：vX.Y.Z`**。规则⑫ 旧正则 `[-*>#]*\s*版本：` 在标记与 `版本：` 之间**不允许夹 `**`** → 该形态整条逃逸。修法：把 `**` 纳入可选标记（`\*{0,2}`）。
+  - 两处均**并入既有规则、不新增规则号** → 门数与失败面表述无需连带改动。
+- **加固后第一次运行即抓到 4 处存量缺陷**：`references/agents/09-审稿-peer-reviewer.md`、`references/checkers/中文AI痕迹-checker.md`、`references/gates/14-中文AI痕迹-gate.md`、`references/templates/G14检测报告-template.md` **各自有两个版本头**——首行 `> 版本：v18.x（DSH bundle 插件）`（一直在维护）+ 第 5 行 `> **版本**：v2.5.1（2026-08-24）`（**DSH 版之前的旧版本线残留**，因加粗形态逃过所有门，从未被发现）。按「**一事实一处**」删去残留行（这些文档自身的内容史已由标题中的「（v2.4.0 新增）」承载）。
+- **对照实验（两个漏点各一组，全部实跑）**：注入旧版本号 → 门按预期报错 → **立即逐字节还原并校验**。A：`README.zh.md` 注入 `git tag v18.0.4` → 报 `[P1 内联 tag 版本漂移]`；B：`规范-机械门对照表.md` 注入 `> **版本**：v18.2.0` → 报 `[P0 版本点位漂移]`。
+  > 首轮 **A 没报**——因为我把扫描写进了规则⑫（作用域是技能目录），而内联 tag 在仓库根。**对照实验抓出了我自己的实现错误**：若只跑正例、看到「无报错」就收工，会把这次失败当成「加强成功」。
+
+### 文档 / 证据升级
+
+- **`cordis.patch.yml`：两处「未验证 / 待问官方」结案为宿主源码证据**（v18.0.5 起只能如实标注不确定）：
+  - `provider: spawn` **合法** —— 官方 `config-catalog`（生成自 `packages/subagent/tool-subagent/src/index.ts:48`）的 Config 注释原文即「The `ctx.subagents` provider name to start runs on (e.g. `spawn`, `acp`)」；`dsh-subagent-spawn-in-process` 的注册名默认 `spawn`；且本包同用的 `backgroundMode: continuable` **要求** provider 具备 `prepareContinuable`，该 provider **确有**之（其 `lib/index.js:37`）→ 能力配对成立。
+  - 行级 `disabled: !!js` **是 loader 一等选项** —— `cordis-plugin-loader/src/config/entry.ts:19` 声明 `disabled?: boolean | null`；`disabledOf()`（:104-107）对 `!!js` 表达式求值；`refresh()`（:124-128）首行 `if (this.disabled) return`（**不进 init、行不装载**）；`update()`（:181-189）在该键为真时 `_dispose(previous)`（**热更新会主动卸载已装载的 fiber**）。
+  - **残留不确定如实保留**：本机 `--dump-config` 只打印声明行，故「`off` 时工具数是否真的少 3」仍需在能起 headless 的环境核对真实工具清单。
+- **`SECURITY.md`：漏洞上报主渠道此前是死链** —— 文档指向 GitHub Private vulnerability reporting，而实测 `GET /repos/…/private-vulnerability-reporting` 返回 `{"enabled":false}`（公开仓库：报告者照文档走却找不到入口，只剩开公开 issue 一途）。**已开启并核验 `{"enabled":true}`**，并补上直链。
+- **`SECURITY.md` 增补 `NPM_TOKEN` 的用途与治理**：发布本身走 OIDC、**不需要** token；该 secret 只用于发布后 `npm dist-tag add … latest`（OIDC 覆盖 `npm publish`，dist-tag 仍需写鉴权）。治理：细粒度、限本包、最短有效期、定期轮换，**一旦出现在聊天 / 日志 / 截图中即视为已泄露**，立即 revoke 重发。
+- **五语 README（D.1）热加载口径改为可核对**：原文「（免安装，热加载）」未言明**是哪种安装方式**。事实：宿主 `dsh-skill-filesystem` 以 chokidar 监听技能根（`watch` 默认为开）并在变更时 `invalidate` → **纯技能目录模式确实热加载**；而 bundle 模式的 `SKILL.md` 是入口 `apply` 期读的**快照**，改内容需重载插件或重开会话。五语同步改写（保持多语镜像纪律）。
+- **`docs/faq.md`**：① 明确 `dshmarket` 属第三方（本包不依赖任何插件市场）；② 版本号示例表由滞留的 `18.2.1` 更新到当前版本。
+- **`CONTRIBUTING.md` §版本号约定**：上述两个漏点由「已知漏点（建议的终结方案，尚未实施）」升级为「**已终结（v18.2.4 实施）**」，并记第五次人工刷新。
+
+### 词预算棘轮（同提交内抬升，附理由）
+
+- **`规范-机械门对照表.md`：16 KB → 17 KB（16384 → 17408 B）**。本批补了门就必须同步该表（`AGENTS.md` §文件修改操作约束 明令：「新增或修改任何规范/机检门时在该表加一行」），3 行 v18.2.4 断链使文件 16384 → **17273 B**。**抬升理由**：不抬则「补门 → 登记规范」这一步必然卡死在词预算门上，倒逼出「干脆不登记」的破窗——而该表存在的全部意义就是防这种破窗。
+
+### 未采纳（附否决依据）
+
+- **CI `cache: 'pnpm'` 不采纳（审计 F.1 否决）**：仓库**不含任何 lockfile**（无 `pnpm-lock.yaml` / `package-lock.json`），而 `actions/setup-node` 的 `cache: pnpm` 在缺锁文件时会**直接失败**（`Dependencies lock file is not found … Supported file patterns: pnpm-lock.yaml`）。照字面实施会**把 CI 弄红**——结论与依据记在 `.github/workflows/ci.yml` 注释里。
+- **`M-Exist-11`（局限性文档机检门）与 `M-Form-8`「表格后跟加粗散文」e2e 夹具**仍空缺（本批未动，维持既有记录）。
+
+### 验证（全部实跑取真值）
+
+- `node --test "tests/**/*.test.mjs"` → **tests 93 / pass 93 / fail 0**（+8：入口 frontmatter/降级 6 + 版本点位两处漏点各 1）
+- `consistency-check.mjs` → **exit 0**｜`repo-hygiene-check.mjs` → **exit 0**（9 规则）｜`plugin-surface-check.mjs` → **exit 0**（11 通过 / 0 失败 / 0 提示）
+- 规则⑫ 加固**对照实验 2/2 按预期**（含首轮抓出实现错误的那一次）
+- 镜像 `.dsh/skills/lunheng-article-pipeline` 按 `CONTRIBUTING.md` §同步流程整树复制，规则⑨ **0 漂移**
+
 ## 18.2.3 — 2026-09-12
 
 > **同一批次的续修**：主人对 v18.2.2 的收尾报告反问「论衡的字数限定仅仅指的是正文部分吗？」→ 为作答而读脚本与判定表，**取证过程中发现 3 处缺陷**（主人指示「继续修订」）。

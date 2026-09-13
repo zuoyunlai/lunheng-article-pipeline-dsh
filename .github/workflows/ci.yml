@@ -31,6 +31,14 @@ jobs:
   # node-version 用 24 而非 22.19：Node 22.19 自带的 npm 10.9.3 无法安装本检查所用的
   # dsh-plugin-guide（该包声明 optional peerDependency，npm 10 的 arborist 崩）——
   # 运行时下限仍由 drift-check（22.19）覆盖；脚本自身另走 pnpm dlx 优先的多策略。
+  #
+  # ⚠️ **为什么不加 `cache: 'pnpm'`（v18.2.4 审计 F.1 否决，勿再"顺手补上"）**：
+  #   ① 本仓库**不含任何 lockfile**（无 pnpm-lock.yaml / package-lock.json）——`actions/setup-node`
+  #      的 `cache: pnpm` 在缺锁文件时**直接失败**（`Dependencies lock file is not found ...
+  #      Supported file patterns: pnpm-lock.yaml`），即照字面实施会**把 CI 弄红**；
+  #   ② 即便补上锁文件，缓存键只能哈希锁文件，而本 job 并不 `pnpm install`（只用 `pnpm dlx` 取
+  #      一次性 CLI）——为省几十秒引入一个可变 key 的缓存面，收益 < 供应链与陈旧缓存风险。
+  #   结论：**维持不缓存**；若将来本仓库引入 lockfile 并固定依赖，可连同 pin 一起重新评估。
   plugin-surface:
     runs-on: ubuntu-latest
     steps:

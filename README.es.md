@@ -1,6 +1,6 @@
 # Lunheng (lunheng-article-pipeline) — pipeline multiagente para textos largos
 
-> 版本：v18.2.3（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.2.4（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > 🌐 [English](README.md) ｜ [中文](README.zh.md) ｜ **Español**（este archivo）｜ [Português](README.pt.md) ｜ [हिन्दी](README.hi.md)
 
@@ -108,7 +108,7 @@ La capa patch hace dos cosas: **inserta una fila para este paquete** (`- id: lun
 Las versiones se publican **solo por tag**; `npm publish` local está prohibido (evita las puertas de CI y la procedencia OIDC, y una versión npm nunca se puede sobrescribir).
 
 ```sh
-git tag v18.2.3 && git push origin v18.2.3   # un tag por push (GitHub: >3 tags en un push no dispara workflow)
+git tag v18.2.4 && git push origin v18.2.4   # un tag por push (GitHub: >3 tags en un push no dispara workflow)
 # publish.yml ejecuta: puerta 1 consistencia → puerta 2 empaquetado → puerta 3 higiene → puerta 4 humo del paquete → tests
 #   → tag/versión iguales → guarda de idempotencia → OIDC publish --provenance --tag dsh → auditoría posterior
 ```
@@ -124,7 +124,7 @@ dsh --profile web --dump-config   # muestra una capa "# == lunheng-article-pipel
 
 Un `dsh` moderno añade la dependencia a `dsh.profile.bundles` en cuanto ve la declaración `dsh.bundle`: instale y reinicie `dsh web`. Solo las instalaciones npm/pnpm puras o las versiones antiguas necesitan la entrada manual.
 
-**Como directorio de skill simple** (sin instalación, recarga en caliente):
+**Como directorio de skill simple** (sin instalación; el host vigila la raíz de skills y la refresca al cambiar — el `SKILL.md` del modo uno es una instantánea leída en el `apply` del entry, así que editar el contenido requiere recargar el plugin o abrir una sesión nueva):
 
 ```sh
 # Copie el DIRECTORIO DE LA SKILL (no la raíz del repositorio) en cualquier raíz de skills:
