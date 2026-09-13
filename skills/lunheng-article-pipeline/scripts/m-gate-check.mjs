@@ -539,7 +539,7 @@ try {
   // **同一证据被 ≥3 个论点标为承重墙 = 超载**（教训：善行实战祁东案一个案例承重四个论点，
   // 被击穿则整链塌）。此前该规则只有 T6 的专项批判 + T7 的 LLM 复核，**没有任何机械计数**。
   // 判定方式与格式无关：清单区内每个论点最多贡献一次 top1 标注，故同一编号出现 ≥3 次即 ≥3 个论点。
-  const wall8 = { checked: false, rows: 0, overload: [], ghost: [], claims: 0, notes: [] };
+  const wall8 = { checked: false, rows: 0, overload: [], ghost: [], claims: 0, notes: [], headRow: '' };
   try {
     const projDir8 = dirname(dirname(draftPath));
     const outlinePath8 = [join(projDir8, 'analysis', '分析大纲.md'), join(evDir, '分析大纲.md')]
@@ -565,7 +565,17 @@ try {
       //   → structRows=0 → **假报「承重墙清单无结构性条目」P1**（真值：表内 10 行 top1 标注齐全、无超载）。
       //   三处修正：① 表头锚点优先；② 收块时**容忍空行间隔**；③ 锚点搜索跳过围栏代码块。
       const isFenceLine = (l) => /^\s*```/.test(l);
-      const wallHeadAnchor = (l) => /^\s*\|[^\n]*承重[^\n]*\|\s*$/.test(l);
+      // v18.2.5 修（主控实战反哺 P1）：表头锚点收紧为「**首列**必须是承重证据」。
+      //   旧实现 /^\s*\|[^\n]*承重[^\n]*\|\s*$/ 允许「承重」出现在**任意列** → 会命中
+      //   「论点-论据映射表」的表头（该表最后一列常写作「承重证据 top1」）→ 于是把**映射表**当承重墙清单读。
+      //   映射表每行含多个编号（论据组合列），同一编号跨多个论点行重复出现 → **假报「承重墙超载」**。
+      //   实测（本项目 ai-cad-cam-impact）：大纲有 4 个含「承重」的表头候选（行 91/114/319/368），
+      //   脚本取**第一个** = 行 91「| 论点 | 章节 | 论据组合… | 承重证据 top1 | 字数预算 |」= 映射表，
+      //   遂报「[L09]×4论点,[L11]×3论点,[C01]×3论点,[C02]×3论点,[L10]×4论点,[L12]×3论点」；
+      //   而真值在大纲 §4.2（行 114）与 §11.6（行 368）的承重墙清单里：12 行 top1、负载 ≤2、**无超载**
+      //   （T4 大纲自检亦明示「所有承重墙负载 ≤2」）。两者结论相反，根因即锚点选错表。
+      //   修法：首列锚点 `^\s*\|\s*承重(证据|墙|清单)` —— 映射表首列是「论点」，不再命中。
+      const wallHeadAnchor = (l) => /^\s*\|\s*承重(证据|墙|清单)/.test(l);
       const wallTextAnchor = (l) => /^#{2,4}\s/.test(l)
         ? /^#{2,4}\s*(承重墙|承重证据|承重清单)/.test(l)
         : /承重证据\s*top\s*1/i.test(l);
@@ -581,6 +591,9 @@ try {
       const sIdx = headIdx !== -1 ? headIdx : textIdx;
       if (sIdx !== -1) {
         wall8.checked = true;
+        // v18.2.5 新增：记录**实际选中的表头行**，让 detail 自带「锚点选对了哪张表」的证据——
+        //   本次 bug 的教训是「选错表」在旧 detail 里完全不可见（只报超载结果，不报依据）。
+        wall8.headRow = String(ol[sIdx] || '').trim();
         const head = /^(#{1,6})\s/.exec(ol[sIdx]);
         let eIdx = ol.length;
         if (head) {
@@ -639,10 +652,14 @@ try {
   let mform8Pass = (mform8Findings.L_missing === 0 && mform8Findings.weak === 0 && !wallHard);
   let mform8Severity = mform8Findings.L_missing > 0 ? 'P0'
     : (wallHard || mform8Findings.weak > 0 ? 'P1' : '通过');
+  // v18.2.5 新增：wallBit 附带**实际选中的清单表头**（让「锚点选错表」这类问题自带证据、可事后核对）。
+  const wallHeadBit = wall8.checked && wall8.headRow
+    ? `（清单锚点表头：${wall8.headRow.slice(0, 46)}${wall8.headRow.length > 46 ? '…' : ''}）`
+    : '';
   const wallBit = wall8.checked
     ? (wall8.overload.length
       ? `承重墙超载：${wall8.overload.join(',')}（同一证据被 ≥3 论点承重 → 降级为辅助证据或补检索）`
-      : (wall8.rows > 0 ? `承重墙 ${wall8.rows} 条标注、无超载` : (wall8.notes[0] || '承重墙清单为空')))
+      : (wall8.rows > 0 ? `承重墙 ${wall8.rows} 条标注、无超载` : (wall8.notes[0] || '承重墙清单为空'))) + wallHeadBit
     : '';
   let wallBit2 = '';
   if (wall8.ghost.length) wallBit2 = `承重墙含卡片中不存在的编号：${wall8.ghost.slice(0, 5).join(',')}`;
@@ -667,7 +684,21 @@ try {
 // 本项即该条文的机械落地：缺图/图位不足 → 硬失败；孤儿图件/数字对不上 → 软提示（数字对账为启发式）。
 // 未启用配图（无图位且无图件目录）→ 记 N/A 且 pass=true（不得因「没配图」把 M 门判失败——配图默认关闭）。
 try {
-  const figDirDefault = join(dirname(draftPath), '图件');
+  // v18.2.5 修（主控实战反哺 P0）：图件目录缺省推导口径与「被审对象位置」解耦。
+  //   旧实现 `join(dirname(draftPath), '图件')` 隐含假定「被审对象在 final/ 下」（文件头注释写
+  //   「缺省自动推 <定稿目录>/图件」）；但 Phase 4 的 T7 审计与 Phase 5 的 T8 终检实际被审对象是
+  //   `drafts/初稿-vN.md` → 推出 `drafts/图件`（不存在）→ 恒报「图件 0 个」P0。
+  //   实测后果：本项目三轮（v3/v4/v5）M-Gate 全 exit=2，**不论主控写多少张 SVG 都无法关闭该 P0**，
+  //   使「M 门 exit 0 才返回」硬门禁在原子上失效，只能走 Acknowledged Limitations 交付。
+  //   修法：项目根用与 M-Integrity-1 / 本项图位数量解析同一助手 findBriefUpward（向上找 01-任务简报.md），
+  //   图件规范位置 = <项目根>/final/图件；同时保留旧候选以兼容「被审对象即 final/定稿.md」场景。
+  const briefForFig = findBriefUpward(dirname(draftPath));
+  const figProjectRoot = briefForFig ? dirname(briefForFig) : dirname(dirname(draftPath));
+  const figDirCandidates = [
+    join(dirname(draftPath), '图件'),        // 兼容旧口径：被审对象在 final/ 下 → <定稿目录>/图件
+    join(figProjectRoot, 'final', '图件'),   // 规范口径：项目根/final/图件（drafts/ 被审场景）
+  ];
+  const figDirDefault = figDirCandidates.find((p) => existsSync(p)) || figDirCandidates[1];
   const figDir = figDirArg && existsSync(figDirArg) ? figDirArg : (existsSync(figDirDefault) ? figDirDefault : null);
   const figNos = figurePlaceholders(text);
   const files = figDir ? readdirSync(figDir).filter((f) => f.toLowerCase().endsWith('.svg')) : [];
@@ -779,12 +810,50 @@ if (firstIdx === -1) {
     }
     return '';
   })();
-  const mExist1Sev = leaked.length + orphan2.length > 10 ? 'P0' : (leaked.length + orphan2.length > 3 ? 'P1' : 'P2');
+  // v18.2.5 新增（主控实战反哺 P1）：**扩展编号白名单 + 非标准编号黑名单**。
+  //   背景：refRe 只认白名单前缀（L/D/C-主/C/先）。写手若用 `[脚注-1]` / `[表-1]` / `[附录-1]` 等
+  //   任意非标准编号在正文做「有编号的引用」，本门双向对账**完全扫不到** → 既不报漏引也不报孤儿
+  //   → 该编号游离于闭环校验之外。
+  //   实测（本项目 ai-cad-cam-impact）：T7 判「ABI Research 引用无编号」→ T5 写手**无权新增数据卡**
+  //   （[Dxx] 必须来自 T2 数据卡）→ 主控改用 `[脚注-1]` 内嵌「数据来源」节 → M-Exist-1 报
+  //   「漏引 0 / 孤儿 0」**假通过**，实际该编号从未参与对账。
+  //   风险（激励方向相反）：写 `[D99]`（不存在）会被判孤儿，写 `[脚注-1]` 反而"更安全"。
+  //   处置三条：
+  //     ① 扩展编号 `[脚注-N]`：**允许**，但必须**双向闭环**（正文 ↔ 文末条目）；
+  //        闭环成立 → 记 P2 留痕（不判失败）；未闭环 → P1。
+  //     ② 其他非标准编号 → **P1**，提示改用标准编号（或由主控显式申报扩展编号）。
+  //     ③ 基线编号 `[D-基-{R/T/C/E}-{NN}]` 是 glossary §三 正式格式 → **豁免**（负向断言剔除）。
+  const EXT_REF_RE = /\[脚注-\d+\]/g;
+  const NONSTD_RE = /\[(?!D-基-)([A-Za-z\u4e00-\u9fff][^\][\s]{0,11}?)-(\d+)\]/g;
+  const extInText = new Set(bodyProse.match(EXT_REF_RE) || []);
+  const extInEnd = new Set(endnote.match(EXT_REF_RE) || []);
+  const extLeaked = [...extInText].filter((r) => !extInEnd.has(r));   // 正文有、文末无
+  const extOrphan = [...extInEnd].filter((r) => !extInText.has(r));   // 文末有、正文无
+  const extClosed = extLeaked.length === 0 && extOrphan.length === 0;
+  const nonStd = [...new Set(
+    [...(bodyProse.match(NONSTD_RE) || []), ...(endnote.match(NONSTD_RE) || [])]
+      .filter((t) => !/^\[脚注-\d+\]$/.test(t)),
+  )];
+  const extUsed = extInText.size + extInEnd.size;
+  const extNote = extUsed === 0 ? '' : (extClosed
+    ? `扩展编号 ${[...extInText].join('、')} 已双向闭环（[脚注-N] 为允许形态，记 P2 留痕）`
+    : `扩展编号未闭环：正文缺 ${extLeaked.join('、') || '无'} ｜ 文末缺 ${extOrphan.join('、') || '无'}（须在「数据来源」节内 ### 脚注 子节补条目，或删正文引用）`);
+  const nonStdNote = nonStd.length === 0 ? '' : `非标准编号 ${nonStd.length} 个：${nonStd.slice(0, 5).join('、')}${nonStd.length > 5 ? ' 等' : ''}`
+    + `——本门只对白名单编号（[Lxx]/[Dxx]/[Cxx]/[C-主xx]/[先NN]）做双向对账，该编号**游离于闭环之外**；`
+    + `修法：改用标准编号、或改用扩展编号 [脚注-N]（须双向闭环）、或由主控申报豁免`;
+  const mExist1Hard = leaked.length + orphan2.length + nonStd.length > 0;
   results.push({
     gate: 'M-Exist-1 引用双向对比',
-    pass: leaked.length === 0 && orphan2.length === 0,
-    detail: (mExist1Hint ? `${mExist1Hint} ｜ ` : '') + `漏引 ${leaked.length} / 孤儿 ${orphan2.length}`,
-    severity: (leaked.length === 0 && orphan2.length === 0) ? '通过' : mExist1Sev,
+    pass: !mExist1Hard,
+    detail: [
+      mExist1Hint,
+      `漏引 ${leaked.length} / 孤儿 ${orphan2.length}`,
+      nonStdNote,
+      extNote,
+    ].filter(Boolean).join(' ｜ '),
+    severity: mExist1Hard
+      ? (leaked.length + orphan2.length > 10 || nonStd.length >= 3 ? 'P0' : 'P1')
+      : (extUsed > 0 ? 'P2' : '通过'),
   });
 }
 
@@ -949,7 +1018,13 @@ try {
     const unused = [...loaded11].filter((x) => !cited11.has(x) && !skippedIds11.has(x));
     if (notLoaded.length) findings11.push(`正文引用但清单未记「已加载」：${notLoaded.slice(0, 6).join(',')}（引了没读 = 引用不可信）`);
     if (ghost.length) findings11.push(`清单里的编号在卡片中无对应条目：${ghost.slice(0, 6).join(',')}（清单与素材卡不一致）`);
-    if (unused.length) soft11.push(`${unused.length} 个编号「读了但正文未引用」（${unused.slice(0, 5).join(',')}）——白读即为上下文浪费`);
+    // v18.2.5 改（主控实战反哺 P2）：文案补**合规留痕豁免**说明。
+    //   实测误伤（本项目）：[先06] 被 T7 第 1 轮判「与 [L11] 同篇重复、应从文末节删除」→
+    //   主控按判从文末节删除，但 `素材加载清单.md` **保留**它是**正确行为**（它确实被读过）。
+    //   旧文案把这条留痕一律读成「白读即为上下文浪费」——对「应删且已删」的条目是错判。
+    if (unused.length) soft11.push(`${unused.length} 个编号「读了但正文未引用」（${unused.slice(0, 5).join(',')}）——`
+      + `若该编号已在审计环节被判「应删且已删」（如与别条同篇重复），则保留在本清单属**合规留痕**、无需处理；`
+      + `否则请补引用或从清单移除（白读即上下文浪费）`);
     //   v18.2.1（本轮实测反哺）：原阈值「卡池 ≥20 且加载率 >90%」在**短文 + 小卡池**场景必然误报——
     //   短测试卡池 20 条、正文引用 18 条（=90%）即触发「疑似整卡通读」，但短文本来就要用到大部分素材，
     //   这不是选择性不足。改为双条件：卡池 ≥30（有选择空间）**且** 正文 ≥3000 汉字（长文才有整卡通读的
@@ -963,8 +1038,21 @@ try {
     const loadedInIndex11 = [...loaded11].filter((x) => cardIndexIds.has(x));
     const loadedBeyondIndex11 = [...loaded11].filter((x) => !cardIndexIds.has(x));
     const ratioCheckOn = cardIndexIds.size >= 30 && bodyHan11 >= 3000
-    if (ratioCheckOn && loadedInIndex11.length / cardIndexIds.size > 0.9) {
-      soft11.push(`已加载 ${loadedInIndex11.length} / 索引 ${cardIndexIds.size} 条（>90%）——选择性不足，疑似整卡通读（该条优化即为此设）`);
+    // v18.2.5 修（主控实战反哺 P2）：阈值**按正文档位自适应** + 给出**显式消歧路径**。
+    //   实测误伤（本项目 ai-cad-cam-impact，8000 字学术综述）：已加载 59 / 索引 61 = **96.7%**
+    //   → 触发「>90% 选择性不足，疑似整卡通读」。但长篇论文的合理形态**就是**高加载率——
+    //   卡池本身已过 T1/T2/T3 的「反向淘汰自查」精简到刚够用（[Dxx] 封顶 30-50、T1 砍到 12 条），
+    //   8000 字论文引用 58 条素材 / 卡池 61 条，是**正常**而非选择性不足。
+    //   旧阈值 0.9 是对小论文校准的（上方注释自述「短文 + 小卡池必然误报」曾修过一次），对长篇仍偏紧。
+    //   现改两处：
+    //     ① **分档**：长篇（≥6000 汉字）用 0.98、中篇（3000-6000）用 0.94、短篇不启用（沿用前置条件）；
+    //     ② **消歧路径**：文案明确「高加载率本身不是缺陷」——真正的缺陷是「未按索引段定位而整卡通读」，
+    //        而后者只能由写手留痕声明；故清单头部注明「按需加载」即豁免本提示。
+    const ratioThreshold = bodyHan11 >= 6000 ? 0.98 : (bodyHan11 >= 3000 ? 0.94 : 0.9);
+    const ratioDeclared = /按需加载/.test(lt);
+    if (ratioCheckOn && !ratioDeclared && loadedInIndex11.length / cardIndexIds.size > ratioThreshold) {
+      soft11.push(`已加载 ${loadedInIndex11.length} / 索引 ${cardIndexIds.size} 条（>${(ratioThreshold * 100).toFixed(0)}%）——加载率偏高、疑似整卡通读；`
+        + `若确为「先读索引段、按编号定位」的按需加载，请在 analysis/素材加载清单.md 头部注明「按需加载」以消除本提示（该条优化即为此设）`);
     }
     if (loadedBeyondIndex11.length) {
       soft11.push(`${loadedBeyondIndex11.length} 个已加载编号不在索引段内（${loadedBeyondIndex11.slice(0, 5).join(',')}）——已从比率对账中排除，请确认是否属先行者清单 / 基线编号`);
@@ -1162,8 +1250,14 @@ try {
         // 实据必须是机械证据：路径 / exit code / 命令 / 哈希；纯自述不接受
         //   v18.0.5 修（第三方审计 P1-5）：删掉原先的裸 `\d`——它让「已检查 1 次」这类自述通过，
         //   与文档「不接受『已检查』这类自述」直接冲突。现在数字必须带量词/单位或与路径/命令/哈希同现。
+        //   v18.2.5 扩（主控实战反哺 P2）：**识别模式扩容**——实测漏报两类**真机械证据**（本项目 T2.5）：
+        //     ① 数量比较形态 `35 ≥ 30`（条目数对需求数）——旧模式要求「数字+量词」，纯比较被判非证据；
+        //     ② MD5 哈希（32 位 hex）+ `Get-FileHash -Algorithm MD5` 命令——旧模式只认 `sha256` 关键词，
+        //        不认 32 位 hex，也不认 `Get-FileHash` 这类与 `sha256sum` 等价的取哈希命令。
+        //   两者都可机械复核，判成「自述」= **假 P1**（本项目 M-Exist-5 的唯一 P1 即由①②共同造成）。
+        //   现补：32/64 位 hex（含大写，故加 i）、数量比较符、Get-FileHash / Test-Path / Get-Item / certutil 等验证命令。
         const evLooksReal =
-          /[\\/]|exit\s*[=:：]?\s*\d|node\s+\S+\.mjs|m-gate|sha256|\.json|\.md|\.svg|\d+\s*(?:条|个|处|项|篇|例|%|倍|字|轮|步|节|章|页|行|次|份|组|种|点)/.test(ev) &&
+          /[\\/]|exit\s*[=:：]?\s*\d|node\s+\S+\.mjs|m-gate|sha256|\b[a-f0-9]{32}\b|\b[a-f0-9]{64}\b|Get-FileHash|Test-Path|Get-Item|certutil|\.json|\.md|\.svg|\d+\s*[≥>]\s*\d|\d+\s*(?:条|个|处|项|篇|例|%|倍|字|轮|步|节|章|页|行|次|份|组|种|点)/i.test(ev) &&
           !/^(已|未)?(检查|核对|确认|自查)(完)?(毕|过)?$/.test(ev.replace(/\s/g, ''));
         if (ev.replace(/[\s.。…-]/g, '').length < 3 || !evLooksReal) {
           findings5.push(`${gateId}「${item}」的实据列不是机械证据（须写路径 / exit code / 命令，而非「已检查」自述）：现为「${ev.slice(0, 24)}」`);

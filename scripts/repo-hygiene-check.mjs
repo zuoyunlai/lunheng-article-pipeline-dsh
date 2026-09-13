@@ -365,11 +365,11 @@ const DOC_BUDGET = {
   // 相对仓库根的路径 → [上限字节, 长期目标字节, 说明]
   'skills/lunheng-article-pipeline/SKILL.md': [32768, 20480, '技能体：入口注册的正文，每次技能激活都进上下文（最贵的文件）'],
   'skills/lunheng-article-pipeline/AGENTS.md': [21504, 16384, '操作手册：技能目录内自动生效的指令'],
-  'skills/lunheng-article-pipeline/references/pipeline-readme.md': [65536, 61440, '流水线全景 + 派发话术（T0 启动必读）——v18.2.2 显式抬升 60→64 KB：补「段级 diff 字数回测硬约束」与「T5/T6/T9 派发用 M 门速查」'],
+  'skills/lunheng-article-pipeline/references/pipeline-readme.md': [66560, 61440, '流水线全景 + 派发话术（T0 启动必读）——v18.2.2 显式抬升 60→64 KB：补「段级 diff 字数回测硬约束」与「T5/T6/T9 派发用 M 门速查」；v18.2.5 显式抬升 64→65 KB：补「段级 diff 字数口径硬约束（纯汉字 = count-chars 同源）」与「审计视图刷新落盘留痕（status.md 可核对项）」'],
   'skills/lunheng-article-pipeline/references/_shared/M-Gate-Algorithm.md': [86016, 79872, 'M 门伪代码（仅 T7/T8 读）——v18.2.2 显式抬升 78→84 KB：补 6 处 v18.2.2 判定语义修订注记（M-Form-4/8/11 + M-Exist-2/10 + M-Integrity-1）'],
   'skills/lunheng-article-pipeline/references/agents/00-主控-扩展职责.md': [53248, 50176, 'T0 实操手册（全库第二，闸门公共动作在此）——v18.2.2 显式抬升 49→52 KB：补「修订回环提前 Ack 判据」四类归因决策表'],
   'skills/lunheng-article-pipeline/references/glossary.md': [32768, 32768, '术语表（含 §十二 刻意偏离，改机制前必读）'],
-  'skills/lunheng-article-pipeline/references/agents/05-写作-writer.md': [36864, 36864, 'T5 写手卡'],
+  'skills/lunheng-article-pipeline/references/agents/05-写作-writer.md': [38912, 36864, 'T5 写手卡——v18.2.5 显式抬升 36→38 KB：补「段级 diff 字数口径与 count-chars 同源（两侧汉字计数）」+「图位编号 = 正文出现顺序，禁照抄大纲编号」两条硬约束'],
   'skills/lunheng-article-pipeline/references/_shared/DSH-集成方案.md': [28672, 25600, 'DSH 能力面集成：§七 落地状态 + §八 preset 配方 + §九 运行环境限制（v18.1.0 扩容，新进预算表）——v18.2.2 显式抬升 25→28 KB：新增 §九「Windows sandbox --temp 前置目录缺失」现象 + 四条替代路径 + 主控操作纪律'],
   'skills/lunheng-article-pipeline/references/agents/07-审计-auditor.md': [22528, 22528, 'T7 审计卡'],
   'skills/lunheng-article-pipeline/references/memory/lessons.md': [19456, 19456, '教训库（只增，需定期合并同类项）'],
@@ -378,11 +378,12 @@ const DOC_BUDGET = {
   'skills/lunheng-article-pipeline/references/deliverables.md': [17408, 16384, '交付边界 + F1-F9 + 闸门（按需加载）——v18.2.1 显式抬升 16→17 KB：补「文末编号必须沿用素材卡真编号」硬要求'],
   'skills/lunheng-article-pipeline/README.md': [15360, 15360, '技能目录 README（人类入口）'],
   'skills/lunheng-article-pipeline/QUICKSTART.md': [15360, 15360, '快速开始'],
-  'skills/lunheng-article-pipeline/references/agents/04-分析-analyst.md': [14336, 14336, 'T4 分析卡'],
+  'skills/lunheng-article-pipeline/references/agents/04-分析-analyst.md': [15360, 14336, 'T4 分析卡——v18.2.5 显式抬升 14→15 KB：补「建议图表编号 = 预计正文出现顺序」（不确定时显式授权 T5 重排）'],
+  'skills/lunheng-article-pipeline/references/_shared/机检硬格式.md': [13312, 12288, '机检硬格式（模板 ↔ m-gate-check.mjs 的排版契约，唯一真源）——v18.2.5 新增登记（原 11.5 KB 越过 12 KB 登记线）：补「期刊匹配输入来源须逐行标注」与「非标准编号黑名单」口径'],
   'skills/lunheng-article-pipeline/references/agents/02-数据检索-data-scout.md': [13312, 13312, 'T2 数据检索卡'],
   'skills/lunheng-article-pipeline/references/agents/03-案例检索-case-scout.md': [13312, 13312, 'T3 案例检索卡'],
   'skills/lunheng-article-pipeline/references/agents/09-审稿-peer-reviewer.md': [14336, 13312, 'T9 审稿卡——v18.2.1 显式抬升 13→14 KB：补 M-Exist-6 六维机检契约警示（防派发时改写维度名）'],
-  'skills/lunheng-article-pipeline/references/_shared/规范-机械门对照表.md': [17408, 16384, '规范条文 ↔ 机械门 ID 对照表（改机制前须同步的一览）——v18.2.2 新增登记（原 13.8 KB 已越过 → 12 KB 登记线）；v18.2.4 显式抬升 16→17 KB：补 v18.2.4 的 3 行断链（版本点位两处扫描盲区 + 入口路由字段来源未被断言）——**该抬升与「门补面」是同一件事的两半**：补了门就必须同步本表，否则又造一条新的「规范↔门」断链'],
+  'skills/lunheng-article-pipeline/references/_shared/规范-机械门对照表.md': [22528, 16384, '规范条文 ↔ 机械门 ID 对照表（改机制前须同步的一览）——v18.2.2 新增登记（原 13.8 KB 已越过 → 12 KB 登记线）；v18.2.4 显式抬升 16→17 KB：补 v18.2.4 的 3 行断链（版本点位两处扫描盲区 + 入口路由字段来源未被断言）；v18.2.5 显式抬升 17→22 KB（按「当前字节向上取整到整 KB」原则）：补 7 行（图件恒失败 / 编号闭环盲区 / 承重墙读错表 / 证据与加载率识别过窄 / G14 三缺陷 / 四类口径未定）——**该抬升与「门补面」是同一件事的两半**：补了门就必须同步本表，否则又造一条新的「规范↔门」断链'],
 }
 const ALWAYS_RESIDENT = [
   'skills/lunheng-article-pipeline/SKILL.md',

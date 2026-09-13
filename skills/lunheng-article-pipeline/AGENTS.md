@@ -78,6 +78,9 @@ Phase 5 终检     → T8 终检（独立角色，主控 T0 以 T8 身份亲完�
    > **文档涨了先看词预算门**（v18.1.0）：`repo-hygiene-check` 规则⑨ 对技能目录内 ≥12 KB 的 .md 逐文件设**棘轮上限**（SKILL.md 30→31 KB 是本轮显式抬升）。**任何文档增长必须在同一次提交里抬升上限并写明理由**；`skills/lunheng-article-pipeline/scripts/` 外的仓库脚本改动不受此门约束。规则① 同时扩面到 `.js` 与**未跟踪文件**（`npm pack` 会打包未 `git add` 的新脚本）。
    **仓库级打包面检查**（`cordis.patch.yml` 合法性 / 行 id 唯一 / `dsh.bundle.patch` 指向 / `package.json` 元数据（`main` + `files` 含 `lib` + `packageManager`）/ 五语 README 一致性 / 工程红线；**v18.0.0 起无豁免**，11 通过 / 3 跳过）由 CI 的 `plugin-surface` job 承担，本地复现命令见 `.github/workflows/ci.yml` 与 CHANGELOG 同名条目；**包入口的执行路径**由 `tests/entry.test.mjs` 用最小 ctx 真跑 `apply` 覆盖、**「patch 必须插入本包自注册行」由 `tests/bundle-contract.test.mjs` 覆盖**（静态门不执行入口、也不验 patch 是否引用本包，故这两条不可省——教训 #152 / #154）
 
+7. **读中文文件一律显式 `-Encoding UTF8`（v18.2.5 新增）**：`Get-Content` 等文本读取必带该参数。
+   > **判据：看到中文乱码，先怀疑读取端编码，不要先怀疑文件**（实测：合法 UTF-8 文案在 pwsh 默认解码下显示乱码，曾被误判为「子代理产物编码坏了」，险些错误重派）。
+
 ## 开发参考资料（v18.0.0 新增，主人指示：官方资料为以后开发的重要参考）
 
 > **判据（主人 2026-09-11 指示）**：凡涉及**包形态、插件契约、服务/事件、工具注册、打包发布、官方文档规范**的改动，**先查官方资料再动手**——不得凭记忆、也不得凭本包既有写法推断（既有写法本身可能与官方漂移）。

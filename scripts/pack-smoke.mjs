@@ -6,7 +6,7 @@
 //   而历史上 v18.0.0 的「装了但技能从不注册」缺陷**恰好在这些门都覆盖不到的地方**。
 //   本脚本用零依赖方式补上「**pack 出来的那包**能不能注册」这一段：
 //     ① `npm pack` → 解包到临时目录（真发布物，含 files 白名单裁剪）
-//     ② 关键文件齐备（入口 / patch / SKILL.md / 11 个随包脚本 / `_lib`）
+//     ② 关键文件齐备（入口 / patch / SKILL.md / 随包脚本（**数量以 SKILL.md 白名单为准，不硬编码**）/ `_lib`）
 //     ③ patch 里本包自注册行**恰好一行**（缺了它 → loader 不会 import 入口 → 技能不注册）
 //     ④ patch 行 name 都在 package.json 声明或宿主核心包白名单内（防宿主改名后整树起不来）
 //     ⑤ **真跑解包后的 `lib/index.js` 的 apply**（最小 ctx：skills.register + effect），断言
@@ -101,8 +101,23 @@ try {
   }
   const scriptsDir = join(pkg, 'skills', PKG_NAME, 'scripts')
   const topScripts = existsSync(scriptsDir) ? readdirSync(scriptsDir).filter((f) => f.endsWith('.mjs')) : []
-  if (topScripts.length === 11) ok(`随包脚本 11 个（与 SKILL.md 白名单一致）`)
-  else bad(`随包脚本数 ${topScripts.length} ≠ 11`)
+  // v18.2.5 修（主控实战反哺）：期望数**从发布物的 SKILL.md 白名单动态解析**，不再硬编码 11。
+  //   旧写法 `length === 11` 在每次新增随包脚本时都要手工同步——本次加 `apply-diff.mjs`（12 个）
+  //   即触发**假失败**「随包脚本数 12 ≠ 11」，而真源（SKILL.md 白名单行）本身是对齐的。
+  //   口径与 `consistency-check` 规则⑩ 同源：只取 `=` 与 `+` 之间按 `/` 分隔的**裸脚本名 token**，
+  //   这样「脚本数量与清单」这个事实**只有 SKILL.md 一处真源**。
+  const pkgSkillPath = join(pkg, 'skills', PKG_NAME, 'SKILL.md')
+  const declaredScripts = existsSync(pkgSkillPath)
+    ? ((readFileSync(pkgSkillPath, 'utf8').split('\n').find((l) => l.includes('随包脚本白名单')) || '')
+      .split('=')[1] || '').split('+')[0].split('/').map((s) => s.trim()).filter((s) => /^[a-z0-9][a-z0-9-]*$/.test(s))
+    : []
+  if (declaredScripts.length === 0) {
+    bad(`无法从发布物 SKILL.md 解析白名单脚本清单（实际随包 ${topScripts.length} 个）`)
+  } else if (topScripts.length === declaredScripts.length) {
+    ok(`随包脚本 ${topScripts.length} 个（与 SKILL.md 白名单一致）`)
+  } else {
+    bad(`随包脚本数 ${topScripts.length} ≠ SKILL.md 白名单 ${declaredScripts.length} 个（${declaredScripts.join('/')}）`)
+  }
 
   // ③/④ patch 自注册行 + 行名声明
   const patchPath = join(pkg, 'cordis.patch.yml')

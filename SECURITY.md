@@ -22,7 +22,7 @@
 | 加载期执行 | `cordis.patch.yml` 含 **3 处 `!!js` 表达式**（3 处分档 agentOptions，各自读取 `LUNHENG_*_PROVIDER/MODEL`；未设则返回 `undefined`）。它们由 DSH 宿主进程在**加载期以完整 Node 权限**求值，**发生在 agent 沙箱与审批关卡之前** —— 安装本包即等于允许这些表达式在每次启动时执行。 |
 | 允许的表达式内容 | 仅 `process.env.*` 与全局 `Object.assign`。（v18.0.0 起技能目录不再由 patch 求值挂载，故 `baseUrl` / `URL` / `decodeURIComponent` / `process.platform` 已不再需要——表达式面比 v17.0.0 **更窄**。） |
 | 禁止的表达式内容（CI 红线，`consistency-check.mjs` 规则 ⑭） | `getBuiltinModule` / `child_process` / `require(` / `import(` / `eval(` / `new Function` / `node:` / `fs.` |
-| 随包脚本 | 11 个 `.mjs`：**零第三方依赖、零网络请求**；唯一子进程调用在 `final-check.mjs`（`spawnSync` 固定脚本路径 + 参数数组 + `shell:false`）。其中 `normalize-trust-level.mjs` / `md2html.mjs` / `final-check.mjs` 可写文件——技能已要求其目标路径限于项目目录，且默认 dry-run（`normalize-trust-level`）。 |
+| 随包脚本 | 12 个 `.mjs`：**零第三方依赖、零网络请求**；唯一子进程调用在 `final-check.mjs`（`spawnSync` 固定脚本路径 + 参数数组 + `shell:false`）。其中 `normalize-trust-level.mjs` / `md2html.mjs` / `final-check.mjs` 可写文件——技能已要求其目标路径限于项目目录，且默认 dry-run（`normalize-trust-level`）。 |
 | 技能机制 | 技能会让 agent 读写工作区文件、派发子代理、并经外部检索服务外发检索关键词/目标 URL（Phase 0 有「4 选 1」明示同意关卡）。 |
 | 已知边界 | 同名技能存在**按 rank 就近静默覆盖**的平台行为：项目根 `.dsh/skills/<同名>` 会顶替本包提供的技能副本（无告警）。技能已加入启动自检条款（核对版本头，不符即停机报告）。 |
 
