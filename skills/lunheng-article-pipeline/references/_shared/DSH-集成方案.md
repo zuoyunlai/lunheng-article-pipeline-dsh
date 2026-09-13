@@ -1,6 +1,6 @@
 # 论衡 × DSH 能力面集成方案
 
-> **版本**：v18.2.1（C 组落地；§一–§六 为 v18.0.2 原文，§七–§八 为 v18.2.1 新增）
+> **版本**：v18.2.3（C 组落地；§一–§六 为 v18.0.2 原文，§七–§八 为 v18.2.1 新增，**§九 为 v18.2.2 新增**）
 > **用途**：把论衡的既有机制（11 个门禁脚本 / 并行阶段 / 状态机 / 人在环闸门）**对齐 DSH 已有能力面**，替代平行自建。§一–§六 是**实施方案**，§七 是**落地状态表**，§八 是**可选配方**。
 > **依据**：DSH 官方文档 `docs/cookbook/adding-a-tool.md`、`docs/tool-execution-pipeline.md`、`docs/subsystems/*.md`、`docs/capability-seams.md`（知识库副本见 `dsh-plugin-guide/references/official-docs/`；行号对快照 commit `d347e703…`）。
 > **当前状态**：**C 组四项已启用**（原生只读工具 / `ctx.tools.guard()` 写保护 / `/lunheng-status` / 词预算门）、一项给配方（分档工具行→agent preset）、一项仍未接线（Phase 内并行→`workflow`，依官方用法限定「仅在用户明确要求 workflow 或大规模编排时」用，故**降级为按需**）。
@@ -329,3 +329,40 @@ dsh --profile web --dump-config 2>&1 | grep -E "tool-subagent-(retrieval|strong|
 3. **`restrict` 藏不住预设层工具**（`tools.md:507-513`：对 scope-local 名会失败）——想「有预设但偶尔禁掉某档」只能靠不选该预设。
 4. **预设行会被校验拒绝**：`capability-seams.md:507`「rejecting a row that never activates or that publishes into the root service realm」——写错 `toolName` 或把它当 service 用会**加载期报错**（这是好事：响亮失败）。
 5. **本包默认不动**：`cordis.patch.yml` 仍保留三行全局声明。「装了不坏」优先——**换了作用域就不再是「装了就可用」**，需要主人主动选择会话预设。
+
+---
+
+## 九、运行环境限制：Windows sandbox 的 `--temp` 前置目录（v18.2.2 新增，主人授权修订）
+
+> **来源**：2026-09-12 全量测试（`run/ai-era-humanity-crisis`）实测。**如实登记为「环境限制」而非「本包缺陷」**——本包无法从技能侧修复。
+
+### 9.1 现象
+
+在 `workspace-write` 文件策略下，**主控 `pwsh` 调用会整体失败**，报：
+
+```
+sandbox mode "workspace-write" is requested but no sandbox backend is usable on this host;
+refusing to run the command unconfined.
+Runner failure: windows-acl-run: --temp is not an existing directory:
+  C:\Users\<用户>\AppData\Local\Temp\dsh-<随机后缀>
+```
+
+- **不是命令本身的问题**：同一台机器、同一会话内，**前若干次 `pwsh` 正常**，之后开始连续失败；`node --check`、`Add-Type`、`cp` 等一律失败。
+- **根因**：Windows ACL runner 需要一个 `--temp` 目录，而该目录**已不存在**（会话临时区被清理），runner 拒绝降级为 unconfined 启动 → 命令根本没执行。
+- **误判风险（高）**：错误文本含 `sandbox` 与 `exit code: 1`，极易被读成「命令失败」而反复重试 → **耗尽步数**（本轮实测连续 3 次同错，触发「相同命令连续失败」告警）。
+
+### 9.2 论衡侧的应对（已在本轮使用，均零额外成本）
+
+| 场景 | 失败路径 | 替代路径 |
+|---|---|---|
+| 校验产物（文件存在 / 行数 / grep 计数） | 主控 `pwsh` | ✅ **`read` / `glob` / `grep` 原生只读工具**（不经过 runner，永远可用） |
+| 跑随包脚本（`m-gate-check.mjs` / `count-chars.mjs` / `consistency-check.mjs` / `node --test`） | 主控 `pwsh` | ✅ **委派 `subagent` 执行**——子代理进程自带可用的临时区（本轮全部脚本验证均如此完成） |
+| 备份 / `cp` / `sha256` 对比 | 主控 `pwsh` | ✅ 委派 `subagent`；或 `write` 工具按内容重建（慢但可靠） |
+| M 门预检 | `pwsh` 调脚本 | ✅ bundle 部署下的原生只读工具 `lunheng_m_gate`（若清单里有） |
+
+### 9.3 给主控的操作纪律（v18.2.2 起）
+
+1. **第一次**看到该错误 → **立即改写调用路径**（改用原生只读工具，或委派子代理），**不要重试同一命令**。
+2. **不要**为了绕过而请求 `danger-full-access` 提权——`--temp` 缺失是 runner 前置条件问题，提权不解决，且属不必要的权限扩张。
+3. **不要把该失败记成角色失败**：它不产生任何产物缺失，`list_agents` 与产物校验都不受影响。
+4. 若需彻底修复：属 DSH 宿主侧（保证 `--temp` 目录在会话生命周期内存在，或 runner 缺失时自动重建），**超出本包范围**——本包只登记现象与替代路径。

@@ -727,14 +727,37 @@ if (existsSync(exDir)) {
 }
 
 // ⑨ .dsh 双写同步 + 污染校验（v2.5.2-dsh.5 审计新增：仅当兄弟 .dsh 技能目录存在时生效，CI 无此目录自动跳过）
+// v18.2.3 修订（主人授权；依据「版本抬升 18.2.2 → 18.2.3」后的实测复核）：
+//   旧实现有**两处盲区**——① 只核 **4 个文件**（SKILL.md / m-gate-check / count-chars / M-Gate-Algorithm），
+//   其余 80 个文件从未被核；② 比对**只比字节大小**（`statSync().size`）。
+//   ⚠️ 而**版本头替换天生是等长的**（`v18.2.2` → `v18.2.3` 同长度）→ size 完全不变 → **看不见**。
+//   实测后果：镜像里 **44 个文件**内容与真源不同（连 `SKILL.md` 的版本头都还是 v18.2.2），
+//   本门却输出「0 处漂移」= **假绿**——而镜像正是**运行时真正被加载**的那一份，
+//   于是「版本自检」会拿旧版本放行。**门比被它守的东西更不可靠**。
+//   现改为：**全树逐文件内容比对**（Buffer.equals，不用 size 作代理），并补「镜像多出文件」检查。
+//   代价：84 个小文件各读两次（合计 <1 MB），运行时开销可忽略。
 const dshSkillDir = join(REPO_ROOT, '..', '.dsh', 'skills', 'lunheng-article-pipeline');
+const allFilesOf = (dir, base = dir, acc = []) => {
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, e.name);
+    if (e.isDirectory()) allFilesOf(p, base, acc);
+    else if (e.isFile()) acc.push(String(p).slice(base.length + 1).replaceAll('\\', '/'));
+  }
+  return acc;
+};
 if (existsSync(dshSkillDir)) {
-  for (const kf of ['SKILL.md', 'scripts/m-gate-check.mjs', 'scripts/count-chars.mjs', 'references/_shared/M-Gate-Algorithm.md']) {
+  const repoFiles = allFilesOf(ROOT).slice().sort();
+  for (const kf of repoFiles) {
     const repoF = join(ROOT, kf), dshF = join(dshSkillDir, kf);
-    if (!existsSync(repoF) || !existsSync(dshF)) {
-      errors.push(`[P1 .dsh 同步] 文件缺失 ${kf} repo=${existsSync(repoF) ? '有' : '缺'} .dsh=${existsSync(dshF) ? '有' : '缺'}`);
-    } else if (statSync(repoF).size !== statSync(dshF).size) {
-      errors.push(`[P1 .dsh 同步] ${kf} 大小漂移 repo=${statSync(repoF).size}B .dsh=${statSync(dshF).size}B`);
+    if (!existsSync(dshF)) {
+      errors.push(`[P1 .dsh 同步] 镜像缺文件 ${kf}（真源有、镜像无 → 运行时少这一份）`);
+    } else if (!readFileSync(repoF).equals(readFileSync(dshF))) {
+      errors.push(`[P1 .dsh 同步] ${kf} 内容漂移 repo=${statSync(repoF).size}B .dsh=${statSync(dshF).size}B（v18.2.3 起按内容比对：size 相同亦照报）`);
+    }
+  }
+  for (const kf of allFilesOf(dshSkillDir).slice().sort()) {
+    if (!repoFiles.includes(kf)) {
+      errors.push(`[P1 .dsh 同步] 镜像多出文件 ${kf}（真源无 → 残留或误加）`);
     }
   }
   for (const poll of ['package.json', 'cordis.patch.yml', 'docs', 'examples', '.git']) {

@@ -411,7 +411,30 @@ const ENDNOTE_FORBIDDEN = [
   //   （行 147，由 T7 独立发现、M-Form-5 因 body 不含文末节而漏检）
   /承重|素材卡|案例卡|数据卡|文献卡|索引段|素材加载清单|一处两用|段级条目|卡级|修卡/g,
 ];
-const endnoteNonBiblio = endnote
+// v18.2.2（主人授权的机制修订；依据 2026-09-12 ai-era-humanity-crisis 全量测试反哺）：
+//   **「AI 使用声明」节整体豁免二级扫描**。该节的唯一职责就是披露 AI 参与，其措辞由
+//   `references/templates/AI-使用声明-template.md` 规定（模板本身要求写「分析框架由 AI 协助拟定」等披露语），
+//   与「文末不得含内部流水线信息」的立法目的不冲突。
+//   实测：定稿在声明节写「…均配 [Lxx]+[Dxx]+[Cxx] 三档**承重**证据」→ 命中禁止词「承重」→ **假 P0**
+//   （M 门 exit 2 的一项，T8 只能写 Acknowledged Limitations）。
+//   v18.0.0 新增二级扫描的动因是 `## 案例来源` 泄露「案例检索员 + spawn」——**那类节仍照扫**，
+//   故本豁免只针对「AI 使用声明」，不放宽其余四节。
+const ENDNOTE_SCAN_EXEMPT = ['AI 使用声明'];
+const endnoteScanText = (() => {
+  const secs = [];
+  let cur = null;
+  for (const l of endnote.split('\n')) {
+    const m = /^##\s+(.+?)\s*$/.exec(l);
+    if (m) { cur = { title: m[1], lines: [] }; secs.push(cur); continue; }
+    if (cur) cur.lines.push(l);
+  }
+  if (secs.length === 0) return endnote;   // 无二级标题（异常布局）→ 不豁免，照旧全扫
+  const kept = secs.filter((s) => !ENDNOTE_SCAN_EXEMPT.some((w) => s.title === w || s.title.startsWith(w)));
+  if (kept.length === secs.length) return endnote;
+  // 豁免后仍保留节标题，便于 detail 里的「文末节」定位信息不失真
+  return kept.map((s) => `## ${s.title}\n${s.lines.join('\n')}`).join('\n');
+})();
+const endnoteNonBiblio = endnoteScanText
   .split('\n')
   .filter((l) => !/^\s*[-*]?\s*\[(?:L|D|C|先)(?:\d|-基-)/.test(l)) // 仅豁免数字/基线编号书目行
   .join('\n');
@@ -532,8 +555,30 @@ try {
       //   「### 论点-论据映射表（写手版；**M-Form-8 承重墙清单**）」——括号里**提及**了承重墙，
       //   于是把论据映射表当承重墙清单读（该表一行含多个编号）→ 同一编号计 3 次 → 误报「承重墙超载」。
       //   故标题行锚点改为**必须以关键词开头**；行内式锚点（非标题）仍只认「承重证据 top1」。
-      const wallAnchor = (l) => /^#{2,4}\s/.test(l) ? /^#{2,4}\s*(承重墙|承重证据|承重清单)/.test(l) : /承重证据\s*top\s*1/i.test(l);
-      const sIdx = ol.findIndex(wallAnchor);
+      // v18.2.2（主人授权的机制修订；依据 2026-09-12 ai-era-humanity-crisis 全量测试反哺）：
+      //   **新增「表格表头锚点」并置其优先级最高**。T4 的常见做法是把承重墙做成**三角验证表的一列**
+      //   （表头 `| 论点 | 论点简述 | … | 承重 top1 | 子问题 |`），而非独立小节；旧实现只认
+      //   ① 以「承重墙/承重证据/承重清单」开头的标题行、② 行内式「承重证据 top1」——
+      //   于是 ② 命中的是**三角验证表上方的纪律说明引用块行**
+      //   （`> **承重墙纪律（v18.0.0）**：每条核心论点标"承重证据 top1"…`），
+      //   该锚点非标题 → 走「紧随其后的连续表格/列表行」→ 下一行是**空行** → block 只有 1 行
+      //   → structRows=0 → **假报「承重墙清单无结构性条目」P1**（真值：表内 10 行 top1 标注齐全、无超载）。
+      //   三处修正：① 表头锚点优先；② 收块时**容忍空行间隔**；③ 锚点搜索跳过围栏代码块。
+      const isFenceLine = (l) => /^\s*```/.test(l);
+      const wallHeadAnchor = (l) => /^\s*\|[^\n]*承重[^\n]*\|\s*$/.test(l);
+      const wallTextAnchor = (l) => /^#{2,4}\s/.test(l)
+        ? /^#{2,4}\s*(承重墙|承重证据|承重清单)/.test(l)
+        : /承重证据\s*top\s*1/i.test(l);
+      let fenceOn = false;
+      let headIdx = -1;
+      let textIdx = -1;
+      for (let i = 0; i < ol.length; i++) {
+        if (isFenceLine(ol[i])) { fenceOn = !fenceOn; continue; }
+        if (fenceOn) continue;
+        if (headIdx === -1 && wallHeadAnchor(ol[i])) headIdx = i;
+        if (textIdx === -1 && wallTextAnchor(ol[i])) textIdx = i;
+      }
+      const sIdx = headIdx !== -1 ? headIdx : textIdx;
       if (sIdx !== -1) {
         wall8.checked = true;
         const head = /^(#{1,6})\s/.exec(ol[sIdx]);
@@ -542,9 +587,21 @@ try {
           const re = new RegExp(`^#{1,${head[1].length}}\\s`);
           for (let i = sIdx + 1; i < ol.length; i++) { if (re.test(ol[i])) { eIdx = i; break; } }
         } else {
-          // 行内式锚点（无标题）：只取紧随其后的**连续表格/列表行**，不猜固定行数
+          // 行内式 / 表头式锚点（无标题）：收**表格行**（表头锚点）或**表格/列表行**（行内锚点），
+          //   并**容忍 ≤3 行空行间隔**（v18.2.2：旧实现在空行处即停 → 表头与表体被空行分开时只收到表头）。
+          //   ⚠️ v18.2.2 **二修**——首次修订引入的回归，由回归验证子代理实测发现（2026-09-12）：
+          //   旧续行谓词 `/^\s*[|*-]/` 会把**加粗散文行**当结构性行（`**三角验证覆盖率自检**：…[L02]…`
+          //   行首 `*` 命中字符类 `*`）→ 该段的方括号编号被计入承重频次 → **假报**
+          //   「承重墙超载：[L02]×3论点,[L03]×3论点,[D03]×3论点」。
+          //   真值：表内 10 行 top1 = L02×2 / L03×2 / D03×1，**无超载**（大纲自检段亦明示不超载）。
+          //   故收紧为：**表头锚点只收表格行** `^\s*\|`；行内锚点的列表项也要求 `[-*]` 后**跟空白**
+          //   （`^\s*[-*]\s`）——不再用裸字符类 `[|*-]`。
+          const contRe = wallHeadAnchor(ol[sIdx]) ? /^\s*\|/ : /^\s*(\||[-*]\s)/;
+          let gap = 0;
           for (let i = sIdx + 1; i < ol.length; i++) {
-            if (!/^\s*[|*-]/.test(ol[i])) { eIdx = i; break; }
+            if (/^\s*$/.test(ol[i])) { if (++gap > 3) { eIdx = i; break; } continue; }
+            if (!contRe.test(ol[i])) { eIdx = i; break; }
+            gap = 0;
           }
         }
         const block = ol.slice(sIdx, eIdx);
@@ -698,11 +755,35 @@ if (firstIdx === -1) {
   const endRefs2 = new Set((endnote.match(refRe) || []).map(norm));
   const leaked = [...intext].filter((r) => !endRefs2.has(r));
   const orphan2 = [...endRefs2].filter((r) => !intext.has(r));
+  // v18.2.2（主人授权修订；依据 2026-09-12 全量测试反哺）：**诊断增强**——
+  //   最高频的漏引根因不是「缺条目」，而是**「参考文献」节误用 GB/T 7714 的数字标签 `[1]..[n]`**：
+  //   `refRe` 要求**字母前缀**（`[Lxx]`/`[Dxx]`/`[Cxx]`/`[先NN]`），故 `[1]` 一条都扫不到
+  //   → 文末的字母编号集为空 → **正文全部 [Lxx] 被判「漏引」**。这正是本仓库 v18.2.1
+  //   `规范-机械门对照表.md` 记过的断链（「首版无 [Lxx] → 漏引 17」）。
+  //   旧 detail 只报「漏引 N」，主控与写手极易误判为「缺条目」而去补条目（治标不治本、白绕一圈）。
+  //   现检测该形态并在 detail 前置可操作提示。**只改提示文字，判定逻辑与严重度完全不变。**
+  const mExist1Hint = (() => {
+    if (leaked.length === 0) return '';
+    if (!leaked.some((r) => /^\[L/.test(r))) return '';   // 只在涉及 [Lxx] 时给该提示
+    const sec = /^##\s*参考文献\s*$/m.exec(endnote);
+    if (!sec) return '';
+    const rest = endnote.slice(sec.index + sec[0].length);
+    const nxt = /^##\s+/m.exec(rest);
+    const refSec = nxt ? rest.slice(0, nxt.index) : rest;
+    const numericLabels = (refSec.match(/^\s*\[\d+\]/gm) || []).length;
+    const letterLabels = (refSec.match(/^\s*\[(?:L|D|C|先)\d+\]/gm) || []).length;
+    if (numericLabels >= 3 && letterLabels === 0) {
+      return `诊断：「参考文献」节有 ${numericLabels} 条数字标签 [N]，但正文用 [Lxx]——`
+        + `本门要求文末条目**沿用论衡编号 [Lxx]**（GB/T 7714 只约束**著录格式**，不约束编号形态）。`
+        + `修法：把 [N] 逐条改为 [Lxx]（按现有顺序一一对应，**禁止重排顺序**），不要另加重复行。`;
+    }
+    return '';
+  })();
   const mExist1Sev = leaked.length + orphan2.length > 10 ? 'P0' : (leaked.length + orphan2.length > 3 ? 'P1' : 'P2');
   results.push({
     gate: 'M-Exist-1 引用双向对比',
     pass: leaked.length === 0 && orphan2.length === 0,
-    detail: `漏引 ${leaked.length} / 孤儿 ${orphan2.length}`,
+    detail: (mExist1Hint ? `${mExist1Hint} ｜ ` : '') + `漏引 ${leaked.length} / 孤儿 ${orphan2.length}`,
     severity: (leaked.length === 0 && orphan2.length === 0) ? '通过' : mExist1Sev,
   });
 }
@@ -852,7 +933,20 @@ try {
     if (badRanges.length) soft11.push(`加载清单含无法展开的范围写法：${badRanges.slice(0, 3).join(' ')}（请改为逐项列出）`)
     const notLoaded = [...cited11].filter((x) => !loaded11.has(x));
     const ghost = [...loaded11].filter((x) => cardEntryIds.size > 0 && !cardEntryIds.has(x));
-    const unused = [...loaded11].filter((x) => !cited11.has(x));
+    // v18.2.2（主人授权的机制修订；依据 2026-09-12 ai-era-humanity-crisis 全量测试反哺）：
+    //   **「白读」软提示排除「清单中已声明跳过」的编号**。清单契约允许另设 `## 已跳过` 段解释
+    //   「为什么读了索引段却不引用某条」（§八）；写手常把「读过的索引段编号」与「实际未读的条目」
+    //   混记在 `## 已加载` 里 → 旧实现对这些编号一律报「白读即为上下文浪费」= 噪声。
+    //   实测 4 条命中里 [D12]/[D14] 即属此类（T5 v3 清单已把它们标为「已跳过」）。
+    const skippedSeg11 = (() => {
+      const h = ls2.findIndex((l) => /^#{2,4}\s*已跳过/.test(l));
+      if (h === -1) return '';
+      return ls2.slice(h + 1, sectionRange(ls2, h, /^#{2,4}\s/).end).join('\n');
+    })();
+    const skippedIds11 = new Set(
+      [...skippedSeg11.matchAll(new RegExp('\\[(' + REF_TOKEN + ')\\]', 'g'))].map((m) => '[' + m[1] + ']'),
+    );
+    const unused = [...loaded11].filter((x) => !cited11.has(x) && !skippedIds11.has(x));
     if (notLoaded.length) findings11.push(`正文引用但清单未记「已加载」：${notLoaded.slice(0, 6).join(',')}（引了没读 = 引用不可信）`);
     if (ghost.length) findings11.push(`清单里的编号在卡片中无对应条目：${ghost.slice(0, 6).join(',')}（清单与素材卡不一致）`);
     if (unused.length) soft11.push(`${unused.length} 个编号「读了但正文未引用」（${unused.slice(0, 5).join(',')}）——白读即为上下文浪费`);
@@ -861,9 +955,19 @@ try {
     //   这不是选择性不足。改为双条件：卡池 ≥30（有选择空间）**且** 正文 ≥3000 汉字（长文才有整卡通读的
     //   token 代价）才提示；否则如实跳过（不静默——下方 note 里写明因何未启用该软提示）。
     const bodyHan11 = (body.match(/[\u4e00-\u9fff]/g) || []).length
+    // v18.2.2（主人授权的机制修订；依据 2026-09-12 ai-era-humanity-crisis 全量测试反哺）：
+    //   **比率对账先取交集**——「已加载」集可含**不在索引段**的编号（先行者清单条目、基线编号
+    //   `[D-基-x-NN]` 等）。实测出现过 `已加载 54 / 索引 52`（**分子 > 分母**）→ 比率 >100%
+    //   仍被当成「>90% 整卡通读」，属分母口径错误、结论不可复算。
+    //   现改为：分子 = |已加载 ∩ 索引|；越出索引的部分另记一条软提示（不参与比率，避免污染结论）。
+    const loadedInIndex11 = [...loaded11].filter((x) => cardIndexIds.has(x));
+    const loadedBeyondIndex11 = [...loaded11].filter((x) => !cardIndexIds.has(x));
     const ratioCheckOn = cardIndexIds.size >= 30 && bodyHan11 >= 3000
-    if (ratioCheckOn && loaded11.size / cardIndexIds.size > 0.9) {
-      soft11.push(`已加载 ${loaded11.size} / 索引 ${cardIndexIds.size} 条（>90%）——选择性不足，疑似整卡通读（该条优化即为此设）`);
+    if (ratioCheckOn && loadedInIndex11.length / cardIndexIds.size > 0.9) {
+      soft11.push(`已加载 ${loadedInIndex11.length} / 索引 ${cardIndexIds.size} 条（>90%）——选择性不足，疑似整卡通读（该条优化即为此设）`);
+    }
+    if (loadedBeyondIndex11.length) {
+      soft11.push(`${loadedBeyondIndex11.length} 个已加载编号不在索引段内（${loadedBeyondIndex11.slice(0, 5).join(',')}）——已从比率对账中排除，请确认是否属先行者清单 / 基线编号`);
     }
     const ver11 = lt.match(/对应(?:正文)?版本[：:]\s*v?(\d+)/);
     if (ver11) {
@@ -1496,7 +1600,17 @@ try {
       let eIdx10 = ol10.length;
       const re10 = new RegExp(`^#{1,${lvl10}}\\s`);
       let nextHeading10 = -1;
-      for (let i = hIdx10 + 1; i < ol10.length; i++) { if (re10.test(ol10[i])) { nextHeading10 = i; break; } }
+      // v18.2.2（主人授权的机制修订；依据 2026-09-12 ai-era-humanity-crisis 全量测试反哺）：
+      //   **寻找「下一标题」时必须跳过围栏代码块**——精简段正文常整体包在 ```markdown 围栏里，
+      //   而围栏内的 `# T5 写手 v1 精简段（≤60 行）` 这类**一级标题**会被 `^#{1,lvl}\s` 命中
+      //   → 段落在第 2 行即被截断 → 实测「精简段 2 行 / 六要素实到 0/6」**假 P0**
+      //   （真值：围栏内 48 行、六要素齐备，T5 按 `## §11` 定位读取完全正常）。
+      //   围栏开合用**行首 ``` **计数（奇数个即处于围栏内）。
+      let inFence10 = false;
+      for (let i = hIdx10 + 1; i < ol10.length; i++) {
+        if (/^\s*```/.test(ol10[i])) { inFence10 = !inFence10; continue; }
+        if (!inFence10 && re10.test(ol10[i])) { nextHeading10 = i; break; }
+      }
       if (nextHeading10 !== -1) eIdx10 = nextHeading10;
       const seg10 = ol10.slice(hIdx10 + 1, eIdx10);
       const segText10 = seg10.join('\n');
@@ -1552,19 +1666,39 @@ try {
   results.push({ gate: 'M-Exist-10 大纲 §11 精简段', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
 }
 
-// === M-Exist-2 证据包完整性（v18.0.5：递归统计 + 布局异常单列）===
+// === M-Exist-2 证据包完整性（v18.0.5：递归统计 + 布局异常单列；v18.2.2：阶段感知）===
 const files = walkMd(evDir);
 const empty = files.filter((f) => { try { return statSync(f).size === 0; } catch { return false } });
 const relOf = (f) => f.slice(evDir.length + 1).replaceAll('\\', '/');
-results.push({
-  gate: 'M-Exist-2 证据包完整性',
-  pass: files.length > 0 && empty.length === 0 && !layoutAnomaly,
-  detail:
-    `${files.length} 个 .md 文件` +
-    (empty.length ? `，空文件: ${empty.map(relOf).join(',')}` : '，无空文件') +
-    (layoutAnomaly ? ` ｜ 布局异常（P1）：${layoutAnomaly}` : ''),
-  severity: (files.length === 0 || empty.length > 0) ? 'P0' : (layoutAnomaly ? 'P1' : '通过'),
-});
+// v18.2.2（主人授权的机制修订；依据 2026-09-12 ai-era-humanity-crisis 全量测试反哺）：
+//   **阶段感知——被审对象在 `drafts/` 阶段时，空证据包记 N/A 而非 P0**。
+//   证据包由 **T8 终检阶段** 的 `build-evidence-bundle.mjs` 生成；而 T7 审计的对象是
+//   `drafts/初稿-vN.md`，此时 `final/证据包/` 本就**还未生成**——旧实现一律判
+//   「0 个 .md 文件 → P0」，于是该 P0 从 Phase 4 起就挂在报告里，T5 修订轮**无法关闭**
+//   （它不属于稿件缺陷，而属于「顺序没到」），最终只能写进 Acknowledged Limitations。
+//   本项与 `[报告后激活]` 同族，只是方向相反：**「产物尚未到期的门」不应在早期阶段判死**。
+//   同文件开头的「证据包完整性前置提示」（EV_REQUIRED 段）已定过同一原则：
+//   「证据包在 build-evidence-bundle.mjs 跑之前本就可能是空目录——中止会把『顺序没到』误报成『路径传错』」。
+//   故：被审正文在 `drafts/` 且证据包为空 → N/A（pass=true）；其余情况维持原判（P0/P1）。
+const isDraftStageAudit = /[\\/]drafts[\\/]/.test(draftPath);
+if (files.length === 0 && isDraftStageAudit) {
+  results.push({
+    gate: 'M-Exist-2 证据包完整性',
+    pass: true,
+    detail: 'N/A：证据包为空且被审对象位于 drafts/（Phase ≤4 审计场景）——证据包由 T8 终检的 build-evidence-bundle.mjs 生成，届时重跑本项自动转实检',
+    severity: '通过',
+  });
+} else {
+  results.push({
+    gate: 'M-Exist-2 证据包完整性',
+    pass: files.length > 0 && empty.length === 0 && !layoutAnomaly,
+    detail:
+      `${files.length} 个 .md 文件` +
+      (empty.length ? `，空文件: ${empty.map(relOf).join(',')}` : '，无空文件') +
+      (layoutAnomaly ? ` ｜ 布局异常（P1）：${layoutAnomaly}` : ''),
+    severity: (files.length === 0 || empty.length > 0) ? 'P0' : (layoutAnomaly ? 'P1' : '通过'),
+  });
+}
 
 // === M-Exist-3 [Dxx] 正文↔数据卡 引用闭环（v2.5.2-dsh.5 加严重度评级；v18.0.3 更名对齐实装）===
 // 命名说明（v18.0.3）：本项旧名「信任级别一致性」，但它**只做引用闭环**（正文 [Dxx] ↔ 数据卡条目），
@@ -1624,8 +1758,32 @@ try {
     // v18.2.1：**容忍「需找数据点：≥ 3」这类带冒号/破折号的写法**——模板给的是无冒号形态，
     //   但主控手写简报时极易补一个冒号，旧正则 `需找数据点\s*[≥>]` 在「…点：≥」上直接失配
     //   → 需求总数记 0 → M-Integrity-1 假报「任务简报未见数据需求」（本轮实测踩到）。
-    briefData.minDataPoints = [...briefText.matchAll(/需找数据点[^\d≥>]{0,4}[≥>]\s*(\d+)/g)]
+    // v18.2.2（主人授权的机制修订；依据 2026-09-12 ai-era-humanity-crisis 全量测试反哺）：
+    //   **修「同一需求写两处 → 双重计数」假 P0**——`任务简报-template.md` **自身规定**「需找数据点 ≥N」写两处：
+    //     ① 研究问题段：逐子问题各一条（模板 4-5 条）；
+    //     ② 数据/文献/案例需求段：写总量一条（模板「**数据**（需找数据点 ≥N）」）。
+    //   旧实现把两处的匹配**一律求和** → 实测 3+6+8（子问题）+ 25（总量）= **42**，
+    //   而作者声明的真实需求是 **25** → 数据卡 32 条被判「32 < 42 条」→ T2.5 步骤 4 触发
+    //   「数据不完整 → 触发 T2 重检索」**假 P0**（M 门 exit 2 永不可解，T8 只能写 Acknowledged Limitations）。
+    //   现规则：**按「行归属」分组，取两组之和的较大者**——
+    //     ① `agg`    = 不在「子问题」行上的需求量之和（= 需求段声明的总量）；
+    //     ② `scoped` = 在「子问题」行上的需求量之和（= 逐子问题的分配量）；
+    //     需求 = max(agg, scoped)；两组皆空 → 0（如实报「未见数据需求」，不臆造）。
+    //   取 max 而非「总量优先」的理由：作者把分配量写得比声明总量更大时，按更严的一方对账
+    //   ——宁可要求偏严，也不产生「假通过」。
+    const NEED_RE = /需找数据点[^\d≥>]{0,4}[≥>]\s*(\d+)/g;
+    const needSum = (lines) => lines
+      .flatMap((l) => [...l.matchAll(NEED_RE)])
       .map((m) => parseInt(m[1], 10)).reduce((a, b) => a + b, 0);
+    const briefLines = briefText.split('\n');
+    const aggNeed = needSum(briefLines.filter((l) => !/子问题/.test(l)));
+    const scopedNeed = needSum(briefLines.filter((l) => /子问题/.test(l)));
+    briefData.minDataPoints = Math.max(aggNeed, scopedNeed);
+    briefData.needAgg = aggNeed;        // 留痕：需求段声明的总量
+    briefData.needScoped = scopedNeed;  // 留痕：逐子问题分配量之和
+    briefData.needSource = aggNeed === 0 && scopedNeed === 0
+      ? '未声明'
+      : (aggNeed >= scopedNeed ? '需求段总量' : '逐子问题分配量之和');
     briefData.placeholder = (briefText.match(/需找数据点[^\d≥>]{0,4}[≥>]\s*_+/g) || []).length;
   }
 } catch {}

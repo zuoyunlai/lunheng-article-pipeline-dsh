@@ -1,9 +1,11 @@
 #!/usr/bin/env node
-// 论衡字数统计脚本（v2.5.2-dsh.5 新增，v2.5.2-dsh.7 加 --summary）
+// 论衡字数统计脚本（v2.5.2-dsh.5 新增，v2.5.2-dsh.7 加 --summary，v18.2.3 修 --summary body 终点）
 // 用法：node count-chars.mjs <文件.md> [--full | --summary]
 //   --full    = 统计全文纯汉字（含题名/摘要/文末五节）；默认只统计正文区（## 摘要 之后、## 参考文献 之前）
 //   --summary = 关键节点分段字数 + 全文配比（T7/T8 一眼可见结构，省 LLM 读全文）
+//               ⚠️ 其 `body.hanChars` **与默认口径同源**（v18.2.3 修：此前误用含「关键词」的列表求终点 → 只剩摘要正文，差 21 倍）
 // 口径：纯中文字符数（Unicode 汉字 \u4e00-\u9fff），不含标点/数字/英文/引用编号
+//   正文区 = `## 摘要` 标题之后 → 第一个文末节之前；**含摘要正文与关键词段**，不含题名/文末五节/脚注
 // 用途：写手写完即跑（替代 LLM 推理估算）；T7 G8 字数核验；T8 终检权威回填
 import { readFileSync, existsSync } from 'node:fs';
 import { countHan, HAN_RE as HAN } from './_lib/han.mjs';   // 汉字口径唯一真源（v2.5.2-dsh.13 抽 _lib；v18.0.3 计数改走 countHan）
@@ -49,6 +51,25 @@ const degradedFields = degraded && flag !== '--full'
   ? { degraded: true, degradedReason: '缺「## 摘要」→ 正文区起点退化为文件开头' }
   : {};   // `--full` 不受正文区起点影响，故不标 degraded（v18.0.5：与既有契约一致）
 
+// === 文末五节标记 + 正文区终点（v18.2.3：单一真源，默认口径与 --summary **共用**）===
+// v18.2.2 缺陷（主人授权修订；依据 2026-09-12 全量测试后主人反问「字数限定仅指正文吗」的取证）：
+//   `--summary` 分支此前用**含「摘要/关键词」的 segs** 求 body 终点 → 命中 `## 关键词` 即截断
+//   → `body.hanChars` 只剩摘要正文（**实测 243**），而默认口径是 **5112**（差 **21 倍**）；
+//   派生字段 `bodyRatio`(4.1%) / `avgPerSection`(16) 亦随之失真。
+//   ⚠️ 危害在于脚本头注释写「--summary = …（**T7/T8 一眼可见结构**，省 LLM 读全文）」
+//   —— T7/T8 若照注释取用该 body 值，**会把一篇 5112 字的论文判成「仅 4% 篇幅」**，
+//   进而下达完全错误的「P0 立即精简」指令。默认分支用的是正确的 5 元素列表，
+//   **同一脚本两条路径各写一份**即根因；现抽为共用助手，从结构上杜绝再次发散。
+const ENDNOTE_MARKERS = ['## 参考文献', '## 数据来源', '## 案例来源', '## 先行者文献', '## AI 使用声明'];
+const bodyEndOf = (from) => {
+  let to = text.length;
+  for (const m of ENDNOTE_MARKERS) {
+    const i = text.indexOf(m, from);
+    if (i >= 0 && i < to) to = i;
+  }
+  return to;
+};
+
 if (flag === '--summary') {
   // 分段：标题/摘要/关键词/正文/参考文献/数据来源/案例来源/先行者文献/AI 使用声明
   const segs = ['摘要', '关键词', '参考文献', '数据来源', '案例来源', '先行者文献', 'AI 使用声明'];
@@ -61,19 +82,18 @@ if (flag === '--summary') {
       const after = start + `## ${s}`.length;
       const next = text.indexOf('\n## ', after);
       if (next >= 0) end = next;
-      sections[s] = countHan(text.slice(start, end));   // v18.0.3：改用 _lib/han.mjs 的 countHan（旧版在此内联 match）
+      // v18.2.3：起点由 `start` 改为 `after` —— 旧版把**节标题自身的汉字**也计入
+      //   （实测 `关键词` 21 vs 标题式口径 18，差 3 = 「关键词」三字），
+      //   与下方 `sectionsByHeading` 的口径不一致。现统一为**不含标题**。
+      sections[s] = countHan(text.slice(after, end));   // v18.0.3：改用 _lib/han.mjs 的 countHan（旧版在此内联 match）
     } else {
       sections[s] = 0;
     }
   }
-  // 正文区 = 摘要之后到第一个文末节之前
+  // 正文区 = 摘要之后到第一个文末节之前（v18.2.3：改走共用助手 bodyEndOf，
+  //   不再用含「摘要/关键词」的 segs 求终点 —— 那正是 21 倍失真的根因）
   const bodyFrom = bodyStartIdx;
-  // 找最近的文末节作为 body 终点
-  let bodyEnd = text.length;
-  for (const s of segs) {
-    const i = text.indexOf(`## ${s}`, bodyFrom);
-    if (i >= 0 && i < bodyEnd) bodyEnd = i;
-  }
+  const bodyEnd = bodyEndOf(bodyFrom);
   const bodyCount = countHan(text.slice(bodyFrom, bodyEnd));   // v18.0.3：走 _lib 真源
   const totalCount = countHan(text);                            // v18.0.3：同上
   // 各章节 H2/H3 标题 + 字数（top 10 节）
@@ -118,13 +138,8 @@ if (flag !== '--full') {
   // 若文末节标记也缺失则等于全文），却仍自称 body(正文区) → 双口径坍缩、字数分级系统性偏大。
   // 现在：显式置 degraded 标记并在 stderr 告警（计算已提到 summary 之前，两模式共用）。
   const from = bodyStartIdx;
-  const endMarkers = ['## 参考文献', '## 数据来源', '## 案例来源', '## 先行者文献', '## AI 使用声明'];
-  let to = text.length;
-  for (const m of endMarkers) {
-    const i = text.indexOf(m, from);
-    if (i >= 0 && i < to) to = i;
-  }
-  target = text.slice(from, to);
+  // v18.2.3：终点改走与 --summary 共用的 bodyEndOf（消除「两条路径各写一份 → 发散」）
+  target = text.slice(from, bodyEndOf(from));
 }
 
 const count = countHan(target);   // v18.0.3：走 _lib/han.mjs 真源（旧版在此内联 match）

@@ -4,7 +4,8 @@
 
 ## 启动时必读
 
-> **清单真源 = `SKILL.md` §启动清单**（v18.0.5 收敛：此前本处 4 项与 SKILL 3 项不一致——一方漏 §十二、一方漏 `MEMORY.md`）。要点复述（**以 SKILL.md 为准**）：① `references/pipeline-readme.md` 的「流水线全景 / 派发话术 / 模型配置」三节；② `references/glossary.md`（按需查节；**§十二 本技能自用术语与文档约定** 属改机制前必读）；③ `MEMORY.md` + `memory/YYYY-MM-DD.md`（主人偏好与最近关注）。
+> **清单真源 = `SKILL.md` §启动清单 与 §⚡ 启动速查表**——本处**不再复述**。
+> v18.2.2 收敛（主人授权修订；依据 2026-09-12 全量测试反哺）：旧版此处**复述**了 SKILL 的 3 项启动清单，构成**同一事实两处维护**——v18.0.5 已因「本处 4 项 vs SKILL 3 项」不一致修过一次，但只要还在复述，就会**再漂**（改启动清单时要记得同步两处 = 违反「一事实一处」）。**改启动清单只改 `SKILL.md`**。
 
 > **包形态（v18.0.0 起）**：**包根**含 `package.json`（`main` → `lib/index.js` + `dsh.bundle.patch` → `cordis.patch.yml`）、`lib/index.js`（**入口**：读随包 `skills/lunheng-article-pipeline/SKILL.md`，经 `ctx.skills.register()` 注册为 agent 技能，`inject=['skills']` + `resourceBase` 指向技能目录，注册即 effect、卸载自动清理）、`cordis.patch.yml`（**① 插入本包自注册行** `- id: lunheng-article-pipeline / name: lunheng-article-pipeline`——loader 靠这一行按包名 import 入口，**删了它技能就不注册**（v18.0.0 缺陷，v18.0.1 修复）+ ② 3 档 subagent 工具）。两种部署均受支持：① `dsh plugin add` 装 bundle（技能由入口注册）；② 把 **`skills/lunheng-article-pipeline/` 技能目录**复制到任一 skill 根（项目级 `.dsh/skills/` rank 100 / 用户级 `$DSH_HOME/skills/` rank 400）。**包面自检**：`dsh-plugin-dev check`（14 项：11 通过 / 3 跳过——**v18.0.0 起无豁免**，目标 0 fail / 0 warn）+ `node --test "tests/**/*.test.mjs"`。
 

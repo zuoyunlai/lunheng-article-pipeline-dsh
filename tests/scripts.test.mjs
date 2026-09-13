@@ -3,7 +3,7 @@
 // 运行：node --test tests/     （CI 在 ubuntu-latest 与 windows-latest 双平台跑）
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { writeFileSync, readFileSync, existsSync, rmSync, mkdirSync } from 'node:fs'
+import { writeFileSync, readFileSync, existsSync, rmSync, mkdirSync, cpSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ROOT, SCRIPTS, run, parseJson, tmp, mkProject, mkRepo, MD, mkSvg, DRAFT_WITH_ENDNOTES, CARD } from './_fixtures.mjs'
@@ -27,6 +27,72 @@ test('count-chars：--full 不应带 degraded 标记', () => {
   const r = run([join(SCRIPTS, 'count-chars.mjs'), f, '--full'])
   const j = parseJson(r)
   assert.equal(j.degraded, undefined)
+  rmSync(d, { recursive: true, force: true })
+})
+
+// v18.2.3（主人授权修订；依据 2026-09-12 全量测试后主人反问「字数限定仅指正文吗」的取证）：
+//   `--summary` 曾用**含「摘要/关键词」的列表**求 body 终点 → 命中 `## 关键词` 即截断
+//   → `body.hanChars` 只剩摘要正文（实测 243 vs 默认口径 5112，**差 21 倍**），
+//   而脚本头注释写「--summary …（**T7/T8 一眼可见结构**）」→ T7/T8 照注释取用会把长文判成
+//   「仅 4% 篇幅」并下达错误的 P0 精简指令。**单跑任一模式都自洽，只有跨路径对账能抓**。
+test('count-chars：--summary 的 body.hanChars 必须等于默认口径（v18.2.3 跨路径对账）', () => {
+  const d = tmp()
+  const f = join(d, 'x.md')
+  // 该排布刻意复现「关键词把 body 截断」：摘要 → 关键词 → 正文 → 文末五节
+  writeFileSync(f, [
+    '# 标题', '', '## 摘要', '', '摘要正文若干字。', '',
+    '## 关键词', '', '关键词若干；词二；词三', '',
+    '## 一、导论', '', '正文段落若干字。'.repeat(20), '',
+    '## 参考文献', '', '[L01] 某文献', '',
+    '## 数据来源', '', '[D01] 某数据', '',
+    '## 案例来源', '', '[C01] 某案例', '',
+    '## 先行者文献', '', '[先01] 某先行者', '',
+    '## AI 使用声明', '', 'AI 辅助声明若干字。', '',
+  ].join('\n'))
+  const def = parseJson(run([join(SCRIPTS, 'count-chars.mjs'), f]))
+  const sum = parseJson(run([join(SCRIPTS, 'count-chars.mjs'), f, '--summary']))
+  assert.equal(sum.body.hanChars, def.hanChars,
+    `--summary body 必须与默认口径同源（默认 ${def.hanChars} vs summary ${sum.body.hanChars}）`)
+  // 结构性佐证：body 必须**大于**摘要节（含关键词段 + 正文），旧版 bug 下 body == 摘要节
+  assert.ok(sum.body.hanChars > sum.endnotes['摘要'],
+    `body 应含关键词与正文（> 摘要节），实得 body=${sum.body.hanChars} / 摘要=${sum.endnotes['摘要']}`)
+  // v18.2.3 附带修正：分节字数不再计入节标题自身的汉字（与 sectionsByHeading 口径统一）
+  const kwByHeading = sum.sectionsByHeading.find((s) => s.title === '关键词')
+  assert.equal(sum.endnotes['关键词'], kwByHeading.hanChars,
+    'sections{} 与 sectionsByHeading 的口径必须一致（均不含标题）')
+  rmSync(d, { recursive: true, force: true })
+})
+
+// v18.2.3（主人授权修订；依据版本抬升 18.2.2 → 18.2.3 后的实测复核）：
+//   规则⑨ 旧实现**只核 4 个文件、且只比字节大小**（`statSync().size`），
+//   而**版本头替换天生等长**（`v18.2.2` → `v18.2.3`）→ size 不变 → 完全看不见。
+//   实测后果：镜像里 **44 个文件**内容已变（连 SKILL.md 版本头都是旧的），本门却输出
+//   「0 处漂移」= **假绿**——而镜像正是运行时真正被加载的那一份。
+//   本用例注入一处**等长内容差异**（中文句号 → 中文逗号，UTF-8 下同为 3 字节），
+//   确保比对**不会退回 size 代理**。（断言不依赖基线退出码：只比对「注入前无该错误、注入后有」。）
+test('consistency-check ⑨：.dsh 镜像与真源 size 相同但内容不同时，必须报「内容漂移」（v18.2.3）', () => {
+  const { d, repo, R } = mkRepo()
+  const dshSkill = join(d, '.dsh', 'skills', 'lunheng-article-pipeline')
+  cpSync(R, dshSkill, { recursive: true })
+  const cc = join(repo, 'skills', 'lunheng-article-pipeline', 'scripts', 'consistency-check.mjs')
+
+  // ① 基线：镜像与真源内容一致 → 不应出现 .dsh 同步错误
+  const baseOut = run([cc]).out
+  assert.doesNotMatch(baseOut, /\[P1 \.dsh 同步\]/, '内容一致时不应报 .dsh 同步错误：' + baseOut.slice(-400))
+
+  // ② 只改镜像：中文句号 → 中文逗号（同为 3 字节 → 文件 size 不变）
+  const repoFile = join(R, 'references', 'glossary.md')
+  const dshFile = join(dshSkill, 'references', 'glossary.md')
+  const before = readFileSync(dshFile, 'utf8')
+  assert.ok(before.includes('。'), '夹具假设该文件含中文句号')
+  const after = before.replace('。', '，')
+  assert.equal(Buffer.byteLength(after), Buffer.byteLength(before), '注入必须等长，否则测不到 size 盲区')
+  writeFileSync(dshFile, after)
+  assert.equal(statSync(dshFile).size, statSync(repoFile).size, '注入后两边 size 必须仍然相同（这正是旧版漏检的条件）')
+
+  // ③ 等长内容漂移 → 必须被报出（旧版只比 size 会静默通过）
+  const badOut = run([cc]).out
+  assert.match(badOut, /\[P1 \.dsh 同步\][^\n]*内容漂移/, '等长内容漂移必须报「内容漂移」：' + badOut.slice(-400))
   rmSync(d, { recursive: true, force: true })
 })
 
