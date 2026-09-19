@@ -15,6 +15,7 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { PIPE_SPAWN_BLOCKED, skipWhen } from './_fixtures.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PACKAGE_ROOT = join(HERE, '..')
@@ -79,7 +80,13 @@ test('apply 注册技能：字段齐备 + resourceBase 指向真实技能目录'
 
   const reg = captured.registrations[0]
   assert.equal(reg.name, 'lunheng-article-pipeline')
-  assert.equal(reg.source, 'bundled')
+  // source 必须是 'runtime'，**不是 'bundled'**（v18.2.6 审计 B-6 / P2-13 修）：
+  //   宿主对 `ctx.skills.register()` 注册进来的技能，候选 rank **恒取 `RUNTIME_RANK = 250`**——注册接口
+  //   并不接受 rank，插件也无法自报 rank。而官方 rank 表里 `bundled` 是 **600**（最低优先级）。
+  //   于是旧写法自贴 `source: 'bundled'` 会让任何**按 rank 表读**这份注册的人和工具误判优先级
+  //   （以为「包内技能优先级最低、会被项目级副本顶替」），而实际运行期语义是 250。改 'runtime' 后
+  //   字段与宿主实际使用的 rank 语义一致；`lib/index.js` 内 `source: 'runtime'` 处有同源注释。
+  assert.equal(reg.source, 'runtime', "注册 source 必须与宿主实际使用的 RUNTIME_RANK=250 语义一致，不得自贴 'bundled'（官方 rank 表里 bundled = 600）")
   assert.ok(typeof reg.description === 'string' && reg.description.length > 0, 'description is required for the model catalogue')
   assert.ok(typeof reg.whenToUse === 'string' && reg.whenToUse.length > 0, 'whenToUse carries the routing boundary')
   assert.ok(typeof reg.content === 'string' && reg.content.length > 1000, 'skill body must be the SKILL.md body')
@@ -122,7 +129,13 @@ test('C 组降级：宿主无 tools / commands 服务时，技能仍注册且不
   assert.equal(captured.guards, 0)
 })
 
-test('C 组：注册 2 个只读原生工具，规范值可复算（真跑一次 M 门与字数）', async () => {
+test('C 组：注册 2 个只读原生工具，规范值可复算（真跑一次 M 门与字数）', {
+  // v18.2.6：带探测的条件跳过（不是无条件 skip）。本用例要**真跑随包脚本**，而工具在**测试进程内**
+  //   `spawn`（`lib/tools.js` 的 `runScript`），受限 DSH 会话（workspace-write 沙箱）禁止被围栏进程
+  //   开命名管道 → 必红。恒红会训练人无视红灯，故探测到该环境即带理由跳过；**CI / 无沙箱 host shell
+  //   下探测为假 → 照常执行，强度不变**。探测实现见 tests/_fixtures.mjs 的 PIPE_SPAWN_BLOCKED。
+  skip: skipWhen(PIPE_SPAWN_BLOCKED, '宿主禁止子进程开命名管道（探测：对 process.execPath 做 spawn 管道 → EPERM）——本用例需在测试进程内真跑随包脚本（`lib/tools.js` 的 runScript）。请在无文件沙箱的 host shell 或 CI 复核；受限 DSH 会话下无法执行，且**不得用 LLM 断言替代机检结论**。'),
+}, async () => {
   // 裸仓库 / CI 没有宿主包 `@deepseek-ai/dsh-tools`，故注入**契约等价**的替身：
   //   真 defineTool 负责参数校验/规范值冻结，这里只需要它把定义原样返回（本用例断言的是**本包的行为**）。
   const fakeDefineTool = (def) => def
@@ -238,6 +251,31 @@ test('C 组：工具定义必须符合宿主 value schema DSL（required 只在�
   assert.ok(probe2.some((m) => /additionalProperties/.test(m)), '缺 additionalProperties 必须被判违规')
 })
 
+// v18.2.6 契约微调（审计 B-6 附带）：两处输出 schema 变化必须被钉住，否则「改了实现没改契约」
+//   ① `lunheng_char_count` 的 `sections`：JSON 字符串 → **规范 JSON 值**（宿主 DSL 原生 `json` 节点）。
+//      动机：宿主 value schema 支持 `type: 'json'`，把结构化数据塞进字符串等于让消费方多解析一次、
+//      且 canonical value 失去结构（官方 cookbook 要求「返回一个规范值，别让调用方解析散文」）。
+//   ② 两个工具新增**可选** `truncated: boolean`（仅在输出触到 `Config.scriptMaxOutputBytes` 时出现）。
+//      它必须是可选的：宿主 value schema 的 `additionalProperties: false` 只约束**未声明**的键，
+//      声明为可选（不进 required、缺失即可）才是合法形态。
+test('C 组：v18.2.6 输出 schema 契约（sections 为 json 值；truncated 为可选布尔）', async () => {
+  const { installLunhengTools } = await import(pathToFileURL(join(PACKAGE_ROOT, 'lib', 'tools.js')).href)
+  const regs = []
+  const ctx = { get: (n) => (n === 'tools' ? { register: (d) => { regs.push(d); return () => {} } } : undefined) }
+  await installLunhengTools(ctx, {
+    skillRoot: join(PACKAGE_ROOT, 'skills', 'lunheng-article-pipeline'),
+    defineToolFactory: async () => ({ defineTool: (def) => def }),
+  })
+  const byName = new Map(regs.map((t) => [t.name, t]))
+  const charProps = byName.get('lunheng_char_count')?.output?.schema?.properties ?? {}
+  assert.equal(charProps.sections?.type, 'json', "sections 必须是 DSL 原生 json 节点（v18.2.6 由 JSON 字符串改为规范 JSON 值）")
+  for (const n of ['lunheng_char_count', 'lunheng_m_gate']) {
+    const props = byName.get(n)?.output?.schema?.properties ?? {}
+    assert.equal(props.truncated?.type, 'boolean', `${n} 的 schema 必须声明可选 truncated: boolean（输出截断时出现）`)
+    assert.ok(!('required' in (byName.get(n)?.output?.schema ?? {})), `${n} 的 output.schema 不得出现 required（DSL 禁用）`)
+  }
+})
+
 test('C 组：机制写保护 guard —— 技能包内路径否决、包外放行、主人授权时放行', async () => {
   const mod = await import(pathToFileURL(ENTRY).href)
   const { ctx, captured } = makeCtx({ tools: true })
@@ -292,6 +330,29 @@ test('C 组：/lunheng-status 命令 —— 读 run/<项目> 进展，不产生�
     const missing = def.handler({ rawInput: ' nope', signal: new AbortController().signal })
     assert.equal(missing.kind, 'success')
     assert.match(missing.text, /未找到项目/, '项目不存在时给可读提示（而非抛错）')
+
+    // v18.2.6（审计 P1-4 修复的回归网）：`run/<项目>` 必须按**会话工作区**解析，而不是宿主启动目录。
+    //   旧实现只认 apply 期捕获的 `process.cwd()` —— DSH Desktop / `dsh web` 下那通常是宿主启动目录、
+    //   不是用户工作区，于是 `/lunheng-status` 永远报「未找到项目」。现优先取
+    //   `invocation.agent.session.header.cwd`（与 fs 工具同源），`opts.cwd` 只作兜底。
+    const d2 = mkdtempSync(join(tmpdir(), 'lh-cmd2-'))
+    try {
+      const proj2 = join(d2, 'run', 'session-proj')
+      mkdirSync(proj2, { recursive: true })
+      writeFileSync(join(proj2, 'status.md'), '# 状态机\n\n| 阶段 | 状态 |\n|---|---|\n| Phase 4 审计 | Running |\n')
+      const viaSession = def.handler({
+        rawInput: ' session-proj',
+        signal: new AbortController().signal,
+        agent: { session: { header: { cwd: d2 } } },
+      })
+      assert.equal(viaSession.kind, 'success', '带会话工作区的 invocation 必须能命中该项目')
+      assert.match(viaSession.text, /session-proj/, '必须按会话工作区解析 run/（不得回落到宿主启动目录）')
+      // 反向：同一 invocation 在**没有**会话工作区时只认兜底 cwd → 该项目不存在（证明优先级真的生效）
+      const viaFallback = def.handler({ rawInput: ' session-proj', signal: new AbortController().signal })
+      assert.match(viaFallback.text, /未找到项目/, '无会话工作区时应回落到 opts.cwd（只认 cwd 下的 run/）')
+    } finally {
+      rmSync(d2, { recursive: true, force: true })
+    }
     // 入口路径也走一遍：process.cwd() 不含 run/ 时不得抛错
     mod.apply({ get: () => undefined, effect: (fn) => fn(), skills: { register: () => () => {} } })
     await settle()

@@ -1,4 +1,4 @@
-# lunheng-article-pipeline bundle patch（DSH 原生插件 v18.2.5）
+# lunheng-article-pipeline bundle patch（DSH 原生插件 v18.2.6）
 #
 # 本文件用 DSH cordis-plugin-include 的 `- insert:` 列表语法在 standard 组合树之上叠加 4 行：
 #   1. **本包入口（自注册行）**：`name: lunheng-article-pipeline` → loader 按包名解析到
@@ -27,8 +27,11 @@
 # - `- insert: - id: X`：新增一行（不覆盖任何东西；DSH 真正推荐的 patch 模式）
 # - 普通行按 id-targeted patch existing row；新增行必须用 - insert: 形式
 #
-# ⚠️ **执行面披露（v2.5.2-dsh.13 新增；v18.0.0 复核为 3 处）**：本文件共 3 处 `!!js`
-#   （3 处分档 agentOptions：各自读 env、未设则返回 undefined）。
+# ⚠️ **执行面披露（v2.5.2-dsh.13 新增；v18.2.6 更正计数并复核为 6 处）**：本文件共 **6 处** `!!js` ——
+#   **3 处 `disabled:`（三段分档工具行的行级门控）+ 3 处 `agentOptions:`（各自读 env、未设则返回 undefined）**。
+#   v18.2.6 更正：旧注释（与 `SECURITY.md` 旧版）写「共 3 处（3 处分档 agentOptions）」，**漏算了 3 处 `disabled:`**
+#   ——而 `disabled` 表达式**同样由宿主以完整 Node 权限在加载期求值**（`loader/src/config/entry.ts:104-107`
+#   的 `disabledOf()`），故旧披露把加载期执行面**少报了一半**。计数口径：`^\s*[A-Za-z]+:\s*!!js` 的 YAML 值行。
 #   `!!js` 由宿主进程以完整 Node 权限在**加载期**求值，发生在 agent 沙箱与审批关卡之前——
 #   安装本包即等于允许这些表达式在启动时执行。因此：
 #   - **只允许** `process.env.*`、全局 `Object.assign` 级取值（v18.0.0 起不再需要 `baseUrl`/`URL`）；
@@ -39,9 +42,25 @@
 #     故本文件采用「未设即 undefined」形态，避免传空对象触发 provider 的 agentOptions 能力门。
 
 # ── 1. 本包入口（自注册行；id 用包名，便于其他层按 id 覆盖本行 config）──────────
+# v18.2.6：本行现在**有 Config 了**（`lib/index.js` 的 `Config`）。可在此按需覆盖，例如：
+#   - id: lunheng-article-pipeline
+#     name: lunheng-article-pipeline
+#     config: { quiet: true, scriptTimeoutMs: 180000 }
+# 非法配置会在**加载期**响亮失败（Cordis 的 standard-schema 校验），不会静默回落到默认值。
 - insert:
     - id: lunheng-article-pipeline
       name: lunheng-article-pipeline
+
+# ── 分档闸门（v18.2.6 改为「显式开启才挂载」）───────────────────────────────
+# 为什么改（第三方审计 P2-19）：旧表达式只在 `LUNHENG_TIERING=off` 时禁用三行，于是
+#   **任何装了本包的人都默认多出 3 个工具**；而三行的 `agentOptions` 在全继承形态下返回 `undefined`，
+#   即这三个工具与内置 `subagent` **完全同义**——每会话白付 3 份工具 schema（文档自己实测「工具数恒为 29」）。
+# 新口径（**默认关，配置即开**，且完全向后兼容既有可用配置）：
+#   · 未设任何 LUNHENG_* → **三行不装载**（默认零成本）；
+#   · 设了任一档的 PROVIDER/MODEL → 自动装载（旧用户「设了模型就生效」的行为不变）；
+#   · `LUNHENG_TIERING=on|1|true` → 显式装载（全继承形态下也可挂，便于先验证工具是否可见）；
+#   · `LUNHENG_TIERING=off` → 强制不装载（优先级最高，与旧语义一致）。
+# 该表达式对三行**完全同形**（同一份判定），故三行同进同退：要么三档工具都在，要么都不在。
 
 # ── 2. 检索档 subagent（T1/T2/T3 便宜快）────────────────────────────────
 # v2.5.2-dsh.17 改写（字段独立 + 一键退路 + 不写死任何厂商默认）：
@@ -73,7 +92,7 @@
       #   打印声明行**，且 DSH Desktop 的 dsh shim 硬编码 DSH_HOME、无法用干净 profile 实测组合树，
       #   故「off 时工具数是否真的少 3」仍需在能起 headless 的环境核对真实工具清单。
       #   退化行为安全：即便某版本忽略该键，行为与 v18.0.4 一致（三行仍在、模型继承）——不产生错误语义。
-      disabled: !!js "process.env.LUNHENG_TIERING === 'off'"
+      disabled: !!js "process.env.LUNHENG_TIERING === 'off' || (!process.env.LUNHENG_TIERING && !process.env.LUNHENG_RETRIEVAL_PROVIDER && !process.env.LUNHENG_RETRIEVAL_MODEL && !process.env.LUNHENG_STRONG_PROVIDER && !process.env.LUNHENG_STRONG_MODEL && !process.env.LUNHENG_AUDIT_PROVIDER && !process.env.LUNHENG_AUDIT_MODEL)"
       config:
         # ✅ v18.2.4：`provider: spawn` 的**合法性已证实**（v18.0.5 起列为「待问 DSH 官方」的开放问题，现已结案）：
         #   ① 官方 `config-catalog`（生成自 `packages/subagent/tool-subagent/src/index.ts:48`）的
@@ -93,7 +112,7 @@
 - insert:
     - id: tool-subagent-strong
       name: '@deepseek-ai/dsh-tool-subagent'
-      disabled: !!js "process.env.LUNHENG_TIERING === 'off'"
+      disabled: !!js "process.env.LUNHENG_TIERING === 'off' || (!process.env.LUNHENG_TIERING && !process.env.LUNHENG_RETRIEVAL_PROVIDER && !process.env.LUNHENG_RETRIEVAL_MODEL && !process.env.LUNHENG_STRONG_PROVIDER && !process.env.LUNHENG_STRONG_MODEL && !process.env.LUNHENG_AUDIT_PROVIDER && !process.env.LUNHENG_AUDIT_MODEL)"
       config:
         provider: spawn
         toolName: subagent_strong
@@ -104,7 +123,7 @@
 - insert:
     - id: tool-subagent-audit
       name: '@deepseek-ai/dsh-tool-subagent'
-      disabled: !!js "process.env.LUNHENG_TIERING === 'off'"
+      disabled: !!js "process.env.LUNHENG_TIERING === 'off' || (!process.env.LUNHENG_TIERING && !process.env.LUNHENG_RETRIEVAL_PROVIDER && !process.env.LUNHENG_RETRIEVAL_MODEL && !process.env.LUNHENG_STRONG_PROVIDER && !process.env.LUNHENG_STRONG_MODEL && !process.env.LUNHENG_AUDIT_PROVIDER && !process.env.LUNHENG_AUDIT_MODEL)"
       config:
         provider: spawn
         toolName: subagent_audit
