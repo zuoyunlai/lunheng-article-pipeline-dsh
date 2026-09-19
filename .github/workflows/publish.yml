@@ -6,8 +6,8 @@ on:
       - 'v*'
   workflow_dispatch:  # 手动补 dist-tag（如 latest 未跟随最新版时）
 
+# 默认最小权限（v18.2.6 拆分）：`gates` 作业持有下面这一档；发布令牌只在 `publish` 作业里提权。
 permissions:
-  id-token: write   # 必须：OIDC 信任发布的令牌
   contents: read
 
 # 同一 tag 的发布不并发（发布是不可逆动作）
@@ -19,24 +19,34 @@ env:
   PKG: lunheng-article-pipeline
 
 jobs:
-  publish:
+  # ── 发布前四道门 + 回归测试（v18.2.6 从 publish 作业里拆出来）──────────────────────
+  # 为什么拆（第三方审计「CLI 门的外部依赖被排除在供应链考虑之外」）：
+  #   门 2 会**从 registry 现场下载并执行**第三方 CLI（`dsh-plugin-guide`，见 scripts/plugin-surface-check.mjs 的
+  #   获取链）。此前它跑在**持有 `id-token: write` + `NPM_TOKEN` 的发布作业**里 —— 等于让一个下载来的包在
+  #   发布身份面前执行。拆开后：本作业 `contents: read`、**无 id-token、不读任何 secret**，只跑门与测试；
+  #   `publish` 作业 `needs: gates`，门失败即**不可能**开始发布。
+  # 保守改动声明：只调整作业边界与权限，不改任何既有发布语义（OIDC / `--tag dsh` / 幂等守卫 / gitHead 断言全部保留）。
+  gates:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      # Actions 固定到 commit SHA（v2.5.2-dsh.13）：publish 作业持 id-token: write，
-      # 可移动的大版本 tag 一旦被上游改动即可被利用来发布恶意版本
+      # Actions 固定到 commit SHA（v2.5.2-dsh.13）：可移动的大版本 tag 一旦被上游改动即可被利用来发布恶意版本
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4  # v5 setup-node 仍按 packageManager 探测 pnpm（package-manager-cache: false 只关缓存不关探测），故显式装上
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version: '24'   # Trusted Publishing 要求 npm ≥11.5.1；Node 24 自带 npm 已满足（不再 `npm i -g npm@latest`，避免发布环境不可复现）
+          node-version: '24'   # 门 2 需要 Node 24：Node 22.19 自带的 npm 10.9.3 无法安装本检查所用的 dsh-plugin-guide
           package-manager-cache: false # v5 把默认值反转为 true；本仓库无 lockfile 且不 pnpm install（v18.2.4 审计 F.1 维持不缓存）
-          registry-url: 'https://registry.npmjs.org'
 
-      # ── 发布前四道门（fail-closed：任一不过即中止，绝不发布未校验内容）────────
+      # ── 四道门（fail-closed：任一不过即中止，绝不发布未校验内容）──────────────────
       - name: 门 1/4 一致性自检（版本/白名单/口径/工具名/CHANGELOG 段落）
         run: node skills/lunheng-article-pipeline/scripts/consistency-check.mjs
 
       - name: 门 2/4 打包面检查（bundle 契约 + package.json 元数据 + patch 行依赖 + 工程红线）
+        # STRICT_WARN=1（v18.2.6）：warn 也阻塞——「0 warn」此前只是文档承诺，代码只看 failed === 0
+        env:
+          STRICT_WARN: '1'
         run: node scripts/plugin-surface-check.mjs
 
       - name: 门 3/4 机械卫生门（语法/JSON/YAML/行尾/UTF-8/发布包内容/退出码契约）
@@ -47,6 +57,22 @@ jobs:
 
       - name: 随包脚本回归测试
         run: node --test "tests/**/*.test.mjs"
+
+  # ── 发布（唯一持有发布身份的作业）─────────────────────────────────────────────
+  publish:
+    needs: gates                 # 门失败即不发布（v18.2.6：断链式依赖，比同作业内串跑更强）
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write            # 必须：OIDC 信任发布的令牌（只在本作业提权）
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4  # v5 setup-node 仍按 packageManager 探测 pnpm（package-manager-cache: false 只关缓存不关探测），故显式装上
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'   # Trusted Publishing 要求 npm ≥11.5.1；Node 24 自带 npm 已满足（不再 `npm i -g npm@latest`，避免发布环境不可复现）
+          package-manager-cache: false # v5 把默认值反转为 true；本仓库无 lockfile 且不 pnpm install（v18.2.4 审计 F.1 维持不缓存）
+          registry-url: 'https://registry.npmjs.org'
 
       # 防误发：git tag 名必须与 package.json version 一致（仅 tag 触发时校验）
       - name: 校验 tag 与版本一致

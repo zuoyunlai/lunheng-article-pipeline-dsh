@@ -94,19 +94,30 @@ jobs:
   # 随包脚本回归测试（v2.5.2-dsh.13 新增）
   # 矩阵含 windows-latest 与 macos-latest：final-check 的 POSIX 崩溃、路径含空格、
   # 行尾/编码差异等缺陷**只在非作者平台或跨平台时才暴露**（作者本机为 Windows）
+  #
+  # v18.2.6 加 Node 维度（第三方审计「Node 矩阵未覆盖 engines 的 ≥24 侧」）：
+  #   `engines.node` = `^22.19.0 || >=24.0.0`，而此前**唯一跑测试的作业**固定 22.19 →
+  #   **≥24 侧只在发版那一刻由 publish 作业的回归测试验证一次**（发布时才第一次发现「24 上有问题」，
+  #   而 npm 版本不可覆盖 ⇒ 只能 bump 重发）。现矩阵加 `24`，为省 CI 分钟**只跑 ubuntu**
+  #   （跨平台 × 跨 Node 的组合收益递减：平台差异与 Node 版本差异是两个正交面，各覆盖一次即可）。
   script-tests:
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
+        node: ['22.19']            # 运行时下限（engines 的左半边）
+        include:
+          - os: ubuntu-latest
+            node: '24'             # engines 的 ≥24 侧：ubuntu 上跑一次即可
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4  # v5 setup-node 仍按 packageManager 探测 pnpm（package-manager-cache: false 只关缓存不关探测），故显式装上
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version: '22.19'
+          node-version: ${{ matrix.node }}
           package-manager-cache: false # v5 把默认值反转为 true；本仓库无 lockfile 且不 pnpm install（v18.2.4 审计 F.1 维持不缓存）
       - name: 随包脚本回归测试（node --test）
         # 用引号保护的 glob：让 Node 自己展开（bash 与 pwsh 都能原样传递）
+        # CI 用**标准隔离模式**（受限 DSH 会话里的 `--test-isolation=none` 降级跑法只用于本地，见 CONTRIBUTING）
         run: node --test "tests/**/*.test.mjs"
