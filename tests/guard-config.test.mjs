@@ -74,21 +74,25 @@ test('B-5 基准错位：会话工作区 ≠ 进程 cwd 时，相对路径写机
   assert.match(reason, /机制文件写保护/)
 })
 
-// ⚠️ 路径拼写变体必须**按平台分表**（v18.2.6 CI 首跑踩到）：
-//   `e:/…`（盘符）与 `\\?\E:\…`（长路径前缀）是 **Windows 专属**语义；在 POSIX 上这两个串是
-//   **合法的相对路径**（反斜杠是合法文件名字符，`\\?\` 只是个普通目录名），guard 判 ALLOW 才是
-//   正确行为——若无条件断言 DENY，ubuntu/macOS 上必红（CI 实测：windows-latest 绿、另三者红）。
-//   POSIX 侧改用**同义**的拼写变体（重复分隔符 / 点段）继续覆盖「归一化」这层能力。
+// ⚠️ 路径拼写变体必须**按平台分表**（v18.2.6 CI 两轮实测踩到）：
+//   「反斜杠绝对路径」「盘符大小写」「`\\?\` 长路径前缀」三者都是 **Windows 专属**语义。在 POSIX 上
+//   反斜杠是**合法的文件名字符**，`\home\runner\…` 与 `\\?\…` 都退化成**相对路径**、解析后不在
+//   受保护根内——此时 guard 判 ALLOW 才是**正确**行为。故这三种写法只能在 win32 上断言 DENY；
+//   无条件断言必红（CI 实测：windows-latest 绿、ubuntu/macos 三矩阵红，且**只有这一条**用例红）。
+//   POSIX 侧改用两平台同义的拼写变体，继续覆盖 guard 的「归一化」这层能力。
 const WIN = process.platform === 'win32'
-const SPELLING_VARIANTS = WIN
-  ? [
-      ['小写盘符（Windows 专属）', { file_path: SKILL_MD.replace(/^([A-Za-z]):/, (_, d) => `${d.toLowerCase()}:`) }],
-      ['长路径前缀 \\\\?\\（Windows 专属）', { file_path: `\\\\?\\${SKILL_MD.replace(/\//g, '\\')}` }],
-    ]
-  : [
-      ['重复分隔符 //', { file_path: `${SKILL_DIR}//SKILL.md` }],
-      ['点段 /.', { file_path: `${SKILL_DIR}/./SKILL.md` }],
-    ]
+const WIN_ONLY_SPELLING = [
+  ['反斜杠绝对路径（Windows 专属）', { file_path: SKILL_MD.replace(/\//g, '\\') }],
+  ['小写盘符（Windows 专属）', { file_path: SKILL_MD.replace(/^([A-Za-z]):/, (_, d) => `${d.toLowerCase()}:`) }],
+  ['长路径前缀 \\\\?\\（Windows 专属）', { file_path: `\\\\?\\${SKILL_MD.replace(/\//g, '\\')}` }],
+]
+/** 两平台都成立：`//` 与 `/.` 在 POSIX 与 Windows 上都会被 `resolve` 归一；尾部空白测 `trim()`。 */
+const COMMON_SPELLING = [
+  ['重复分隔符 //', { file_path: `${SKILL_DIR}//SKILL.md` }],
+  ['点段 /.', { file_path: `${SKILL_DIR}/./SKILL.md` }],
+  ['尾部空白（guard 必须先 trim）', { file_path: `${SKILL_MD}   ` }],
+]
+const SPELLING_VARIANTS = [...(WIN ? WIN_ONLY_SPELLING : []), ...COMMON_SPELLING]
 
 test('B-6 路径拼写：平台专属拼写 / 嵌套对象 / 补丁文本 / `..` 绕行全部被拦', async () => {
   const { guards } = await runApply()
@@ -96,7 +100,6 @@ test('B-6 路径拼写：平台专属拼写 / 嵌套对象 / 补丁文本 / `..`
   const ws = PACKAGE_ROOT
   const variants = [
     ['绝对路径（正斜杠）', 'write', { file_path: SKILL_MD }],
-    ['反斜杠绝对路径', 'write', { file_path: SKILL_MD.replace(/\//g, '\\') }],
     ...SPELLING_VARIANTS.map(([label, args]) => [label, 'write', args]),
     ['二层嵌套对象（旧 writtenPath 不递归对象）', 'write', { edits: { file: { file_path: SKILL_MD } } }],
     ['数组多文件编辑', 'write', { edits: [{ file_path: SKILL_MD }] }],
