@@ -83,17 +83,23 @@ try {
   })(pkg)
   const unpackedSize = shipped.reduce((s, rel) => s + statSync(join(pkg, rel)).size, 0)
 
-  // ② 关键文件齐备
+  // ② 关键文件齐备（v18.2.6：`lib/*.js` **从解包产物派生**，不再逐个硬列）
+  //   · 为什么派生：`lib/` 是包入口目录、正在演进（新增模块是常态），硬列清单会同时犯两个错——
+  //     ①新增的入口模块**不进清单**（没人被要求同步它），②清单里删掉的文件仍被当成必备。
+  //     口径与 `repo-hygiene-check` 规则①一致：**入口目录里的每个 `.js` 都必须随包**，逐个断言存在。
+  //   · 与具体文件名解耦（`lib/` 由另一条线改动）：只要求「路径存在」，不要求任何特定文件名。
+  const libDir = join(pkg, 'lib')
+  const libModules = existsSync(libDir)
+    ? readdirSync(libDir, { withFileTypes: true }).filter((e) => e.isFile() && e.name.endsWith('.js')).map((e) => e.name).sort()
+    : []
+  if (libModules.length === 0) bad('发布物 lib/ 下没有任何 .js（入口目录为空？`main` 会解析失败）')
   const mustExist = [
     'package.json',
-    'lib/index.js',
-    'lib/tools.js',
-    'lib/guard.js',
-    'lib/commands.js',
     'cordis.patch.yml',
     `skills/${PKG_NAME}/SKILL.md`,
     `skills/${PKG_NAME}/AGENTS.md`,
     `skills/${PKG_NAME}/scripts/_lib/exit-guard.mjs`,
+    ...libModules.map((f) => `lib/${f}`),
   ]
   for (const rel of mustExist) {
     if (existsSync(join(pkg, rel))) ok(`随包：${rel}`)
@@ -230,11 +236,20 @@ try {
       // 解包目录也必须是规范化路径才可比（macOS `/var` ↔ `/private/var`、Windows junction）
       if (rbPath && canon(rbPath) === canon(join(pkg, 'skills', PKG_NAME))) ok('resourceBase 指向解包后的技能目录')
       else bad(`resourceBase 未指向解包技能目录：${JSON.stringify(rb)}`)
-      const roleCards = existsSync(join(pkg, 'skills', PKG_NAME, 'references', 'agents'))
-        ? readdirSync(join(pkg, 'skills', PKG_NAME, 'references', 'agents')).filter((f) => f.endsWith('.md')).length
+      // 角色卡数：**期望值从源码树的 `references/agents/` 派生**（v18.2.6）——旧版写死 `>= 11`，
+      //   于是「新增一张角色卡」不需要任何门配合（清单不要求到位），而「某张卡没随包」也可能因
+      //   总数仍 ≥11 而被放过。现改为**两边都数**：源码树张数 vs 发布物张数，**必须相等且 > 0**。
+      const srcAgentsDir = join(ROOT, 'skills', PKG_NAME, 'references', 'agents')
+      const pkgAgentsDir = join(pkg, 'skills', PKG_NAME, 'references', 'agents')
+      const expectedCards = existsSync(srcAgentsDir)
+        ? readdirSync(srcAgentsDir, { withFileTypes: true }).filter((e) => e.isFile() && e.name.endsWith('.md')).length
         : 0
-      if (roleCards >= 11) ok(`随包角色卡 ${roleCards} 张（T0-T9 齐）`)
-      else bad(`随包角色卡只有 ${roleCards} 张（期望 ≥11）`)
+      const roleCards = existsSync(pkgAgentsDir)
+        ? readdirSync(pkgAgentsDir, { withFileTypes: true }).filter((e) => e.isFile() && e.name.endsWith('.md')).length
+        : 0
+      if (expectedCards === 0) bad('源码树 references/agents/ 下没有任何角色卡——期望值无法派生（目录布局变了？）')
+      else if (roleCards === expectedCards) ok(`随包角色卡 ${roleCards} 张 = 源码树 references/agents/ 张数（无缺卡）`)
+      else bad(`随包角色卡 ${roleCards} 张 ≠ 源码树 ${expectedCards} 张（发布物缺卡或多卡；期望值由源码树派生，不要写死数字）`)
     } else if (!problems.length) {
       bad('apply 未调用 skills.register')
     }

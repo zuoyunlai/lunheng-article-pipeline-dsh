@@ -8,10 +8,17 @@
 //                  M-Exist-4 审计条目闭环 / M-Exist-5 阶段闸门记录表 /
 //                  M-Exist-6 审稿报告与期刊匹配 / M-Exist-7 交付说明字段齐备 /
 //                  M-Exist-8 批判报告覆盖（C1-C7）/ M-Exist-9 审计报告 G 项覆盖；
-//                  M-Form-8 增补「承重墙超载」机检 → M 门 22 项（脚本 21 项 + M-Integrity-2 主控）
+//                  M-Form-8 增补「承重墙超载」机检 → 本脚本机检 **22 项**（M-Form 11 + M-Exist 10 + M-Integrity-1 佐证）
+// v18.2.6 审计修复：M 门**总项数 23 项 = 机检 22 项 + 人工 1 项（M-Integrity-2 跨文件判断，T8 亲做）**。
+//   旧头注释写「M 门 22 项（脚本 21 项 + M-Integrity-2 主控）」——**与本脚本自己输出的 `total` 矛盾**
+//   （实测真实项目回放 `total = 22`：机检 22 项就是 M-Form 11 + M-Exist 10 + M-Integrity-1，没有第 23 个机械项）。
+//   真源口径见 `AGENTS.md`「M 门」节与 `references/_shared/M-Gate-Algorithm.md`：23 项中 22 项已脚本化。
+//   本脚本报告里的 `total` = **本次实际入账的机检项数（满配 22）**，人工项 M-Integrity-2 不由本脚本产出。
 // 用法: node m-gate-check.mjs <final/定稿.md> <final/证据包目录> [--summary] [--fig-dir <图件目录>] [--report <path>]
 //   --summary：仅输出聚合统计（total/pass/p0/p1/p2/soft/skips）+ 硬失败项；省略通过项 details[]（省 ~80% 输出字节，机器可读友好）
-//   --fig-dir：图件目录（缺省自动推 <定稿目录>/图件）
+//   --fig-dir：图件目录（缺省自动推 <定稿目录>/图件 或 <项目根>/final/图件）
+//              ⚠️ v18.2.6：**给了值但路径不存在 → exit 10**（旧版静默丢弃该参数并回退猜测目录，
+//              于是「路径敲错」得到的结论比「正确传参」更宽松，与下方定稿/证据包的 10 处理自相矛盾）
 // 配套：M-Gate-Algorithm.md「机械化脚本化」段
 // 严重度评级（v2.5.2-dsh.5 引入）：gate fail 时按 P0/P1/P2 分级；单子项失败子项数 ≤2 → P2 可放行
 import { readFileSync, readdirSync, statSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
@@ -21,6 +28,7 @@ import { fileURLToPath } from 'node:url';
 import { refsOf, dataCardIds } from './_lib/refs.mjs';                 // 引用编号口径真源
 import { TRUST_COMPLIANT_RE, TRUST_LOOSE_RE } from './_lib/trust.mjs'; // 信任级别口径真源
 import { splitCard } from './_lib/cards.mjs';                          // 卡片切块口径真源
+import { ENDNOTE_SECTIONS, h2Headings, firstEndnoteIndex, sectionBody } from './_lib/sections.mjs'; // 文末节/正文区边界真源（v18.2.6：与 count-chars 同源）
 import { analyzeSvg, svgTextNumbers, figureNoOf, figurePlaceholders } from './_lib/svg.mjs'; // SVG 图件口径真源
 import { installExitGuard, requireExistingFile, requireExistingDir } from './_lib/exit-guard.mjs'; // 退出码硬化（v18.0.5）
 installExitGuard();   // 必须在任何 readFileSync 之前：fs 类异常 → 10，其余内部错误 → 70（避免与「1 = P1 内容失败」撞义）
@@ -35,6 +43,12 @@ const wantSummary = args.includes('--summary');
 const figDirIdx = args.indexOf('--fig-dir');
 const figDirArg = figDirIdx >= 0 && args[figDirIdx + 1] ? args[figDirIdx + 1] : null;
 if (figDirIdx >= 0 && !figDirArg) { console.error('--fig-dir 缺少值'); process.exit(10); }
+// v18.2.6 顺带修：`--fig-dir --report x` 会把 `--report` 当成图件目录取值（缺值被静默接受），
+//   与 apply-diff 的 `--out` 缺值是同一形态 → 取值不得以 `--` 开头。
+if (figDirArg && figDirArg.startsWith('--')) {
+  console.error(`--fig-dir 缺少值（读到下一个参数 "${figDirArg}"）——请写成 --fig-dir <图件目录>`);
+  process.exit(10);
+}
 // --report <path>：把结构化报告落盘（供 build-evidence-bundle / T8 审计视图读取，v2.5.2-dsh.13 新增）
 const reportIdx = args.indexOf('--report');
 const reportPath = reportIdx >= 0 && args[reportIdx + 1] ? args[reportIdx + 1] : null;
@@ -64,6 +78,24 @@ if (!existsSync(evDir)) {
 //   `readFileSync` 才炸（EISDIR/ENOTDIR），未捕获异常 = exit 1 = 被读成「P1 内容失败」。现在前置判类型。
 requireExistingFile(draftPath, '定稿');
 requireExistingDir(evDir, '证据包目录');
+// v18.2.6 修（第三方审计 P1-1）：`--fig-dir` 给了值但路径不存在 → **exit 10**（复用 _lib/exit-guard 语义）。
+//   旧实现 `:702 figDir = figDirArg && existsSync(figDirArg) ? figDirArg : (…按候选推导…)` 把**不存在的路径静默丢弃**
+//   并回退到猜测目录，实测后果（审计 B 报告）：
+//     · 不传 --fig-dir ‖ 传一个**不存在**的目录 → stdout **逐字节相同**（都判 M-Form-9 P1）；
+//     · 传「存在但空」的目录 → 才是 P0 缺图。
+//   即**路径敲错时结论比正确传参更宽松**——主控据此会认为「图件没问题」而漏掉真缺图，
+//   与 `:55-66` 对定稿/证据包一律 10 的处理自相矛盾。现统一：路径类参数错一律 10。
+if (figDirArg) {
+  if (!existsSync(figDirArg)) {
+    console.error(
+      `图件目录不存在（--fig-dir）: ${figDirArg}\n` +
+        `  —— 若本项目**未配图**，请不要传该参数（缺省会按 <定稿目录>/图件 与 <项目根>/final/图件 推导）；\n` +
+        `  —— 若确已配图，请核对路径（规范位置是 <项目根>/final/图件）。`,
+    );
+    process.exit(10);
+  }
+  requireExistingDir(figDirArg, '图件目录（--fig-dir）');   // 存在但不是目录 → 同样 10
+}
 
 // === 项目定位共用助手（v18.0.2：从 M-Integrity-1 段提到模块级，供 M-Form-9 复用）===
 // 从给定目录向上查找首个含 `01-任务简报.md` 的目录——兼容 `final/定稿.md` 与 `drafts/初稿-vN.md`
@@ -129,12 +161,22 @@ const latestReport = (dir, prefix) => {
 };
 // ④ markdown 表格行切单元格。`protect: true` 先保护「转义竖线 `\|`」与「行内代码块内的竖线」——
 //    v18.0.0 修复（冲突⑩）：验收标准里写正则 `a|b|c` 会被裸 split 切错列 → 误读「关闭状态」。
+//    v18.2.6 修（第三方审计 P2）：旧实现 `split('|').slice(1, -1)` **假定每行都以 `|` 结尾**——
+//    手写表格漏写行尾竖线（`| A | B | 已关闭`）时最后一列被静默丢弃，而丢弃的往往正是
+//    「关闭状态 / 结论 / 验收」列 → 该列缺失被读成「空」→ 误判「关闭状态为空」或「结论无实据」。
+//    现在：**行尾无 `|` 时按「无尾竖线」切列**（只剥首竖线，不丢末列），两种写法列数一致。
 const PROTECT_CH = '\u0001';
 const tableCells = (line, { protect = false } = {}) => {
   const src = protect
     ? line.replace(/\\\|/g, PROTECT_CH).replace(/`[^`]*`/g, (mm) => mm.replace(/\|/g, PROTECT_CH))
     : line;
-  return src.split('|').slice(1, -1).map((c) => c.trim().replace(new RegExp(PROTECT_CH, 'g'), '|'));
+  const trimmed = src.replace(/\s+$/, '');
+  const hasTrailingPipe = trimmed.endsWith('|');
+  const cells = trimmed.split('|');
+  // 首竖线（行首 `|` 或 `| `）不计入单元格；仅当行尾真有 `|` 时才剥掉末尾那个空段
+  if (cells.length > 0 && cells[0].trim() === '') cells.shift();
+  if (hasTrailingPipe && cells.length > 0) cells.pop();
+  return cells.map((c) => c.trim().replace(new RegExp(PROTECT_CH, 'g'), '|'));
 };
 const isSeparatorRow = (cells) => cells.every((c) => /^:?-{2,}:?$/.test(c) || c === '');
 // ⑤ 段体范围：返回标题行之后的段体（`body`），边界为下一个标题（默认 `^##`，可调为 `^#{2,4}`）
@@ -205,17 +247,24 @@ const walkMd = (dir) => {
 };
 
 // === v2.5.2-dsh.5 修订：白名单 5 节 + AI 使用声明（M-Form-2 / M-Form-7 一致）===
-const WHITELIST = ['参考文献', '数据来源', '案例来源', '先行者文献', 'AI 使用声明'];
+// v18.2.6：列表真源上收到 `_lib/sections.mjs`（`ENDNOTE_SECTIONS`）——同一份清单此前在
+//   `count-chars.mjs` / `m-gate-check.mjs` 各写一份，口径发散过一次（正文区终点失配，见该模块头注释）。
+const WHITELIST = ENDNOTE_SECTIONS;
 
 // 引用编号正则：支持 [Lxx]/[Dxx]/[Cxx]/[C-主xx]/[先xx]，可带版本后缀
 const refRe = /\[(L|D|C-主|C|先)\d+(?:(?:-v| v)\d+)?\]/g;
 const norm = (r) => r.replace(/(?:-v| v)\d+\]/, ']');
 
 // 解析所有 ## 标题及其位置
-const h2Matches = [...text.matchAll(/^##\s+(.+)$/gm)];
-const h2s = h2Matches.map((m) => m[1].trim());
+// v18.2.6 修（第三方审计 §4.2）：改走 `_lib/sections.mjs` 的 `h2Headings`（行首 `##` + 任意空白解析）——
+//   与 count-chars 的正文区边界**同一真源**。旧式 `^##\s+(.+)$` 的 `\s` 含换行，
+//   会把「`##` 空行 + 下一行文本」也读成二级标题；且 CRLF 文件会把 `\r` 带进标题。
+const h2Matches = h2Headings(text);
+const h2s = h2Matches.map((m) => m.title);
 const firstIdx = h2s.findIndex((t) => WHITELIST.some((w) => t === w || t.startsWith(w)));
-const firstEnd = firstIdx >= 0 ? h2Matches[firstIdx].index : -1;
+// v18.2.6：文末节起点改走共享 `firstEndnoteIndex`（与 WHITELIST 前缀口径一致；无文末节 → -1）
+const firstEndnoteAt = firstEndnoteIndex(text);
+const firstEnd = firstEndnoteAt >= 0 ? firstEndnoteAt : (firstIdx >= 0 ? h2Matches[firstIdx].index : -1);
 
 // === M-Form-2 文末 5 节存在性（v2.5.2-dsh.5 修订：与 M-Form-7 一致）===
 const missingSections = WHITELIST.filter((s) => !h2s.some((h) => h === s || h.startsWith(s)));
@@ -365,6 +414,14 @@ results.push({
 // === M-Form-4 元数据泄露（v2.5.2-dsh.5 重大修订：黑名单转白名单）===
 const forPatternText = (() => {
   let t = body;
+  // v18.2.6 审计修复（第三方审计 P1-3：白名单**贪婪吞前缀 → 掩盖真泄露**）：
+  //   第 4 条白名单旧式为 `[\u4e00-\u9fff]+(?:大学|学院|研究院|政府|机构|组织|部|委|局|司|办)`——
+  //   前缀用 `+`（无上限）且从**句首**起匹配，于是任何「…机构/组织/部…」结尾的中文句子会被**整句剥离**：
+  //     实测「本报告由主控提交给评审机构。」→ 剥离后只剩「。」→ **「主控」这条 P0 级泄露扫不到**；
+  //     反例「主控说了算。」（无机构后缀）才命中 → 同一门对两句话给出相反结论，且**恰好放过最像真泄露的写法**。
+  //   修法：白名单只负责剥离**机构名本身**，故对每个白名单匹配加守卫——**匹配串里含角色/流程禁止词时不剥离**
+  //   （保留原文交给下面真正的黑名单扫描）。这样「国家统计局」照旧被剥离，而「…主控…机构」不会被吞。
+  const ROLE_IN_WHITELIST = /((?<!自)主控|文献检索员|数据检索员|分析员|写手|批判伙伴|审计员|审稿人|案例检索员|角色卡|交接报告|任务简报|反哺报告|修订说明)/;
   const whitelists = [
     /\[(?:L|D|C-主|C|先)\d+\]/g,
     /\d{4}年|\d{1,2}月\d{1,2}日/g,
@@ -372,7 +429,7 @@ const forPatternText = (() => {
     /[\u4e00-\u9fff]+(?:大学|学院|研究院|政府|机构|组织|部|委|局|司|办)/g,
     /AI Act|标识办法|GPT-?\d*|OpenAI|Claude/g,
   ];
-  for (const pat of whitelists) t = t.replace(pat, '');
+  for (const pat of whitelists) t = t.replace(pat, (m) => (ROLE_IN_WHITELIST.test(m) ? m : ''));
   return t;
 })();
 const forbiddenPatterns = [
@@ -467,7 +524,12 @@ let dataCard = '';
 //   会与 M-Form-10「已查 3 张卡」互相矛盾（实测 test-paper-01：同一次运行同时报
 //   「数据卡.md 不在证据包」与「已查 3 张卡」）。
 const dataCardPath6 = findCard('数据卡.md', 'data/数据卡.md');
-try { if (dataCardPath6) dataCard = readFileSync(dataCardPath6, 'utf8'); } catch {}
+// v18.2.6 审计修复 P1-7：`catch {}` 会让「卡读不出来」与「卡不存在」在输出里**完全同形**——
+//   实测权限错/编码错时 `dataCard` 静默留空 → detail 报「数据卡.md 不在证据包（也不在项目 data/ 目录）」
+//   （判定 P0 但原因错，主控会去补检索而不是修文件）。现把读取异常如实带入 detail。
+let dataCardReadError = null;
+try { if (dataCardPath6) dataCard = readFileSync(dataCardPath6, 'utf8'); }
+catch (e) { dataCardReadError = e; }
 if (dataCard) {
   const uniqueDataIds = dataCardIds(text);
   const trustLevelMiss = [];
@@ -506,9 +568,11 @@ if (dataCard) {
   results.push({
     gate: 'M-Form-6 信任级别',
     pass: false,
-    detail: layoutAnomaly
-      ? `数据卡.md 定位失败（证据包布局异常：${layoutAnomaly}）`
-      : '数据卡.md 不在证据包（也不在项目 data/ 目录）',
+    detail: dataCardReadError
+      ? `数据卡.md 读取失败（**不是缺失**）：${dataCardPath6} —— ${dataCardReadError.message}（v18.2.6：读取异常不再与「卡不存在」同形）`
+      : layoutAnomaly
+        ? `数据卡.md 定位失败（证据包布局异常：${layoutAnomaly}）`
+        : '数据卡.md 不在证据包（也不在项目 data/ 目录）',
     severity: 'P0',
   });
 }
@@ -646,7 +710,14 @@ try {
         wall8.notes.push('大纲未见承重墙清单（T4 未标 top1 → 本项无从核，T6/T7 按清单专项检查失效）');
       }
     }
-  } catch { /* 承重墙是增强项：解析失败不拖垮 M-Form-8 原有覆盖率判定 */ }
+  } catch (e) {
+    // v18.2.6 审计修复 P1-7：承重墙是**增强项**（解析失败不拖垮 M-Form-8 覆盖率判定），
+    //   但旧写法 `catch {}` 让「增强项静默跳过」与「清单本来就没有」在输出里不可区分 →
+    //   主控以为「已核过承重墙、无超载」。现按既有做法留痕：异常**单独**记 `parseError`，
+    //   并在 detail 里无条件输出（`wall8.checked` 为 false 时 notes 分支不会执行，故不能只塞 notes）。
+    wall8.parseError = `承重墙清单解析失败（本增强项已跳过，承重墙判定退化为 LLM 兜底）：${e.message}`;
+    wall8.notes.push(wall8.parseError);
+  }
 
   const wallHard = wall8.overload.length > 0 || wall8.ghost.length > 0;
   let mform8Pass = (mform8Findings.L_missing === 0 && mform8Findings.weak === 0 && !wallHard);
@@ -670,6 +741,7 @@ try {
       `${mform8Findings.total} 段：${mform8Findings.L_missing} 段缺 L，${mform8Findings.weak} 段覆盖 <2 类${mform8Findings.details.length ? `（${mform8Findings.details.slice(0, 3).join('; ')}）` : ''}`,
       wallBit,
       wallBit2,
+      wall8.parseError || '',   // v18.2.6：解析异常**无条件**出现在 detail（不再无痕跳过）
       (wall8.checked && wall8.rows > 0 && !wall8.overload.length && wall8.notes.length) ? `备注：${wall8.notes[0]}` : '',
     ].filter(Boolean).join(' ｜ '),
     severity: mform8Severity,
@@ -680,7 +752,7 @@ try {
 
 // === M-Form-9 图件闭环（v2.5.2-dsh.16 新增）：[图N] 图位 ↔ final/图件/ ↔ 图上数字 三方对账 ===
 // 背景（第三方 SVG 链路审计）：T5 卡宣称「T7 跑 M-Gate 算法检查 [图N] 出现次数 ≥ 拍板图位数量 → P0 拦截」，
-// 但 M 门 16 项里**没有任何图项**、T7 速查表 0 处提及「图」、证据包不收图件 → 该条文无落地路径。
+// 但**当时**的 M 门（16 项）里**没有任何图项**、T7 速查表 0 处提及「图」、证据包不收图件 → 该条文无落地路径。
 // 本项即该条文的机械落地：缺图/图位不足 → 硬失败；孤儿图件/数字对不上 → 软提示（数字对账为启发式）。
 // 未启用配图（无图位且无图件目录）→ 记 N/A 且 pass=true（不得因「没配图」把 M 门判失败——配图默认关闭）。
 try {
@@ -699,13 +771,14 @@ try {
     join(figProjectRoot, 'final', '图件'),   // 规范口径：项目根/final/图件（drafts/ 被审场景）
   ];
   const figDirDefault = figDirCandidates.find((p) => existsSync(p)) || figDirCandidates[1];
-  const figDir = figDirArg && existsSync(figDirArg) ? figDirArg : (existsSync(figDirDefault) ? figDirDefault : null);
+  // v18.2.6：`figDirArg` 已在脚本头部经由 requireExistingDir 校验（不存在 → exit 10），故此处可直接采信
+  const figDir = figDirArg || (existsSync(figDirDefault) ? figDirDefault : null);
   const figNos = figurePlaceholders(text);
   const files = figDir ? readdirSync(figDir).filter((f) => f.toLowerCase().endsWith('.svg')) : [];
   const fileNos = new Map();
   for (const f of files) { const n = figureNoOf(f); if (n !== null && !fileNos.has(n)) fileNos.set(n, f); }
   // 图位数量对账（拍板数取自任务简报，best-effort 解析；解析不到则不判，避免误 P0）
-  let pledged = 0, pledgedFrom = '';
+  let pledged = 0, pledgedFrom = '', pledgedNote = '';
   try {
     // v18.0.2 修（D1，静默失效）：旧实现 `draftPath.replace(/final[\/]定稿\.md$/, …)` 只对 `final/定稿.md`
     //   生效；被审对象为 `drafts/初稿-vN.md` 时替换不命中 → briefPath 退回正文自身 → pledged 解析不到 → 0
@@ -718,8 +791,14 @@ try {
       const m2 = b.match(/拍板[^\n。]{0,20}?(\d+)\s*(?:张|个|幅)图/);
       pledged = Number((m1 && m1[1]) || (m2 && m2[1]) || 0);
       if (pledged) pledgedFrom = m1 ? '简报「图位数量」' : '简报「拍板 N 张图」';
+    } else {
+      pledgedNote = '未找到 01-任务简报.md → 「图位不足」对账已跳过（拍板图位数无从取得）';
     }
-  } catch { /* 简报缺失或不可读 → 不判 */ }
+  } catch (e) {
+    // v18.2.6 审计修复 P1-7：旧写法 `catch {}` 让「简报读不动」与「简报没写图位数」同形 →
+    //   主控会把「对账被跳过」读成「对账通过」。现按既有做法留痕（随 detail 的软提示输出）。
+    pledgedNote = `任务简报读取/解析失败 → 「图位不足」对账已跳过：${e.message}`;
+  }
 
   if (figNos.size === 0 && fileNos.size === 0) {
     results.push({
@@ -758,6 +837,8 @@ try {
     if (missingFigs.length) problems.push(`缺图：正文标了图位但 final/图件/ 无对应文件 → 图${missingFigs.join('、图')}（期望 图N_标题.svg）`);
     if (shortage) problems.push(`图位不足：${pledgedFrom} 记为 ${pledged} 张，正文仅 ${figNos.size} 个 [图N]（T5 卡「≥ 拍板数量」不满足）`);
     if (orphanFigs.length) softNotes.push(`孤儿图件：图${orphanFigs.join('、图')} 未被正文引用`);
+    // v18.2.6（P1-7）：对账被跳过（简报缺失/解析失败）必须**显式可见**，不得与「对账通过」同形
+    if (pledgedNote) softNotes.push(pledgedNote);
 
     const hard = problems.length > 0;
     // 严重度：**图件全缺（有图位但一个图件都没有/目录不存在）**或缺失总数 >2 → P0；其余缺图 → P1
@@ -821,10 +902,28 @@ if (firstIdx === -1) {
   //   处置三条：
   //     ① 扩展编号 `[脚注-N]`：**允许**，但必须**双向闭环**（正文 ↔ 文末条目）；
   //        闭环成立 → 记 P2 留痕（不判失败）；未闭环 → P1。
-  //     ② 其他非标准编号 → **P1**，提示改用标准编号（或由主控显式申报扩展编号）。
+  //     ② 其他非标准编号 → **P2 提示**（v18.2.6 审计修复 B-3 由 P1 降档；旧版 ≥3 条更升 P0）。
+  //        理由：本项判据是**形态黑名单**（正则扫出来的），假阳性代价与「漏引/孤儿」这类硬缺失不同量级——
+  //        用假阳性把整类选题判成 exit 2，比漏报一个非编号形态严重得多。降档后保持 hint 提示、留痕可查。
   //     ③ 基线编号 `[D-基-{R/T/C/E}-{NN}]` 是 glossary §三 正式格式 → **豁免**（负向断言剔除）。
+  //
+  // === v18.2.6 审计修复（第三方审计 B-3，P0：本正则曾制造**假 P0**并硬性阻断一类选题）===
+  // 旧式 `NONSTD_RE = /\[(?!D-基-)([A-Za-z\u4e00-\u9fff][^\][\s]{0,11}?)-(\d+)\]/g` 的判据松到
+  //   「方括号里有连字符和数字」即算非标准编号，**实测全部误判**：
+  //     [COVID-19]（前缀 5 字母）、[SARS-CoV-2]、[GPT-4]（数字 1 位）、[AI-2]、[B2B-2]
+  //   而本包支持「行业分析 / AI 产业评论」类选题，正文出现 `[GPT-4]`/`[COVID-19]` 是**必然**：
+  //   → M-Form-1 转 P0 → 整体 exit 2 → 按 AGENTS.md「M 门 exit 0 才返回」只能走 Acknowledged Limitations，
+  //   等于**对一整类选题硬性阻断**。修法（「必须像编号」而非「像连字符加数字」）：
+  //     ① 前缀 = **1-4 个大写 ASCII 字母**（`XX-12` 仍被抓；`COVID-19` 这种 5 字母的真术语不再命中），
+  //        或 **1-3 个汉字**（`[表-12]`/`[附录-12]` 这类中文畸形编号仍在网内）；
+  //     ② 后缀 = **纯数字且位数 ≥2**（`[GPT-4]`/`[AI-2]`/`[B2B-2]` 这类「模型名-版本号」因此出网）；
+  //     ③ 前缀不得含数字（`B2B-2` 出网）；`[D-基-…]` 负向断言与 `[脚注-N]` 过滤器原样保留。
+  //   仍被抓的形态：`[XX-12]`、`[AB-99]`、`[表-12]`、`[附录-01]`（假阳性代价已由下面的 P2 兜住）。
+  //   **已知代价（如实记录）**：`[GPT-4]` 这类真引用**游离于 M-Exist-1 闭环之外**（既不报漏引也不报孤儿）——
+  //   这是有意的取舍：宁可漏报非编号形态，也不再用假 P0 阻断整类选题；真正的引用闭环靠 `[Lxx]/[Dxx]/[Cxx]`
+  //   与扩展编号 `[脚注-N]` 覆盖。若需把某形态纳入闭环，应由主控显式申报扩展编号，而不是靠黑名单正则扫。
   const EXT_REF_RE = /\[脚注-\d+\]/g;
-  const NONSTD_RE = /\[(?!D-基-)([A-Za-z\u4e00-\u9fff][^\][\s]{0,11}?)-(\d+)\]/g;
+  const NONSTD_RE = /\[(?!D-基-)([A-Z]{1,4}|[\u4e00-\u9fff]{1,3})-(\d{2,})\]/g;
   const extInText = new Set(bodyProse.match(EXT_REF_RE) || []);
   const extInEnd = new Set(endnote.match(EXT_REF_RE) || []);
   const extLeaked = [...extInText].filter((r) => !extInEnd.has(r));   // 正文有、文末无
@@ -840,7 +939,8 @@ if (firstIdx === -1) {
     : `扩展编号未闭环：正文缺 ${extLeaked.join('、') || '无'} ｜ 文末缺 ${extOrphan.join('、') || '无'}（须在「数据来源」节内 ### 脚注 子节补条目，或删正文引用）`);
   const nonStdNote = nonStd.length === 0 ? '' : `非标准编号 ${nonStd.length} 个：${nonStd.slice(0, 5).join('、')}${nonStd.length > 5 ? ' 等' : ''}`
     + `——本门只对白名单编号（[Lxx]/[Dxx]/[Cxx]/[C-主xx]/[先NN]）做双向对账，该编号**游离于闭环之外**；`
-    + `修法：改用标准编号、或改用扩展编号 [脚注-N]（须双向闭环）、或由主控申报豁免`;
+    + `修法：改用标准编号、或改用扩展编号 [脚注-N]（须双向闭环）、或由主控申报豁免。`
+    + `（P2 提示：形态黑名单有假阳性可能——行业/AI 类稿件里的「术语-数字」形态请人工确认后再改）`;
   const mExist1Hard = leaked.length + orphan2.length + nonStd.length > 0;
   results.push({
     gate: 'M-Exist-1 引用双向对比',
@@ -851,9 +951,13 @@ if (firstIdx === -1) {
       nonStdNote,
       extNote,
     ].filter(Boolean).join(' ｜ '),
-    severity: mExist1Hard
-      ? (leaked.length + orphan2.length > 10 || nonStd.length >= 3 ? 'P0' : 'P1')
-      : (extUsed > 0 ? 'P2' : '通过'),
+    // 严重度（v18.2.6 审计修复 B-3）：**只有「漏引/孤儿」这类硬缺失才升 P0/P1**；
+    //   非标准编号（形态黑名单）单列 → P2 提示（旧版 `nonStd.length >= 3 → P0` 是一整类选题被
+    //   假阳性判 exit 2 的直接原因）。`pass` 仍为 false → 走 P2 分支 → 整体 exit 3（需 T8 复核），
+    //   留痕不消失，只是不再无条件阻断交付。
+    severity: (leaked.length + orphan2.length) > 0
+      ? ((leaked.length + orphan2.length > 10) ? 'P0' : 'P1')
+      : (nonStd.length > 0 ? 'P2' : (extUsed > 0 ? 'P2' : '通过')),
   });
 }
 
@@ -1067,7 +1171,11 @@ try {
         if (newestDraft && Number(ver11[1]) < newestDraft) {
           soft11.push(`清单标注「对应正文版本 v${ver11[1]}」落后于最新初稿 v${newestDraft}——留痕未随修订轮刷新`);
         }
-      } catch { /* best-effort */ }
+      } catch (e) {
+        // v18.2.6 审计修复 P1-7：版本留痕对账是增强项，但跳过必须可见（旧 `catch {}` 让
+        //   「对账跳过」与「版本一致」同形）。按既有做法记入 soft11。
+        soft11.push(`加载清单「对应版本」对账跳过（读 drafts/ 失败）：${e.message}`);
+      }
     }
     const hard11 = findings11.length > 0;
     results.push({
@@ -1235,10 +1343,36 @@ try {
         if (isSeparatorRow(c)) continue;
         rows5.push(c);
       }
-      const seen = rows5.map((r) => normLabel(r[iItem] || ''));
+      // === v18.2.6 审计修复（跨改动回归收口）：行身份 = **检查编号优先**，措辞不再要求逐字 ===
+      // 为什么：本轮内容线按审计 C-2 把模板那行「信任级别一致性（M-Exist-3）」改名成了
+      //   「引用闭环（M-Exist-3：[Dxx] 正文 ↔ 数据卡条目）」——**原行名指向一个实际不检查信任级别的门**
+      //   （信任级别由 M-Form-6 / G12 承担），留着它就是一行「会被机检、却没有检查在跑」的假绿行。
+      //   但 15 个真实项目的既有闸门记录（`audits/闸门记录-*.md`）写的仍是旧行名，而本项旧口径是
+      //   **标签逐字（归一后包含）比对** → 实测 15/15 项目被判「T2.5 检查项缺『引用闭环（M-Exist-3…）』」
+      //   → `guannian-yu-linian` 由「仅 P2（exit 3）」退化成「有 P1（exit 1）」，而 exit 1 会触发
+      //   T5 修订轮 —— 正是本包最反感的**假 P1 阻断交付**，且这次是自己引入的。
+      // 规则（模板侧与记录侧**同一套**归一，绝不两处口径）：
+      //   ① 行内出现检查编号（`（M-Exist-3：…）` / `（M-Form-6）` / `(M-Integrity-1)`，含 U+2011 连字符与空格变体）
+      //      → **行身份 = 识别到的第一个编号**（`引用闭环（M-Exist-3：…）` 与 `信任级别一致性（M-Exist-3）`
+      //      归一为同一行身份 `M-EXIST-3`；改措辞、补说明都不再触发假 P1）；
+      //   ② 任一侧没有编号 → 沿用既有「归一后逐字 + 双向包含」严格口径（模板其它行不受影响）；
+      //   ③ **缺行照样报**：归一化只让同一编号的不同措辞互相承认，不会让「整行不存在」通过；
+      //      编号被写成别的门（如把 M-Exist-3 写成 M-Exist-9）不满足模板行 → 照报。
+      //   ⚠️ **模板仍是唯一真源**——本规则只解决「同一编号的不同措辞」，不引入别名表、不放宽检查项集合。
+      const checkIdOf = (label) => {
+        const m = String(label ?? '').match(/M\s*[-\u2011]?\s*(Form|Exist|Integrity)\s*[-\u2011]?\s*(\d+)/i);
+        return m ? `M-${m[1].toUpperCase()}-${m[2]}` : null;
+      };
       for (const need of tplItems[gateId]) {
         const nn = normLabel(need);
-        const hit = seen.some((s) => s && (s.includes(nn) || nn.includes(s)));
+        const needId = checkIdOf(need);
+        const hit = rows5.some((r) => {
+          const raw = r[iItem] || '';
+          const rowId = checkIdOf(raw);
+          if (needId && rowId) return rowId === needId;   // 两侧都有编号 → 按编号判同一行
+          const s = normLabel(raw);                        // 缺编号的一侧 → 既有严格口径
+          return !!s && (s.includes(nn) || nn.includes(s));
+        });
         if (!hit) findings5.push(`${gateId} 检查项缺「${need}」（模板为真源，逐项都要有行）`);
       }
       let resPass = 0;
@@ -1305,7 +1439,13 @@ try {
                 `闸门记录-T7.5 全判 ✓，但 M-Gate-Report.json 的 exit = ${rj.exit}（非 0）且**无 T8 裁定段**——闸门结论与 M 门报告自相矛盾（P0）`,
               );
             }
-          } catch { soft5.push('M-Gate-Report.json 无法解析，未做闸门↔报告对账'); }
+          } catch (e) {
+            // v18.2.6 审计修复 P1-7：旧 `catch {}` 让「既有 M-Gate-Report.json 解析失败」**静默丢弃
+            //   T8 裁定段的对账**——而该报告里 `_t8_conclusion` 的保留逻辑正是为这条对账而写
+            //   （解析失败 = 读过却没核到，闸门会照显「闸门记录全判 ✓」而无任何提示）。
+            //   现按既有做法记 soft5 并给出原因（**不是**「无需对账」）。
+            soft5.push(`M-Gate-Report.json 无法解析，未做闸门↔报告对账（**不是**「无需对账」）：${e.message}`);
+          }
         }
       }
     }
@@ -1373,8 +1513,27 @@ try {
         jRows.push(c);
       }
     }
+    // v18.2.6 审计修复 P1-7（口径校正：简报**缺失** ≠ 简报**读不动**）：
+    //   「是否启用期刊匹配」的真源优先级 = ① **审稿报告自述**（`启用期刊匹配|期刊匹配助手` 命中即算启用）
+    //   → ② 项目 `01-任务简报.md` 的声明。
+    //   ① 简报**不存在**（ENOENT）：这是 Phase 4.5 之前的**合法状态**（最小项目 / 夹具常常没有简报），
+    //      旧行为即「按未启用处理」——保持，且**不推 soft6**（本门 `pass = !hard6 && soft6.length===0`，
+    //      推 soft 会把「审稿建议可消费性」这类**无关子判定**一起判 false，属过度触发）。
+    //      此口径不会放过「本该要求期刊匹配」的场景：**报告自述一旦已启用，无论简报如何都要求 Top 3 表**
+    //      （见下方 `jHead === -1` 的硬判定），即判据在①就兜住了，不依赖简报。
+    //   ② 简报**存在但读不动**（EACCES/EISDIR/编码异常…）：那才是「承重子检查被静默跳过」，
+    //      必须可见 → 记 soft6（旧 `catch { return false }` 与「简报说没启用」同形）。
+    let journalNote = '';
     const wantJournal = /启用期刊匹配|期刊匹配助手/.test(rt) || (() => {
-      try { return /启用期刊匹配/.test(readFileSync(join(projDir6, '01-任务简报.md'), 'utf8')); } catch { return false; }
+      try { return /启用期刊匹配/.test(readFileSync(join(projDir6, '01-任务简报.md'), 'utf8')); }
+      catch (e) {
+        if (e.code === 'ENOENT') {
+          journalNote = '项目 01-任务简报.md 不存在 → 「是否启用期刊匹配」按**未启用**处理（简报缺失是 Phase 4.5 之前的合法状态；判据以审稿报告自述优先）';
+          return false;
+        }
+        soft6.push(`未能读取项目 01-任务简报.md，「是否启用期刊匹配」以审稿报告自述为准：${e.message}`);
+        return false;
+      }
     })();
     if (jHead === -1) {
       if (wantJournal) findings6.push('任务简报已启用期刊匹配，但审稿报告无「综合匹配度」表（Top 3 缺失）');
@@ -1385,7 +1544,11 @@ try {
       const col6 = (kw) => head6.findIndex((h) => kw.test(h));
       const iComp = col6(/综合/), iTheme = col6(/主题/), iStyle = col6(/风格/), iCycle = col6(/审稿周期/), iWhy2 = col6(/推荐理由|理由/);
       let dbText = '';
-      try { dbText = readFileSync(join(skillRoot, 'references', '_shared', '期刊数据库.md'), 'utf8'); } catch { /* 降级 */ }
+      // v18.2.6 审计修复 P1-7：旧写法 `catch { /* 降级 */ }` 让「刊名数据库读不到」与
+      //   「刊名都在库里」在输出里完全同形 —— 「杜撰刊名」这条检查**静默失效**而报告照常显示
+      //   「评分自洽、期刊匹配可复算」。现按既有做法记入 soft6，并说明该子检查已降级。
+      try { dbText = readFileSync(join(skillRoot, 'references', '_shared', '期刊数据库.md'), 'utf8'); }
+      catch (e) { soft6.push(`期刊数据库（references/_shared/期刊数据库.md）读取失败 → 「杜撰刊名」检查已降级为本项跳过：${e.message}`); }
       const pct = (s) => { const m = String(s || '').match(/(\d+(?:\.\d+)?)\s*%/); return m ? Number(m[1]) : null; };
       for (const r of jRows) {
         const name = (r[0] || '').replace(/[*《》\s]/g, '');
@@ -1437,7 +1600,10 @@ try {
           }
         }
       }
-    } catch { /* 落地追踪为增强项，读不到就跳过 */ }
+    } catch (e) {
+      // v18.2.6 审计修复 P1-7：落地追踪为增强项，但「读不到修订说明 → 跳过对账」必须留痕
+      soft6.push(`审稿建议落地追踪跳过（读 drafts/修订说明-*.md 失败）：${e.message}`);
+    }
     const hard6 = findings6.length > 0;
     results.push({
       gate: 'M-Exist-6 审稿报告与期刊匹配',
@@ -1445,6 +1611,8 @@ try {
       detail: [
         `${latest6.name}｜6 维 ${dimScores.length}/6｜总评分 ${declaredTotal ?? '缺失'}${jHead !== -1 ? `｜期刊表 ${jRows.length} 行` : ''}`,
         hard6 ? `硬问题：${findings6.slice(0, 3).join('；')}` : '评分自洽、期刊匹配可复算',
+        // v18.2.6：简报缺失属**合法差序输入**——留痕在 detail（不推 soft6，故不影响 pass）
+        journalNote ? `备注：${journalNote}` : '',
         soft6.length ? `软提示：${soft6.slice(0, 2).join('；')}` : '',
       ].filter(Boolean).join(' ｜ '),
       severity: hard6 ? (findings6.length > 2 ? 'P0' : 'P1') : (soft6.length ? 'P2' : '通过'),
@@ -1812,7 +1980,9 @@ if (dataCard) {
   results.push({
     gate: 'M-Exist-3 引用闭环',
     pass: false,
-    detail: layoutAnomaly ? `数据卡定位失败（证据包布局异常：${layoutAnomaly}）` : '数据卡不存在（证据包与项目 data/ 均无）',
+    detail: dataCardReadError
+      ? `数据卡读取失败（**不是**「不存在」）：${dataCardReadError.message}`
+      : layoutAnomaly ? `数据卡定位失败（证据包布局异常：${layoutAnomaly}）` : '数据卡不存在（证据包与项目 data/ 均无）',
     severity: 'P0',
   });
 }
@@ -1824,7 +1994,12 @@ if (dataCard) {
 //     ① 数据条目数（[Dxx] 编号并集 ∪ 表格 `| 1.x |` 行）≥ 任务简报「需找数据点」之和 → 不足 P0
 //     ② 数据卡缺失 → P0；数据卡存在但 M-Form-6（独立信任级别段）未过 → P0
 //   仍保留「最终由主控 L4 跨文件判断」的定位：脚本只判这两项可机械化的对账。
-let briefData = { hasBrief: false, subclaims: 0, minDataPoints: 0, placeholder: 0 };
+// v18.2.6：`parseError` 保留「解析异常」（与「简报确实不存在」区分开）；`hasResearchSection` 区分
+//   「简报没有研究问题段」（门是对的，只是文案要准）与「有段但没解析出子问题」（门漏判，须修解析）。
+let briefData = {
+  hasBrief: false, subclaims: 0, minDataPoints: 0, placeholder: 0,
+  parseError: null, hasResearchSection: null, subclaimsSource: '未解析', subclaimsTrace: '',
+};
 try {
   // v18.0.0 修复（P0-3）：旧实现 `draftPath.replace(/final[\\/]定稿\.md$/, '01-任务简报.md')`
   //   **只对 `final/定稿.md` 生效**；被审对象为 `drafts/初稿-vN.md` 时替换不命中 → briefPath 退回初稿自身路径
@@ -1844,10 +2019,34 @@ try {
     briefData.hasBrief = true;
     briefData.briefPath = briefPath; // 留痕：供报告与复核追溯简报真源
     const briefText = readFileSync(briefPath, 'utf8');
-    // 子问题编号兼容：「子问题 A/B/C」（v2.5.2-dsh.5 模板规范）∪「S1/S2」（v2.5.2-dsh.4 表格旧格式）
+    // === 子问题解析（v18.2.6 审计修复 P1-7；实测根因）===
+    // 旧实现只认「子问题 A/B/C」（v2.5.2-dsh.5 模板规范）与「S1/S2」（v2.5.2-dsh.4 旧表格格式）
+    //   —— 即**编号必须写在「子问题」之后**。但主控手写简报最常见的是**数量在前的声明式写法**：
+    //     `## 研究问题（主控拆解，4 个子问题）`
+    //   （实测 `E:\HERNESS\run\甲醛白菜事件\01-任务简报.md:34` 正是此形，段内 1.-4. 四条子问题俱全）
+    //   → 旧正则一条都匹配不到 → `subclaims = 0` → 该门恒报「任务简报未见子问题（研究问题段缺失）」，
+    //   而简报本身完整、数据需求也齐备 → **detail 文案把主控引向「去补研究问题段」的错误动作**。
+    // 现三层口径（各算一次，取**最大**者；宁可偏严，且该值只用于「是否 >0」与展示）：
+    //   ① 逐子问题标签：`子问题 A/B/C` ∪ `S1/S2`（原口径，逐字不变）；
+    //   ② 声明式数量：`… 4 个子问题` / `四个子问题`（阿拉伯或单个中文数字）；
+    //   ③ 段内条目回退：「研究问题」段里的顶层有序/无序条目数（模板要求 3-5 个子问题）。
     const letterSub = [...briefText.matchAll(/子问题\s*([A-Z一二三四五六七八九十\d]+)/g)].map((m) => m[1]);
     const sSub = [...briefText.matchAll(/^[\s|]*S(\d+)\s/gm)].map((m) => `S${m[1]}`);
-    briefData.subclaims = new Set([...letterSub, ...sSub]).size;
+    const subByLabel = new Set([...letterSub, ...sSub]).size;
+    const CN_DIGIT = { 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+    const declaredSub = briefText.match(/([0-9一二三四五六七八九十两]{1,2})\s*个子问题/);
+    const subByDeclared = declaredSub
+      ? (/^\d+$/.test(declaredSub[1]) ? Number(declaredSub[1]) : (CN_DIGIT[declaredSub[1]] || 0))
+      : 0;
+    const researchSection = sectionBody(briefText, '研究问题');
+    const subBySectionItems = researchSection === null
+      ? 0
+      : researchSection.split('\n').filter((l) => /^\s*(?:\d+[.、)]|[-*]\s)/.test(l) && l.replace(/[\s\-*\d.、)]/g, '').length > 4).length;
+    briefData.hasResearchSection = researchSection !== null;
+    briefData.subclaims = Math.max(subByLabel, subByDeclared, subBySectionItems);
+    briefData.subclaimsSource = briefData.subclaims === subByLabel ? '子问题标签'
+      : (briefData.subclaims === subByDeclared ? '声明数量「N 个子问题」' : '研究问题段内条目');
+    briefData.subclaimsTrace = `标签 ${subByLabel} / 声明 ${subByDeclared} / 段内条目 ${subBySectionItems}`;
     // 需找数据点：已填数字「≥N」求和；占位符「≥____」单列计数（模板未填时如实提示，而非误报 0）
     // v18.2.1：**容忍「需找数据点：≥ 3」这类带冒号/破折号的写法**——模板给的是无冒号形态，
     //   但主控手写简报时极易补一个冒号，旧正则 `需找数据点\s*[≥>]` 在「…点：≥」上直接失配
@@ -1880,7 +2079,13 @@ try {
       : (aggNeed >= scopedNeed ? '需求段总量' : '逐子问题分配量之和');
     briefData.placeholder = (briefText.match(/需找数据点[^\d≥>]{0,4}[≥>]\s*_+/g) || []).length;
   }
-} catch {}
+} catch (e) {
+  // v18.2.6 审计修复 P1-7（**本批最关键的一处**）：旧写法 `catch {}` 把**整个简报解析块**的异常
+  //   无条件吞掉 —— 实测后果是 severity 退化为「LLM 兜底」、detail 还会写成
+  //   「任务简报不存在」，把「脚本解析失败」误导成「简报确实没写」。现如实留痕：
+  //   `briefData.parseError` 在下面的 M-Integrity-1 结果里**必现**，且与「简报不存在」用不同文案。
+  briefData.parseError = e.message;
+}
 {
   // ① 数据条目数（双格式并集；与 M-Gate-Algorithm M-Integrity-1 步骤 2 同口径）
   let dataEntries = 0;
@@ -1893,23 +2098,41 @@ try {
   const mForm6 = results.find((r) => r.gate.startsWith('M-Form-6'));
   const mForm6Bad = !!mForm6 && mForm6.pass !== true;
   const hardWhy = [];
+  // v18.2.6（P1-7）：解析异常单列一条，文案与「简报不存在」**明确区分**（旧版两者同形 → 误导）
+  if (briefData.parseError) {
+    hardWhy.push(`任务简报解析失败（**不是**「简报不存在」；本门子检查已跳过、严重度不再退化为 LLM 兜底）：${briefData.parseError}`);
+  }
   if (!briefData.hasBrief) hardWhy.push('任务简报缺失（无「需找数据点」可比对）');
-  else if (briefData.subclaims === 0) hardWhy.push('任务简报未见子问题（研究问题段缺失）');
+  else if (briefData.subclaims === 0) {
+    // v18.2.6：文案按「简报里到底有没有研究问题段」分两种，并附三层解析的中间量（可事后核对）
+    hardWhy.push(briefData.hasResearchSection === false
+      ? '任务简报未见「## 研究问题（主控拆解，3-5 个子问题）」段（模板规定必填段）'
+      : `研究问题段存在但未能解析出子问题（三层口径 标签/声明数量/段内条目 均未命中：${briefData.subclaimsTrace}）`);
+  }
   if (dataCard && needsT2 > 0 && dataEntries < needsT2) {
     hardWhy.push(`数据条目 ${dataEntries} 条 < 简报需求 ${needsT2} 条（T2.5 步骤 4：数据不完整 → 触发 T2 重检索）`);
   }
-  if (!dataCard) hardWhy.push('数据卡不存在（T2.5 步骤 1）');
+  if (!dataCard) hardWhy.push(dataCardReadError
+    ? `数据卡读取失败（**不是**「数据卡不存在」）：${dataCardReadError.message}（T2.5 步骤 1）`
+    : '数据卡不存在（T2.5 步骤 1）');
   if (mForm6Bad) hardWhy.push('信任级别不完整（M-Form-6 未过 → T2.5 步骤 5）');
-  // 「简报缺失 / 缺研究问题段」属差序输入，只记 LLM 兜底；数据侧三项 = 文档承诺的 P0
-  const hardHits = hardWhy.filter((w) => !/任务简报缺失|未见子问题/.test(w)).length;
+  // 「简报缺失 / 缺研究问题段」属差序输入，只记 LLM 兜底；数据侧三项 = 文档承诺的 P0。
+  // v18.2.6：新增两类「脚本自身没能核到位」的情形（简报解析失败 / 数据卡读取失败）——它们既不是
+  //   「内容缺陷」（不该判 P0 阻断交付），也不是「可交给 LLM 兜底的差序输入」（LLM 看不到脚本异常）
+  //   → 记为 P1 硬失败，使「跳过」必定出现在 p1 计数里而不是无声无息。
+  const SCRIPT_SKIP_RE = /任务简报缺失|未见「## 研究问题|未能解析出子问题|解析失败|数据卡读取失败/;
+  const hardHits = hardWhy.filter((w) => !SCRIPT_SKIP_RE.test(w)).length;
+  const scriptSkipHits = hardWhy.filter((w) => /解析失败|数据卡读取失败/.test(w)).length;
   results.push({
     gate: 'M-Integrity-1 T2.5 完整性',
     pass: hardWhy.length === 0,
-    detail: briefData.hasBrief
-      ? `任务简报 ${briefData.subclaims} 子问题 / 需找数据点 ${needsT2} 条${briefData.placeholder ? `（${briefData.placeholder} 处占位未填）` : ''}｜数据卡 ${dataEntries} 条`
-        + (hardWhy.length ? ` ｜ 硬问题：${hardWhy.slice(0, 2).join('；')}` : ' ｜ 条目数与信任级别对账通过（脚本佐证，主控 L4 跨文件判断）')
-      : '任务简报不存在（脚本佐证，主控 L4 跨文件判断）',
-    severity: hardHits > 0 ? 'P0' : 'LLM 兜底',
+    detail: briefData.parseError
+      ? hardWhy.join(' ｜ ')   // 解析异常：只报异常本身，不假装拿到了简报数据
+      : briefData.hasBrief
+        ? `任务简报 ${briefData.subclaims} 子问题（口径：${briefData.subclaimsSource}） / 需找数据点 ${needsT2} 条${briefData.placeholder ? `（${briefData.placeholder} 处占位未填）` : ''}｜数据卡 ${dataEntries} 条`
+          + (hardWhy.length ? ` ｜ 硬问题：${hardWhy.slice(0, 2).join('；')}` : ' ｜ 条目数与信任级别对账通过（脚本佐证，主控 L4 跨文件判断）')
+        : '任务简报不存在（**已确认未找到 01-任务简报.md**，脚本佐证，主控 L4 跨文件判断）',
+    severity: hardHits > 0 ? 'P0' : (scriptSkipHits > 0 ? 'P1' : 'LLM 兜底'),
   });
 }
 
@@ -1994,7 +2217,15 @@ if (reportPath) {
             out.script_exit_raw_prev = prev.script_exit_raw; // 留痕：上一次脚本原值
           }
         }
-      } catch {}
+      } catch (e) {
+        // v18.2.6 审计修复 P1-7（本脚本最后一处吞异常）：既有报告损坏/非 JSON 时旧写法静默继续，
+        //   结果是**悄悄覆写**掉既有 T8 裁定段（`keep` 拿不到任何键 → 落盘即丢裁定），
+        //   而调用方只会看到「报告已落盘」。现显式告警：裁定段未保留、落盘用本次机械值。
+        console.error(
+          `⚠️ 既有 M-Gate-Report.json 无法解析（${e.message}）——无法保留其中的 T8 裁定段，`
+          + `本次落盘将使用脚本机械值 exit=${report.exit}；若该报告本应有 T8 裁定，请 T8 重新裁定后写入。`,
+        );
+      }
     }
     writeFileSync(reportPath, JSON.stringify(out, null, 2), 'utf8');
     console.error(`📄 M-Gate 报告已落盘: ${reportPath}`);

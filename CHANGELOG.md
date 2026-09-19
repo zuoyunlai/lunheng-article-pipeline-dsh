@@ -2,6 +2,80 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.2.6 — 2026-09-19
+
+> **性质**：**第三方全量审计落地批次**。审计报告 `论衡插件-全量审计报告-v18.2.5.md`（对 `v18.2.5` @ `ce6f166` 做全量审计：宿主源码逐条对照 + 真实模块运行时验证 + 15 个真实项目回放 + 制品/registry 核验）给出 **6.9/10**，本批次按该报告 §7 的四个批次**依次全部修订**。
+> **机制文件改动依据主人显式授权**（原话「依次全部修订」），按 `AGENTS.md` §机制文件写保护 5 条安全流程执行：改前备份（`E:\HERNESS\_backup\lunheng-pre-auditfix-20260919-155324\`，122 文件 + 118 文件行数基线）+ `edit` 精确匹配（禁 `sed -i`）+ 逐门验证 + 全量可回滚 + 本条如实标注。**备份位置与流程的一处偏离**：原流程要求备份到工作区外 `<DSH_HOME>/_backup/`，本次宿主 `workspace-write` 策略**拒写该路径**，故改放工作区内并给出手工复制命令。
+> 修订记录与回滚清单：`论衡插件-修订记录-v18.2.6.md`。
+
+### 修复：P0（数据丢失 / fail-open / 假 P0 / 写保护绕过）
+
+- **B-1（数据丢失）`md2html.mjs` 同文件守卫可绕过**：旧守卫是**字符串相等**（`mdPath === htmlPath`），不做路径归一 → `md2html a.md ./a.md` **exit 0 且源 Markdown 被 HTML 覆盖**（正文永久丢失）；`A.MD`（大小写）、`final/../final/定稿.md` 同样可绕过。现统一走新增的 `_lib/destructive-write.mjs`（`resolve` + `realpathSync` + win32 去大小写 + 剥 `\\?\`），写盘改 `writeWithSafety()`（目标已存在先写带时间戳 `.bak`）。**实测**：6 个变体全部 exit 10 且源文件 SHA256 不变；正常导出照旧 exit 0。
+- **B-2（fail-open）`build-evidence-bundle.mjs` 对「不是项目」的目录判成功**：旧版只校验「存在且是目录」→ 传任意空目录 **exit 0**、打印「证据包生成完成：复制 0 个文件」并在其中新建 `final/证据包`、`audits/审计视图-v0.md`（传仓库路径即污染仓库）→ 「闸门留机械证据（exit code + 产物路径）」可被伪造成「已刷新」。现加**项目形态校验**（`01-任务简报.md`/`final/`/`drafts/` 之一，否则 exit 10，且**排在任何 mkdir 之前**）+ `copied===0 && missing>0` → 列出缺失源并 exit 10。**实测**：空目录 exit 10 且**目录内条目 = 0**；真项目 exit 0。
+- **B-4（假成功 + 默认原地覆盖）`apply-diff.mjs`**：旧版空清单 → `{"ok":true}` + hint「全部条目已机械应用」**exit 0**（与「真的全应用了」不可区分）；`--out` 缺值静默回落**原地覆盖正文**（无 `.bak`）；拼错旗标（`--dry-rnu`）被静默忽略；`text.replace(locateStr, …)` 用字符串替换串导致 `$&`/`` $` ``/`$$` 被展开（实测 `$$`→`$`，把行间公式降级为行内）。现：未知参数/缺值/多余位置 → exit 10；清单解析出 0 条 → exit 1 + `ok:false` + 明确 hint 且**不写盘**；同文件写盘必须显式 `--in-place`（否则 10）并自动 `.bak`；`replace` 改**函数式**。**实测**：`$$P<0.05$$` 保持字面量。
+- **B-3（假 P0，阻断整类选题）`m-gate-check.mjs` 非标准编号正则**：旧 `NONSTD_RE` 把 `[COVID-19]` / `[SARS-CoV-2]` / `[GPT-4]` / `[AI-2]` / `[B2B-2]` 全判「非标准编号」→ M-Form-1 转 P0 → 整体 exit 2 → 按「M 门 exit 0 才返回」只能走 Acknowledged Limitations，等于**对 AI/产业类选题硬性阻断**。现要求「必须像编号」（1-4 字母或 1-3 汉字前缀 + **≥2 位**序号），并把「≥3 条即 P0」降为 P2。**实测**：上述 5 例全部 exempt，`[XX-12]` 仍被抓。
+- **B-5/B-6（写保护可绕过）`lib/guard.js` 四类绕过**：① **基准错位**——旧版用 `resolve(raw)`（基准 = 宿主进程 `process.cwd()`），而写工具把相对路径解析到**会话工作区**（`exec.agent.session.header.cwd`，官方 `dsh-tool-fs/lib/index.js:225-242`）→ 两者不等时（DSH Desktop / `dsh web` 常态）相对路径写机制文件**直接放行**；② **拼写变体**——`e:/…`（小写盘符）、`\\?\E:\…`（长路径前缀）按字符串前缀比较 → 放行；③ **参数形态**——`writtenPath()` 只递归数组，不递归普通对象（`{edits:{file:{file_path}}}` 放行），补丁文本里的路径完全看不到；④ **保护错对象**——只保护**包内**那份技能，而本包文档反复强调「项目级副本 rank 100 会静默顶替 bundle rank 250」→ 真正生效的那份没有保护。现：基准取会话工作区并对两个基准取并集判定；`canonicalPath()` 归一（剥长路径前缀 / 盘符大写 / `realpath` 含「最近存在祖先」回退 / 忽略大小写）；`writtenPaths()` 深度遍历 + 从补丁/正文类字段抽 `*** Update File:`、`+++ b/` 形态；新增 `mirrorRoots()` 按官方 rank 表把同名技能其它落点（100/200/400/500）动态纳入受保护根。**实测**：12 个路径变体全部 DENY，且不误伤 `run/` 产物、包内 docs/README、tests 与只读工具。
+
+### 新增：插件 Config（此前「配置静默失效」）
+
+- **`lib/index.js` 新增 `Config` + `apply(ctx, config)`**（审计 B-3/B-7）：旧入口只写 `apply(ctx)`，而 Cordis 在插件无 `Config` 时会**原样传第二参数**（`cordis/lib/index.js:1067/:1070`）→ profile 补丁里的 `config:` 被**静默丢弃**；同时官方红线「不得硬编码可调参数」对应的 `dsh-plugin-dev check` 检查项对本包只能 **skip**（等于永久失效）。现可配置 `allowMechanismEdit` / `quiet` / `scriptTimeoutMs` / `scriptMaxOutputBytes`，**非法配置在加载期响亮失败**（Cordis 报 `invalid config: … (at quiet)`）。
+- **⚠️ 如实说明：`dsh-plugin-dev check` 的 `redline-no-hardcoded-tunables` 仍然报 `skip`**（`no Config schema found to inspect`）。原因：该 CLI 只识别 **Schemastery 形态**的 `Config`（其判定分支还会把「plain object Config」判为 error），而本包走的是**零依赖 standard-schema 形态**（见下条理由）→ CLI 的启发式看不见它。**这不是「已修」**：本包用 `tests/guard-config.test.mjs` 的三条用例（默认值 / 合法值 / 非法值响亮失败）自行把这条契约钉住；CLI 侧若改为识别 standard-schema 接口即可自动覆盖。
+- **为什么不用 `@deepseek-ai/schemastery`（与官方文档字面写法不同，刻意）**：① 本包核心约束是「入口不 import 宿主包」（静态依赖会让裸仓库**入口 import 失败 → 技能也不注册**，v18.0.0 缺陷形态）；② **动态 import 也不行**——宿主用 **pnpm** 安装，pnpm 只为**已声明**的依赖建私有链接，`@deepseek-ai/schemastery` 不在本包依赖表里；**实测**即便按 profile 布局放好该包，Node 按 **realpath** 向上找依赖仍找不到（Config 恒为 undefined）。③ Cordis 实际只需要 **standard-schema 接口**（`Config['~standard'].validate`，见 `cordis/lib/index.js:955-961`）→ 自己实现 20 行即可**零依赖**拿到加载期校验。
+
+### 修复：门与文档的完整性
+
+- **`SECURITY.md` 信任边界表重写**：旧表**只描述 `lib/index.js`**（原文「不派生子进程、不联网、不写文件」），完全未披露 v18.1.0 引入的 C 组执行面——`lib/tools.js`（每次工具调用 **spawn 子进程**）、`lib/guard.js`（安装**全局**工具守卫，影响该 profile 全部会话的 `write`/`edit`）、`lib/commands.js`（读工作区文件的人类命令）。现拆四行如实披露，并把「随包脚本**零网络请求**」更正为「**零外发**：唯一网络调用是 `model-routing.mjs` 对**回环地址** provider 的 `/models` 可达性探测（`--no-probe` 可关）」。
+- **`!!js` 加载期执行面计数由 3 更正为 6**：`cordis.patch.yml` 实为 **6 处 `!!js`**——3 处 `agentOptions` + **3 处 `disabled:`**，而 `disabled` 表达式**同样由宿主以完整 Node 权限在加载期求值**（`loader/src/config/entry.ts:104-107` 的 `disabledOf()`）。旧披露**少报了一半**的加载期执行面。计数口径写在文件内：`^\s*[A-Za-z]+:\s*!!js`。
+- **分档工具行改「显式开启才挂载」**（审计 P2-19，反向默认）：旧表达式只在 `LUNHENG_TIERING=off` 时禁用 → **任何装了本包的人都默认多出 3 个工具**，而三行 `agentOptions` 在全继承形态下返回 `undefined`，即与内置 `subagent` **完全同义**（每会话白付 3 份工具 schema，文档自己实测「工具数恒为 29」）。新口径：不设任何 `LUNHENG_*` → **不装载**；设任一档 `*_PROVIDER/*_MODEL` → 自动装载（旧用户「设了模型就生效」行为**不变**）；`TIERING=on` 显式装载；`off` 强制不装载（优先级最高）。**4 种 env 组合已实测**。
+- **M 门项数收敛到唯一真源 + 新增机械门**：全库曾同时存在 **6 种口径**（真源 23 = 机械 22 + 人工 1；另有 13 / 19 / 20 / 21 / 22 混写）。现 `M-Gate-Algorithm.md` 顶部声明唯一口径行，**并把「项数自洽」做进 `consistency-check.mjs`**（阈值从 `GATE_DERIVED` 派生，不写死）；`deliverables.md` / `08-终检-finalizer.md` / appendix / `glossary.md` / `SKILL.md` 等处的旧口径一并清仓。
+- **`M-Exist-3` 名实对齐（消除假绿行）**：`M-Gate-Algorithm.md` 已更名并声明「脚本只做引用闭环、**不查信任级别**」，但同文件另 3 处 + **闸门记录模板的两处机检表**仍是旧语义 → 「填了不会被检查」= 假绿。现模板改为「**引用闭环（M-Exist-3：[Dxx] 正文 ↔ 数据卡条目）**」+「**信任级别完整性（M-Form-6）**」两行，各自指向**真正在跑**的门。**连带修复**：M-Exist-5 的「模板为真源、逐项都要有行」会因此把**全部 15 个真实项目**的既有闸门记录判 P1（`guannian-yu-linian` 由 exit 3 退化成 exit 1 = 假 P1 阻断交付）→ 现把「行身份」判据改为**按该行引用的检查编号归一**（`引用闭环（M-Exist-3：…）` 与 `信任级别一致性（M-Exist-3）` 认作同一行），历史记录无需回填。
+- **`--fig-dir` 指向不存在路径不再静默**：旧版静默丢弃并改用猜测目录 → 结论比正确传参**更宽松**（不传/传不存在 → 逐字节相同的 M-Form-9 P1；传「存在但空」→ P0）。现不存在即 exit 10。
+- **`md2html --strict` 对缺图不再静默放行**：缺图计入 warnings（与 M-Form-9「缺图 → P0/P1」口径对齐）。
+- **BOM 处理**：`md2html` / `build-evidence-bundle` 读取后剥 BOM 并给出可见提示——`pwsh` 的 `Set-Content -Encoding UTF8` **默认带 BOM**，不是罕见输入（实测旧版会导致审计视图丢标题、`<h1>` 降级为 `<p>`，且都 exit 0）。
+- **`apply-diff` / `build-evidence-bundle` 的参数解析抽成唯一实现**（新增 `_lib/cli-args.mjs`）：未知旗标 / 带值旗标缺值 / 位置参数越界一律 exit 10 + 用法。**实测**：`--sumary`（拼错）旧版 exit 0 且**当真跑了一次全量**（用户以为只出摘要）→ 现 exit 10；「`--source <路径> <项目>` 把源路径当成项目」这类危险由解析器**结构性**保证不再发生。
+
+### 新增：工具错误可操作性（受限部署）
+
+- 原生工具在**宿主进程**内 spawn，故不受文件沙箱的命名管道禁令影响；但在受限 shell/测试进程内调用会 `EPERM`。旧版把裸 `spawn EPERM` 抛给模型（本包 §九 已记录「sandbox 报错易被误读为命令失败、导致反复重试耗尽步数」的教训）→ 现给出**可操作**提示：点名「宿主禁止本进程派生子进程」+ 指引「改用 `pwsh` 直接调用同一脚本（退出码与 JSON 契约完全一致）」+ **明确禁止用 LLM 断言替代机检实据**。
+- `runScript` 新增**超时**与**输出上限**（配置项见上），超时/截断如实回传并在 `render` 中提示——旧版无超时（脚本挂起会一直占住工具调用）且 `out +=` 无界缓冲。
+
+### 工程与文档
+
+- **测试套件在受限会话中从「跑不起来」变为「可跑」**：`tests/_fixtures.mjs` 的 `run()` 把 stdout/stderr 从**管道**改为**临时文件**承接——DSH 受限模式下被围栏进程不能开命名管道，旧写法使 74/102 例直接 EPERM。**实测**：`--test-isolation=none` 由 102/28/74 变为 **104/101/0（3 条探测式跳过，exit 0）**；`package.json` 新增 `test:no-isolation`；3 条环境依赖用例改为**带探测的条件跳过**（探测到才跳过，并写明「本环境为何不行 / 在哪种环境下会真跑」，无沙箱环境下强度不变）。
+- **新增回归测试 `tests/guard-config.test.mjs`（9 例）**：覆盖 B-5/B-6 的 12 个路径变体、镜像落点保护、「不误伤」反向断言、授权例外两条路径、Config 默认/合法/非法三条路径、description ≤ 500（宿主目录渲染硬上限，超出会静默截断并丢掉「不适用」路由段）、`source` 字段与宿主实际档位一致。
+- **`package.json#files` 逐文件列出**（排除维护者文档 `docs/token-optimization-plan.md`，对齐本仓 v18.2.0「仓库向文件不随包」口径）。
+- **`plugin-surface-check.mjs`**：CLI pin 抬到当前版、支持 `STRICT_WARN=1`（`warn > 0` 也失败）并对跳过项数设上界断言（防上游把检查项改成 skip 变后门）、输出实际解析到的 CLI 版本；**发布作业拆分**：四道门移入独立 job（无 `id-token` / 无 `NPM_TOKEN`），`publish` 用 `needs:` 依赖它——此前门 2 会在持有发布身份与 npm token 的作业里**从 registry 现场下载并执行第三方 CLI**，与本仓「Action 固定 SHA」的供应链姿态不一致。
+- **CI 矩阵补 Node 24**：`engines` 声明 `^22.19.0 || >=24.0.0`，而此前**唯一跑测试的 job 只用 22.19**（24 只在发版那一刻验证一次）。
+- **`repo-hygiene-check.mjs`**：`apply-diff.mjs`（v18.2.5 新增脚本）补登 `EXIT_CONTRACT`；退出码门的 `usesGuard` 由「注释里提到也算」收紧为真 import 检查；注释里过期的脚本数改为派生。
+- **`consistency-check.mjs` 新增/扩面**：M 门项数自洽（带主语与限定词判定，附 8 条误报反例清单）、脚本计数**结构派生**（旧规则 ⑩b 的 5 条正则对仓库内 26 条真实含计数句子**命中 0**，而 11-vs-12 漂移真实存在）、版本点位扫描面扩到 `SECURITY.md` 与 `docs/**`（旧版 `repoTargets` 是硬编码 3 文件 → `SECURITY.md`/`docs/troubleshooting.md` 停在 v18.2.4 而门报「0 处漂移」）、`walk()` 跳过 `.git`/`node_modules`。
+- **五语 README 与 docs**：脚本数 4/5 语言写错（只有中文版是 12）；补 C 组能力与新增 `Config` 的说明（含 guard 边界声明）；`docs/*` 的 M 门口径（20/19 → 机械 22 + 人工 1 = 23）与分档 opt-in 表述同步；`CONTRIBUTING.md` 补 `--test-isolation=none` 降级跑法；修正「全量扫描版本点位」的不实表述与「三道门/四道门」计数。
+- **G14 触发时点统一**（审计 §5.2）：旧口径在 5+ 份文档里互相矛盾且**时序上不可能成立**——`SKILL.md` 同时写「`[3.1 G14 早闸]`」与「4.5 审稿+G14」，而 `pipeline-readme` 的 Phase 列表里**根本没有 3.1**；四处写「Phase 4.5 与 **T6** 并行」，但 T6 在 Phase 3.6、T9 在 4.5，同一阶段不可能同时与两者并行。**统一为**：**早闸 = Phase 3.6（与 T6 批判伙伴同批并行，T7 审计前，结论入 `drafts/修订说明-vN.md`）**；**终闸 = Phase 4.5（与 T9 同行评审并行，报告 = 最终版本真源）**。已同步 `SKILL.md` / `AGENTS.md` / `QUICKSTART.md` / `pipeline-readme.md` / `glossary.md` / `audit-checklist-quickref.md` / `status-template.md` / `00-主控-扩展职责.md` / `06-批判` / `09-审稿` / `DSH-集成方案.md` / **`gates/14-中文AI痕迹-gate.md`** / **`checkers/中文AI痕迹-checker.md`**（后两个文件此前无归属，本批一并修）。
+- **补登 `checkers/中文AI痕迹-checker.md` 的词预算**：该文件因本批修订从 11,476 → 12,318 B，**越过了 12 KB 登记线**（`repo-hygiene-check` 规则⑨ 要求技能目录内 ≥12 KB 的 `.md` 必须逐个登记上限并写明理由）→ 已在 `DOC_BUDGET` 补登（上限 13 KB，理由：G14 触发时点统一 + 与 gate 文件口径对齐）。
+- **补写 `## 18.2.4` 段**：该版本确已发布到 npm（`gitHead 4e25d13`，带 provenance）却在 CHANGELOG 中**缺失自己的段**（`## 18.2.5` 直接跳到 `## 18.2.3`），而全仓引用 18.2.4 达 37 处。
+
+### 未采纳 / 如实保留（本批未改，及未改的理由）
+
+- **`plugin-surface-check.mjs` 的 `readme-five-langs` 仍报 warn**：该 CLI 期望五语 README 命名为 `README-<lang>.md`（连字符），本包用 `README.<lang>.md`（点号，npm 亦认可）。**未改名**：改名会连带 `consistency-check` 规则㉑、`repo-hygiene-check` 的多语检查、npm `readmeFilename` 与五语互链四处耦合，收益仅是把一个**第三方 CLI 的命名约定**的警告清零，风险大于收益。已在 `CONTRIBUTING.md` 与本节写明真实数字，**不再声称「0 fail / 0 warn」**。
+- **`redline-no-hardcoded-tunables` 仍报 skip**（见上文「如实说明」）：CLI 只识别 Schemastery 形态的 `Config`，本包走零依赖 standard-schema 形态。
+- **`F8.2` 与若干实战注记里的 `outputs/` 目录**：现行项目布局（`run/<项目名>/`：literature / data / cases / analysis / drafts / audits / final）**没有 `outputs/`**，而 `deliverables.md:120` 与 `failure-modes.md:49` 的 F8.2 定义仍以「run/ vs outputs/」表述。本批**只修了唯一一处现在时**的路径引用（`09-审稿-peer-reviewer.md:99` 的 `outputs/先行者清单.md` → `literature/先行者清单.md`，该笔误由本轮新增的 `scripts/link-check.mjs` 抓出）；F8.2 的定义改写涉及「公众号版是否仍是独立目录」的产品判断，且另 8 处是**历史实战注记**（改写 = 篡改历史），故**留给维护者决定**（建议：F8.2 改述为「`final/定稿.md` ↔ 导出稿不同步」，历史注记保留原文 + 加一行「当时布局」标注）。
+- **`m-gate-check.mjs` 的完整拆分**（审计 §7.4 第 21 项）：本批只做零风险部分（合并 7 处重复的 `dirname(dirname(draftPath))` 内联拷贝）；拆分必须同步改两个把它当**单个文本 blob** 解析的门（`consistency-check.mjs` 的 `GATE_DERIVED`、`repo-hygiene-check.mjs` 的派生与脚本计数），否则门会静默失效 → 留待独立批次。
+- **`SKILL.md` 的瘦身到 ~20 KB**（审计 §7.4 第 22 项）：本批只做了**锚点**部分（三处稳定英文锚点 + `consistency-check` ㉒ 断言从 `SKILL.md` 清单派生），**未做**结构搬迁。理由（已实测，不是保守）：审计建议的「把 `SKILL.md` §执行能力边界（39-66 行，4216 字符）抽成独立文件」会**把随包脚本白名单行一起搬走**，而那一行是**三个门的唯一真源**——`consistency-check` 规则⑩（声明 vs 磁盘脚本数）、`repo-hygiene-check` 规则⑥（发布包内脚本数）、`pack-smoke.mjs`（白名单派生期望）全都按「`SKILL.md` 里含『随包脚本白名单』的那一行」解析 → 照字面搬迁会**同时打断三个门**（且是静默失效形态）。故该项必须与这三处解析同步改，属独立批次。**实测现状**：常驻集 `SKILL.md + AGENTS.md = 53222 / 53248 B`（余 26 B，仍在棘轮内），代价是每次技能激活多付约 10 KB —— 建议下一轮先定「哪些内容必须常驻」的口径，再连同 `AGENTS.md` 一起搬。
+- **`apply-diff` 的既有边界**：当清单条目的「现况/修改」仅在句末标点处差异时，最小差异法抽取退化，输出行会出现重复片段。已用对照副本确认与本次改动无关（新旧输出逐字相同），属 `extractDelta`/`locateAndReplace` 的独立课题。
+- **`count-chars` 的词表口径**：仅按 U+FFFD 判定非 UTF-8（而非严格解码校验）；对「合法 UTF-8 但语义上是别的编码」无能为力——如实保留。
+- **软链接与 Windows 8.3 短名**绕过写保护未能在本机实测（建软链需管理员权限、该卷不生成 8.3 短名）；`canonicalPath()` 的 `realpath` 归一已在大小写 / 相对路径 / `..` / 绝对路径四类实测通过。
+
+### 工作区卫生（审计 P2-4）
+
+- **给旧化石副本加「非真源」标记**：`E:\HERNESS\lunheng-article-pipeline\`（pre-DSH v2.5.2 世代，51 文件，同名 48 个与真源全不同、无 `scripts/`、无 T8 卡、`DSH`/`LUNHENG_` 命中全为 0）**不是 git 仓库、不在任何 DSH 技能根内、不被真源引用**，故不构成运行期双源冲突；真实风险只是**人/agent 误编辑**（教训 #153 的形态）。已加 `_非真源-历史副本-READ-ME-FIRST.md`（指向真源路径 + 差异规模表 + 「不要在这里改任何东西」）。**未改名也未移动**（改名会牵动工作区其它引用，收益不抵风险）。
+
+### 验证（全部实跑）
+
+- 契约线：`node --check` 4 文件 exit 0；真实宿主 `defineTool` 编译 2 个工具规格通过；真起 Cordis + 真实 `skills` 服务挂载/卸载/重挂**完全回滚**；`Config` 在 profile 布局下经 Cordis 校验（非法配置报 `invalid config`）。
+- 脚本线：`md2html` 6 变体 exit 10 且源文件不变；`build-evidence-bundle` 空目录 exit 10 且零污染；`apply-diff` 6 种调用与 `.bak`/字面量行为符合设计；`m-gate-check` `total` 恒 22。
+- **15 个真实项目回放**：`total` 全部 22；`guannian-yu-linian` `exit=3 / p0=0 / p1=0 / p2=4`、`甲醛白菜事件` `exit=2 / p0=5 / p1=2 / p2=1` —— 与修订前**逐项一致**（无回归）；`bigdata-ai-sociology` `exit=0`（全门通过样本）。
+- 测试：`node --test --test-isolation=none` → **104 / 101 pass / 0 fail / 3 skipped / exit 0**。
+- `consistency-check.mjs`：真源仓库除 `.dsh` 镜像同步项外无其它漂移（镜像在四门绿后统一同步）。
+
 ## 18.2.5 — 2026-09-13
 
 > **性质**：**主控实战反哺**落地批次——用户以真实项目（`run/ai-cad-cam-impact`，《AI 对工业 CAD、CAM 应用的影响》，body 8014 汉字，跑完 Phase 0-5 全流程）验证论衡后，提出的「逐条全部修订」请求。改动集中在**机检层**（M 门三处真实缺陷）+ **文档层**（口径与可见性）。
@@ -112,6 +186,34 @@
 - `consistency-check.mjs` → **exit 0**｜`repo-hygiene-check.mjs` → **exit 0**（9 规则）｜`plugin-surface-check.mjs` → **exit 0**（11 通过 / 0 失败 / 0 提示）
 - 规则⑫ 加固**对照实验 2/2 按预期**（含首轮抓出实现错误的那一次）
 - 镜像 `.dsh/skills/lunheng-article-pipeline` 按 `CONTRIBUTING.md` §同步流程整树复制，规则⑨ **0 漂移**
+
+## 18.2.4 — 2026-09-13（补记，v18.2.6 回溯）
+
+> **为什么是补记**：18.2.4 **确已发布到 npm**（`time.18.2.4 = 2026-09-13T04:55:42.493Z`，`gitHead 4e25d13`，
+> 带 OIDC provenance），但本文件当时**漏写了它自己的段**（`## 18.2.5` 直接跳到 `## 18.2.3`）——
+> 全仓却引用 `18.2.4` 达 37 处。审计 P2（工程侧）发现后按 git 历史回溯补记，规则⑪ 亦扩为
+> 「npm 上已发布的每个版本都应有段」。**性质**：第三方「包面审计」落地批次（入口边界输入 4 处 + 版本点位扫描盲区 2 处 + 安全上报渠道死链）。
+
+### 修复：入口边界输入（`lib/index.js` / `lib/tools.js`，4 处）
+
+- **C.1 frontmatter 行尾/BOM 归一**：旧判定 `text.startsWith('---\n')` 而 `readFileSync(p,'utf8')` **不做行尾归一**——SKILL.md 一旦是 CRLF（Windows `core.autocrlf=true` 或编辑器另存），首行是 `---\r\n` → **静默**退回内置兜底 description、`whenToUse` 不再注册（而 description 是模型侧路由的**唯一**可见字段）。改为剥离 BOM + CRLF/孤立 CR 归一后再解析。
+- **C.2 解析失败响亮告警**：解析失败此前**完全静默**；现打印一行 warn 并点出常见成因（CRLF / 前置空行 / BOM）。
+- **C.3 启动状态行分流**：3 条「已注册 / 已启用」状态行此前**无条件**写 stderr → 现走宿主 Cordis `logger`；`LUNHENG_QUIET=1` 可静音 info，**warn 永不静音**（「静默降级」正是 v18.0.0 事故形态）。
+- **E.2 硬依赖违约的报错形态**：宿主缺 `skills` 服务时旧版抛 `Cannot read properties of undefined (reading 'register')`；现响亮点名缺哪个服务并**跳过注册**，C 组能力照常安装。
+
+### 修复：版本点位扫描盲区（`scripts/consistency-check.mjs`，+33 行）
+
+- 补 2 处漏点：内联 `` `git tag vX.Y.Z` `` 与**加粗版**版本头 `> **版本**：vX.Y.Z`（旧规则只认非加粗形态）。
+- 新增 `tests/entry-frontmatter.test.mjs`（167 行，6 例：CRLF / BOM / 前置空行+缺闭合行 / 静音开关 / 无 logger 宿主 / 缺 skills 服务）；`tests/scripts.test.mjs` +58 行（覆盖上述 2 处漏点的注入验证）。
+
+### 修复：安全上报渠道死链（`SECURITY.md`）
+
+- 私有漏洞上报开关此前**没开**（`GET /repos/…/private-vulnerability-reporting` → `{"enabled":false}`）→ 文档里「仓库 → Security → Report a vulnerability」**是死链**；本版开启并核验为 `{"enabled":true}`。
+
+### 同步
+
+- 全仓版本头 `18.2.3 → 18.2.4`（含 15 个 `references/templates/*` 与五语 README）；`package.json`、`ci.yml`、`cordis.patch.yml`、`examples/preset/README.md`、`docs/*` 同步。
+- 镜像 `.dsh/skills/lunheng-article-pipeline` 整树同步，规则⑨ 0 漂移。
 
 ## 18.2.3 — 2026-09-12
 

@@ -2,7 +2,7 @@
 
 > 🌐 **English** (this file) ｜ [中文](README.zh.md) ｜ [Español](README.es.md) ｜ [Português](README.pt.md) ｜ [हिन्दी](README.hi.md)
 
-> 版本：v18.2.5（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.2.6（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > A DeepSeek Harness (DSH) bundle that registers one on-demand agent skill. The skill turns long-form production — academic papers, industry analysis, business commentary, and long-form articles — into a **9-role pipeline with a human in the loop**.
 
@@ -41,6 +41,7 @@ Rule of thumb: ask whether the evidence is already **published**. If yes, Lunhen
 | Drafts | Successive versions with AI-trace cleanup, each independent writer run |
 | Review reports | Critical report (C1–C7), audit report (G0–G14), peer-review report (6 dimensions + journal matching), AI-trace report |
 | Final deliverables | `final/定稿.md`, figures, evidence bundle, delivery notes, M-gate report |
+| DSH integration (bundle install) | Two **read-only** tools — `lunheng_m_gate` (M-gate mechanical pre-check) and `lunheng_char_count` (pure Chinese-character count); if your session does not expose them, call the same scripts with `pwsh` as before (same source of truth). Human command `/lunheng-status` (reads `run/<project>/status.md`; produces no model message). **Mechanism-file write protection**: a global guard rejects `write`/`edit`-style tool calls that target the skill package, so a session cannot quietly rewrite the pipeline's own rules. Boundary, stated plainly: the guard only sees **tool calls** — `pwsh` and any subprocess are **not** behind this gate; the owner's escape hatch is `LUNHENG_ALLOW_MECH_EDIT=1` (or `config: { allowMechanismEdit: true }`). Plugin **Config** (deployment switch, this plugin's row in your profile) covers `quiet`, `allowMechanismEdit`, `scriptTimeoutMs` and `scriptMaxOutputBytes` — the same knobs as the `LUNHENG_QUIET` / `LUNHENG_ALLOW_MECH_EDIT` env vars, but reviewable in the profile; an **invalid config fails loudly at load time** instead of silently falling back to defaults. |
 
 ## Pipeline overview
 
@@ -67,16 +68,16 @@ Phase 5  Finalize     T8 finalizer (run by the coordinator) → final draft, evi
 ```text
 lunheng-article-pipeline/                 # the package is the repository
 ├── package.json              # declares main (lib/index.js) + dsh.bundle.patch
-├── cordis.patch.yml          # bundle layer: inserts the 3 model-tier subagent tools
-├── lib/index.js              # plugin entry: registers the skill through ctx.skills
+├── cordis.patch.yml          # bundle layer: self-register row + 3 model-tier subagent tools (mounted only when LUNHENG_* is set)
+├── lib/index.js              # plugin entry: skill + read-only tools + mechanism write guard + /lunheng-status
 ├── skills/lunheng-article-pipeline/       # the skill body (one directory)
 │   ├── SKILL.md              # skill entry (roles, gates, execution boundaries)
 │   ├── AGENTS.md             # operator manual
 │   ├── QUICKSTART.md         # five-minute start
 │   ├── README.md             # skill-level readme (Chinese)
 │   ├── references/           # 9 role cards, templates, shared gate algorithms, journal database
-│   └── scripts/              # 11 zero-dependency .mjs verification scripts
-├── scripts/                  # repository gates: packaging surface + mechanical hygiene
+│   └── scripts/              # zero-dependency .mjs verification scripts (count: see the skill's whitelist line)
+├── scripts/                  # repository gates: packaging surface + mechanical hygiene + pack smoke
 ├── tests/                    # node --test suites (scripts + plugin entry smoke)
 ├── docs/                     # installation, usage, architecture, faq, troubleshooting
 ├── examples/preset/          # model-tier notes and install guide
@@ -87,7 +88,7 @@ lunheng-article-pipeline/                 # the package is the repository
 
 The plugin entry registers `skills/lunheng-article-pipeline/SKILL.md` as a skill whose `resourceBase` is that directory, so `references/**` and `scripts/**` resolve relative to it from any working directory.
 
-The patch layer does two things: it **inserts one row for this package** (`- id: lunheng-article-pipeline` / `name: lunheng-article-pipeline`) — that row is what makes the loader import `lib/index.js`, which is what registers the skill — and it inserts the three model-tier subagent tools. **That self row is load-bearing**: without it the entry is never imported and no skill appears (the v18.0.0 defect fixed in 18.0.1; guarded by `tests/bundle-contract.test.mjs`).
+The patch layer does two things: it **inserts one row for this package** (`- id: lunheng-article-pipeline` / `name: lunheng-article-pipeline`) — that row is what makes the loader import `lib/index.js`, which is what registers the skill — and it inserts the three model-tier subagent tools, which are **not mounted by default** (set any `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_{PROVIDER,MODEL}` or `LUNHENG_TIERING=on` to mount them, `off` to force them off). **That self row is load-bearing**: without it the entry is never imported and no skill appears (the v18.0.0 defect fixed in 18.0.1; guarded by `tests/bundle-contract.test.mjs`).
 
 ### Documentation
 
@@ -108,14 +109,14 @@ The patch layer does two things: it **inserts one row for this package** (`- id:
 Releases are **tag-only**; a local `npm publish` is forbidden (it would bypass the CI gates and OIDC provenance, and a published npm version can never be overwritten).
 
 ```sh
-git tag v18.2.5 && git push origin v18.2.5   # push one tag at a time (GitHub: >3 tags in one push triggers no workflow)
+git tag v18.2.6 && git push origin v18.2.6   # push one tag at a time (GitHub: >3 tags in one push triggers no workflow)
 # publish.yml then runs gate 1 consistency → gate 2 packaging surface → gate 3 hygiene → gate 4 pack smoke → script tests
 #   → tag/version equality → idempotency guard → OIDC publish --provenance --tag dsh → post-publish audit
 ```
 
 ## Install
 
-**As a bundle** (recommended; the entry registers the skill and the patch layer activates the model tiers):
+**As a bundle** (recommended; the entry registers the skill + the C-group capabilities, and the patch layer *can* mount the model-tier tools — off by default, see [Model routing](#model-routing)):
 
 ```sh
 dsh plugin --profile web add lunheng-article-pipeline
@@ -149,11 +150,11 @@ A plain directory carries no `dsh.bundle` declaration, so `dsh plugin add` insta
 dsh plugin --profile <profile> remove lunheng-article-pipeline
 ```
 
-Removing the bundle removes the 3 `- insert:` rows and the skill registered by the entry, leaving no residue. If you also copied the skill directory into a skill root, delete that copy separately.
+Removing the bundle removes the 4 `- insert:` rows (the self-register row + the three tier rows) and the skill registered by the entry, leaving no residue. If you also copied the skill directory into a skill root, delete that copy separately.
 
 ## Model routing
 
-DSH routes models through `settings.yaml`; `subagent` inherits the session model, so a single-model setup works with no configuration. To tier by role, the bundle installs three tiered tools:
+DSH routes models through `settings.yaml`; `subagent` inherits the session model, so a single-model setup works with no configuration. To tier by role, the bundle can mount three tiered tools — **off by default** (they are identical to the built-in `subagent` while every tier inherits, so mounting them unconditionally would cost three tool schemas per session for nothing):
 
 | Tool | Roles | Capability |
 |---|---|---|
@@ -161,7 +162,7 @@ DSH routes models through `settings.yaml`; `subagent` inherits the session model
 | `subagent_strong` | T4 analyst / T5 writer | Strong reasoning |
 | `subagent_audit` | T6 critical / T7 auditor / T9 reviewer / G14 detector | Top tier, no downgrade for cost |
 
-Override with `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_PROVIDER` and `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_MODEL`. Provider and model are independent fields; crossing providers requires both. `LUNHENG_TIERING=off` forces every tier back to inheritance. When a tier tool is not mounted, dispatch falls back to `subagent`. See `examples/preset/README.md` and `docs/installation.md`.
+Override with `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_PROVIDER` and `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_MODEL` — **setting any of them also mounts the three rows** (so an existing tiered setup keeps working unchanged). Provider and model are independent fields; crossing providers requires both. `LUNHENG_TIERING=on` mounts the rows without pinning any model (useful to check they are visible); `LUNHENG_TIERING=off` forces all three tiers back to inheritance and unmounts them. When a tier tool is not mounted, dispatch falls back to the built-in `subagent`. See `examples/preset/README.md` and `docs/installation.md`.
 
 ## Data and external services
 
@@ -180,13 +181,15 @@ The coordinator must disclose these and obtain explicit consent at Phase 0. For 
 | Article | Scale | Key outcome |
 |---|---|---|
 | Brand-consistency article (2026-08) | ~7900 chars, 15 sources + 54 data points | Evidence bundle; 8 audit findings closed |
-| Originality-paradox article (2026-08) | ~9500 chars, 12 sources + 34 data + 6 cases | 4 revision rounds, A- grade, published |
+| Originality-paradox article (2026-08) | ~9500 chars, 12 sources + 34 data + 6 cases | 4 revision rounds in total across the run, A- grade, published |
 | Teacher-field isolation paper (2026-08) | ~12000 chars, 18 sources + 47 data + 9 cases | Audit round 2 passed; first consistency audit |
 | Generative-AI student writing commentary (2026-08) | ~2000 chars, 12 sources + 26 data | Three-way parallel retrieval; M-gate exit 0 |
 | Formaldehyde cabbage article (2026-08) | ~4200 chars, 12 sources + 29 data + 4 cases | M-gate exit 0; 6 back-feed rules merged |
 | Notion vs. idea philosophy paper (2026-09) | ~6280 chars, 18 sources + 15 data, 0 cases | 2 audit rounds, 23/30 minor revision, M-gate true P0 = 0 |
 
-Local gates: `node skills/lunheng-article-pipeline/scripts/consistency-check.mjs`, `node scripts/plugin-surface-check.mjs`, `node scripts/repo-hygiene-check.mjs`, `node --test "tests/**/*.test.mjs"`.
+> **How to read this table (two calibers that are easy to mix up)**: ① "revision rounds" counts **all writer passes in that run** (Phase 3.5 → v2, critique/T6 fixes, G14 rounds, audit loop) — the pipeline's own cap of **≤2 rounds** applies to the **Phase 4.2 audit loop alone**, so the two numbers measure different things; ② the outcomes are **historical values recorded at the time of each run, with that run's script version** — they are not reproducible with the current scripts. Re-running the packaged scripts on the archived projects today yields e.g. the formaldehyde cabbage article at `exit 2` with 5 P0 (M-Form-6/10, M-Exist-7/9, M-Integrity-1): three of those gates were added **after** that run. Read this table as "what the pipeline produced then", not as "the current gate set passes these projects".
+
+Local gates: `node skills/lunheng-article-pipeline/scripts/consistency-check.mjs`, `node scripts/plugin-surface-check.mjs`, `node scripts/repo-hygiene-check.mjs`, `node scripts/pack-smoke.mjs`, `node --test "tests/**/*.test.mjs"`.
 
 ## Known limitations
 

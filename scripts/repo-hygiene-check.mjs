@@ -5,7 +5,9 @@
  * 为什么存在（v2.5.2-dsh.13 新增，回应第三方审计「CI 覆盖度」）：
  *   `consistency-check.mjs` 管文档漂移、`plugin-surface-check.mjs` 管打包面契约，
  *   但**语法/编码/行尾/发布内容**这些「零成本就能机械判定」的东西此前无人守：
- *   - 随包脚本多数从未被 CI 执行过（含承重的 m-gate-check）；v2.5.2-dsh.17 起共 11 个（数量从 SKILL.md 白名单派生）；
+ *   - 随包脚本多数从未被 CI 执行过（含承重的 m-gate-check）；**数量不在此处写死**（v18.2.6 更正：旧注释写
+ *     「共 11 个」而脚本自己已改成从 SKILL.md 白名单派生、实测 12 个——注释与代码必须同源，否则下一个人
+ *     会照着注释去核对错数字）；
  *   - `examples/preset/preset.yml` 从未被任何解析器校验；
  *   - 35 个文件工作区 CRLF、`.gitignore` 是 GBK——而 npm 打包读工作区。
  *
@@ -266,6 +268,10 @@ notes.push(`⑦ 凭据扫描：${scanned.length} 个文本文件 × ${SECRET_PAT
 //         码 `0` 一律豁免（正常返回不写 `process.exit(0)`）；
 //      ④ 异常路径：每个读盘脚本**必须** import `exit-guard`（未 import = 兜底缺失 = 判失败），
 //         且 `_lib/exit-guard.mjs` 必须真在盘并导出契约里的两个常量。
+//    v18.2.6 两处收紧（第三方审计指出旧版的两个盲区，均已实测确认）：
+//      ⑤ **`process.exitCode = N` 赋值形态**纳入解析（Node 里它与 `process.exit(N)` 同样生效）；
+//      ⑥ **「已 import guard」改为真 import 匹配**（旧版 `text.includes(GUARD)` 对**注释里提到文件名**也判真——
+//         而本仓每个脚本头注释都提到它 ⇒ 该检查恒真，恰恰漏掉「注释还在、import 被删」这一最该抓的形态）。
 //    边界（如实）：本规则能拦「静态可解析的撞码」与「兜底缺失」，**不能**拦动态计算出的错误码——
 //      那由 `tests/scripts.test.mjs` 的异常路径用例（传目录/传文件/PATH 置空）覆盖。
 const GUARD = '_lib/exit-guard.mjs'
@@ -281,6 +287,10 @@ const EXIT_CONTRACT = {
   'token-cost.mjs': [0, 1, 10, 70],
   'md2html.mjs': [0, 2, 10, 70],
   'pdfcheck.mjs': [0, 1, 10, 70],
+  // v18.2.6 补登（第三方审计 §4.2「`apply-diff.mjs` 未登记进 EXIT_CONTRACT」）：v18.2.5 新增的脚本
+  //   装了 exit-guard 却**无门核其退出码**——即「有守卫、无契约」，新增的越界码不会被任何门拦下。
+  //   口径取自该脚本头注释：0 = 全部条目应用成功 / 1 = 有跳过或未解析条目、或清单解析出 0 条 / 10 = 参数或路径错。
+  'apply-diff.mjs': [0, 1, 10, 70],
 }
 const scriptDir = join(ROOT, 'skills', 'lunheng-article-pipeline', 'scripts')
 const dynamicScripts = []
@@ -311,8 +321,17 @@ for (const [name, allowed] of Object.entries(EXIT_CONTRACT)) {
   }
   const resolved = new Set()
   let dynamicExit = false
-  for (const m of text.matchAll(/process\.exit(?:Code)?\(([^)]*)\)/g)) {
-    const arg = m[1].trim()
+  // 退出码的两个写法都要看（v18.2.6 收紧）：
+  //   ① `process.exit(N)` / `process.exitCode(N)` —— 括号调用形态（旧版只看这个）；
+  //   ② `process.exitCode = N` —— **赋值**形态。它在 Node 里与 ① **同样生效**（进程正常结束即用该码），
+  //      而旧版完全看不见它：一个 `process.exitCode = 4` 能绕过「表外退出码」检查（本规则的主要锋芒）。
+  //      本包当前无此形态，但门不能只覆盖「今天恰好没写」的那种写法。
+  const exitArgs = [
+    ...[...text.matchAll(/process\.exit(?:Code)?\(([^)]*)\)/g)].map((m) => m[1].trim()),
+    ...[...text.matchAll(/process\.exitCode\s*=\s*([^;\n]+)/g)].map((m) => m[1].trim()),
+  ]
+  for (const arg of exitArgs) {
+    if (!arg) continue
     for (const n of arg.matchAll(/\b\d+\b/g)) resolved.add(Number(n[0]))
     for (const id of arg.matchAll(/\b([A-Za-z_$][\w$]*)\b/g)) {
       const nm = id[1]
@@ -325,7 +344,13 @@ for (const [name, allowed] of Object.entries(EXIT_CONTRACT)) {
       }
     }
   }
-  const usesGuard = text.includes(GUARD)
+  // 真 import 检查（v18.2.6 收紧）：旧实现是 `text.includes(GUARD)`——**注释里提到也算「已 import」**，
+  //   于是「头注释写了 `_lib/exit-guard.mjs`、代码里却删了 import」这种**最该抓的形态**恰好被判通过
+  //   （本仓每个脚本的头注释都提到该文件名，等于这条检查对它们恒真）。现改为匹配真正的 import：
+  //   静态 `import … from '<…>/_lib/exit-guard.mjs'` 或动态 `import('<…>/_lib/exit-guard.mjs')`。
+  const guardEsc = GUARD.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const importRe = new RegExp(`(?:^|\\n)\\s*import[^\\n]*?from\\s*['"][^'"]*${guardEsc}['"]|import\\(\\s*['"][^'"]*${guardEsc}['"]\\s*\\)`)
+  const usesGuard = importRe.test(text)
   if (usesGuard) { resolved.add(10); resolved.add(70) }   // 异常路径由 guard 统一映射（fs → 10；其余 → 70）
   const unexpected = [...resolved].filter((c) => !allowed.includes(c))
   if (unexpected.length) {
@@ -337,12 +362,12 @@ for (const [name, allowed] of Object.entries(EXIT_CONTRACT)) {
     fail('exit-code', `${name}: 契约表声明了 ${phantom.join(', ')}，但脚本里既解析不出、也无字面量——表格已过期，请核对`)
   }
   if (!usesGuard) {
-    fail('exit-code', `${name}: 未 import ${GUARD}——异常路径会退回 Node 默认的 exit 1，与「1 = P1 内容失败」撞义（v18.0.5 起每个读盘脚本都必须装 guard）`)
+    fail('exit-code', `${name}: 未真正 import ${GUARD}（注释里提到不算）——异常路径会退回 Node 默认的 exit 1，与「1 = P1 内容失败」撞义（v18.0.5 起每个读盘脚本都必须装 guard；v18.2.6 起本检查改为匹配真实 import 语句）`)
   }
   if (dynamicExit) dynamicScripts.push(name)
 }
 notes.push(
-  `⑧ 退出码表：${Object.keys(EXIT_CONTRACT).length} 个随包脚本的退出码契约已核（静态解析 + guard 兜底检查）` +
+  `⑧ 退出码表：${Object.keys(EXIT_CONTRACT).length} 个随包脚本的退出码契约已核（静态解析 process.exit/exitCode 两种写法 + guard **真 import** 兜底检查）` +
     (dynamicScripts.length ? `；动态 exit（静态不可判定，仅核字面量）：${dynamicScripts.join(', ')}` : ''),
 )
 
@@ -383,6 +408,7 @@ const DOC_BUDGET = {
   'skills/lunheng-article-pipeline/references/agents/02-数据检索-data-scout.md': [13312, 13312, 'T2 数据检索卡'],
   'skills/lunheng-article-pipeline/references/agents/03-案例检索-case-scout.md': [13312, 13312, 'T3 案例检索卡'],
   'skills/lunheng-article-pipeline/references/agents/09-审稿-peer-reviewer.md': [14336, 13312, 'T9 审稿卡——v18.2.1 显式抬升 13→14 KB：补 M-Exist-6 六维机检契约警示（防派发时改写维度名）'],
+  'skills/lunheng-article-pipeline/references/checkers/中文AI痕迹-checker.md': [13312, 12288, 'G14 检测器契约（checker 侧）——**v18.2.6 新增登记**：本轮修订把 G14 触发时点统一为「早闸 Phase 3.6 与 T6 同批 / 终闸 Phase 4.5 与 T9 并行」（旧文写「早闸 Phase 3.1」「终闸与 T6 并行」，后者在时序上不可能），文件由 11.5 KB → 12.0 KB **越过 12 KB 登记线**，故按规则⑨ ① 补登记'],
   'skills/lunheng-article-pipeline/references/_shared/规范-机械门对照表.md': [22528, 16384, '规范条文 ↔ 机械门 ID 对照表（改机制前须同步的一览）——v18.2.2 新增登记（原 13.8 KB 已越过 → 12 KB 登记线）；v18.2.4 显式抬升 16→17 KB：补 v18.2.4 的 3 行断链（版本点位两处扫描盲区 + 入口路由字段来源未被断言）；v18.2.5 显式抬升 17→22 KB（按「当前字节向上取整到整 KB」原则）：补 7 行（图件恒失败 / 编号闭环盲区 / 承重墙读错表 / 证据与加载率识别过窄 / G14 三缺陷 / 四类口径未定）——**该抬升与「门补面」是同一件事的两半**：补了门就必须同步本表，否则又造一条新的「规范↔门」断链'],
 }
 const ALWAYS_RESIDENT = [

@@ -21,22 +21,33 @@
 ## 升级流程（发布新版本时）
 
 1. **在真源仓库**（不是部署镜像——见下节「开发位置」）的 `skills/lunheng-article-pipeline/` 下完成机制/角色卡/脚本的修改；改包面（`package.json` / `cordis.patch.yml` / `lib/**`）时**先查官方资料**（`dsh-plugin-guide` 技能），见 `skills/lunheng-article-pipeline/AGENTS.md` 的「开发参考资料」段；
-2. **同步版本号**：`package.json` 的 `version`、`SKILL.md`（frontmatter `version` + 首部版本行）、`cordis.patch.yml` 头、根 `README.md`/`README.zh.md`/`README.es.md`/`README.pt.md`/`README.hi.md`、`SECURITY.md`、`docs/introduction.md` 版本头与「当前版本」、`docs/troubleshooting.md`、`skills/lunheng-article-pipeline/README.md`、`examples/preset/README.md` 的安装命令——**全部一致**（`consistency-check.mjs` 规则 ⑫⑬ 会全量扫描版本点位）；
+2. **同步版本号**：`package.json` 的 `version`、`SKILL.md`（frontmatter `version` + 首部版本行）、`cordis.patch.yml` 头、根 `README.md`/`README.zh.md`/`README.es.md`/`README.pt.md`/`README.hi.md`、`SECURITY.md`、`docs/introduction.md`、`docs/troubleshooting.md`、`skills/lunheng-article-pipeline/README.md`、`examples/preset/README.md` 的安装命令——**全部一致**。
+   > ⚠️ **但机检并不「全量扫描」（v18.2.6 如实更正；旧文写「规则 ⑫⑬ 会全量扫描版本点位」是夸大的）**：`consistency-check.mjs` 的版本点位规则 **⑫ 只覆盖 3 处**——根 `README.md`、`docs/introduction.md`、以及**技能级 README**（脚本内部登记名写作 `skills/README.md`，实际解析为 `skills/lunheng-article-pipeline/README.md`，见 `consistency-check.mjs:179-186`）；规则 ⑬ 另外认 `docs/` 下的**安装 pin** 与「当前版本」行；规则 ①/⑦ 认 `> 版本：` 行与内联 `git tag` 示例。**其余文件的版本头（`SECURITY.md`、`docs/troubleshooting.md`、`docs/*.md` 的版本行）目前靠人工同步**——2026-09 的第三方审计正是这样抓到 `SECURITY.md:3` 与 `docs/troubleshooting.md:3` 双双停在 v18.2.4 而 `package.json` 已是 18.2.5，同时 `consistency-check` 仍报「0 处漂移」（C-3「版本点位门是假覆盖」）。
+   > **待办（未做，属规则所有者的改动）**：把版本点位门的覆盖面从「硬编码 3 文件」改为「根 `*.md` + `docs/**`（可执行 `*.md`）」，并补一条**负向用例**（注入旧版本头必须变红）。补丁点位见交付报告 §3 ③。
 3. **同一提交内更新 `CHANGELOG.md`**（写 `## X.Y.Z` 段，如 `## 18.0.0`）——规则 ⑪ 会机械校验「当前版本段存在」，bump 与 CHANGELOG 脱钩会直接红灯；
-4. 本地跑**四道门**，全绿才提交：
+4. 本地跑**四道门 + 回归测试**（v18.2.6 更正：旧文只列 4 条命令却把其中一条写成回归测试，实际是**门 1-4 + 测试**五条；门 4 = `pack-smoke`，此前两处清单都漏了它），全绿才提交：
    ```sh
-   node skills/lunheng-article-pipeline/scripts/consistency-check.mjs
-   node scripts/plugin-surface-check.mjs
-   node scripts/repo-hygiene-check.mjs
-   node --test "tests/**/*.test.mjs"
+   node skills/lunheng-article-pipeline/scripts/consistency-check.mjs   # 门 1/4 一致性自检
+   STRICT_WARN=1 node scripts/plugin-surface-check.mjs                  # 门 2/4 打包面（warn 也阻塞）
+   node scripts/repo-hygiene-check.mjs                                  # 门 3/4 机械卫生门
+   node scripts/pack-smoke.mjs                                          # 门 4/4 打包产物冒烟（npm pack → 解包 → 入口 apply）
+   node --test "tests/**/*.test.mjs"                                    # 回归测试（不是门，但发布链要求全绿）
    ```
+   > **受限会话（DSH `workspace-write` 沙箱）下的降级跑法**：门 2 需要从 registry/本地解析一个第三方 CLI、门 4 需要 `npm pack`，两者都**要派生子进程**——受限会话禁命名管道时它们 fail-closed 报错（`spawnSync … EPERM` / `→ 退出码 10（环境问题）`），这是环境限制而非本包缺陷。回归测试同理，但可用：
+   > ```sh
+   > npm run test:no-isolation      # = node --test --test-isolation=none "tests/**/*.test.mjs"
+   > ```
+   > `--test-isolation=none` 让测试文件在**同一进程**内跑，是受限 DSH 会话里**唯一能跑通**的形态（`node --test` 默认模式由 runner 自己 spawn 子进程 → EPERM）。代价与边界（如实）：**隔离模式不覆盖跨进程行为**——CI 与发布链仍用标准隔离模式（`.github/workflows/*.yml`），两处结论不一致时**以 CI 为准**。另有三个用例按环境**带理由跳过**（工具内部 spawn / `npm pack` / `final-check` 子步骤），跳过会出现在 `ℹ skipped N` 里——**跳过 ≠ 通过**，不得据此宣称机检已过。
 5. 提交并推送分支；
-6. **发布 = 只推 tag**：`git tag v18.2.5 && git push origin v18.2.5`（tag 必须等于 `v` + `package.json.version`，publish 工作流会校验；**v18.2.1 更正：本行示例上一版停在 `v18.0.4`——bump 脚本的点位正则按行首锚定，扫不到这种内联形态，两次都漏了**；**v18.2.2 更正：第三处人工刷新**；**v18.2.3 更正：第四处人工刷新 —— 根因与终结方案见 §版本号约定 的「已知漏点」注**）
+6. **发布 = 只推 tag**：`git tag v18.2.6 && git push origin v18.2.6`（tag 必须等于 `v` + `package.json.version`，publish 工作流会校验；**v18.2.1 更正：本行示例上一版停在 `v18.0.4`——bump 脚本的点位正则按行首锚定，扫不到这种内联形态，两次都漏了**；**v18.2.2 更正：第三处人工刷新**；**v18.2.3 更正：第四处人工刷新 —— 根因与终结方案见 §版本号约定 的「已知漏点」注**）
    - **发布前多跑一步打包产物验证**：`npm pack` 后解包，确认新增脚本/库/入口随包且能从解包副本运行（两条历史教训：`_lib/` 重构后必须确认相对 `import` 未因 `files` 白名单而丢失；入口移入 `lib/` 后必须确认 `apply` 真能读到 `SKILL.md`——后者现由 `tests/entry.test.mjs` 在 CI 里常驻防守）
    - **发布面裁剪是机械门，不是自觉**（v18.2.0）：`repo-hygiene-check` 规则⑥ 与 `scripts/pack-smoke.mjs` 都带**负清单**——`CHANGELOG.md` / `CONTRIBUTING.md` / `scripts/` / `tests/` / `.github/` **不得随包**；把仓库向文件加回 `package.json` 的 `files` 白名单会**直接红**。另：npm **强制包含**根目录 `README*` 与 `LICENSE`（从 `files` 删掉、加 `.npmignore` 均**无效**，已实测），故五语 README 一定在包内——别把它当缺陷报。
    - ⚠️ **一次只能推 1 个 tag**：GitHub 对「单次 push 超过 3 个 tag」**不触发任何 workflow**（实测：一次推 4 个 tag → 0 个运行）；
-   - ⚠️ **禁止本地 `npm publish`**（会绕过 CI 三道门与 OIDC provenance，且 npm 版本不可覆盖）；
-   - tag 触发的 `publish.yml` 会依次跑门 1/2/3 + 回归测试 → tag/版本一致校验 → **幂等守卫**（该版本已发布则跳过）→ OIDC `npm publish --provenance --tag dsh` → **发布后审计**（`npm view <pkg>@<ver> gitHead` 必须等于本次提交）。
+   - ⚠️ **禁止本地 `npm publish`**（会绕过 CI 的四道门 + 回归测试与 OIDC provenance，且 npm 版本不可覆盖）；
+   - tag 触发的 `publish.yml` 分**两个 job**（v18.2.6 起）：
+     - **`gates`**（`permissions: contents: read`，**不持 `id-token`、不读 `NPM_TOKEN`**）：跑**门 1/4 一致性自检 → 门 2/4 打包面检查（`STRICT_WARN=1`）→ 门 3/4 机械卫生门 → 门 4/4 打包产物冒烟（`pack-smoke`）→ 随包脚本回归测试**；
+     - **`publish`**（持 `id-token: write`，`needs: gates`）：**只有 gates 全绿才可能开始**；本 job 自己只做 tag/版本一致校验 → **幂等守卫**（该版本已发布则跳过）→ OIDC `npm publish --provenance --tag dsh` → dist-tag 核对 → **发布后审计**（`npm view <pkg>@<ver> gitHead` 必须等于本次提交）。
+     > **为什么拆**（第三方审计「CLI 门的外部依赖被排除在供应链考虑之外」）：门 2 会**从 registry 现场下载并执行**第三方 CLI（`dsh-plugin-guide`）——把它放在**持有发布身份**的作业里，等于让一个下载来的二进制在 `id-token: write` 与 `NPM_TOKEN` 面前执行。拆开后，发布身份所在的作业**不再执行任何第三方 CLI**。
 
 ## 开发位置：改动一律落在真源仓库，再同步部署副本（v18.0.0 新增，教训 #153）
 
@@ -81,16 +92,18 @@ npm 版本**不可覆盖**：一旦某版本发布，仓库里**不得**再改�
 **发布 = 推 tag**，由 `.github/workflows/publish.yml` 以 **OIDC Trusted Publishing + `--provenance`** 完成：
 
 ```sh
-git tag v18.2.5 && git push origin v18.2.5   # 工作流会校验 tag == v + package.json.version
+git tag v18.2.6 && git push origin v18.2.6   # 工作流会校验 tag == v + package.json.version
 ```
 
-> ⚠️ **不要在本机 `npm publish`**：会绕过 CI 三道门与来源证明，且 npm 版本**不可覆盖**（发错只能 bump 重发）。
+> ⚠️ **不要在本机 `npm publish`**：会绕过 CI 的**四道门 + 回归测试**与来源证明，且 npm 版本**不可覆盖**（发错只能 bump 重发）。
 > 历史（≤ `2.5.2-dsh.12`）留有「本地 `npm publish --tag dsh`」的记录，自 `2.5.2-dsh.13` 起改为 tag + OIDC。
 
 ## 验证
 
 ```sh
-dsh --profile web --dump-config   # 应看到本包层 + 三档 tool-subagent-* 行
+dsh --profile web --dump-config   # 应看到本包层 + 4 段 insert 行（自注册行 + 三档 tool-subagent-*）
+#   注意：`--dump-config` 只打印**声明行**——三档行默认不装载（v18.2.6），要确认装载需设
+#   任一档 LUNHENG_*_PROVIDER/MODEL 或 LUNHENG_TIERING=on。
 ```
 
 空目录 headless 验证（确认技能仅来自 bundle，排除本地技能根干扰）：

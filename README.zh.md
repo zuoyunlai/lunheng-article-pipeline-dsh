@@ -2,7 +2,7 @@
 
 > 🌐 [English](README.md) ｜ **中文**（本文件）｜ [Español](README.es.md) ｜ [Português](README.pt.md) ｜ [हिन्दी](README.hi.md)
 
-> 版本：v18.2.5（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.2.6（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > 一个 DeepSeek Harness（DSH）bundle 插件，注册一个按需加载的 agent 技能。它把深度长文的生产——学术论文、行业分析、商业评论、公众号深文——变成**带人在环节点的 9 角色流水线**。
 
@@ -41,6 +41,7 @@
 | 初稿 | 逐版递进，含中文 AI 痕迹清理，每轮由独立写手执行 |
 | 审阅报告 | 批判报告（C1–C7）、审计报告（G0–G14）、审稿报告（6 维度 + 期刊匹配）、AI 痕迹报告 |
 | 终交付 | `final/定稿.md`、图件、证据包、交付说明、M 门报告 |
+| DSH 集成（bundle 安装时） | 两个**只读**工具 `lunheng_m_gate`（M 门机械预检）与 `lunheng_char_count`（纯汉字数）——清单里没有就照旧用 `pwsh` 调同名脚本（同源）。人类命令 `/lunheng-status`（读 `run/<项目>/status.md`，**不产生模型消息**）。**机制文件写保护**：全局 guard 否决指向技能包内的 `write`/`edit` 类工具调用，会话无法悄悄改写流水线自己的规则。**边界如实声明**：guard 只看**工具调用**——`pwsh`/子进程**不经此门**；主人授权例外走 `LUNHENG_ALLOW_MECH_EDIT=1`（或本插件行 `config: { allowMechanismEdit: true }`）。插件 **Config**（部署开关，写在你 profile 的本插件行上）覆盖 `quiet` / `allowMechanismEdit` / `scriptTimeoutMs` / `scriptMaxOutputBytes`——与 `LUNHENG_QUIET` / `LUNHENG_ALLOW_MECH_EDIT` 同义、但随 profile 走且可 review；**非法配置在加载期响亮失败**，不静默回落默认值。 |
 
 ## Pipeline overview
 
@@ -67,16 +68,16 @@ Phase 5  终检      T8 终检（主控执行）→ 定稿、证据包、交付�
 ```text
 lunheng-article-pipeline/                 # 包即仓库
 ├── package.json              # 声明 main（lib/index.js）+ dsh.bundle.patch
-├── cordis.patch.yml          # bundle 层：叠加 3 档 subagent 工具
-├── lib/index.js              # 插件入口：通过 ctx.skills 注册技能
+├── cordis.patch.yml          # bundle 层：本包自注册行 + 3 档 subagent 工具（设了 LUNHENG_* 才装载）
+├── lib/index.js              # 插件入口：注册技能 + 只读工具 + 机制写保护 + /lunheng-status
 ├── skills/lunheng-article-pipeline/       # 技能本体（一个目录）
 │   ├── SKILL.md              # 技能入口（角色 / 闸门 / 执行能力边界）
 │   ├── AGENTS.md             # 操作手册
 │   ├── QUICKSTART.md         # 5 分钟快速开始
 │   ├── README.md             # 技能级说明（中文）
 │   ├── references/           # 9 张角色卡、模板、共享闸门算法、期刊数据库
-│   └── scripts/              # 12 个零依赖 .mjs 机械校验脚本
-├── scripts/                  # 仓库门：打包面 + 机械卫生
+│   └── scripts/              # 零依赖 .mjs 机械校验脚本（数量真源 = 技能白名单行）
+├── scripts/                  # 仓库门：打包面 + 机械卫生 + 打包产物冒烟
 ├── tests/                    # node --test 回归（脚本 + 插件入口冒烟）
 ├── docs/                     # 安装 / 使用 / 架构 / FAQ / 排障
 ├── examples/preset/          # 分档说明与安装指南
@@ -87,7 +88,7 @@ lunheng-article-pipeline/                 # 包即仓库
 
 插件入口把 `skills/lunheng-article-pipeline/SKILL.md` 注册为技能，其 `resourceBase` 指向该目录——因此 `references/**` 与 `scripts/**` 的相对引用在任意工作目录下都能解析。
 
-patch 层做两件事：**插入一行本包自注册行**（`- id: lunheng-article-pipeline` / `name: lunheng-article-pipeline`）——loader 靠这一行按包名 import `lib/index.js`，技能才注册得上——以及插入三档分档 subagent 工具。**这一行是承重的**：缺了它入口永远不会被 import、技能不会出现（v18.0.0 的缺陷，18.0.1 修复；由 `tests/bundle-contract.test.mjs` 机械防守）。
+patch 层做两件事：**插入一行本包自注册行**（`- id: lunheng-article-pipeline` / `name: lunheng-article-pipeline`）——loader 靠这一行按包名 import `lib/index.js`，技能才注册得上——以及插入三档分档 subagent 工具，后者**默认不装载**（设任一档 `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_{PROVIDER,MODEL}` 或 `LUNHENG_TIERING=on` 才装载，`off` 强制不装载）。**这一行是承重的**：缺了它入口永远不会被 import、技能不会出现（v18.0.0 的缺陷，18.0.1 修复；由 `tests/bundle-contract.test.mjs` 机械防守）。
 
 ### Documentation
 
@@ -108,14 +109,14 @@ patch 层做两件事：**插入一行本包自注册行**（`- id: lunheng-arti
 **只推 tag 发布，禁止本地 `npm publish`**（本地直发会绕过 CI 三道门与 OIDC 来源证明，且 npm 版本不可覆盖）。
 
 ```sh
-git tag v18.2.5 && git push origin v18.2.5   # 一次只推 1 个 tag（GitHub：单次 push >3 个 tag 不触发任何 workflow）
+git tag v18.2.6 && git push origin v18.2.6   # 一次只推 1 个 tag（GitHub：单次 push >3 个 tag 不触发任何 workflow）
 # publish.yml 依次跑：门 1 一致性 → 门 2 打包面 → 门 3 机械卫生 → 门 4 打包产物冒烟 → 脚本回归测试
 #   → tag/版本一致校验 → 幂等守卫 → OIDC 发布 --provenance --tag dsh → 发布后审计
 ```
 
 ## Install
 
-**方式一：作为 bundle 安装**（推荐；入口注册技能，patch 层激活分档工具）
+**方式一：作为 bundle 安装**（推荐；入口注册技能 + C 组能力，patch 层**可**装载分档工具——默认不装，见 [Model routing](#model-routing)）
 
 ```sh
 dsh plugin --profile web add lunheng-article-pipeline
@@ -149,11 +150,11 @@ dsh --profile web --dump-config   # 应出现 "# == lunheng-article-pipeline" �
 dsh plugin --profile <profile> remove lunheng-article-pipeline
 ```
 
-卸载后 `cordis.patch.yml` 的 3 段 `- insert:` 与入口注册的技能一并消失，不留残余行。若曾手工把技能目录拷到技能根（`.dsh/skills/` 或 `.agents/skills/`），需另行删除该目录。
+卸载后 `cordis.patch.yml` 的 4 段 `- insert:`（自注册行 + 三档工具行）与入口注册的技能一并消失，不留残余行。若曾手工把技能目录拷到技能根（`.dsh/skills/` 或 `.agents/skills/`），需另行删除该目录。
 
 ## Model routing
 
-DSH 通过 `settings.yaml` 路由模型；`subagent` 继承会话模型，因此**单模型零配置**即可跑。要按角色分档时，bundle 会装入三档工具：
+DSH 通过 `settings.yaml` 路由模型；`subagent` 继承会话模型，因此**单模型零配置**即可跑。要按角色分档时，bundle 可装入三档工具——**默认不装载**（三档全继承时它们与内置 `subagent` 完全同义，无条件装载等于每会话白付 3 份工具 schema）：
 
 | 工具 | 角色 | 能力定位 |
 |---|---|---|
@@ -161,7 +162,7 @@ DSH 通过 `settings.yaml` 路由模型；`subagent` 继承会话模型，因此
 | `subagent_strong` | T4 分析 / T5 写作 | 推理强 |
 | `subagent_audit` | T6 批判 / T7 审计 / T9 审稿 / G14 检测 | 顶配防漏判 |
 
-用 `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_PROVIDER` 与 `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_MODEL` 覆盖：provider 与 model 是**独立字段**，跨 provider 时才需同时给；`LUNHENG_TIERING=off` 一键让三档全部退回继承。某档工具未挂载时，派发自动回退 `subagent`。详见 `examples/preset/README.md` 与 `docs/installation.md`。
+用 `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_PROVIDER` 与 `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_MODEL` 覆盖——**设任一档即同时装载三行**（既有的分档配置行为不变）：provider 与 model 是**独立字段**，跨 provider 时才需同时给；`LUNHENG_TIERING=on` 可在不指定模型的情况下只把三行挂上（用于确认工具是否可见），`LUNHENG_TIERING=off` 一键让三档全部退回继承并卸载三行。某档工具未挂载时，派发自动回退内置 `subagent`。详见 `examples/preset/README.md` 与 `docs/installation.md`。
 
 ## Data and external services
 
@@ -180,13 +181,15 @@ DSH 通过 `settings.yaml` 路由模型；`subagent` 继承会话模型，因此
 | 文章 | 规模 | 关键结果 |
 |---|---|---|
 | 品牌一致性文章（2026-08） | 约 7900 字，15 条文献 + 54 条数据 | 证据包齐备；8 项审计问题全部关闭 |
-| 原创性悖论文章（2026-08） | 约 9500 字，12 文献 + 34 数据 + 6 案例 | 4 轮修订，A- 评级，已发表 |
+| 原创性悖论文章（2026-08） | 约 9500 字，12 文献 + 34 数据 + 6 案例 | 全程共 4 轮修订，A- 评级，已发表 |
 | 教师场域隔离论文（2026-08） | 约 12000 字，18 文献 + 47 数据 + 9 案例 | 审计第 2 轮通过；首次一致性审计 |
 | 生成式 AI 学生写作评论（2026-08） | 约 2000 字，12 文献 + 26 数据 | 三方并行检索；M 门 exit 0 |
 | 甲醛白菜文章（2026-08） | 约 4200 字，12 文献 + 29 数据 + 4 案例 | M 门 exit 0；并入 6 条反哺规则 |
 | 观念与理念哲学论文（2026-09） | 约 6280 字，18 文献 + 15 数据，0 案例 | 2 轮审计，23/30 minor revision，M 门真 P0 = 0 |
 
-本地四道门：`node skills/lunheng-article-pipeline/scripts/consistency-check.mjs`、`node scripts/plugin-surface-check.mjs`、`node scripts/repo-hygiene-check.mjs`、`node --test "tests/**/*.test.mjs"`。
+> **本表怎么读（两种容易混的口径）**：① 「修订轮数」数的是**那一次跑的全部写手过稿**（Phase 3.5 → v2、T6 批判修订、G14 轮、审计回环），而流水线自己的上限 **≤2 轮**只约束 **Phase 4.2 的审计回环**——两个数字量的不是一回事；② 表内结论是**当时那一次跑的历史值（配当时的脚本版本）**，用**当前脚本无法复现**：今天拿随包脚本重跑归档项目，甲醛白菜文章会得到 `exit 2` 与 5 个 P0（M-Form-6/10、M-Exist-7/9、M-Integrity-1），因为其中三项门是**那篇文章之后**才加的。请把本表读成「当时产出了什么」，而不是「当前门集能过这些项目」。
+
+本地四道门 + 回归测试：`node skills/lunheng-article-pipeline/scripts/consistency-check.mjs`、`node scripts/plugin-surface-check.mjs`、`node scripts/repo-hygiene-check.mjs`、`node scripts/pack-smoke.mjs`、`node --test "tests/**/*.test.mjs"`。
 
 ## Known limitations
 

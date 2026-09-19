@@ -1,6 +1,6 @@
 # 论衡 × DSH 能力面集成方案
 
-> **版本**：v18.2.5（C 组落地；§一–§六 为 v18.0.2 原文，§七–§八 为 v18.2.1 新增，**§九 为 v18.2.2 新增**）
+> **版本**：v18.2.6（C 组落地；§一–§六 为 v18.0.2 原文，§七–§八 为 v18.2.1 新增，**§九 为 v18.2.2 新增**）
 > **用途**：把论衡的既有机制（12 个门禁脚本 / 并行阶段 / 状态机 / 人在环闸门）**对齐 DSH 已有能力面**，替代平行自建。§一–§六 是**实施方案**，§七 是**落地状态表**，§八 是**可选配方**。
 > **依据**：DSH 官方文档 `docs/cookbook/adding-a-tool.md`、`docs/tool-execution-pipeline.md`、`docs/subsystems/*.md`、`docs/capability-seams.md`（知识库副本见 `dsh-plugin-guide/references/official-docs/`；行号对快照 commit `d347e703…`）。
 > **当前状态**：**C 组四项已启用**（原生只读工具 / `ctx.tools.guard()` 写保护 / `/lunheng-status` / 词预算门）、一项给配方（分档工具行→agent preset）、一项仍未接线（Phase 内并行→`workflow`，依官方用法限定「仅在用户明确要求 workflow 或大规模编排时」用，故**降级为按需**）。
@@ -117,10 +117,11 @@ export function apply(ctx, config) {
 
 ### 3.1 适用与收益
 
-论衡有两个**天然并行、无人在环**的阶段：
+论衡有三个**天然并行、无人在环**的阶段：
 
 - **Phase 1：T1 文献 ∥ T2 数据 ∥ T3 案例**（三方独立，互不干涉）
-- **Phase 4.5：T6 批判 ∥ T9 审稿 ∥ G14 检测**（三线独立）
+- **Phase 3.6：T6 批判 ∥ G14 早闸**（v18.2.6 审计修复时点：G14 早闸与 T6 同批并行，其产出与 T6 批判报告合并为同一份 T5 修订清单）
+- **Phase 4.5：T9 审稿 ∥ G14 终闸**（v18.2.6 审计修复：旧写「Phase 4.5：T6 ∥ T9 ∥ G14」——T6 在 Phase 3.6，与 4.5 无法并行）
 
 当前实现是主控逐次 `subagent` + 等通知。改为 `workflow` 工具的收益：
 
@@ -227,7 +228,7 @@ return { gate: 'T2.5', pass: gatePass, literature: lit, data: dat, cases: cas }
 | C 项 | 处置 | 实现位置 | 官方依据 |
 |---|---|---|---|
 | C-1 只读脚本→原生工具 | ✅ **已启用**（2 个只读工具） | 入口内注册：`lib/tools.js` ← `lib/index.js` 的第二个 `ctx.effect` | `docs/cookbook/adding-a-tool.md`（规范值 + `render`）；`docs/subsystems/tools.md`（工具管线） |
-| C-2 分档工具行→agent preset | 📋 **仅配方**（默认不动 patch） | 本文 §八 | `docs/architecture.md:131`；`docs/subsystems/tools.md:484-504`；`docs/subsystems/skills.md:13` |
+| C-2 分档工具行→agent preset | 📋 **仅配方**（本包默认不装载三行，见下注） | 本文 §八 | `docs/architecture.md:131`；`docs/subsystems/tools.md:484-504`；`docs/subsystems/skills.md:13` |
 | C-3 四道人在环闸门→`ask_user_question` | ✅ **已启用** | `templates/主人确认-template.md` §6-§7 + `00-主控-扩展职责.md` §二十一 | `docs/tool-catalog.md:18,52-112`；`docs/subsystems/user-questions.md:35-44,136-147`；`docs/subsystems/plan.md:33` |
 | C-4 机制文件写保护机械化 | ✅ **已启用（部分）** | `lib/guard.js` → 入口内 `ctx.tools.guard()` | `docs/subsystems/tools.md:313-324`（`guard()` 只收紧；plain-context guard 全局生效） |
 | C-5 `/lunheng-status` 命令 | ✅ **已启用** | `lib/commands.js` → `ctx.commands.register()` | `docs/subsystems/commands.md:5`（dispatch 不产生模型消息） |
@@ -274,6 +275,9 @@ return { gate: 'T2.5', pass: gatePass, literature: lit, data: dat, cases: cas }
 ### 8.2 配方（三步，全部可回滚）
 
 **第 1 步：把 bundle 的三行按 id 关掉**（不改本包仓库、不动别人 profile 的方式）——在**你自己的 profile 补丁**里按 id 覆盖：
+
+> ⚠️ **v18.2.6 起默认不装载**（审计 P2-19：旧表达式只在 `LUNHENG_TIERING=off` 时禁用 → 任何装了本包的人**默认多出 3 个工具**，而三行 `agentOptions` 在全继承形态下返回 `undefined`，与内置 `subagent` **完全同义**，每会话白付 3 份工具 schema）。新口径（`cordis.patch.yml` 的 `disabled: !!js` 现读 `LUNHENG_TIERING === 'off' || (!LUNHENG_TIERING && 三档 *_PROVIDER/*_MODEL 皆空)`）：**不设任何 `LUNHENG_*` → 三行不装载（默认零成本）**；设任一档 `*_PROVIDER/*_MODEL` → 自动装载（旧用户「设了模型就生效」行为不变）；`LUNHENG_TIERING=on|1|true` → 显式装载，`off` → 强制不装载（优先级最高）。
+> **故本步在默认配置下已是既成状态**——只有当你**主动设了 `LUNHENG_*`**（三行因此被装载）又想让某次会话回到纯 `subagent` 时，才需要它。
 
 ```yaml
 # <profile>/cordis.patch.yml
@@ -328,7 +332,7 @@ dsh --profile web --dump-config 2>&1 | grep -E "tool-subagent-(retrieval|strong|
 2. **子代理靠「加入同一组合」继承能力**，不是各自继承 scope（`glossary.md:13`「scoped registrations do not inherit down to subagents」；`core.md:499-524` 的 `composeFrom`）。正常父子关系下 T1-T9 会 join 到同一 standing composition，**用得到三档工具**；但**跨预设 fork 的子代理不一定看得到**——派发前先确认工具清单。
 3. **`restrict` 藏不住预设层工具**（`tools.md:507-513`：对 scope-local 名会失败）——想「有预设但偶尔禁掉某档」只能靠不选该预设。
 4. **预设行会被校验拒绝**：`capability-seams.md:507`「rejecting a row that never activates or that publishes into the root service realm」——写错 `toolName` 或把它当 service 用会**加载期报错**（这是好事：响亮失败）。
-5. **本包默认不动**：`cordis.patch.yml` 仍保留三行全局声明。「装了不坏」优先——**换了作用域就不再是「装了就可用」**，需要主人主动选择会话预设。
+5. **本包默认不动 patch**：`cordis.patch.yml` 仍保留三行全局声明，但 **v18.2.6 起由行级 `disabled: !!js` 决定是否装载——默认（不设任何 `LUNHENG_*`）不装载**。§八 第 1 步（按 id 关掉三行）因此只对「已主动设了 `LUNHENG_*`、三行被装载」的会话才需要；对纯 `subagent` 会话，「装了不坏」优先——**换了作用域就不再是「装了就可用」**，需要主人主动选择会话预设。
 
 ---
 

@@ -1,8 +1,12 @@
 // 论衡插件一致性自检脚本（DSH）— 发布/commit 前运行
 // 用法：node scripts/consistency-check.mjs
-// 覆盖 21 类主规则 + 4 个子规则（编号规则见下；子规则 = ④b 占位符残留 / ⑥b M 门口径 /
-//   ⑩b 脚本计数 / ⑩c 分档映射）——演进：.5 为 9 类，.13 加 ⑩-⑭，.15 加 ⑮-⑰，.16 加 ⑱，
-//   .17 加 ④b + ⑲ + ⑳，18.0.2 加 ⑩b，18.0.3 加 ⑩c。**本数字不做机械门**（改规则时手工同步即可）。
+// 覆盖 22 类主规则 + 5 个子规则（编号规则见下；子规则 = ④b 占位符残留 / ⑥b M 门项数 /
+//   ⑥c 非 DSH 工具名 / ⑩b 脚本计数 / ⑩c 分档映射）——演进：.5 为 9 类，.13 加 ⑩-⑭，
+//   .15 加 ⑮-⑰，.16 加 ⑱，.17 加 ④b + ⑲ + ⑳，18.0.2 加 ⑩b，18.0.3 加 ⑩c，18.2.6 加 ㉒。
+//   **本处两个数字（22 类 / 5 个子规则）不做机械门**——改规则时**手工同步**即可：
+//   边界如实声明：脚本无法可靠地从自身文本里数「规则数」（正文里到处是「①-㉑」的引用），
+//   所以这里只做**人工同步 + 注释留痕**，不做派生（v18.2.6 审计修复：旧文写「21 类 + 4 个子规则」，
+//   实测子规则是 5 个——⑥c 从未被列入清单，属「清单漏项」而非规则缺失）。
 //   ① 跨文件版本一致性（package.json ↔ SKILL.md frontmatter ↔ 版本头行 ↔ 仓库级文档）
 //   ② 双头版本行 / M-Gate-Report 文件名漂移
 //   ③ 悬空引用（版本一致性检查旧名 / scripts/*.mjs 悬空 / 角色卡索引缺失）
@@ -13,7 +17,7 @@
 //   ⑧ cordis.patch.yml + examples/ 版本引用（防安装文档指向未发布版本）
 //   ⑨ .dsh 双写同步 + 污染校验（本地，CI 无该目录自动跳过）
 //   ⑩ 随包脚本白名单集合一致性（防白名单出现 7/8/9 三种口径）
-//   ⑩b 脚本计数全库对账（任何「随包 N 个脚本」断言 == 磁盘真值）
+//   ⑩b 脚本计数全库对账（**结构派生**：句子里列出 ≥3 个 `*.mjs` 名 或「脚本/白名单」+数字 → 该数字 == 磁盘真值）
 //   ⑩c 分档工具 ↔ 角色映射全库对账（真源 = model-routing.mjs 的 tool→roles）
 //   ⑪ CHANGELOG 当前版本段存在性（防 bump 提交漏写 CHANGELOG）
 //   ⑫ 版本点位全量扫描（版本头 / 列表项 / 标题内嵌）
@@ -27,6 +31,7 @@
 //   ⑲ 交接契约表（每个声明产出的产物须被产出者声明 + 被下游读清单/证据包引用；版本化报告不得写死 -v1.md）
 //   ⑳ M 门文档自洽（M-Gate-Algorithm.md 节头括注项数 == 节内 ### 子节数 == 脚本 gate 标签数；子节编号连续）
 //   ㉑ 五语 README 结构镜像（切换器行 + 表格行数 + ## 标题数，五份必须一致）
+//   ㉒ 按需查节锚点存在性（SKILL.md 启动清单里 `文件#锚点` 指向的锚点必须真实存在——「按需查节」的机械可定位性）
 // 退出码 0 = 通过；1 = 有漂移（列在 stderr）
 // (重写用法：node scripts/consistency-check.mjs [--fix]
 //   --fix：自动修复可逆的简单漂移（P2 级，如「（检查）」占位符替换）
@@ -71,6 +76,10 @@ const UPSTREAM_SPEC_VERSIONS = new Set(['2.2.14']);
 
 function walk(dir, acc = []) {
   for (const name of readdirSync(dir)) {
+    // v18.2.6 审计修复（追加 A）：跳过 .git / node_modules——旧实现**不跳**（而同文件的 walkAny 跳），
+    //   于是 `walk(REPO_ROOT)` 会去扫 `node_modules/**/*.md`：既套用「脚本计数」等文本规则
+    //   → **假 P1**，又把每次自检拖慢到分钟级（一旦装过依赖）。两处行为现统一为跳过这两类目录。
+    if (name === '.git' || name === 'node_modules') continue;
     const p = join(dir, name);
     const st = statSync(p);
     if (st.isDirectory()) walk(p, acc);
@@ -120,6 +129,127 @@ function checkGateCounts(text, rel) {
   check(/M-Form\s*(\d+)\s*\/\s*M-Exist\s*(\d+)\s*\/\s*M-Integrity\s*(\d+)/, 2, exist, ' 分工（Exist）');
   check(/M-Form\s*(\d+)\s*项\s*\+\s*M-Exist\s*(\d+)\s*项/, 1, form, ' 分项（Form）');
   check(/M-Form\s*(\d+)\s*项\s*\+\s*M-Exist\s*(\d+)\s*项/, 2, exist, ' 分项（Exist）');
+
+  // ❸ M 门项数：**主语 + 限定词两问**（v18.2.6 审计修复 / 断言 A）。
+  //  教训（第三方全量审计）：规范侧早已写「一事实一处」，但**「数字一致」没做进任何机械门**，
+  //    于是同一事实在多文档间长期漂移。实测旧规则的 6 种紧邻写法**漏掉全部真实漂移点**：
+  //      · deliverables.md「M-Form 形式合规门（v2.5.2-dsh.4 口径统一 = 8 项…」+「= 3 项」→ 合 13 项
+  //      · 08-终检卡「22 项：M-Form 1-11 + **M-Exist 1-7** + M-Integrity-1」→ 实列 19 项
+  //      · 08-终检卡同段「M 门总 **20** 项」（同一段还写着「22 项机械化」，自相矛盾）
+  //      · M-Gate-Algorithm「把 **13 项** M 门从…」（数字在「M 门」**之前**的语序）
+  //  但「凡出现『N 项』就按 M 门总数校验」会**大面积误报**（实测一次跑出 8 处，逐行核对全为
+  //    「主语不是 M 门总数」）。故判定必须是**两问**：① 主语是谁（谁被计数）② 限定词是哪个（哪种口径）。
+  //  **反例清单（6 条，全部是从当前仓库实测到的误报——不许把口径改宽回去）**：
+  //    1.「22 项 M 门中曾出现 **10 项（45%）需 LLM 人工修正**」→ 10 = 需修正项数（`M-Gate-Algorithm.md:74`、`07-审计-auditor.md:53`）
+  //    2.「M 门仍 exit=2，**其中 4 项 P0** 归属上游」→ 4 = P0 条数（`00-主控-扩展职责.md:488`）
+  //    3.「G 清单（G0-G14，v2.4.0 加 G14 = **15 项**）」→ G 清单项数，与 M 门无关（`audit-checklist-quickref.md:14`）
+  //    4.「## M-Form 形式合规门（**11 项**，含 …）」/「**M-Exist 存在性合规门**（**10 项**）」→ **分项小计，本身正确**
+  //    5.「`scripts/m-gate-check.mjs` **第 4 项**「…」」→ 脚本内序号，不是任何项数
+  //    6.「…M-Integrity-1 佐证；另有 **1 项**主控人工门 M-Integrity-2」→ 门编号后缀 + 人工门计数
+  //    （另有两条同族：`共 22 项` 的回指、`23 项 = 机械 22` 的等式右值 —— 见 ④ 与 ③ 的注释）
+  //  **正例清单（6 条，必须报——审计 P1-1 的真实历史形态，即注入验证样本）**：
+  //    (a)「M 门 20 项」旧总数        (b)「M 门 13 项」更旧口径
+  //    (c)「**22 项**：M-Form 1-11 + M-Exist 1-7 + M-Integrity-1」  (d)「M-Form 形式合规门（8 项，含 …）」
+  //    (e)「M-Exist 存在性合规门（3 项，含 …）」                     (f)「v2.5.2-dsh.17 起 19 项有脚本佐证」
+  //  判定顺序（短路，先排除再归属）：
+  //    ① **排除形态**（命中即跳过）：后文含「需人工/需 LLM/人工修正/需复核」→ 是「待修项数」；
+  //       前缀含「其中/曾出现」→ 子集计数；前缀含「G0-G14/G 清单」→ G 项数。
+  //    ② **显式总分标记**：前缀紧邻「共/总/合计/=」→ 期望 mech 或 total（**优先级高于分项归属**——
+  //       「…M-Integrity-1（共 22 项）」的 22 是对前文的**回指合计**，不是 M-Integrity 的小计）。
+  //    ③ **人工项数** / ④ **机械化项数**：前缀紧邻「人工/手动」/「机械/脚本」；或**后**紧邻
+  //       「(有|由)?机械|脚本」→ 机械数（「19 项有脚本佐证」即此形）。**`=` 不算紧邻**，
+  //       故「M 门总 23 项 = 机械 22 项」里的 23 不会被读成机械数。
+  //    ⑤ **分项主语**：同行最近一个 M-Form/M-Exist/M-Integrity 关键词（≤40 字符）→ 期望该档派生值。
+  //       **关键词一律用 `M-XXX(?!-\d)` 形态取位**——门编号 `M-Integrity-2` 的后缀数字不是项数。
+  //    ⑥ **整体主语**：「M 门」在数字之前且其间 ≤40 字符无数字 → 期望 mech 或 total。
+  //    ⑦ 都判不出 → **跳过**（不臆断主语）。
+  //  另补 (a) 区间写法 `M-Form 1-N` / `M-Exist 1-N`（08 卡曾写 M-Exist 1-7）：**显式引用旧值的行豁免**
+  //    （含「旧版/旧文/历史/废止」，见 HIST_QUOTE）——清仓注解必须能引用旧数字。
+  //  负向用例（自测用，勿留在仓里）：① 把任一文档的「M-Exist 1-10」改成「M-Exist 1-7」；
+  //    ② 把「共 22 项」改成「共 20 项」；③ 把 08 卡的「**22 项**：M-Form 1-」改成「**15 项**：M-Form 1-」
+  //    → 三者都应报 `[P1 M 门项数不自洽]` 并使脚本 exit 1。
+  const MANUAL = 1;   // 人工项只有 M-Integrity-2 一项（脚本 gate 标签之外）
+  const badCount = (ln, got, want, label) => errors.push(
+    `[P1 M 门项数不自洽] ${rel}:${ln} ${label}写 ${got} 项，真源应为 ${want}（真源 = m-gate-check.mjs 的 gate 标签：`
+    + `M-Form ${form} + M-Exist ${exist} + M-Integrity ${integ} = 机械 ${mech}；总 ${total} = 机械 ${mech} + 人工 ${MANUAL}）`,
+  );
+  const FAMILY = [['M-Form', form], ['M-Exist', exist], ['M-Integrity', integ + 1]];
+  const HIST_QUOTE = /旧版|旧文|历史|废止|旧口径/;          // 「显式引用旧值」的豁免标记
+  const SUBSET_POST = /需人工|需 LLM|人工修正|需复核/;      // 后文出现 → 是「待修项数」，非任何档位计数
+  // 「N 项」**后**紧邻机械/脚本 → 该数是机械项数（「19 项有脚本佐证」即此形）。
+  //   注意**不放行**「23 项 = 机械 22」：等号说明前半是总数、后半才是机械数，故标记位不包含 `=`。
+  const postMech = /^\s*[*）)、，,：:]{0,3}\s*(?:有|由|经)?\s*(?:机械|脚本|已脚本)/;
+  // 「N 项」**后**紧邻「（主控）人工门」→ 该数是**人工门**计数（「另有 1 项主控人工门 M-Integrity-2」即此形）。
+  //   没有这一支时，那个 1 会被 ⑤ 就近归给 30 字符外的 `M-Exist 1-10` → 误报「M-Exist 写 1 项」（docs 实测）。
+  const postManual = /^\s*[*）)、，,：:]{0,3}\s*(?:主控)?\s*人工/;
+  // 「共/总/合计/=」紧邻在数字**前** → 显式总分口径（可指机械 22 或总 23）。
+  //   不带 `M 门` 前置要求：`白名单脚本机械判定：M-Form 1-11 + …（共 22 项）` 这类句子主语就是整体项数；
+  //   G 清单计数已在上游被 `G0-G14/G 清单` 排除。
+  const TOTAL_TAIL = /(?:合计|共|总|＝|=)\s*\*{0,2}\s*$/;
+  text.split('\n').forEach((l, i) => {
+    // 扫描面：M 门关键词 **∪ 机械门的脚本/佐证上下文**。
+    //   后者是注入样本 (f)「v2.5.2-dsh.17 起 19 项有脚本佐证」的必要入口——该行可以
+    //   **不出现任何 M 门关键词**，但「N 项（有）脚本佐证」在论衡语境里只可能指机械门
+    //   （唯一跑 22 项机械判定的脚本就是 m-gate-check.mjs），故同样在断言面内。
+    if (!/M\s*门|M-Form|M-Exist|M-Integrity|(?:有|由|经)\s*脚本|m-gate-check/.test(l)) return;
+    const ln = i + 1;
+    // 门编号 M-Form-11 / M-Exist-3 / M-Integrity-2 的**后缀数字**不是项数——把它当关键词会让
+    //   「另有 1 项主控人工门 M-Integrity-2」被读成「M-Integrity 写 1 项」（实测误报）。
+    //   故关键词一律用 `M-XXX(?!-\d)` 形态取位；下面的 keyNear 因此不再被门编号干扰。
+    const kwPos = (k) => [...l.matchAll(new RegExp(`${k}(?![-\\d])`, 'g'))].map((x) => x.index);
+    // (a) 区间写法 M-Form 1-N / M-Exist 1-N（显式引用旧值的行豁免）
+    if (!HIST_QUOTE.test(l)) {
+      for (const [pre, want] of FAMILY.slice(0, 2)) {
+        const m = l.match(new RegExp(`${pre}\\s*1-(\\d+)`));
+        if (m && Number(m[1]) !== want) badCount(ln, m[1], want, `「${pre} 1-N」区间的 N`);
+      }
+    }
+    // (b) 每个「N 项」：先排除、再按限定词归属（顺序即优先级，短路）
+    for (const m of l.matchAll(/(\d+)\s*项/g)) {
+      const n = Number(m[1]);
+      const pre = l.slice(0, m.index);
+      const post = l.slice(m.index + m[0].length, m.index + m[0].length + 14);
+      const tail = pre.replace(/[*：:\s]+$/, '');
+      if (SUBSET_POST.test(post)) continue;                                  // ① 待修项数
+      if (/其中|曾经|曾出现/.test(pre.slice(-6))) continue;                   // ① 子集计数
+      if (/G0-G14|G 清单/.test(pre.slice(-30))) continue;                    // ① G 清单项数
+      // ④ 显式总分标记（「共/总/合计/=」紧邻在数字前）优先级**高于**分项归属——
+      //   「…M-Integrity-1（共 22 项）」里的 22 是对前文的**回指合计**，不是 M-Integrity 的小计（实测误报）。
+      if (TOTAL_TAIL.test(pre)) {
+        if (n !== mech && n !== total) badCount(ln, n, `${mech}（机械）或 ${total}（总）`, 'M 门总数');
+        continue;
+      }
+      if (/(?:人工|手动)\s*[*：:]{0,2}$/.test(tail) || postManual.test(post)) {  // ② 人工项数
+        if (n !== MANUAL) badCount(ln, n, MANUAL, '人工项数');
+        continue;
+      }
+      if (/(?:机械|脚本|已脚本)\s*[*：:]{0,2}$/.test(tail) || postMech.test(post)) {
+        if (n !== mech) badCount(ln, n, mech, '机械化项数');                  // ③ 机械化项数（含「N 项有脚本佐证」）
+        continue;
+      }
+      let keyHit = null, keyDist = Infinity;
+      for (const [k, want] of FAMILY) {
+        const pos = kwPos(k).filter((x) => x <= m.index).pop();
+        if (pos !== undefined && m.index - pos < keyDist) { keyDist = m.index - pos; keyHit = [k, want]; }
+      }
+      if (keyHit && keyDist <= 40) {                                          // ⑤ 分项主语（标题/速查表括注）
+        if (n !== keyHit[1]) badCount(ln, n, keyHit[1], keyHit[0]);
+        continue;
+      }
+      const gm = [...pre.matchAll(/M\s*门/g)].pop();                          // ⑥ 整体主语
+      const gapTxt = gm ? pre.slice(gm.index + gm[0].length) : '';
+      if (gm && !/\d/.test(gapTxt) && gapTxt.length <= 40 && n !== mech && n !== total) {
+        badCount(ln, n, `${mech}（机械）或 ${total}（总）`, 'M 门总数');
+      }
+      // ⑦ 主语判不出 → 跳过（不臆断）
+    }
+    // (d) 历史口径黑名单（13/19/20/21）——**未显式标注为旧值**即报；标注行豁免
+    if (!HIST_QUOTE.test(l)) {
+      for (const m of l.matchAll(/(13|19|20|21)\s*项/g)) {
+        badCount(ln, m[1], `${mech}（机械）或 ${total}（总）`, '历史口径');
+      }
+    }
+  });
 }
 
 // --fix 模式：自动修复可逆的简单漂移（P2 级）
@@ -277,8 +407,10 @@ for (const f of files) {
       errors.push(`[P0-1c 硬编码 fallback 链] ${rel}`);
     }
     // ⑥ 已知口径残留（v2.5.2-dsh.3 审计新增：防已修问题复发）
+    //   v18.2.6 审计修复：提示语里的「现为 10 项」是**自己写死的数字**（真源已是 11）——
+    //   门自己的报错文案过期，比被它拦的东西更讽刺。现改为从 GATE_DERIVED 派生。
     if (/M-Form 形式合规门（6 项）/.test(text) || /M-Form 形式合规门（v2\.2\.0 5 项/.test(text)) {
-      errors.push(`[P1 口径残留 M-Form 6 项（现为 10 项）] ${rel}`);
+      errors.push(`[P1 口径残留 M-Form 6 项（现为 ${GATE_DERIVED.form} 项）] ${rel}`);
     }
     if (/G0-G14 十四项/.test(text)) {
       errors.push(`[P1 口径残留 G 清单「十四项」（应为 15 项）] ${rel}`);
@@ -332,31 +464,53 @@ if (declaredCount && Number(declaredCount) !== diskScripts.length) {
   errors.push(`[P1 白名单数量不符] SKILL.md 声明 ${declaredCount} 个 ≠ 磁盘 ${diskScripts.length} 个`);
 }
 
-// ⑩b 脚本计数全库对账（v18.0.2 新增）
-//   教训：白名单行写 11 个（正确），而 glossary 写「随包 9 个」、SKILL.md 另一处写「共 10 个」——
-//   规则 ⑩ 只核白名单那一行，另两处长期失真且无门可拦（"多宿主事实"的典型代价）。
-//   本规则把「任何对随包脚本数量的断言」都拉进对账：不等于磁盘真值即 P1。
-//   CHANGELOG 豁免（历史段记录当时事实，不追溯改写）。
-const SCRIPT_COUNT_CLAIMS = [
-  /随包\s*\*{0,2}\s*(\d+)\s*个/g,                        // 「随包 **9 个** `scripts/*.mjs`」
-  /随包脚本[^\n。]{0,8}?(\d+)\s*个/g,                    // 「随包脚本 10 个」/「随包脚本 \| 11 个」
-  /共\s*(\d+)\s*个[^\n。]{0,6}脚本/g,                    // 「共 10 个运行时脚本」
-  /(\d+)\s*个\s*\*{0,2}零依赖[^\n]{0,6}\.mjs/g,          // 五语 README「11 个零依赖 .mjs 机械校验脚本」
-  /(\d+)\s*个\s*\*{0,2}门禁脚本/g,                       // 「11 个门禁脚本」
-];
+// ⑩b 脚本计数全库对账（v18.0.2 新增；**v18.2.6 审计修复：识别方式改为结构派生**）
+//   教训（v18.0.2）：白名单行写 11 个（当时正确），而 glossary 写「随包 9 个」、SKILL.md 另一处写「共 10 个」
+//     ——规则 ⑩ 只核白名单那一行，另两处长期失真且无门可拦（「多宿主事实」的典型代价）。
+//   **教训（v18.2.6，本轮审计 B 实测）**：旧实现那 5 条正则，对仓库内 **26 条真实含计数的句子命中 0 条**
+//     ——连 SKILL.md 白名单行自身那行都不匹配。根因 = 它靠「随包 / 共 N 个…脚本 / N 个门禁脚本」等**措辞**识别，
+//     而真实句子的措辞是「v2.5.2-dsh.17 **复核为 11 个脚本**」「白名单（v18.2.5 **复核为 12 个**）」
+//     「，**共 11 个**」「12 个 `.mjs`」——一个都不在词表里。后果：v18.2.5 新增 `apply-diff.mjs` 后
+//     **真实存在 11-vs-12 漂移（QUICKSTART 与 00-主控-coordinator 逐条列 11 个、漏 apply-diff）而门判绿**。
+//   现改为**结构派生**（不依赖措辞）：
+//     ① 句子里**列出 ≥3 个 `*.mjs` 文件名** → 该句的「N 个」计数必须 == 磁盘真值；
+//     ② 或句子出现「脚本 / 白名单 / 门禁」且数字**紧邻**这些词（±12 字符）→ 同样对账。
+//   磁盘真值 = `scripts/*.mjs` **顶层**计数（`_lib/` 是共享库、非入口，不计）。
+//   豁免三处（各自理由）：CHANGELOG（历史段记录当时事实，不追溯改写）；含「串联」的行
+//     （`自动串联 3 脚本` 说的是 final-check 串联的子集，不是白名单断言）；含「旧版/历史/当时/修理」的行
+//     （**清仓类注解必须能引用旧数字**，否则修一处就得删掉教训本身）。
+//   负向用例（自测用，勿留在仓里）：把 SKILL.md 白名单行的「12 个」改成「11 个」
+//     → 本规则应报 `[P1 脚本计数漂移]` 并使脚本 exit 1（实测见交付报告的反事实验证）。
+const SCRIPT_COUNT_RE = /(\d+)\s*个|(\d+)\s*(?:zero-dependency|零依赖)?\s*\.mjs/gi;
+// 「N 个」之后**定向**判是不是脚本计数（v18.2.6：靠「附近有脚本字样」判必然误伤——
+//   实测 4 处反例同行都出现过「脚本」：`2 个只读工具` / `8 个假 P0` / `图件 0 个` / `11 个真实项目，token-budget.mjs`）。
+//   两问：① 「N 个」紧跟的**计数量词**是不是脚本语义词（≤5 字符过渡，容纳 `）**：\`scripts/`、`，含 \`apply-diff.mjs\``）；
+//        ② 紧跟「个」的**被计数名词**是不是已知非脚本名词（命中即跳过）。
+const SCRIPT_AFTER = /^[^\d\n]{0,5}(?:脚本|门禁|scripts?\/|[a-z0-9-]+\.mjs)/;
+const NON_SCRIPT_NOUN = /^\s*(?:真实项目|项目|只读工具|工具|假\s?P[01]|阶段|轮|文件|汉字|条目)/;
+const seenClaim = new Set();   // 去重：`active` 与 `walk(REPO_ROOT)` 会重复覆盖技能目录（旧实现同一漂移报两遍）
 const claimTargets = [...active, ...(existsSync(REPO_ROOT) ? walk(REPO_ROOT) : [])];
 for (const f of claimTargets) {
   if (f.endsWith('CHANGELOG.md')) continue;
+  if (seenClaim.has(f)) continue;
+  seenClaim.add(f);
   const rel = relative(REPO_ROOT, f).replaceAll('\\', '/');
   readFileSync(f, 'utf8').split('\n').forEach((l, i) => {
-    for (const re of SCRIPT_COUNT_CLAIMS) {
-      for (const m of l.matchAll(re)) {
-        if (Number(m[1]) !== diskScripts.length) {
-          errors.push(
-            `[P1 脚本计数漂移] ${rel}:${i + 1} 写 ${m[1]} 个 ≠ 磁盘 ${diskScripts.length} 个（` +
-              `唯一真源 = SKILL.md「随包脚本白名单」行；其余处请改指针或同步数字）`,
-          );
-        }
+    if (/串联/.test(l)) return;                                          // 「自动串联 3 脚本」= 子集断言
+    if (/旧版|历史|当时|曾经|教训|漂移|更正|修复|不再/.test(l)) return;   // 清仓注解须能引用旧数字
+    const mjsNames = new Set([...l.matchAll(/[a-z0-9][a-z0-9-]*\.mjs/g)].map((x) => x[0]));
+    const structural = mjsNames.size >= 3;                               // ① 结构派生：列了 ≥3 个脚本名
+    if (!structural && !/脚本|白名单|门禁/.test(l)) return;               // ② 措辞派生需要「脚本/白名单/门禁」上下文
+    for (const m of l.matchAll(SCRIPT_COUNT_RE)) {
+      const n = Number(m[1] ?? m[2]);
+      const after = l.slice(m.index + m[0].length);
+      if (NON_SCRIPT_NOUN.test(after)) continue;                          // ② 被计数名词非脚本
+      if (!structural && !SCRIPT_AFTER.test(after)) continue;             // ① 计数量词非脚本语义
+      if (n !== diskScripts.length) {
+        errors.push(
+          `[P1 脚本计数漂移] ${rel}:${i + 1} 写 ${n} 个 ≠ 磁盘 ${diskScripts.length} 个（` +
+            `唯一真源 = SKILL.md「随包脚本白名单」行；其余处请改指针或同步数字）`,
+        );
       }
     }
   });
@@ -835,6 +989,53 @@ if (langStats.length > 1) {
   const h2Set = new Set(langStats.map((s) => s.h2));
   if (h2Set.size > 1) {
     errors.push(`[P1 五语 README] \`##\` 标题数不一致：${langStats.map((s) => `${s.f}=${s.h2}`).join(' / ')}——某语言可能整节缺失`);
+  }
+}
+
+// ㉒ 按需查节锚点存在性（v18.2.6 审计修复 · 追加 B）
+//   教训：SKILL.md 启动清单要求「只需三节 / 按需查节 / 不必逐张通读」，但定位手段是**手写中文标题**
+//     （如 `M-Gate-Algorithm.md` 里的 `#1-m-gate-report-v224-输出格式4-版本合并最终版`）
+//     → 模型实际只能 grep 或整读，「按需查节」缺**机械可定位性**；且中文锚点随标题一改即失效、无人知晓。
+//   现规则：被点名章节的标题前加**稳定英文锚点** `<a id="…"></a>`，本规则断言其真实存在。
+//     **断言目标从 SKILL.md §启动清单 现场派生**——清单改了断言自动跟着改，不另写硬编码清单。
+//   写法取舍（为什么用 `<a id="…"></a>` 独立成行，而不是 GitHub 自动锚点）：
+//     ① 英文 slug 与标题文字**解耦**——改标题（含加版本注记）不会让锚点失效；
+//     ② 独立成行时任何渲染器都不显示，且**不进标题文本**，故不影响任何「标题级」断言（如 M 门节头项数、五语 README 标题数）；
+//     ③ 比 HTML 注释更直接：注释不会产生锚点，`<a id>` 才是真正可跳转/可 grep 的定位点。
+//   负向用例（自测用，勿留在仓里）：删掉 pipeline-readme.md 的 `<a id="overview"></a>`
+//     → 本规则应报 `[P1 锚点缺失]` 并使脚本 exit 1。
+{
+  const lines = skillText.split('\n');
+  const start = lines.findIndex((l) => /^##\s*启动清单/.test(l));
+  const end = lines.findIndex((l, i) => i > start && /^##\s/.test(l));
+  if (start < 0 || end < 0) {
+    errors.push('[P0 锚点断言失效] SKILL.md 未找到 §启动清单 区块——规则 ㉒ 失效即静默放行，真源结构改了请同步本规则');
+  } else {
+    const resolve = (relPath) => [join(ROOT, relPath), join(ROOT, 'references', relPath)].find((p) => existsSync(p));
+    let checked = 0;
+    for (const l of lines.slice(start, end)) {
+      const mdFiles = [...new Set([...l.matchAll(/[A-Za-z0-9_\-./]+\.md/g)].map((m) => m[0]))];
+      const targets = [...l.matchAll(/([A-Za-z0-9_\-./]+\.md)#([a-z][a-z0-9-]*)/g)].map((m) => [m[1], m[2]]);
+      // 简写 `#anchor`：仅当该行只引用**一个** .md 文件时才能归属（多文件行必须写全 file.md#anchor）
+      for (const m of l.matchAll(/`#([a-z][a-z0-9-]*)`/g)) {
+        if (mdFiles.length === 1) targets.push([mdFiles[0], m[1]]);
+        else errors.push(`[P1 锚点写法歧义] SKILL.md 启动清单用简写 \`#${m[1]}\`，但该行引用了 ${mdFiles.length} 个 .md ——请写全「file.md#anchor」`);
+      }
+      for (const [relPath, anchor] of targets) {
+        const p = resolve(relPath);
+        if (!p) { errors.push(`[P1 锚点目标缺失] SKILL.md 启动清单指向 ${relPath}，该文件不存在`); continue; }
+        checked++;
+        if (!readFileSync(p, 'utf8').includes(`<a id="${anchor}"></a>`)) {
+          errors.push(
+            `[P1 锚点缺失] ${relPath} 缺锚点 <a id="${anchor}"></a>（SKILL.md 启动清单指向它）` +
+              '——「按需查节」将退化为 grep / 整读',
+          );
+        }
+      }
+    }
+    if (checked === 0) {
+      errors.push('[P0 锚点断言失效] SKILL.md 启动清单里没有任何 `文件.md#锚点` 引用——规则形同虚设，请恢复锚点引用');
+    }
   }
 }
 

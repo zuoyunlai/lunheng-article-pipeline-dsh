@@ -1,6 +1,6 @@
 # 故障排查（troubleshooting）
 
-> 版本：v18.2.4（DSH 原生插件，发布于 2026-09-13）
+> 版本：v18.2.6（DSH 原生插件，发布于 2026-09-13）
 
 安装/验证失败时按「症状 → 原因 → 处置」对照。
 
@@ -15,10 +15,11 @@
 node skills/lunheng-article-pipeline/scripts/consistency-check.mjs   # 文档一致性（这个随包，两种形态都有）
 node scripts/plugin-surface-check.mjs                                # 打包面契约（仅仓库）
 node scripts/repo-hygiene-check.mjs                                  # 语法/行尾/UTF-8/发布包（仅仓库）
+node scripts/pack-smoke.mjs                                          # 打包产物冒烟：npm pack → 解包 → 入口 apply（仅仓库）
 node --test "tests/**/*.test.mjs"                                    # 随包脚本 + 包入口回归（仅仓库）
 ```
 
-> **随包脚本**（`skills/lunheng-article-pipeline/scripts/` 下 11 个 + `_lib/`）**两种形态都有**——M 门、字数、证据包、终检等运行期脚本是功能本体的一部分，不会被裁剪。
+> **随包脚本**（`skills/lunheng-article-pipeline/scripts/` 下的顶层 `.mjs` + `_lib/`）**两种形态都有**——M 门、字数、证据包、终检等运行期脚本是功能本体的一部分，不会被裁剪。**顶层脚本的数量真源 = `SKILL.md` 的「随包脚本白名单」行**（本文件不再复述数字：v18.2.5 实测顶层 12 个，而文档多处仍写 11，属「会腐烂的事实」）。
 
 ---
 
@@ -96,7 +97,7 @@ node --test "tests/**/*.test.mjs"                                    # 随包脚
 > 4. **子步骤没跑起来被记成 1**：`PATH` 为空等 spawn 失败在旧版记 `exit: null → 1`，`final-check` 还会打印「⚠️ 存在 P1 残留，可触发 T5 修订一轮」（把环境问题说成内容问题）。现记 **`70`** 并给独立推荐语。
 > 5. **未知参数被静默忽略**：`--ful`（拼错）、`--nope` 等旧版直接当无事发生（`exit 0`，走默认口径）。现 `count-chars` / `model-routing` / `consistency-check` 显式拒绝并给用法。
 >
-> **不共用本语义的工具**（以各自头注释为准，均非流水线闸门）：`token-budget`（0 成功 / 1 用法 / 2 项目路径不存在）、`md2html`（10 参数或路径错 / 2 `--strict` 校验失败）、`pdfcheck`（1 结构异常 / 10 参数或路径错）、`token-cost`（0/1）、`normalize-trust-level`（1 = 有未决条目，其自有语义；全部输入路径都不存在 → 10）、`consistency-check` 与仓库两道门（0/1，CI 独立命名空间）。
+> **不共用本语义的工具**（以各自头注释为准，均非流水线闸门）：`token-budget`（0 成功 / 1 用法 / 2 项目路径不存在）、`md2html`（10 参数或路径错 / 2 `--strict` 校验失败）、`pdfcheck`（1 结构异常 / 10 参数或路径错）、`token-cost`（0/1）、`normalize-trust-level`（1 = 有未决条目，其自有语义；全部输入路径都不存在 → 10）、`apply-diff`（**v18.2.6 补登**：0 = 全部条目应用成功 / 1 = 有跳过或未解析条目、或清单解析出 0 条（需人工处理）/ 10 = 参数或路径错 / 70 = 内部错误（口径以该脚本头注释为准），其余走 `exit-guard` 兜底）、`consistency-check` 与仓库两道门（0/1，CI 独立命名空间）。
 >
 > 退出码契约由**源码仓库的** `scripts/repo-hygiene-check.mjs` 的**退出码表**机械核验（v18.0.2 新增；**v18.0.5 大修**——旧版只 grep `process.exit(字面量)`、且「表内数字在文件里出现过」近乎恒真，等于没核）。现规则：解析 `process.exit(<字面量|本文件 const|guard 导出常量>)` 的实际取值 → 必须是声明集子集；每个声明码必须能被解析或（动态 exit 时）有字面量；每个读盘脚本**必须 import `_lib/exit-guard.mjs`**，否则判失败。**边界（如实）**：动态计算的退出码静态不可判定，那部分由 `tests/scripts.test.mjs` 的异常路径用例覆盖。
 
@@ -156,17 +157,18 @@ node --test "tests/**/*.test.mjs"                                    # 随包脚
 - **先跑规划脚本**（只读，不写任何文件）：`node skills/lunheng-article-pipeline/scripts/model-routing.mjs`
   → 输出本机 provider×模型实况、四档路由（检索 / 分析写作 / 批判审计 / 主控）、**兜底链**、可复制的 env 片段。
   加 `--json` 给主控落 `run/<项目>/model-routing.md`；加 `--no-probe` 跳过本地探测；加 `--prefer-remote` 显式不用本地。
-- **「没生效」通常是正常的**：**不设任何 `LUNHENG_*` 变量 = 三档全部继承会话模型**（安全默认，任何 provider 都能跑）。要分层就得设变量（见上条脚本输出），**且需重启 DSH**（工具配置在启动期注册）。
+- **「没生效」通常是正常的**：**三档工具行默认不装载**（v18.2.6 起）——不设任何 `LUNHENG_*` 时它们根本不挂载，派发走内置 `subagent`（继承会话模型，安全默认，任何 provider 都能跑）。要分层就得设变量（见上条脚本输出），**且需重启 DSH**（工具配置在启动期注册）。
 - **只给 `_MODEL` 就够**：provider 由宿主逐字段继承父级；**跨 provider 才必须同时给 `_PROVIDER`**（脚本会在建议里标出并同时输出两行）。
 - **检索档默认「本地 Ollama + 远程兜底」**：脚本会自动探测本地 provider（仅 `127.0.0.1`，零外发、不读密钥）。本地**没起**（实测常见：`fetch failed`）→ 自动改用远端便宜档，并在报告里写明原因。
-- **一键退路**：换了 provider 导致某档报错时设 `LUNHENG_TIERING=off` → 三档全部回到继承（即便其它 `LUNHENG_*` 已设）。
+- **一键退路**：换了 provider 导致某档报错时设 `LUNHENG_TIERING=off` → 三档全部不装载（即便其它 `LUNHENG_*` 已设），回到全继承。**注意 `off` 不是唯一的关闭方式**：什么都不设同样是关闭（默认即关）；`off` 的价值是「**已设了 `LUNHENG_*` 但想临时全局关掉**」。
+- **想确认工具在不在**：设 `LUNHENG_TIERING=on`（不指定模型）→ 三行装载但全继承，用 `dsh --profile <profile> --dump-config` 或让模型列工具可见性自查；用完删掉该变量。
 - **主控（T0）不在分层里**：它就是当前会话模型——想让它更稳，改 DSH 的 `agent-default-model`（settings.yaml）或会话内模型选择，**不由论衡自动改**。
 - **看不到 `list_subagent_models` 是正常的**：原生「按调用选模型」需要宿主侧 `subagentModelSelection` 服务且工具行位于 Agent/preset scope，缺任一项**加载期抛错**，故本包不默认开启（宿主 standard 的 `subagent` 行也没开）。详见 `references/_shared/模型路由.md` §五。
 - **模型名写错 = 该档不可用**：宿主**没有模型级回退**（`dsh-llm-retry` 只重试），所以脚本对拿不准的档位会明确写「保持继承」，**不要硬填**。
 
 ## 16. 新增机检项报了错怎么看（M-Form-10/11 与 M-Exist-5/6/7，v2.5.2-dsh.17）
 
-M 门现为 **20 项**（其中 19 项由 `scripts/m-gate-check.mjs` 判定）。v2.5.2-dsh.17 新增 4 项，报错含义与修法：
+M 门现为 **23 项**（**机械 22 项**由 `scripts/m-gate-check.mjs` 判定：M-Form 1-11 + M-Exist 1-10 + M-Integrity-1 佐证；另 **1 项主控人工门** M-Integrity-2）。脚本实测 `total = 22`。v2.5.2-dsh.17 新增 4 项，报错含义与修法：
 
 | 项 | 报错样例 | 含义与修法 |
 |---|---|---|

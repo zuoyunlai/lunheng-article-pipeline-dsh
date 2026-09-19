@@ -37,7 +37,7 @@ Phase 0（定题）、Phase 2.5（大纲）、Phase 3.5（洞察补充）、Phas
 
 ## 分档派发（按角色指定模型，可选）
 
-默认所有角色走同一个 `subagent` 工具、继承会话模型。装了「分档预设」后，主控会按角色改用三档工具，把模型也分档：
+默认所有角色走同一个 `subagent` 工具、继承会话模型。**三档工具行默认不装载**（v18.2.6 起：三档全继承时它们与内置 `subagent` 完全同义）；**设任一档的 `LUNHENG_*_PROVIDER` / `_MODEL`，或 `LUNHENG_TIERING=on`** 装载后，主控会按角色改用三档工具，把模型也分档：
 
 | 工具 | 角色 | 能力定位 | 默认 provider/model（可覆盖） |
 |---|---|---|---|
@@ -45,6 +45,7 @@ Phase 0（定题）、Phase 2.5（大纲）、Phase 3.5（洞察补充）、Phas
 | `subagent_strong` | T4 分析 / T5 写作 | 推理强 | 继承父会话（设 `LUNHENG_STRONG_*` 才分档） |
 | `subagent_audit` | T6 批判 / T7 审计 / T9 审稿 / G14 检测 | 顶配防漏判 | 继承父会话（设 `LUNHENG_AUDIT_*` 才分档） |
 
-- 覆盖环境变量：`LUNHENG_{RETRIEVAL,STRONG,AUDIT}_PROVIDER`（provider 名）+ `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_MODEL`（裸模型 id）——**两者分离，跨 provider 必须同时指定**；
+- 覆盖环境变量：`LUNHENG_{RETRIEVAL,STRONG,AUDIT}_PROVIDER`（provider 名）+ `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_MODEL`（裸模型 id）——**两者分离，跨 provider 必须同时指定**；**设了任一档即同时装载三行**（每档自己的取值仍独立，未设的档继承父会话）；
+- `LUNHENG_TIERING=on` = 不指定任何模型也装载三行（用于确认工具是否可见）；`LUNHENG_TIERING=off` = 强制不装载（优先级最高）；
 - 安装与切换见 `docs/installation.md` 的「分档预设」一节；
-- 未装预设或未挂载对应工具时，主控自动回退到 `subagent`（所有角色继承会话模型），不影响流水线运行。
+- 三档行未装载时，主控自动回退到 `subagent`（所有角色继承会话模型），不影响流水线运行。

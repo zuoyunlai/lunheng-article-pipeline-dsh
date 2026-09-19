@@ -3,7 +3,16 @@
 //
 // 用法: node scripts/normalize-trust-level.mjs <数据卡.md> [<数据卡2.md> ...] [--write]
 //   默认 **dry-run**：只打印将为每条 [Dxx] 追加的行，不落盘。
-//   --write：落盘，且先写同名 `.bak` 备份（符合 AGENTS.md 文件修改安全流程）。
+//   --write：落盘，且先写备份（v18.2.6 审计修复 P2：**备份位置 = 紧邻原文件的同名 `.bak`**，
+//     即 `<数据卡.md>.bak`。旧注释只说「同名 .bak 备份」却把它挂在「符合 AGENTS.md 文件修改安全流程」
+//     之后，而 AGENTS.md 的备份要求是**主人授权改机制文件**时的「工作区外 <DSH_HOME>/_backup/… 全量备份」——
+//     本脚本改的是**项目数据卡**（非机制文件），故按脚本级就地备份处理：`.bak` 与原文件同目录，
+//     回滚命令即 `cp <卡>.bak <卡>`；`tests/scripts.test.mjs` 亦断言该路径存在）。
+//
+// 幂等性（v18.2.6 审计修复 P2）：判据是 `_lib/trust.mjs:TRUST_COMPLIANT_RE` ——
+//   只要块内已有合规的「信任级别：<档>」声明就**不插入**。旧版该正则不容忍
+//   `信任级别：**已发布**`（加粗档位词）与「信任级别 : 已发布」（冒号前有空格）→
+//   同一档位被重复插入第二条（实测确认）。现正则已容纳 `*` 与空白变体，本脚本随之幂等。
 //
 // 与 m-gate M-Form-6 同款切块（cardRe），为每条 [Dxx] 追加独立行：
 //   `信任级别：<已发布|主人投喂|二手转引>（<备注>）`
@@ -46,6 +55,7 @@ for (const file of files) {
     const card = splitCard(text, id);
     if (!card) continue;
     const block = card.block;
+    // 幂等判据（v18.2.6）：已有合规独立行（含 `信任级别：**已发布**` / `信任级别 : 已发布` 变体）→ 不插入
     if (TRUST_COMPLIANT_RE.test(block)) continue;
     const token = pickTrustToken(block);
     if (!token) { unresolved.push(`${file} [D${id}]`); continue; }   // 绝不推断
@@ -59,6 +69,7 @@ for (const file of files) {
     if (!write) console.log(`  · ${file} [D${id}] → ${inserted.trim()}`);
   }
   if (write && changed > 0) {
+    // 备份位置 = 紧邻原文件的同名 .bak（v18.2.6：与头部注释口径统一；回滚 = `cp <卡>.bak <卡>`）
     copyFileSync(file, file + '.bak');
     writeFileSync(file, text, 'utf8');
     console.log(`✓ ${file}: ${changed} 条已规范化（备份 ${file}.bak）`);

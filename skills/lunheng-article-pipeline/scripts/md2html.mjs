@@ -3,17 +3,25 @@
 //   node md2html.mjs <定稿.md> <输出.html> [--fig-dir <final/图件>] [<单个 SVG 文件>] [--strict]
 //   · --fig-dir <dir>：**按图号配图**（`图N_标题.svg` / `图N-标题.svg` / `图N.svg`）——多图文章的推荐用法
 //   · 位置参数 <svgFile>：单图模式，**同一份 SVG 会嵌入每一个 [图N]**（向后兼容；多图请用 --fig-dir，会显式告警）
-//   · --strict：任何告警（消毒剥离 / 外部引用 / 行内图位 / 单图复用）都视为失败（exit 2）
+//   · --strict：任何告警（消毒剥离 / 外部引用 / **图位缺图** / 行内图位 / 单图复用）都视为失败（exit 2）
+//     —— 缺图于 v18.2.6 审计修复（追加项 1）纳入告警通道：旧版缺图不计告警，`--strict` 仍 exit 0，
+//     与 M 门 M-Form-9「缺图 = P0/P1」自相矛盾（同一条事实两个口径）。
 //   · 结构不合格的 SVG（未闭合 / 无 <svg> 根 / 无 viewBox 且无宽高 / 含 DTD·ENTITY）→ **exit 2 拒绝导出**
 // v2.5.2-dsh.16 修订（第三方 SVG 链路审计）：
 //   ① 旧版只接受一个 SVG，且把同一份图嵌进每个 [图N] → 多图文章导出 PDF 会得到 N 张一样的图（静默错误）；
 //   ② 旧版只认**独占一行**的 [图N：…]，写在段落里的图位被当纯文本输出，既不替换也不报错；
 //   ③ 旧版对 SVG 合法性零校验，坏 SVG（未闭合/坏属性）原样嵌入，浏览器整块不渲染而无任何提示。
+// v18.2.6 审计修复（第三方审计 v18.2.5 B-1，数据丢失 P0）：
+//   同文件守卫由**字符串比较**改为「resolve + realpath + win32 去大小写」的归一口径，统一实现见
+//   `_lib/destructive-write.mjs`——旧写法实测可被 `./a.md`、`A.md`、`final/../final/定稿.md`、8.3 短名绕过，
+//   一旦绕过就会把**源 Markdown 覆盖成 HTML**（正文永久丢失、无 .bak）。写盘同步改走 `writeWithSafety`：
+//   输出路径是用户给的，若它已存在（包括「误指到另一份正文」），先落一份带时间戳的 .bak 再写。
 // 配合：Chrome/Edge headless --print-to-pdf 生成 PDF（见 _shared/format-export.md 三-b）
-import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { analyzeSvg, figureNoOf, figurePlaceholders } from './_lib/svg.mjs';
 import { installExitGuard, requireExistingFile, requireExistingDir } from './_lib/exit-guard.mjs'; // 退出码硬化（v18.0.5）
+import { assertNotSameFile, writeWithSafety, SAME_FILE_CODE } from './_lib/destructive-write.mjs'; // 破坏性写策略（v18.2.6）
 installExitGuard();
 
 const argv = process.argv.slice(2);
@@ -33,12 +41,30 @@ if (!mdPath || !htmlPath) {
   process.exit(10);
 }
 requireExistingFile(mdPath, 'Markdown');                                    // 10（含「传目录」）
-if (mdPath === htmlPath) { console.error('输入输出不能是同一文件（会覆盖源文件）'); process.exit(10); }
+// v18.2.6 审计修复（B-1 数据丢失 P0）：旧守卫 `mdPath === htmlPath` 是**字符串比较**，不归一化路径 ——
+//   实测 `md2html.mjs a.md ./a.md` → 守卫放行 → 末尾 writeFileSync 把**源 Markdown 覆盖成 HTML**
+//   （正文永久丢失且无 .bak）；`A.md`（Windows 大小写）、`final/../final/定稿.md`、8.3 短名/软链接同理。
+//   现统一走 _lib/destructive-write.mjs（resolve + realpath + win32 去大小写，全库唯一实现）。
+//   退出码仍为 10（参数/路径错），报错文案保持原句式，仅追加可操作提示。
+try {
+  assertNotSameFile(mdPath, htmlPath);
+} catch (e) {
+  if (e && e.code === SAME_FILE_CODE) { console.error(e.message); process.exit(10); }
+  throw e;   // 其他异常交 installExitGuard 归类（fs 类 10 / 内部 70）
+}
 if (svgFile) requireExistingFile(svgFile, 'SVG 文件');
 if (figDir) requireExistingDir(figDir, '图件目录');
 if (figDir && svgFile) { console.error('--fig-dir 与位置参数 <svgFile> 不能同时使用（前者按图号配图）'); process.exit(10); }
 
-const md = readFileSync(mdPath, 'utf8');
+// v18.2.6 审计修复（追加项 2 / P2，UTF-8 BOM）：pwsh `Set-Content -Encoding UTF8` **默认写 BOM**（Windows 上常见输入），
+//   而 `\uFEFF` 顶在首行会让 `/^# /` 不匹配 → `<h1>` 降级成 `<p>`、`#` 与 BOM 字面进 PDF，且 exit 0（静默）。
+//   读取后统一剥 BOM + 给一条可见提示；**不改退出码**（BOM 是编码卫生问题，不是内容失败——口径与 count-chars.mjs 一致）。
+const rawMd = readFileSync(mdPath, 'utf8');
+const hasBom = rawMd.charCodeAt(0) === 0xfeff;
+if (hasBom) {
+  console.error(`⚠️ ${basename(mdPath)}: 含 UTF-8 BOM（机检硬格式要求无 BOM），已剥离首字符后继续（不改退出码）`);
+}
+const md = hasBom ? rawMd.slice(1) : rawMd;
 
 // ===== 图件库：按图号解析（--fig-dir）或单图复用（位置参数）=====
 const warnings = [];
@@ -167,6 +193,15 @@ if (figDir && placeholders.size > 0) {
   const orphan = [...byNo.keys()].filter((n) => !placeholders.has(n));
   if (orphan.length) warnings.push(`图件目录中有未被正文引用的图号：${orphan.join(', ')}（孤儿图件）`);
 }
+// v18.2.6 审计修复（追加项 1 / P1-2）：**缺图此前不进告警通道** —— 实测「图位 1 ｜ 嵌入 0 ｜ 缺图 1 ｜ 告警 0」
+//   的文档在 `--strict` 下仍 exit 0，HTML 里只留 `<p class="fig-missing">`；而本脚本头注释自称「任何告警
+//   （消毒剥离 / 外部引用 / 行内图位 / 单图复用）都视为失败」，M 门 M-Form-9 又把缺图定为 P0/P1 —— 同一条事实
+//   两个口径（同一份稿子：M 门判 P0/P1，导出器说"无告警"）。
+//   现把缺图计入 warnings（占位元素保持不变，只是同时进告警通道）→ `--strict` 对缺图 exit 2；不加 --strict 时
+//   仍 exit 0（只多一条可见告警），故图位齐全的正常路径行为**不变**。
+if (missing > 0) {
+  warnings.push(`${missing} 处 [图N] 图位缺图（已就地留占位 \`<p class="fig-missing">\`）——与 M 门 M-Form-9 口径对齐：缺图 = P0/P1，故按**告警级**上报（--strict 下即失败）`);
+}
 for (const w of warnings) console.error(`⚠️ ${w}`);
 if (strict && warnings.length) {
   console.error(`--strict：存在 ${warnings.length} 条告警 → exit 2`);
@@ -200,6 +235,10 @@ ${html}
 </html>`;
 
 const out = Buffer.byteLength(page, 'utf8');
-writeFileSync(htmlPath, page, 'utf8');
+// v18.2.6：写盘走统一策略（_lib/destructive-write.mjs）——输出路径由调用方给出，可能误指到**另一个真实文件**
+//   （如同目录的另一份正文）；只要目标已存在就先落带时间戳的 .bak 再覆盖，回滚点不靠记忆。
+//   （同文件守卫已在参数段用 realpath 归一口径挡住，此处不再重复比较。）
+const written = writeWithSafety(htmlPath, page);
 console.log(`HTML written: ${htmlPath} (${out} bytes / 约 ${Math.round(out / 3)} 汉字)`);
+if (written.backup) console.log(`⚠️ 目标已存在，已先备份: ${written.backup}`);
 console.log(`图件：正文图位 ${placeholders.size} 个 ｜ 嵌入 ${embedded} ｜ 缺图 ${missing} ｜ 图件文件 ${byNo.size} 个 ｜ 告警 ${warnings.length}`);

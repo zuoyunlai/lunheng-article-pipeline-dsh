@@ -1,6 +1,6 @@
 # 角色：终检员 Finalizer（T8）
 
-> 版本：v18.2.5（DSH bundle 插件）
+> 版本：v18.2.6（DSH bundle 插件）
 
 > **角色独立性声明（v2.5.2-dsh.8 修订）**：T8 终检是**九个独立角色之一（T1-T9），不可被其他角色替代**。终检职责（M 门全复核 / 定稿 / 证据包 / 交付说明 / 失败模式兜底）只能由 T8 承担。
 > **执行者 = 主控 T0 兼任**（T0 与 T8 是主控的两个身份：T0 统筹调度，T8 亲自执行终检）——T8 **不 spawn 子代理**，由主控以 T8 身份直接完成。
@@ -8,7 +8,7 @@
 > **核心概念定义见** [`../glossary.md`](../glossary.md)
 
 ## 职责
-- **M 门 23 项全复核**：读 `_shared/M-Gate-Algorithm.md`，机械项先跑 `scripts/m-gate-check.mjs`（**22 项**：M-Form 1-11 + M-Exist 1-7 + M-Integrity-1 佐证），LLM 判项（M-Form-2/4/6/8 + M-Exist-1/3 + M-Integrity-1/2）逐项复核，产出 `final/M-Gate-Report.json`，**exit 0 才返回**
+- **M 门 23 项全复核**（**22 项**：M-Form 1-11 + M-Exist 1-10 + M-Integrity-1 = 机械 22；人工 1 = M-Integrity-2）：读 `_shared/M-Gate-Algorithm.md`，机械项先跑 `scripts/m-gate-check.mjs`（**22 项**，逐项 gate 标签见 `_shared/M-Gate-Algorithm-appendix.md` §1.2），LLM 判项（M-Form-2/4/6/8 + M-Exist-1/3 + M-Integrity-1/2）逐项复核，产出 `final/M-Gate-Report.json`，**exit 0 才返回**
 - **终检必查 15 项**：交付边界（论文 vs 操作员报告隔离）/ G13 术语泄露 / G14 中文 AI 痕迹 / 内部编号残留 / 破折号计数 / 字数终审（`scripts/count-chars.mjs` 权威值）/ 反方论证密度 / 结论呼应引言 / 数据时效标注 / 二级转引标注 / [图N] 占位齐全 / AI 使用声明 / 参考文献编号闭环 / sha256 指纹回填（人类可选）/ 交付说明
   > **v18.0.0 补 3 项必查**（实战新增，均有机械门）：
   > ① **文末五节顺序**（不只成员资格）——须为 `参考文献 → 数据来源 → 案例来源 → 先行者文献 → AI 使用声明`（M-Form-7 已加顺序断言，判 P1）；
@@ -33,7 +33,7 @@
 4. **证据包自动生成**（v2.5.2-dsh.8）：不手工复制文件——`scripts/build-evidence-bundle.mjs` 一次性完成，避免漏拷
 5. **一键终检脚本 final-check.mjs（v2.5.2-dsh.8 新增，关键优化）**：Phase 5 终检时**直接跑 `node scripts/final-check.mjs <run/项目名>`**，自动串联：
    - `count-chars.mjs <定稿.md> --full`（字数权威值）
-   - `m-gate-check.mjs <定稿.md> <证据包>`（**M 门 22 项机械化**，含 M-Form-9 图件闭环 v2.5.2-dsh.16 + M-Form-10/11 与 M-Exist-5/6/7 v2.5.2-dsh.17；M 门总 20 项另含 M-Integrity-2 主控人工门）
+   - `m-gate-check.mjs <定稿.md> <证据包>`（**M 门机械 22 项**——M-Form 1-11 + M-Exist 1-10 + M-Integrity-1，含 M-Form-9 图件闭环 v2.5.2-dsh.16 + M-Form-10/11 与 M-Exist-5/6/7 v2.5.2-dsh.17；**M 门总 23 项 = 机械 22 + 人工 1（M-Integrity-2 主控门）**——v18.2.6 审计修复：旧文同一段既写机械数又写一个更小的总数，自相矛盾）
    - `build-evidence-bundle.mjs <项目> --summary`（证据包收集 + 审计视图）
    
    一次跑出终检所需 3 项输出，省主控 T8 三次手动调用 + 三次上下文切换（实测节省 5-8 分钟 / 项目）。**m-gate-check 失败（非零退出）即中止终检**，标「M 门未过」打回 T5/T7；`--no-summary` 选项跳过第 3 步（已生成过审计视图时复用，避免重复）。

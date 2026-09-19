@@ -1,6 +1,6 @@
 # Lunheng (lunheng-article-pipeline) — pipeline multiagente para textos largos
 
-> 版本：v18.2.5（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.2.6（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > 🌐 [English](README.md) ｜ [中文](README.zh.md) ｜ **Español**（este archivo）｜ [Português](README.pt.md) ｜ [हिन्दी](README.hi.md)
 
@@ -41,6 +41,7 @@ Regla práctica: pregunte si la evidencia ya está **publicada**. Si lo está, L
 | Borradores | Versiones sucesivas con limpieza de huellas de IA, cada una de un redactor independiente |
 | Informes | Informe crítico (C1–C7), auditoría (G0–G14), revisión por pares (6 dimensiones + revistas) |
 | Entregables finales | `final/定稿.md`, figuras, paquete probatorio, notas de entrega, informe de la puerta M |
+| Integración con DSH (instalación como bundle) | Dos herramientas **de solo lectura**: `lunheng_m_gate` (precomprobación mecánica de la puerta M) y `lunheng_char_count` (recuento de caracteres chinos); si su sesión no las expone, invoque los mismos scripts con `pwsh` como antes (misma fuente de verdad). Comando humano `/lunheng-status` (lee `run/<proyecto>/status.md`; no genera mensajes de modelo). **Protección de escritura de los archivos de mecanismo**: un guard global rechaza las llamadas de herramientas tipo `write`/`edit` dirigidas al paquete de la skill, de modo que una sesión no puede reescribir en silencio las reglas de la propia pipeline. Límite declarado sin adornos: el guard solo ve **llamadas de herramientas**; `pwsh` y cualquier subproceso **no pasan por esta puerta**; la excepción del propietario es `LUNHENG_ALLOW_MECH_EDIT=1` (o `config: { allowMechanismEdit: true }`). El **Config** del plugin (interruptor de despliegue, en la fila de este plugin de su perfil) cubre `quiet`, `allowMechanismEdit`, `scriptTimeoutMs` y `scriptMaxOutputBytes` — las mismas palancas que las variables `LUNHENG_QUIET` / `LUNHENG_ALLOW_MECH_EDIT`, pero versionadas con el perfil y revisables; una **config inválida falla ruidosamente en la carga** en lugar de volver en silencio a los valores por defecto. |
 
 ## Pipeline overview
 
@@ -67,16 +68,16 @@ Fase 5  Verificación  T8 (lo ejecuta el coordinador) → texto final, paquete p
 ```text
 lunheng-article-pipeline/                 # el paquete es el repositorio
 ├── package.json              # declara main (lib/index.js) + dsh.bundle.patch
-├── cordis.patch.yml          # capa bundle: inserta las 3 herramientas subagent por nivel
-├── lib/index.js              # entrada del plugin: registra la skill vía ctx.skills
+├── cordis.patch.yml          # capa bundle: fila de autorregistro + 3 herramientas subagent por nivel (solo se montan si define LUNHENG_*)
+├── lib/index.js              # entrada del plugin: skill + herramientas de solo lectura + guard de escritura + /lunheng-status
 ├── skills/lunheng-article-pipeline/       # el cuerpo de la skill (un directorio)
 │   ├── SKILL.md              # entrada de la skill (roles, puertas, límites de ejecución)
 │   ├── AGENTS.md             # manual del operador
 │   ├── QUICKSTART.md         # inicio en cinco minutos
 │   ├── README.md             # readme de la skill (chino)
 │   ├── references/           # 9 fichas de rol, plantillas, algoritmos de puerta, base de revistas
-│   └── scripts/              # 11 scripts .mjs de verificación sin dependencias
-├── scripts/                  # puertas del repositorio: superficie de empaquetado + higiene
+│   └── scripts/              # scripts .mjs de verificación sin dependencias (recuento: véase la línea de lista blanca de la skill)
+├── scripts/                  # puertas del repositorio: superficie de empaquetado + higiene + humo del paquete
 ├── tests/                    # suites node --test (scripts + humo de la entrada)
 ├── docs/                     # instalación, uso, arquitectura, faq, resolución de problemas
 ├── examples/preset/          # notas de niveles de modelo y guía de instalación
@@ -87,7 +88,7 @@ lunheng-article-pipeline/                 # el paquete es el repositorio
 
 La entrada del plugin registra `skills/lunheng-article-pipeline/SKILL.md` como skill con `resourceBase` apuntando a ese directorio, de modo que `references/**` y `scripts/**` se resuelven relativos a él desde cualquier directorio de trabajo.
 
-La capa patch hace dos cosas: **inserta una fila para este paquete** (`- id: lunheng-article-pipeline` / `name: lunheng-article-pipeline`) — esa fila es la que hace que el loader importe `lib/index.js`, que es lo que registra la skill — e inserta las tres herramientas subagent por nivel. **Esa fila es portante**: sin ella la entrada nunca se importa y la skill no aparece (defecto de v18.0.0, corregido en 18.0.1; vigilado por `tests/bundle-contract.test.mjs`).
+La capa patch hace dos cosas: **inserta una fila para este paquete** (`- id: lunheng-article-pipeline` / `name: lunheng-article-pipeline`) — esa fila es la que hace que el loader importe `lib/index.js`, que es lo que registra la skill — e inserta las tres herramientas subagent por nivel, que **no se montan por defecto** (defina cualquier `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_{PROVIDER,MODEL}` o `LUNHENG_TIERING=on` para montarlas; `off` para forzar que no se monten). **Esa fila es portante**: sin ella la entrada nunca se importa y la skill no aparece (defecto de v18.0.0, corregido en 18.0.1; vigilado por `tests/bundle-contract.test.mjs`).
 
 ### Documentation
 
@@ -108,14 +109,14 @@ La capa patch hace dos cosas: **inserta una fila para este paquete** (`- id: lun
 Las versiones se publican **solo por tag**; `npm publish` local está prohibido (evita las puertas de CI y la procedencia OIDC, y una versión npm nunca se puede sobrescribir).
 
 ```sh
-git tag v18.2.5 && git push origin v18.2.5   # un tag por push (GitHub: >3 tags en un push no dispara workflow)
+git tag v18.2.6 && git push origin v18.2.6   # un tag por push (GitHub: >3 tags en un push no dispara workflow)
 # publish.yml ejecuta: puerta 1 consistencia → puerta 2 empaquetado → puerta 3 higiene → puerta 4 humo del paquete → tests
 #   → tag/versión iguales → guarda de idempotencia → OIDC publish --provenance --tag dsh → auditoría posterior
 ```
 
 ## Install
 
-**Como bundle** (recomendado; la entrada registra la skill y la capa patch activa los niveles):
+**Como bundle** (recomendado; la entrada registra la skill + las capacidades del grupo C, y la capa patch *puede* montar las herramientas por nivel — **desactivadas por defecto**, véase [Model routing](#model-routing)):
 
 ```sh
 dsh plugin --profile web add lunheng-article-pipeline
@@ -149,11 +150,11 @@ Un directorio simple no declara `dsh.bundle`, así que `dsh plugin add` solo lo 
 dsh plugin --profile <profile> remove lunheng-article-pipeline
 ```
 
-Al desinstalar desaparecen las 3 filas `- insert:` y la skill registrada por la entrada, sin residuos. Si además copió el directorio de la skill en una raíz de skills, bórrelo aparte.
+Al desinstalar desaparecen las 4 filas `- insert:` (la de autorregistro y las tres de nivel) y la skill registrada por la entrada, sin residuos. Si además copió el directorio de la skill en una raíz de skills, bórrelo aparte.
 
 ## Model routing
 
-DSH enruta modelos mediante `settings.yaml`; `subagent` hereda el modelo de la sesión, de modo que una configuración de un solo modelo funciona sin ajustes. Para escalonar por rol, el bundle instala tres herramientas por nivel:
+DSH enruta modelos mediante `settings.yaml`; `subagent` hereda el modelo de la sesión, de modo que una configuración de un solo modelo funciona sin ajustes. Para escalonar por rol, el bundle puede montar tres herramientas por nivel, **desactivadas por defecto** (mientras todos los niveles heredan son idénticas al `subagent` integrado, así que montarlas sin condición costaría tres esquemas de herramienta por sesión a cambio de nada):
 
 | Herramienta | Roles | Capacidad |
 |---|---|---|
@@ -161,7 +162,7 @@ DSH enruta modelos mediante `settings.yaml`; `subagent` hereda el modelo de la s
 | `subagent_strong` | T4 análisis / T5 redacción | Razonamiento fuerte |
 | `subagent_audit` | T6 crítica / T7 auditoría / T9 revisión / detector G14 | Máximo nivel, sin degradar por coste |
 
-Sobrescriba con `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_PROVIDER` y `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_MODEL`: proveedor y modelo son campos independientes (cruzar proveedores exige ambos) y `LUNHENG_TIERING=off` devuelve los tres niveles a la herencia. Cuando una herramienta de nivel no está montada, el envío recae en `subagent`. Véase `examples/preset/README.md` y `docs/installation.md`.
+Sobrescriba con `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_PROVIDER` y `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_MODEL`: **definir cualquiera de ellas también monta las tres filas** (una configuración escalonada ya existente sigue funcionando igual). Proveedor y modelo son campos independientes (cruzar proveedores exige ambos); `LUNHENG_TIERING=on` monta las filas sin fijar ningún modelo (útil para comprobar que son visibles) y `LUNHENG_TIERING=off` devuelve los tres niveles a la herencia y las desmonta. Cuando una herramienta de nivel no está montada, el envío recae en el `subagent` integrado. Véase `examples/preset/README.md` y `docs/installation.md`.
 
 ## Data and external services
 
@@ -180,11 +181,13 @@ El coordinador debe divulgar estos envíos y obtener consentimiento explícito e
 | Artículo | Escala | Resultado |
 |---|---|---|
 | Consistencia de marca (2026-08) | ~7900 caracteres, 15 fuentes + 54 datos | Paquete probatorio; 8 hallazgos cerrados |
-| Paradoja de originalidad (2026-08) | ~9500 caracteres, 12 fuentes + 34 datos + 6 casos | 4 rondas de revisión, nota A-, publicado |
+| Paradoja de originalidad (2026-08) | ~9500 caracteres, 12 fuentes + 34 datos + 6 casos | 4 rondas de revisión en total a lo largo de la ejecución, nota A-, publicado |
 | Aislamiento del campo docente (2026-08) | ~12000 caracteres, 18 fuentes + 47 datos + 9 casos | Auditoría ronda 2 aprobada |
 | Escritura estudiantil con IA generativa (2026-08) | ~2000 caracteres, 12 fuentes + 26 datos | Búsqueda triple paralela; puerta M exit 0 |
 | Caso de la col china con formaldehído (2026-08) | ~4200 caracteres, 12 fuentes + 29 datos + 4 casos | Puerta M exit 0; 6 reglas incorporadas |
 | Artículo sobre noción e idea (2026-09) | ~6280 caracteres, 18 fuentes + 15 datos, 0 casos | 2 rondas de auditoría, 23/30 revisión menor, P0 real = 0 |
+
+> **Cómo leer esta tabla (dos criterios que se confunden con facilidad)**: ① «rondas de revisión» cuenta **todas las pasadas del redactor en esa ejecución** (fase 3.5 → v2, correcciones de la crítica T6, rondas G14, bucle de auditoría), mientras que el límite propio de la pipeline (**≤2 rondas**) se aplica **solo al bucle de auditoría de la fase 4.2**: los dos números no miden lo mismo; ② los resultados son **valores históricos registrados en el momento de cada ejecución, con la versión de scripts de entonces** — no son reproducibles con los scripts actuales. Volver a ejecutar los scripts del paquete sobre los proyectos archivados da hoy, por ejemplo, el artículo de la col china con formaldehído en `exit 2` con 5 P0 (M-Form-6/10, M-Exist-7/9, M-Integrity-1): tres de esas puertas se añadieron **después** de aquella ejecución. Lea la tabla como «lo que la pipeline produjo entonces», no como «el conjunto de puertas actual aprueba estos proyectos».
 
 ## Known limitations
 

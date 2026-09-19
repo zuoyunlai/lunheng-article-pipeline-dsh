@@ -7,6 +7,11 @@
 //   node token-cost.mjs --top N                  # 追加 cacheRead/成本 Top N 会话排名（与 --sessions/--tree 连用，用于优化决策）
 // 数据源：DSH 会话投影缓存 $DSH_HOME/storages/session_projcache.json（每会话 tokenUsage.totals）
 // 说明：主会话运行中时总量为「截至运行时刻」；成本为估算（默认 DeepSeek 价，--price-* 可覆盖）。
+// 退出码（v18.2.6 审计修复 P1-5 时显式登记）：
+//   0  = 统计成功且**至少命中一个会话的用量记录**｜1 = 用法/参数值错（未知参数、--top 非法…）
+//   10 = 参数或路径错（与全仓口径一致：会话投影缓存不存在、**或给出的会话 id 一个都没命中**）
+//   70 = 内部错误（EX_SOFTWARE，见 _lib/exit-guard.mjs）
+//   ⚠️ 这里刻意**不**用 4（4 已在 AGENTS.md 登记为 model-routing 的「需人工决定」，不与他脚本共用语义）。
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import os from 'node:os';
@@ -165,10 +170,12 @@ if (opt.tree && !opt.ids) {
 
 const totals = { uncachedInputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0 };
 const rows = [];
+let matchedSessions = 0;   // v18.2.6：命中的会话数（区分「真的 0 用量」与「id 根本查不到」）
 for (const id of opt.ids) {
   const rec = sessions[id] || sessions[id.replace(/^session-/, '')] || sessions[`session-${id}`];
   const usage = rec?.rows?.tokenUsage?.val?.totals;
   if (!usage) { rows.push({ session: id, label: '无用量记录', tokens: null }); continue; }
+  matchedSessions++;
   for (const k of Object.keys(totals)) totals[k] += usage[k] || 0;
   rows.push({ session: id, label: (id === opt.ids[0] ? '主控' : '子代理'), tokens: { ...usage } });
 }
@@ -192,6 +199,8 @@ const sessionCost = (t) =>
 const out = {
   mode: opt.tree ? 'tree' : 'explicit',
   sessionCount: opt.ids.length,
+  // v18.2.6：把「命中数」显式给出来——0 就是「查不到」，不是「用量为 0」
+  matchedSessionCount: matchedSessions,
   tokens: { uncachedInput: totals.uncachedInputTokens, cacheRead: totals.cacheReadTokens, cacheWrite: totals.cacheWriteTokens, output: totals.outputTokens, total: totalTokens },
   costEstimateUsd: Number(costUsd.toFixed(2)),
   pricesPerMillion: opt.prices,
@@ -223,3 +232,21 @@ if (opt.top > 0) {
 }
 
 console.log(JSON.stringify(out, null, 2));
+
+// === v18.2.6 审计修复（第三方审计 P1-5）：全部会话未命中用量记录 → 非 0 退出 ===
+// 旧行为（实测）：`--sessions <假 UUID>` → `sessionCount:1 / tokens 全 0 / costEstimateUsd:0` 且 **exit 0**，
+//   唯一线索是 `rows[0].label:"无用量记录"` —— 而交付说明要求贴**实测成本**，主控会把这个 0
+//   当成「本项目真的没花 token」写进交付说明（「查不到」被写成「实测 0」）。这是本包最反感的
+//   「静默把缺失当数值」。现规则：**一个会话都没命中 → exit 10（参数或路径错）** + 明确报错文案。
+//   注意判据是 `matchedSessions === 0` 而非 `totalTokens === 0`：后者在「会话存在但确实没用 token」时
+//   也会为 0，那是合法的真实数据，不得误判为错误（故这里必须用命中数，不能看总量）。
+if (matchedSessions === 0) {
+  console.error(
+    `✗ 给出的会话 id 未在 ${cacheDesc} 找到任何用量记录，请核对 id 或 --sessions 参数。\n` +
+      `  共查 ${opt.ids.length} 个 id，全部未命中（仅前 5 个：${opt.ids.slice(0, 5).join(', ')}${opt.ids.length > 5 ? ' …' : ''}）。\n` +
+      `  · 常见原因：id 写错 / 该会话未落投影缓存 / 用的是 agent id 而非 session id；\n` +
+      `  · 若确实没有用量数据，请勿把上面的 0 当作「实测成本」（退出码 10 = 参数或路径错误）；\n` +
+      `  · 可改用 --project <run/项目名>（从项目日志自动提取会话 id）或 --tree <主会话ID>。`,
+  );
+  process.exit(10);
+}

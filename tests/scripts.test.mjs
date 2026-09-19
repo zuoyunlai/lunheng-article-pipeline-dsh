@@ -3,10 +3,10 @@
 // 运行：node --test tests/     （CI 在 ubuntu-latest 与 windows-latest 双平台跑）
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { writeFileSync, readFileSync, existsSync, rmSync, mkdirSync, cpSync, statSync } from 'node:fs'
+import { writeFileSync, readFileSync, existsSync, rmSync, mkdirSync, cpSync, statSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { ROOT, SCRIPTS, run, parseJson, tmp, mkProject, mkRepo, MD, mkSvg, DRAFT_WITH_ENDNOTES, CARD } from './_fixtures.mjs'
+import { ROOT, SCRIPTS, run, parseJson, tmp, mkProject, mkRepo, MD, mkSvg, DRAFT_WITH_ENDNOTES, CARD, NPM_UNAVAILABLE, PIPE_SPAWN_BLOCKED, skipWhen } from './_fixtures.mjs'
 
 test('count-chars：缺「## 摘要」时正文口径必须显式标记 degraded（不得静默退化）', () => {
   const d = tmp()
@@ -199,7 +199,14 @@ test('m-gate-check：不带 --report 的常规调用必须正常工作（回归�
   rmSync(d, { recursive: true, force: true })
 })
 
-test('final-check：应把 M 门报告落到真源路径 final/M-Gate-Report.json（供审计视图读取）', () => {
+test('final-check：应把 M 门报告落到真源路径 final/M-Gate-Report.json（供审计视图读取）', {
+  // v18.2.6：带探测的条件跳过。`final-check` 内部要 **spawn 子步骤**（如 `m-gate-check.mjs`）才能产出
+  //   `final/M-Gate-Report.json`；受限会话禁命名管道 → 子步骤起不来 → 按本包既有规则「子步骤失败即中止
+  //   终检」→ 报告不落盘。该用例在 CI / 无沙箱 host shell 下照常执行（探测为假）。
+  //   ⚠️ 待确认（脚本所有者反馈中）：「子步骤失败即中止」是否仍属设计——若最终改为「子步骤失败仍落盘
+  //   部分报告」，这里的 skip 条件需一并复核（本用例本身不应被弱化）。
+  skip: skipWhen(PIPE_SPAWN_BLOCKED, '宿主禁止子进程开命名管道（探测：对 process.execPath 做 spawn 管道 → EPERM）——final-check 需 spawn 子步骤（m-gate-check 等）才会落 final/M-Gate-Report.json，本环境下子步骤起不来 → 按既有规则中止终检。请在无文件沙箱的 host shell 或 CI 复核；受限 DSH 会话下无法执行，且不得用 LLM 断言替代机检结论。'),
+}, () => {
   const d = tmp()
   const proj = join(d, 'proj')
   const fin = join(proj, 'final')
@@ -242,6 +249,10 @@ test('build-evidence-bundle：--deep-summary 蕴含 --summary（旧版单独用�
   const proj = join(d, 'run', 'proj')
   mkdirSync(join(proj, 'final'), { recursive: true })
   writeFileSync(join(proj, 'final', '定稿.md'), '# 标题\n\n## 摘要\n\n正文。\n')
+  // v18.2.6（审计 B-2 修复后的夹具适配）：`build-evidence-bundle` 现在要求**至少复制到一个源**——
+  //   `copied === 0 && missing > 0` → exit 10（旧版把「一个源都没有」当成功，正是 fail-open 的形态）。
+  //   故夹具除正文外必须给一个真实源；这里给 Phase 0 必然存在的任务简报。
+  writeFileSync(join(proj, '01-任务简报.md'), '# 简报\n\n主题：夹具。\n')
   const r = run([join(SCRIPTS, 'build-evidence-bundle.mjs'), proj, '--deep-summary'])
   assert.equal(r.code, 0)
   assert.ok(existsSync(join(proj, 'audits', '审计视图-v0.md')), '应生成审计视图（deep 蕴含 summary）')
@@ -293,6 +304,9 @@ test('build-evidence-bundle：无定稿时视图源回退到最新草稿（旧�
   mkdirSync(join(proj, 'drafts'), { recursive: true })
   writeFileSync(join(proj, 'drafts', '初稿-v1.md'), '# 甲\n\n## 摘要\n\n一稿。\n')
   writeFileSync(join(proj, 'drafts', '初稿-v2.md'), '# 乙\n\n## 摘要\n\n二稿正文 [L01]。\n')
+  // v18.2.6（B-2 修复后的夹具适配）：形态标记 drafts/ 已满足；这里再补一个可复制源，
+  //   否则触发新规则「copied === 0 && missing > 0 → exit 10」（旧版会判成功）。
+  writeFileSync(join(proj, '01-任务简报.md'), '# 简报\n\n主题：草稿回退夹具。\n')
   const r = run([join(SCRIPTS, 'build-evidence-bundle.mjs'), proj, '--summary'])
   assert.equal(r.code, 0)
   const viewPath = join(proj, 'audits', '审计视图-v0.md')
@@ -312,6 +326,9 @@ test('build-evidence-bundle：尚无正文也要出素材阶段视图；--source
   const proj = join(d, 'run', 'proj')
   mkdirSync(join(proj, 'data'), { recursive: true })
   writeFileSync(join(proj, 'data', '数据卡.md'), '# 数据卡\n\n## [D01] 某公报\n信任级别：已发布\n')
+  // v18.2.6（B-2 修复后的夹具适配）：形态标记**三者之一**（01-任务简报.md / final/ / drafts/）必须命中，
+  //   否则新加的「项目形态校验」直接 exit 10（本夹具此前只有 data/，会红）。补 Phase 0 的简报。
+  writeFileSync(join(proj, '01-任务简报.md'), '# 简报\n\n主题：素材阶段视图夹具。\n')
   // --source 指向不存在文件：必须 exit 10，且不得先把证据包复制一半（先于成功运行断言，防被前一次的产物干扰）
   // v18.0.2：参数/路径错统一 10（旧断言为 2 —— 与「P0 致命」撞码，已随退出码统一而更新）
   const bad = run([join(SCRIPTS, 'build-evidence-bundle.mjs'), proj, '--summary', '--source', 'nope.md'])
@@ -531,9 +548,38 @@ test('build-evidence-bundle：无修订轮时复核报告标 N/A 而非虚假 �
   const proj = join(d, 'run', 'proj')
   mkdirSync(join(proj, 'final'), { recursive: true })
   writeFileSync(join(proj, 'final', '定稿.md'), '# 标题\n\n## 摘要\n\n正文。\n')
+  // v18.2.6（B-2 修复后的夹具适配）：补一个可复制源，满足「不得 copied === 0」的新规则。
+  writeFileSync(join(proj, '01-任务简报.md'), '# 简报\n\n主题：复核报告 N/A 夹具。\n')
   run([join(SCRIPTS, 'build-evidence-bundle.mjs'), proj, '--summary'])
   const view = readFileSync(join(proj, 'audits', '审计视图-v0.md'), 'utf8')
   assert.match(view, /复核报告: N\/A\(无修订轮\)/, '无修订轮应标 N/A（不报 ✗）')
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('build-evidence-bundle：非项目目录必须 exit 10 且一个字节都不落（v18.2.6 审计 B-2 修复的回归网）', () => {
+  // 旧版（≤ v18.2.5）只校验「路径存在且是目录」，于是**传空目录 / 敲错的路径 / 仓库根**都会 exit 0，
+  //   并往参数目录里建 `audits/`、`final/`、`审计视图-v0.md` —— 「对不是项目的目录判成功」
+  //   （审计 B-2，P0·fail-open），而且**报错路径自身会污染仓库**。新门槛两条，本用例把两条都钉死：
+  //   ① 形态校验（`01-任务简报.md` / `final/` / `drafts/` 之一）必须拦在**任何 mkdir 之前**；
+  //   ② 「一个源都没复制到」（copied === 0 && missing > 0）不得再记「跳过(不存在)」后判成功。
+  const d = tmp()
+  const notAProject = join(d, 'run', 'not-a-project')
+  mkdirSync(notAProject, { recursive: true })
+  assert.equal(readdirSync(notAProject).length, 0, '前置：该目录必须为空')
+
+  const r = run([join(SCRIPTS, 'build-evidence-bundle.mjs'), notAProject, '--summary'])
+  assert.equal(r.code, 10, '非项目目录必须 exit 10（参数/路径错），不得 exit 0')
+  assert.match(r.out, /项目形态校验未通过/, '必须明确报「不像论衡项目目录」，而不是静默跳过缺失源')
+  assert.equal(readdirSync(notAProject).length, 0, '报错路径上不得创建任何条目（旧版会在这里建 audits/ 与 final/）')
+  assert.ok(!existsSync(join(notAProject, 'audits')), '不得创建 audits/')
+  assert.ok(!existsSync(join(notAProject, 'final')), '不得创建 final/')
+
+  // 反向（防「一律拒绝」的过严实现）：补上 Phase 0 必然存在的形态标记 01-任务简报.md ——
+  //   它同时是可复制源，故形态校验与「一个源都没找到」两条都不再触发。
+  writeFileSync(join(notAProject, '01-任务简报.md'), '# 简报\n\n主题：形态校验反向用例。\n')
+  const r2 = run([join(SCRIPTS, 'build-evidence-bundle.mjs'), notAProject, '--summary'])
+  assert.doesNotMatch(r2.out, /项目形态校验未通过/, '有项目标记后不得再报形态错')
+  assert.equal(r2.code, 0, '有项目标记 + 有可复制源时应正常通过（否则是过严实现）')
   rmSync(d, { recursive: true, force: true })
 })
 
@@ -860,7 +906,13 @@ test('consistency-check ⑩：随包脚本白名单漏列必须报（v18.0.5 补
   rmSync(d, { recursive: true, force: true })
 })
 
-test('pack-smoke：patch 缺自注册行 / 引用未声明的包 / 发布面污染 必须报（v18.0.5 新增发布物门；v18.2.0 加裁剪断言）', () => {
+test('pack-smoke：patch 缺自注册行 / 引用未声明的包 / 发布面污染 必须报（v18.0.5 新增发布物门；v18.2.0 加裁剪断言）', {
+  // v18.2.6：带探测的条件跳过。本用例要 `npm pack`（真解包、真跑发布物入口），而受限 DSH 会话里
+  //   npm **不可用**（探测：`npm --version` 经管道 spawn → EPERM；且 npm 缓存目录在工作区外不可写）——
+  //   `pack-smoke.mjs` 自身已正确报 `→ 退出码 10（环境问题：npm 不可用或不可写）`，那是**环境**而非本包缺陷。
+  //   CI / 无沙箱 host shell 下探测为假 → 用例照常执行，强度不变。
+  skip: skipWhen(NPM_UNAVAILABLE, '`npm pack` 在本机不可用（探测：`npm --version` 经管道 spawn → EPERM/非 0；受限 DSH 会话禁子进程命名管道，且 npm 缓存目录在工作区外不可写）——本用例需解包发行物并真跑其入口 apply。请在无文件沙箱的 host shell 或 CI 复核；受限会话下无法执行，不得用 LLM 断言替代机检结论。'),
+}, () => {
   // ① 基线：本仓 pack 出来的产物应通过
   const ok = run([join(ROOT, 'scripts', 'pack-smoke.mjs')])
   assert.equal(ok.code, 0, '本仓发布物应通过 pack-smoke：' + ok.out.slice(-400))

@@ -11,10 +11,12 @@
 **不是，安装前请知悉信任边界**（完整版见 [`SECURITY.md`](../SECURITY.md)）：
 
 - **包入口** `lib/index.js`：纯 ESM、零第三方依赖，只在 `apply` 期读随包 `SKILL.md` 并经 `ctx.skills.register()` 注册技能；不派生子进程、不联网、不写文件。
-- **加载期 `!!js`**（`cordis.patch.yml`）：含 **3 处 `!!js` 表达式**（3 处分档 agentOptions，各自读取 `LUNHENG_*_PROVIDER/MODEL` 环境变量，未设则返回 `undefined`）。它们由 DSH 宿主进程在**加载期以完整 Node 权限**求值，发生在 agent 沙箱与审批关卡之前——**安装本包即等于允许这些表达式在每次启动时执行**。它们只使用 `process.env` 与全局 `Object.assign`（CI 红线规则 ⑭ 禁止 `getBuiltinModule`/`child_process`/`require(`/`eval(` 等标识符）。
+- **加载期 `!!js`**（`cordis.patch.yml`）：含 **6 处 `!!js` 表达式** = **3 处 `agentOptions`**（三段分档工具行，各自读本档 `LUNHENG_*_PROVIDER/MODEL`，未设则返回 `undefined`）+ **3 处 `disabled`**（同一批行的行级门控，读 `LUNHENG_TIERING` 与三档 `*_PROVIDER/MODEL`）。它们**都由** DSH 宿主进程在**加载期以完整 Node 权限**求值（`disabled` 由 loader 的 `disabledOf()` 求值，`@deepseek-ai/cordis-plugin-loader/src/config/entry.ts:104-107`），发生在 agent 沙箱与审批关卡之前——**安装本包即等于允许这些表达式在每次启动时执行**。它们只使用 `process.env` 与全局 `Object.assign`（CI 红线规则 ⑭ 禁止 `getBuiltinModule`/`child_process`/`require(`/`eval(` 等标识符）。
+  > **计数口径**（v18.2.6 更正）：`Select-String cordis.patch.yml -Pattern '^\s*[A-Za-z]+:\s*!!js'` → **6 行**。旧版本节与旧 patch 注释只写「3 处」（只数了 `agentOptions`），**漏算 3 处 `disabled`**，等于把加载期执行面**少报一半**。
   > v17.0.0 及更早还有第 4 处 `!!js`（技能目录路径求值，用 `baseUrl`/`URL`）；v18.0.0 改由包入口注册技能后，这处求值**已删除**，表达式面更窄。
 
-实测技能可正常加载：`dsh --profile <profile> --dump-config` 可见本包层与三档 `tool-subagent-*` 行，新会话的技能目录能列出 `lunheng-article-pipeline`。
+实测技能可正常加载：`dsh --profile <profile> --dump-config` 可见本包层与 `tool-subagent-*` 的**声明行**，新会话的技能目录能列出 `lunheng-article-pipeline`。
+> ⚠️ **`--dump-config` 只打印声明行**：三档工具**默认不装载**（v18.2.6 起，见 `docs/installation.md`），所以「dump 里看得到三行」**不等于**「已装载」；要确认装载，看是否设了任一档 `LUNHENG_*_PROVIDER/MODEL` 或 `LUNHENG_TIERING=on`。
 
 ## 版本号为什么是纯语义化三段式？
 

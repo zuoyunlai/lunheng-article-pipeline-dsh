@@ -6,9 +6,15 @@
 //               ⚠️ 其 `body.hanChars` **与默认口径同源**（v18.2.3 修：此前误用含「关键词」的列表求终点 → 只剩摘要正文，差 21 倍）
 // 口径：纯中文字符数（Unicode 汉字 \u4e00-\u9fff），不含标点/数字/英文/引用编号
 //   正文区 = `## 摘要` 标题之后 → 第一个文末节之前；**含摘要正文与关键词段**，不含题名/文末五节/脚注
+// v18.2.6 修（第三方审计 §4.2）：正文区**边界解析**改走 `_lib/sections.mjs`（与 m-gate-check 同一真源）——
+//   旧版用精确字面量 `text.indexOf('## 参考文献')`，标题写成 `##  参考文献`（两空格）即失配
+//   → 正文区终点退化为文件末尾 → `hanChars` 实测 503 → **1707**（虚高 3.4 倍）且不置 degraded。
 // 用途：写手写完即跑（替代 LLM 推理估算）；T7 G8 字数核验；T8 终检权威回填
 import { readFileSync, existsSync } from 'node:fs';
-import { countHan, HAN_RE as HAN } from './_lib/han.mjs';   // 汉字口径唯一真源（v2.5.2-dsh.13 抽 _lib；v18.0.3 计数改走 countHan）
+import { countHan } from './_lib/han.mjs';   // 汉字口径唯一真源（v2.5.2-dsh.13 抽 _lib；v18.0.3 计数改走 countHan）
+// v18.2.6：`HAN_RE` 曾是**死导入**（v18.0.3 计数改走 countHan 后无人引用）——连带把 `_lib/han.mjs`
+//   的模块级 `g` 正则状态问题遮住（见该文件注释）。现删除死导入，边界口径改走 sections。
+import { ENDNOTE_SECTIONS, bodyStartAfterAbstract, firstEndnoteIndex, sectionBody } from './_lib/sections.mjs';
 import { installExitGuard, requireExistingFile } from './_lib/exit-guard.mjs'; // 退出码硬化（v18.0.5）
 installExitGuard();   // 传目录/权限错 → exit 10（旧版未捕获 EISDIR → exit 1 = 被读成「P1 内容失败」）
 
@@ -22,9 +28,11 @@ if (flag !== undefined && !['--full', '--summary'].includes(flag)) {
   process.exit(10);
 }
 
-// 编码体检（v18.0.5，第三方审计 P2）：UTF-16 文件用 utf8 读会得到大量替换字符 → 汉字数静默为 0
-//   （实测 UTF-16 文案「正文。」→ hanChars 0 且无任何告警）。契约是 UTF-8（.gitattributes / 卫生门），
-//   非 UTF-8 一律响亮失败，不要给一个看起来正常但错误的数字。
+// 编码体检（v18.0.5 引入；v18.2.6 审计修复 P2：注释与实现对齐）
+//   v18.0.5 的注释写「非 UTF-8 一律响亮失败」，**实现只覆盖 UTF-16 BOM**——实测 GBK 文件既不报错也不
+//   命中该分支，`readFileSync(file,'utf8')` 产出满篇 U+FFFD → `hanChars: 0`，只是**侥幸**被「缺 ## 摘要」
+//   的 degraded 兜住（exit 0），原因提示还指向「摘要缺失」而非「编码不对」= 误导。现补真实体检：
+//   解码后出现替换字符 U+FFFD → 判定非 UTF-8（或含非法字节），**响亮失败 exit 10**，与注释一致。
 {
   const probe = readFileSync(file);
   if (probe.length >= 2 && ((probe[0] === 0xff && probe[1] === 0xfe) || (probe[0] === 0xfe && probe[1] === 0xff))) {
@@ -34,16 +42,26 @@ if (flag !== undefined && !['--full', '--summary'].includes(flag)) {
   if (probe.length > 0 && probe[0] === 0xef && probe[1] === 0xbb && probe[2] === 0xbf) {
     console.error(`⚠️ ${file}: 含 UTF-8 BOM（机检硬格式要求无 BOM），本次按 UTF-8 正常统计`);
   }
+  // 非 UTF-8（GBK/GB18030/Big5…）用 utf8 解码**必然**产生 U+FFFD；反过来，合法 UTF-8 文本里
+  // 出现 U+FFFD 只可能是作者手写该字符（本包场景不存在）——故以替换字符为判据足够稳。
+  if (probe.toString('utf8').includes('\uFFFD')) {
+    console.error(
+      `${file}: 解码出现替换字符 U+FFFD —— 该文件不是合法 UTF-8（常见为 GBK/GB18030 保存）。\n` +
+        `  本脚本只接受 UTF-8（契约见 .gitattributes）；请转码后重跑（旧版此处会静默给出 hanChars 0）。`,
+    );
+    process.exit(10);
+  }
 }
 
 const text = readFileSync(file, 'utf8');
 
-// 正文区起点退化（缺「## 摘要」）的标记计算（v18.0.5：从默认分支**提到 summary 之前**——旧版
+// 正文区起点（缺「## 摘要」）的标记计算（v18.0.5：从默认分支**提到 summary 之前**——旧版
 //   `--summary` 在标记逻辑之前就 process.exit(0)，导致该模式口径失真却**不带 degraded 标记**，
 //   正是 v2.5.2-dsh.13 专门要消灭的静默退化；第三方审计 P1-3）。
-const abstractStart = text.indexOf('## 摘要');
-const bodyStartIdx = abstractStart >= 0 ? abstractStart + '## 摘要'.length : 0;
-const degraded = abstractStart < 0;
+// v18.2.6：起点解析改走 `_lib/sections.mjs`（标题按「行首 ## + 任意空白」解析，不再依赖 `'## 摘要'` 字面量）。
+const abstractStart = bodyStartAfterAbstract(text);
+const bodyStartIdx = abstractStart.index;
+const degraded = !abstractStart.found;
 if (degraded && flag !== '--full') {
   console.error(`⚠️ ${file}：未找到「## 摘要」，正文区起点退化为文件开头（口径已失真）——请补写摘要，或改用 --full 明确按全文统计`);
 }
@@ -60,35 +78,24 @@ const degradedFields = degraded && flag !== '--full'
 //   —— T7/T8 若照注释取用该 body 值，**会把一篇 5112 字的论文判成「仅 4% 篇幅」**，
 //   进而下达完全错误的「P0 立即精简」指令。默认分支用的是正确的 5 元素列表，
 //   **同一脚本两条路径各写一份**即根因；现抽为共用助手，从结构上杜绝再次发散。
-const ENDNOTE_MARKERS = ['## 参考文献', '## 数据来源', '## 案例来源', '## 先行者文献', '## AI 使用声明'];
+// v18.2.6 修（第三方审计 §4.2）：本处旧实现 `text.indexOf('## 参考文献')` 是**精确字面量**匹配，
+//   标题带额外空白（`##  参考文献`）即失配 → 正文区终点退化为文件末尾（实测量 503 → 1707）。
+//   现改用 `_lib/sections.mjs` 的 `firstEndnoteIndex`（行首 `##` + 任意空白解析），**与 m-gate-check 同源**。
 const bodyEndOf = (from) => {
-  let to = text.length;
-  for (const m of ENDNOTE_MARKERS) {
-    const i = text.indexOf(m, from);
-    if (i >= 0 && i < to) to = i;
-  }
-  return to;
+  const i = firstEndnoteIndex(text, from);
+  return i === -1 ? text.length : i;
 };
 
 if (flag === '--summary') {
   // 分段：标题/摘要/关键词/正文/参考文献/数据来源/案例来源/先行者文献/AI 使用声明
-  const segs = ['摘要', '关键词', '参考文献', '数据来源', '案例来源', '先行者文献', 'AI 使用声明'];
+  const segs = ['摘要', '关键词', ...ENDNOTE_SECTIONS];
   const sections = {};
   for (const s of segs) {
-    const start = text.indexOf(`## ${s}`);
-    let end = text.length;
-    if (start >= 0) {
-      // 找下一个 ## 标记
-      const after = start + `## ${s}`.length;
-      const next = text.indexOf('\n## ', after);
-      if (next >= 0) end = next;
-      // v18.2.3：起点由 `start` 改为 `after` —— 旧版把**节标题自身的汉字**也计入
-      //   （实测 `关键词` 21 vs 标题式口径 18，差 3 = 「关键词」三字），
-      //   与下方 `sectionsByHeading` 的口径不一致。现统一为**不含标题**。
-      sections[s] = countHan(text.slice(after, end));   // v18.0.3：改用 _lib/han.mjs 的 countHan（旧版在此内联 match）
-    } else {
-      sections[s] = 0;
-    }
+    // v18.2.3：不计**节标题自身的汉字**（实测 `关键词` 21 vs 标题式口径 18，差 3 = 「关键词」三字），
+    //   与下方 `sectionsByHeading` 的口径一致。
+    // v18.2.6：定位改走 `_lib/sections.mjs` 的 `sectionBody`（旧版 `indexOf('## ' + s)` 同样怕多余空白）
+    const bodyText = sectionBody(text, s);
+    sections[s] = bodyText === null ? 0 : countHan(bodyText);   // v18.0.3：改用 _lib/han.mjs 的 countHan（旧版在此内联 match）
   }
   // 正文区 = 摘要之后到第一个文末节之前（v18.2.3：改走共用助手 bodyEndOf，
   //   不再用含「摘要/关键词」的 segs 求终点 —— 那正是 21 倍失真的根因）

@@ -60,7 +60,7 @@ dsh --profile <headless-profile> "请调用 skill 工具列出你可见的技能
 | `subagent_strong` | T4 分析 / T5 写作 | 推理强 | 继承父会话（设 `LUNHENG_STRONG_*` 才分档） |
 | `subagent_audit` | T6 批判 / T7 审计 / T9 审稿 / G14 检测 | 顶配防漏判 | 继承父会话（设 `LUNHENG_AUDIT_*` 才分档） |
 
-**分档随 bundle 生效，无需复制任何预设目录**（`examples/preset/` 只是说明文档，不含可加载的 `agent.cordis.yml`）：安装本包即在 profile 里插入上述三档工具行。
+**分档随 bundle 生效，无需复制任何预设目录**（`examples/preset/` 只是说明文档，不含可加载的 `agent.cordis.yml`）：**v18.2.6 起三档工具行默认不装载**——未设任何 `LUNHENG_*` 时它们不挂载（三档全继承时它们与内置 `subagent` 完全同义，无条件装载等于每会话白付 3 份工具 schema）；设任一档的 `PROVIDER`/`MODEL`，或 `LUNHENG_TIERING=on`，才装载；`LUNHENG_TIERING=off` 优先级最高（强制不装载）。
 
 ```sh
 # 换模型：设环境变量后重启 dsh（模型在挂载期求值一次，改完必须重启）
@@ -70,11 +70,44 @@ export LUNHENG_AUDIT_MODEL=MiniMax-M3
 dsh --profile <profile>
 ```
 
-- 不设任何 `LUNHENG_*`：三档全部继承会话模型（安全默认）；某档工具未挂载时，派发回退到 `subagent`。
+- 不设任何 `LUNHENG_*`：三档行**不装载**，派发用内置 `subagent`（继承会话模型，安全默认）；设了 `off` 同样不装载。
 - 模型在挂载期用 `!!js` 求值一次，改环境变量后**必须重启 dsh** 才生效。
 - **v2.5.2-dsh.4 修订：未设 `LUNHENG_*_PROVIDER` 的档不覆盖模型（继承父会话）——任何模型配置都能安全装预设**；设了 PROVIDER 未设 MODEL 才用档位默认模型（retrieval=deepseek-v4-flash / strong·audit=deepseek-v4-pro）。
 - provider 名须是你 dsh 已注册的 LLM provider（查 `settings.yaml` 的 `agent-default-model.provider`）。
 - 完整说明见 `examples/preset/README.md`。
+
+## 三个开关与三条工具路径（v18.2.6 新增）
+
+### 环境变量与 Config
+
+| 开关 | 取值 | 作用 | 备注 |
+|---|---|---|---|
+| `LUNHENG_QUIET` | `1` / `true` | 静音**info 级**启动状态行（「已注册原生工具」之类） | **warn 永不静音**——「静默降级」正是 v18.0.0 事故的形态，降级/失败始终可见 |
+| `LUNHENG_ALLOW_MECH_EDIT` | `1` / `true` | **主人授权例外**：放行 write/edit 类工具对机制文件（技能包内 `SKILL.md` / `AGENTS.md` / `references/**` / `scripts/**` / `cordis.patch.yml`）的写入 | 授权是**主人的动作**，agent 不得自行声明；改机制文件的推荐路径仍是「写 `audits/反哺报告-vN.md` → 主人在 host shell 审阅后 apply」 |
+| `LUNHENG_TIERING` | `on` / `off` | `on` = 显式装载三档工具行（不指定模型也可，用于确认工具可见）；`off` = 强制不装载 | 优先级最高，压过其它 `LUNHENG_*` |
+| `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_{PROVIDER,MODEL}` | provider 名 / 模型 id | 分档取值；**设任一档即同时装载三行** | 跨 provider 时才需同时给 PROVIDER + MODEL |
+
+同名的**部署开关**走插件 `config`（v18.2.6 起入口导出 `Config`）：`allowMechanismEdit` / `quiet` / `scriptTimeoutMs`（原生工具跑脚本的超时，默认 120 000 ms）/ `scriptMaxOutputBytes`（单次 stdout/stderr 采集上限，默认 4 MiB）。写在你 profile 里本插件行上：
+
+```yaml
+- id: lunheng-article-pipeline
+  name: lunheng-article-pipeline
+  config: { quiet: true, scriptTimeoutMs: 180000 }
+```
+
+**非法配置在加载期响亮失败**（Cordis 用 standard-schema 校验并抛错），不会静默回落到默认值；`dsh --profile <profile> --dump-config` 可见。口径：**env 是操作者开关**（主人授权、CI 静音、临时排障），**Config 是部署开关**（随 profile 走、可 review）。
+
+### 三条工具路径的可用性差异（如实声明）
+
+同一件机检有三条执行路径，**它们不等价**——`SKILL.md` 说「两条路径等价、脚本仍是唯一真源」指的是**退出码与 JSON 契约同源**，不是可用性相同：
+
+| 路径 | 依赖 | 受限环境下的表现 |
+|---|---|---|
+| ① 原生工具 `lunheng_m_gate` / `lunheng_char_count` | bundle 部署（入口跑过）+ 宿主有 `tools` 服务 + `@deepseek-ai/dsh-tools` 可解析 | 工具本体在**宿主进程内**，但脚本由 `lib/tools.js` **派生子进程**执行 → 沙箱禁子进程管道时失败（错误信息会明确写 EPERM 并提示改用 `pwsh`） |
+| ② `pwsh` 调脚本 `node scripts/<脚本>.mjs …` | 会话里有命令工具（`pwsh`/`bash`） | 沙箱**整体禁止派生子进程**时不可用（v18.2.2 记录过整段 `pwsh` 失效的实例）——此时该如实记「本机无法执行机检」 |
+| ③ 纯技能目录部署直接跑脚本 | 只把 `skills/lunheng-article-pipeline/` 拷进技能根 | **没有**路径 ①（入口不跑 → 无原生工具、无 guard、无 `/lunheng-status`），只剩 `pwsh`/命令工具 |
+
+**纪律**：三条路径全废时**停机报告主人**，**不得**用 LLM 断言充当闸门实据（见 `SKILL.md` §执行能力边界）。
 
 ## 使用
 

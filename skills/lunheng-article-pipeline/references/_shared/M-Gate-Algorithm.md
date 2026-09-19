@@ -1,4 +1,4 @@
-> 版本：v18.2.5（DSH bundle 插件）
+> 版本：v18.2.6（DSH bundle 插件）
 
 > **v2.5.2-dsh.5 重大修订**（测试轮反哺 14 项问题落地）：
 > - **P0** #1 M-Form-2 与 M-Form-7 白名单统一（含 AI 使用声明）
@@ -16,9 +16,13 @@
 > - 全部 14 项反思见主控复盘报告（`E:\HERNESS\run\审计\论衡全量审计报告-2026-08-25.md`）
 
 
+<a id="mgate"></a>
+
 # M 门算法规约（论衡当前主流程完整版，v2.2.12 Phase D-1 合并）
 
-> **v2.2.15 渐进式执行模式（已合并入本文档）**：把 13 项 M 门从「T8 一次性全跑」改为「5 阶段分批执行 + T8 兜底」，P0 错误提前暴露（Phase 1.5 而非 T8），节省 30-50% 工作量。详见本文档 M-Form / M-Exist / M-Integrity 各阶段描述。
+> **M 门项数真源（v18.2.6 审计修复，全库唯一口径）**：**M 门总 23 项 = 机械 22 项（M-Form 1-11 + M-Exist 1-10 + M-Integrity-1）+ 人工 1 项（M-Integrity-2，主控 T7.5 门）**。其余任何文档的 M 门项数表述一律以本行为准；与其不自洽的历史口径视为漂移（机检 `consistency-check.mjs` 断言 A 从 `m-gate-check.mjs` 的 gate 标签派生核对）。
+
+> **v2.2.15 渐进式执行模式（已合并入本文档）**：把 M 门从「T8 一次性全跑」改为「5 阶段分批执行 + T8 兜底」，P0 错误提前暴露（Phase 1.5 而非 T8），节省 30-50% 工作量。详见本文档 M-Form / M-Exist / M-Integrity 各阶段描述。
 >
 > **v2.2.8 Phase D-1 重大变更**：本规约从「**4 个增量版本并存**」（v2.2.0/v2.2.1/v2.2.1.2/v2.2.4 共 15.4K tokens）合并为「**1 个完整版**」（本文件约 12K tokens，主流程只读这一份）。
 >
@@ -681,7 +685,7 @@ unused    = loaded - cited          # 读了不用 = 上下文浪费            
    ② 5 项依赖编号的检查必须改为「可回溯性」检查：
       - M-Exist-1：每条内联引用能否在文末四节+证据包找到对应条目
       - G2 数据溯源：每个正文数字能否在数据卡/文献卡找到来源（防无主数据）
-      - M-Exist-3：引用机构的信任级别在数据卡/案例卡有标注
+      - M-Exist-3：正文 `[Dxx]` 在数据卡有条目（**引用闭环**；信任级别一致性由 M-Form-6（独立信任级别段）+ G12（审计层）承担，本门不查——见 §M-Exist-3 的名实对齐声明）
       - G4-2 四节 对比：正文引用的机构/数据/案例在文末四节有对应
    ③ 判定：全部内联引用可回溯 + 所有数字有源 + 信任级别齐全 → 通过；任一不可回溯 → P1
 
@@ -763,7 +767,8 @@ return (len(leaked) == 0 and len(orphan) == 0, leaked, orphan)
 
 ### M-Exist-3: [Dxx] 正文↔数据卡 引用闭环（v2.2.1.2 双格式升级版，教训 #84；v18.0.2 更名对齐实装）
 
-> ⚠️ **v18.0.2 名实对齐**：本门标题旧作「数据信任级别一致性」，但脚本 `m-gate-check.mjs` 的 M-Exist-3 段**只做引用闭环对账**（正文 `[Dxx]` ↔ 数据卡条目），**不查信任级别**（下方步骤 3/4 中「信任级别一致性 / 空标检查」为文档承诺但**未实装**）；信任级别的机械检查由 **M-Form-6**（独立信任级别段）+ **G12**（审计层一致性）承担。本次对齐方式：**改文档以匹配实现**（而非新增检查）——因为补一个未经实战校准的 P0 门会立刻在既有项目上产生误报，风险高于收益；如日后要实装，须按 `references/_shared/规范-机械门对照表.md` 的口径先登记再实装。
+> ⚠️ **名实对齐（v18.0.2 更名 + v18.2.6 审计修复清仓）**：本门旧名「数据信任级别一致性」，但脚本 `m-gate-check.mjs` 的 M-Exist-3 段**只做引用闭环对账**（正文 `[Dxx]` ↔ 数据卡条目），**不查信任级别**。v18.2.6 已把「信任级别一致性」旧语义从**本门全部落点**清掉（原步骤 3/4 + §M-Exist-1 内联模式分支 + §M-Integrity-1 步骤 6 + §M-Integrity-2 步骤 5 + 附录 schema + `templates/闸门记录-template.md` 两行机检表 + `templates/status-template.md` 闸门清单）。信任级别的机械检查由 **M-Form-6**（独立信任级别段）+ **G12**（审计层一致性）承担。**对齐方式：改文档以匹配实现**（而非新增检查）——补一个未经实战校准的 P0 门会立刻在既有项目上产生误报，风险高于收益；如日后要实装，须先按 `references/_shared/规范-机械门对照表.md` 的口径登记再实装。
+> **教训（为什么这行曾是「假绿」）**：`闸门记录-template.md` 的机检表原有「信任级别一致性（M-Exist-3）」一行，而 `M-Exist-5` 机检该表的「实据」列必须写路径/exit code —— 即**门会被机检、但没有任何检查在跑**：一行既被要求出证据、又无对应实现。清仓判据：**模板里的检查项名必须与脚本实际 gate 标签逐字一致**。
 
 **v2.2.1 算法**：匹配 '\[D[0-9]+\]' final/定稿.md → **不支持表格行 [1.x] 引用**。
 
@@ -779,28 +784,22 @@ return (len(leaked) == 0 and len(orphan) == 0, leaked, orphan)
    - 标准格式 [Dxx]：匹配 '^\*\*\[D[0-9]+\]' final/证据包/数据卡.md → set_card_d
    - 表格格式 [1.x]：匹配 '^\| ([0-9]+\.[0-9]+) |' final/证据包/数据卡.md → set_card_table
 
-3. 信任级别一致性 对比：
-   - 标准格式 对比：求差集/-13 set_intext_d set_card_d
-   - 表格格式 对比：求差集/-13 set_intext_table set_card_table
+3. 引用闭环对账（**脚本实装部分**）：
+   - 标准格式：求差集 set_intext_d − set_card_d → 正文引了、数据卡无此条目（漏引）
+   - 表格格式：求差集 set_intext_table − set_card_table
 
-4. 信任级别空标检查：
-   - 标准格式：每条 [Dxx] 对应数据卡信任级别非空
-   - 表格格式：每行 [1.x] 表格的「信任级别」列非空
+4. **信任级别一致性 / 空标检查：本门不查**（v18.0.2 名实对齐——此为文档旧承诺，**未实装**）。信任级别由 **M-Form-6**（独立信任级别段）+ **G12**（审计层一致性）承担；如日后要实装，须先按 `规范-机械门对照表.md` 的口径登记再实装。
 
-5. 判定：所有 对比 空 + 信任级别全填 → 通过；任一非空 → 失败（v2.5.2-dsh.5 严重度评级：漏标 ≤2 → P2 可放行，>2 → P1）
+5. 判定：差集为空 → 通过；任一非空 → 失败（**v18.0.3 严重度与脚本对齐**：漏引 ≤2 → P2 可放行，>2 → P1，>5 → P0）
 
-伪代码：
+伪代码（**与 `m-gate-check.mjs` 实装同构**：脚本侧走 `_lib/refs.mjs` 的 `refsOf(bodyProse,'D')` ↔ `dataCardIds(dataCard)`，只算漏引集合）
 intext_d = sorted(set(re.findall(r'\[D\d+\]', draft_text)))
 intext_table = sorted(set(re.findall(r'\[\d+\.\d+\]', draft_text)))
 card_d = sorted(set(re.findall(r'^\*\*\[D\d+\]', data_card_text, re.MULTILINE)))
 card_table = sorted(set(re.findall(r'^\| (\d+\.\d+) \|', data_card_text, re.MULTILINE)))
-trust_d = extract_trust_dict_standard(data_card_text)
-trust_table = extract_trust_dict_table(data_card_text)
-leaked = sorted(set(intext_d) - set(card_d))
-orphan = sorted(set(card_d) - set(intext_d))
-missing_trust = [d for d in intext_d if d not in trust_d or trust_d[d] == '']
-all_pass = (len(leaked) == 0 and len(orphan) == 0 and len(missing_trust) == 0)
-return (all_pass, leaked, orphan, missing_trust)
+missing = sorted((set(intext_d) | set(intext_table)) - (set(card_d) | set(card_table)))
+all_pass = (len(missing) == 0)
+return (all_pass, missing)   # 信任级别不在本门：见步骤 4
 ```
 
 ---
@@ -1013,13 +1012,14 @@ outline = analysis/分析大纲.md（缺则回退 证据包/分析大纲.md）�
    （不再 检查 analysis/分析大纲.md，因 T4 尚未产出）
 4. 数据条目数 >= 任务简报需求总数 → 数据完整 → 通过；否则 → 触发 T2 重检索
 5. 信任级别完整性：M-Form-6 exit 0 → 通过；否则 → 触发 T2 补标注
-6. 信任级别一致性：M-Exist-3 exit 0 → 通过；否则 → 触发 T2 补数据卡
+6. 引用闭环：M-Exist-3 exit 0 → 通过（正文 `[Dxx]` 均在数据卡有条目）；否则 → 触发 T2 补数据卡
+   （**v18.2.6 审计修复**：旧文写「信任级别一致性：M-Exist-3 exit 0」——该门只做引用闭环对账，**不查信任级别**；信任级别由步骤 5 的 M-Form-6 承担）
 7. **v2.2.17 修复（教训 #123）**：哈希指纹为**可选验证**——主控发占位符 `[哈希校验待主人回填]` 到 `final/交付说明.md`「证据包指纹」段，**不**作为闸门强制项。主人需手动在 host shell 跑 （检查 final/证据包/*.md）（参考 `shell 脚本`）。**该步骤不是 agent 执行的代码，是人类验证示例。**
 8. **v2.2.10 新增（教训 #106）**：数据卡头部「共 N 条」声明 vs 实际 检查 计数一致性
    头部声明：匹配 '共 [0-9]+ 条' final/证据包/数据卡.md
    实际计数：步骤 2 的双格式并集 dedupe
    不一致 → 标 Failed（防 T2 未自检 + T4 人工 检查 才发现的延后问题）
-9. 判定：7 项全通过 → T2.5 ✅ 派发 T4；任一失败 → T2.5 ❌ 不派发 T4
+9. 判定：上述各项全通过 → T2.5 ✅ 派发 T4；任一失败 → T2.5 ❌ 不派发 T4
     **v2.5.2-dsh.5 严重度评级**：**v2.5.2-dsh.17 补强（自省审计）**：此前 `m-gate-check.mjs` 对该门的「佐证」只核「任务简报存在且有子问题」，严重度恒为 `LLM 兜底` → **永不 P0/P1**，本节承诺的 P0 **在脚本里不可达**。现补两次可机械化的对账：① **数据条目数**（`[Dxx]` 编号并集 ∪ 表格 `| 1.x |` 行）**≥ 任务简报「需找数据点」之和** → 不足 **P0**（步骤 4：触发 T2 重检索）；② **数据卡缺失 → P0**；**数据卡存在但 M-Form-6（独立信任级别段）未过 → P0**（步骤 5）。差序输入（简报缺失 / 未见研究问题段）仍记 `LLM 兜底`，最终判定归主控 L4 跨文件判断。
 
 单子项失败 P0（信任级别缺失/数据条目不足）→ 整体闸门 P0；单子项失败 P1 → 整体 P1（可放行 + 主人签收）。**v2.5.2-dsh.5 修订**：T2.5 失败时可放行的 P1 子项必须显式记录在 01-任务简报.md「已知风险」段，主控 T8 终检时优先复核。
@@ -1048,9 +1048,9 @@ return (all_pass, fail_reasons, sha256_pending)
 算法步骤（主控 LLM 兜底执行）：
 1. 检查审计报告最新版：列出 audits/审计报告-vN.md → N 取最大 → 必须存在
 2. P0/P1 清单已列：检查 -E '^- \*\*P0|^- \*\*P1' audits/审计报告-vN.md → 必须有 ≥1 条
-3. M 门（M-Form 11 项 + M-Exist 10 项）全部 exit 0：读 M-Gate-Report.json → 全部 true
+3. M 门**机械 22 项**（M-Form 1-11 + M-Exist 1-10 + M-Integrity-1）全部 exit 0：读 M-Gate-Report.json → 全部 true（**M 门总 23 项 = 机械 22 + 人工 1**；旧文只写「M-Form 11 + M-Exist 10」漏 M-Integrity-1，v18.2.6 审计修复）
 4. 证据包 哈希指纹段存在：读 final/交付说明.md「证据包指纹」段 → 必须有 sha256 **占位符** `[哈希校验待主人回填]`（人类可选在 host shell 手动计算后回填真实哈希，占位符即视为通过——v2.2.17 改，agent 不执行 sha256，不把 sha256 作闸门强制项）
-5. 信任级别一致性：M-Exist-3 exit 0 → 通过
+5. 引用闭环：M-Exist-3 exit 0 → 通过（正文 `[Dxx]` 均在数据卡有条目；**信任级别不在此门**——由 M-Form-6 + G12 承担，v18.2.6 审计修复）
 6. 论文交付物 vs 操作员报告独立隔离：
    - final/定稿.md（论文）不含 audits/ / final/交付说明.md 内容
    - final/交付说明.md / audits/（报告）不混入 final/定稿.md
@@ -1059,7 +1059,7 @@ return (all_pass, fail_reasons, sha256_pending)
    - 证据：status.md 修订回环记录写明「spawn 独立写手 vN 执行」
    - 若发现主控代执行 → 打回修订轮，强制 spawn 独立写手
    - 例外：主控直接 edit 定点修复（<5 处纯校对类，v2.1.3 允许）不视为违反
-9. 判定：7 项全通过 → T7.5 ✅ 派发 T8；任一失败 → T7.5 ❌ 不派发 T8
+9. 判定：上述各项全通过 → T7.5 ✅ 派发 T8；任一失败 → T7.5 ❌ 不派发 T8
     **v2.5.2-dsh.5 严重度评级**：单子项失败 P0（M 门 fail / P0 缺）→ 整体 P0（不派发 T8，必须修订重审）；单子项失败 P1 → 整体 P1（可放行 + T8 复核时显式列原因）。
 
 伪代码：
@@ -1080,9 +1080,9 @@ return (all_pass, fail_reasons)
 
 以下 4 段（输出格式 / 论衡哲学化 / 教训沉淀 / 历史版本）已抽出到独立文档，按需加载：
 
-- **M-Gate-Report v2.2.4 输出格式**（JSON schema）：[`references/_shared/M-Gate-Algorithm-appendix.md §1`](M-Gate-Algorithm-appendix.md#1-m-gate-report-v224-输出格式4-版本合并最终版)
+- **M-Gate-Report 输出格式（JSON schema，v18.2.6 按实现重建）**：[`references/_shared/M-Gate-Algorithm-appendix.md`](M-Gate-Algorithm-appendix.md)
 - **论衡哲学化**（4 版本合并）：[`references/_shared/M-Gate-Algorithm-appendix.md §2`](M-Gate-Algorithm-appendix.md#2-论衡哲学化4-版本合并)
 - **教训沉淀（v2.2.0 ~ v2.2.4）**：[`references/_shared/M-Gate-Algorithm-appendix.md §3`](M-Gate-Algorithm-appendix.md#3-教训沉淀v220--v224-全部)
 - **历史版本归档（v2.2.8 Phase D-1）**：**主流程只读本完整版**；历史版本演进见 git log。
 
-> **拆分理由（v2.5.2）**：主文件从 780 行降至 635 行（-19%），超 PERF-SIZE-004 800 行临界 145 行的缓冲。附录按需加载，主流程只读「13 个 M门规则 + 触发条件 + 伪代码」。
+> **拆分理由（v2.5.2；v18.2.6 按实测更正）**：把「输出格式 / 哲学化 / 教训沉淀 / 历史版本」四段抽出到 `M-Gate-Algorithm-appendix.md`（按需加载），主文件从此只保留「M 门规则 + 触发条件 + 伪代码」。**行数不写死**——旧版此处写「主文件从 780 行降至 635 行（-19%）」，实测早已不是该值（当前以 `wc -l` 为准）；行数与体积属「会腐烂的事实」，**引用前先实测**。
