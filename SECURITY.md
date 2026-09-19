@@ -37,8 +37,10 @@
 - **幂等守卫**：目标版本已存在于 npm 时跳过发布。
 - **发布后审计**：断言 `npm view <pkg>@<ver> gitHead` == 本次提交 SHA，且 `dist-tags.dsh` 指向该版本。
 - 历史版本 `2.5.2-dsh.8`–`.12` 为**本地手工发布、无 provenance**（已在 `CHANGELOG.md` 记录）；自 `2.5.2-dsh.13` 起恢复 tag + OIDC 流程。
-- **`NPM_TOKEN` 的用途与治理（v18.2.4 增补，第三方审计 G.1）**：发布本身走 OIDC、**不需要** token；该 secret **只**用于发布后 `npm dist-tag add … latest` 这一步——OIDC 覆盖的是 `npm publish`，而 `npm dist-tag` 仍需写鉴权（工作流注释已记实测：无 token 时该命令因无鉴权 exit 1；故工作流写成「无 token 只告警、不失败」，latest 由维护者手工补打）。
+- **`NPM_TOKEN` 的用途与治理（v18.2.4 增补，第三方审计 G.1；v18.2.6 末已删除该 secret）**：发布本身走 OIDC、**不需要** token；该 secret 曾经**只**用于发布后 `npm dist-tag add … latest` 这一步——OIDC 覆盖的是 `npm publish`，而 `npm dist-tag` 仍需写鉴权（工作流注释已记实测：无 token 时该命令因无鉴权 exit 1；故工作流写成「无 token 只告警、不失败」）。
   > **治理要求**：① 用**细粒度 token**、只授本包写权限、设最短有效期；② 定期轮换；③ **一旦出现在聊天记录 / 日志 / 截图 / CI 输出中即视为已泄露**，立即 revoke 并重发；④ 该 token 永远不得打印（`publish.yml` 只经 `env:` 传递，不 `echo`）。
+  > **当前状态（2026-09-19 记录）**：该 secret **已删除** —— 它在 v18.2.4 与 v18.2.6 两次发布时均已失效（实测 `E401`，见 `CHANGELOG.md` 对应段），使「核对 dist-tag」这一步在**发布成功后**仍把作业判红。删除后该步走「无 token」分支（仅 `::warning::`，作业绿）。
+  > **运维后果（后来者须知）**：**每次发版后 `latest` 不再自动前移**（`dsh` 由 `npm publish --tag dsh` 自动指向新版本，不受影响）。发布后请在有凭据的机器上执行：`npm dist-tag add lunheng-article-pipeline@<版本> latest`（首次发布 18.2.6 时即按本仓发布日志中的同一条命令手工补打）。若要恢复自动化，重新签发细粒度 token 并按上面 ①–④ 治理，然后 `gh secret set NPM_TOKEN`。
 
 ## 支持的版本
 

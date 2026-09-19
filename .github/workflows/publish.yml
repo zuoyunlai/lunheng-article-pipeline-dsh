@@ -119,6 +119,12 @@ jobs:
       #      **存在却失效**（E401 = 已撤销/过期）是真问题——它让 latest 静默卡在旧版。故捕获后打
       #      `::error::` 并给出**可直接复制**的补救命令，仍 exit 1（fail-closed，不把「latest 没跟上」伪装成成功）。
       #      v18.2.4 即由维护者在有凭据的机器上执行该命令补齐（latest / dsh 均已 → 18.2.4）。
+      # v18.2.6 末状态变更（2026-09-19）：`NPM_TOKEN` **已被主人删除**（它在 18.2.4 与 18.2.6 两次发布
+      #   时都已失效，使本步在**发布成功后**仍把作业判红）。删除后本步走上面的「缺 token」分支 → 仅
+      #   `::warning::`、作业绿。**运维后果**：每次发版后 `latest` 不再自动前移（`dsh` 由
+      #   `npm publish --tag dsh` 自动指向新版，不受影响），需手工 `npm dist-tag add …@<版本> latest`；
+      #   18.2.6 即按此手工补齐。要恢复自动化就重新签发细粒度 token 并 `gh secret set NPM_TOKEN`
+      #   （治理要求见 SECURITY.md「NPM_TOKEN 的用途与治理」）。
       - name: 核对 dist-tag（只读；有 token 才补打 latest）
         if: steps.guard.outputs.skip == 'false' || github.event_name == 'workflow_dispatch'
         env:
