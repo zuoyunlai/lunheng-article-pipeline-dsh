@@ -1,4 +1,4 @@
-> 版本：v18.2.6（DSH bundle 插件）
+> 版本：v18.2.8（DSH bundle 插件）
 
 
 <a id="concepts"></a>
@@ -133,7 +133,7 @@
   - G11：数据时效失效告警（v2.1.5）
   - G12：数据信任级别一致性（v2.2.1）
   - G13：AI 使用披露（v2.2.2）
-  - **G14：中文 AI 痕迹深度检测（v2.4.0 新增）** —— 8 类检测维度（学术模板语 / 句式同质化 / 学术套话高频 / 破折号滥用 / 三项排比 / 人称错位 / 个人辨识度缺失 / 党报话语堆砌），触发阶段**两个时点**：**早闸 Phase 3.6（与 T6 同批并行，结论入修订说明）** / **终闸 Phase 4.5（与 T9 并行，报告为最终版本真源）**（v18.2.6 审计修复：旧写「Phase 4.5 + T6 并行」时序不可能——T6 在 3.6）。闸门定义：`references/gates/14-中文AI痕迹-gate.md`；检测器：`references/checkers/中文AI痕迹-checker.md`；报告模板：`references/templates/G14检测报告-template.md`。**非 GPTZero 类检测器** = 论衡自有判定标准（中文特化），可由主人在 Phase 0 显式关闭。
+  - **G14：中文 AI 痕迹深度检测（v2.4.0 新增）** —— 8 类检测维度（学术模板语 / 句式同质化 / 学术套话高频 / 破折号滥用 / 三项排比 / 人称错位 / 个人辨识度缺失 / 党报话语堆砌），触发阶段**三层防御、仅一次 spawn（v18.2.8 删早闸）**：**① T5 v1 自检（写作时，零 spawn，结论入 `drafts/修订说明-v1.md`）→ ② 修订轮收尾自查（每轮修订后主控执行，零 spawn）→ ③ 终闸 Phase 4.5（与 T9 并行，**唯一一次 spawn**，报告为最终版本真源）**。（v18.2.6 曾把时点改为「早闸 Phase 3.6 + 终闸 4.5」；v18.2.8 依主人授权删除早闸——实测其 Pass 时该次 spawn 产出为零、且早修无回归保护。旧写「Phase 4.5 + T6 并行」时序不可能——T6 在 3.6。）闸门定义：`references/gates/14-中文AI痕迹-gate.md`；检测器：`references/checkers/中文AI痕迹-checker.md`；报告模板：`references/templates/G14检测报告-template.md`。**非 GPTZero 类检测器** = 论衡自有判定标准（中文特化），可由主人在 Phase 0 显式关闭。
 - **单一真源**：`references/_shared/audit-checklist-quickref.md`
 
 ---

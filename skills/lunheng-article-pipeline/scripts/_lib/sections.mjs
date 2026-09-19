@@ -30,6 +30,27 @@ export const H2_LINE_RE = /^##[ \t\u3000]+(\S.*?)[ \t\u3000]*\r?$/gm
 export const h2Headings = (text) =>
   [...String(text ?? '').matchAll(H2_LINE_RE)].map((m) => ({ index: m.index, title: m[1].trim() }))
 
+/** 三级标题行：与 H2 **同一条规则**（行首 `###` + 至少一个空白 + 文本；尾随空白与 `\r` 不入标题）。
+ *  v18.2.7 新增（依据 2026-09-20 全流程实战反哺 P0-1：`segment-chars.mjs` 需按任意 H2/H3 节取字数）。
+ *  刻意与 `H2_LINE_RE` 共用同一字符类，避免「H2 认全角空格、H3 不认」这类两套口径发散。 */
+export const H3_LINE_RE = /^###[ \t\u3000]+(\S.*?)[ \t\u3000]*\r?$/gm
+
+/** 解析全部三级标题：`[{ index, title }]`。 */
+export const h3Headings = (text) =>
+  [...String(text ?? '').matchAll(H3_LINE_RE)].map((m) => ({ index: m.index, title: m[1].trim() }))
+
+/** 全部标题（H2+H3，按出现顺序，带 `level`）——供按标题切片取字数的调用方使用。 */
+export const allHeadings = (text) => {
+  const out = [
+    ...h2Headings(text).map((h) => ({ ...h, level: 2 })),
+    ...h3Headings(text).map((h) => ({ ...h, level: 3 })),
+  ]
+  return out.sort((a, b) => a.index - b.index)
+}
+
+/** 标题行的**下一行**起点偏移（取节体用；导出给 `segment-chars.mjs` 复用，避免各写一份）。 */
+export const bodyStartOfHeading = (text, headingIndex) => nextLineAfter(text, headingIndex)
+
 /** 标题是否属于某节：**全等或前缀**（如「参考文献（共 12 条）」仍算参考文献节）——与既有门口径一致。 */
 export const titleMatches = (title, marker) => title === marker || title.startsWith(marker)
 

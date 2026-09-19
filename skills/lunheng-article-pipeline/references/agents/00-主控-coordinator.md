@@ -1,4 +1,4 @@
-> 版本：v18.2.6（DSH bundle 插件）
+> 版本：v18.2.8（DSH bundle 插件）
 
 # 角色：主控 Coordinator（主 Agent）
 

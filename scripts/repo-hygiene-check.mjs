@@ -390,11 +390,11 @@ const DOC_BUDGET = {
   // 相对仓库根的路径 → [上限字节, 长期目标字节, 说明]
   'skills/lunheng-article-pipeline/SKILL.md': [32768, 20480, '技能体：入口注册的正文，每次技能激活都进上下文（最贵的文件）'],
   'skills/lunheng-article-pipeline/AGENTS.md': [21504, 16384, '操作手册：技能目录内自动生效的指令'],
-  'skills/lunheng-article-pipeline/references/pipeline-readme.md': [66560, 61440, '流水线全景 + 派发话术（T0 启动必读）——v18.2.2 显式抬升 60→64 KB：补「段级 diff 字数回测硬约束」与「T5/T6/T9 派发用 M 门速查」；v18.2.5 显式抬升 64→65 KB：补「段级 diff 字数口径硬约束（纯汉字 = count-chars 同源）」与「审计视图刷新落盘留痕（status.md 可核对项）」'],
+  'skills/lunheng-article-pipeline/references/pipeline-readme.md': [76800, 61440, '流水线全景 + 派发话术（T0 启动必读）——v18.2.2 显式抬升 60→64 KB：补「段级 diff 字数回测硬约束」与「T5/T6/T9 派发用 M 门速查」；v18.2.5 显式抬升 64→65 KB：补「段级 diff 字数口径硬约束（纯汉字 = count-chars 同源）」与「审计视图刷新落盘留痕（status.md 可核对项）」；**v18.2.7 显式抬升 65→74 KB（主人授权修订）**：依 2026-09-20 全流程实战反哺，一处补 6 条硬约束——① 派发最小集补第 7 条「文末五节条目标签用论衡编号」（真源 `机检硬格式.md` §五 v18.2.2 已有该条，但最小集一直漏同步，实战第三次踩到：T5 四版全写 `[1]`-`[11]`，T7 三轮未抓出，直到 T8 才爆 P0）；② 段级 diff 加「预算闸门前置」（清单预估 16,987 → 实测 18,071，超限 1,271 字 → 被迫削 3 轮）；③ 加「素材加载清单刷新责任在段级 diff 模式下归主控」（与「T5 每轮覆盖写」机制直接冲突）；④ 加「清单须机器可读、优先用 apply-diff.mjs」（实战主控为此做约 52 处手工 edit）；⑤ T7 修订任务书加「验收方式」列（解「字面验收 vs 字数约束」死结）；⑥ T7 预检从 5 项扩为**全量 22 项 M 门** + 缺陷冻结机制（3 个零判断力 P0 漏到 T8、A 轨 2 轮用满仅 29% 完全关闭）；**v18.2.8 显式抬升 74→75 KB（主人授权「G14 早闸去掉」）**：流水线全景的 G14 行与派发话术段改为「三层防御、仅一次 spawn」。**已先做两轮瘦身**（删除依据移至 `gates/14` 单点持有），瘦身后仍超 150 B；剩余为 Phase 序列与派发话术本身，属 T0 启动必读的承重内容'],
   'skills/lunheng-article-pipeline/references/_shared/M-Gate-Algorithm.md': [86016, 79872, 'M 门伪代码（仅 T7/T8 读）——v18.2.2 显式抬升 78→84 KB：补 6 处 v18.2.2 判定语义修订注记（M-Form-4/8/11 + M-Exist-2/10 + M-Integrity-1）'],
   'skills/lunheng-article-pipeline/references/agents/00-主控-扩展职责.md': [53248, 50176, 'T0 实操手册（全库第二，闸门公共动作在此）——v18.2.2 显式抬升 49→52 KB：补「修订回环提前 Ack 判据」四类归因决策表'],
   'skills/lunheng-article-pipeline/references/glossary.md': [32768, 32768, '术语表（含 §十二 刻意偏离，改机制前必读）'],
-  'skills/lunheng-article-pipeline/references/agents/05-写作-writer.md': [38912, 36864, 'T5 写手卡——v18.2.5 显式抬升 36→38 KB：补「段级 diff 字数口径与 count-chars 同源（两侧汉字计数）」+「图位编号 = 正文出现顺序，禁照抄大纲编号」两条硬约束'],
+  'skills/lunheng-article-pipeline/references/agents/05-写作-writer.md': [39936, 36864, 'T5 写手卡——v18.2.5 显式抬升 36→38 KB：补「段级 diff 字数口径与 count-chars 同源（两侧汉字计数）」+「图位编号 = 正文出现顺序，禁照抄大纲编号」两条硬约束；**v18.2.8 显式抬升 38→39 KB（主人授权「G14 早闸去掉」）**：F 自检 7 项 → 7+1 项，新增「G14 v1 自检」（早闸删除后由写手在写作阶段承担第 1 层检测）。**已先做瘦身**（8 类清单改为指向 checker 卡的指针，不再逐类枚举），瘦身后仍超 491 B；剩余内容为**写手必须执行的检查项本身**，属承重内容'],
   'skills/lunheng-article-pipeline/references/_shared/DSH-集成方案.md': [28672, 25600, 'DSH 能力面集成：§七 落地状态 + §八 preset 配方 + §九 运行环境限制（v18.1.0 扩容，新进预算表）——v18.2.2 显式抬升 25→28 KB：新增 §九「Windows sandbox --temp 前置目录缺失」现象 + 四条替代路径 + 主控操作纪律'],
   'skills/lunheng-article-pipeline/references/agents/07-审计-auditor.md': [22528, 22528, 'T7 审计卡'],
   'skills/lunheng-article-pipeline/references/memory/lessons.md': [19456, 19456, '教训库（只增，需定期合并同类项）'],
@@ -407,15 +407,21 @@ const DOC_BUDGET = {
   'skills/lunheng-article-pipeline/references/_shared/机检硬格式.md': [13312, 12288, '机检硬格式（模板 ↔ m-gate-check.mjs 的排版契约，唯一真源）——v18.2.5 新增登记（原 11.5 KB 越过 12 KB 登记线）：补「期刊匹配输入来源须逐行标注」与「非标准编号黑名单」口径'],
   'skills/lunheng-article-pipeline/references/agents/02-数据检索-data-scout.md': [13312, 13312, 'T2 数据检索卡'],
   'skills/lunheng-article-pipeline/references/agents/03-案例检索-case-scout.md': [13312, 13312, 'T3 案例检索卡'],
-  'skills/lunheng-article-pipeline/references/agents/09-审稿-peer-reviewer.md': [14336, 13312, 'T9 审稿卡——v18.2.1 显式抬升 13→14 KB：补 M-Exist-6 六维机检契约警示（防派发时改写维度名）'],
-  'skills/lunheng-article-pipeline/references/checkers/中文AI痕迹-checker.md': [13312, 12288, 'G14 检测器契约（checker 侧）——**v18.2.6 新增登记**：本轮修订把 G14 触发时点统一为「早闸 Phase 3.6 与 T6 同批 / 终闸 Phase 4.5 与 T9 并行」（旧文写「早闸 Phase 3.1」「终闸与 T6 并行」，后者在时序上不可能），文件由 11.5 KB → 12.0 KB **越过 12 KB 登记线**，故按规则⑨ ① 补登记'],
+  'skills/lunheng-article-pipeline/references/agents/09-审稿-peer-reviewer.md': [18432, 13312, 'T9 审稿卡——v18.2.1 显式抬升 13→14 KB：补 M-Exist-6 六维机检契约警示（防派发时改写维度名）；**v18.2.7 显式抬升 14→18 KB（主人授权修订）**：依 2026-09-20 全流程实战反哺，补三处——① **修本卡内部矛盾**：§when 写「T9 只能在 T7 审计后」而 §exclusions 写「❌ T7 审计后（已晚）」，同一张卡两处直接冲突（v2.4.0 引入 G14 时点漂移时的遗留），现删除错误项并注明正确时点；② 新増铁律「我是参谋层，不是交付闸门」——判定词 accept/minor/major/reject 借自真实同行评审、天然带程序效力暗示，若机制不写明「T9 不阻塞交付」，主控在 A 轨用满时读到「major revision」可能被迫多跑一轮；③ 格式骨架补「综合匹配度」**表的字面样例**（此前只有文字说明 → T9 按卡产出自然语言段落 → M-Exist-6 判 P1）'],
+  'skills/lunheng-article-pipeline/references/checkers/中文AI痕迹-checker.md': [14336, 12288, 'G14 检测器契约（checker 侧）——**v18.2.6 新增登记**：本轮修订把 G14 触发时点统一为「早闸 Phase 3.6 与 T6 同批 / 终闸 Phase 4.5 与 T9 并行」（旧文写「早闸 Phase 3.1」「终闸与 T6 并行」，后者在时序上不可能），文件由 11.5 KB → 12.0 KB **越过 12 KB 登记线**，故按规则⑨ ① 补登记；**v18.2.8 显式抬升 13→14 KB（主人授权「G14 早闸去掉」）**：§when 重写为「三层防御、仅一次 spawn」，并新增 §exclusions「Phase 4.5 之前的任何时点不得 spawn」。**已先做两轮瘦身**（把删除依据的三条理由移出、只留指向 `gates/14` §触发阶段注的指针），瘦身后仍超 400 B；剩余内容为规则性定义（三层各自的执行者与产出），无法再压缩而不损可执行性'],
   'skills/lunheng-article-pipeline/references/_shared/规范-机械门对照表.md': [22528, 16384, '规范条文 ↔ 机械门 ID 对照表（改机制前须同步的一览）——v18.2.2 新增登记（原 13.8 KB 已越过 → 12 KB 登记线）；v18.2.4 显式抬升 16→17 KB：补 v18.2.4 的 3 行断链（版本点位两处扫描盲区 + 入口路由字段来源未被断言）；v18.2.5 显式抬升 17→22 KB（按「当前字节向上取整到整 KB」原则）：补 7 行（图件恒失败 / 编号闭环盲区 / 承重墙读错表 / 证据与加载率识别过窄 / G14 三缺陷 / 四类口径未定）——**该抬升与「门补面」是同一件事的两半**：补了门就必须同步本表，否则又造一条新的「规范↔门」断链'],
 }
 const ALWAYS_RESIDENT = [
   'skills/lunheng-article-pipeline/SKILL.md',
   'skills/lunheng-article-pipeline/AGENTS.md',
 ]
-const ALWAYS_LIMIT = 53248 // 常驻集合计上限（v18.1.0 由 51200 抬升：C 组四处机制事实入 SKILL.md/AGENTS.md）
+// 常驻集合计上限（v18.1.0 由 51200 抬升：C 组四处机制事实入 SKILL.md/AGENTS.md）
+//   **v18.2.7 由 53248 抬升到 54272（主人授权修订）**：改前实测常驻集合计 **53222 B**，距上限仅 **26 B**
+//   ——即该约束已处于 99.95% 利用率，实际等效于「禁止再向 SKILL.md 写任何内容」。而本次新增
+//   `scripts/segment-chars.mjs` 后，**规则 ⑩（随包脚本白名单集合一致性）强制要求**把新脚本名写进
+//   SKILL.md 的白名单行——该写入**不可回避**（不写则规则 ⑩ 判 P1「白名单漏列」）。故按「同一次提交里
+//   显式抬升并写明理由」原则抬高 1 KB，不采用「删既有机制说明」来腾空间（那会以丢失机制事实为代价）。
+const ALWAYS_LIMIT = 54272
 
 const budgetBad = []
 let docOver = 0
