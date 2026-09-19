@@ -74,21 +74,38 @@ test('B-5 基准错位：会话工作区 ≠ 进程 cwd 时，相对路径写机
   assert.match(reason, /机制文件写保护/)
 })
 
-test('B-6 路径拼写：小写盘符 / 长路径前缀 / 嵌套对象 / 补丁文本 / `..` 绕行全部被拦', async () => {
+// ⚠️ 路径拼写变体必须**按平台分表**（v18.2.6 CI 首跑踩到）：
+//   `e:/…`（盘符）与 `\\?\E:\…`（长路径前缀）是 **Windows 专属**语义；在 POSIX 上这两个串是
+//   **合法的相对路径**（反斜杠是合法文件名字符，`\\?\` 只是个普通目录名），guard 判 ALLOW 才是
+//   正确行为——若无条件断言 DENY，ubuntu/macOS 上必红（CI 实测：windows-latest 绿、另三者红）。
+//   POSIX 侧改用**同义**的拼写变体（重复分隔符 / 点段）继续覆盖「归一化」这层能力。
+const WIN = process.platform === 'win32'
+const SPELLING_VARIANTS = WIN
+  ? [
+      ['小写盘符（Windows 专属）', { file_path: SKILL_MD.replace(/^([A-Za-z]):/, (_, d) => `${d.toLowerCase()}:`) }],
+      ['长路径前缀 \\\\?\\（Windows 专属）', { file_path: `\\\\?\\${SKILL_MD.replace(/\//g, '\\')}` }],
+    ]
+  : [
+      ['重复分隔符 //', { file_path: `${SKILL_DIR}//SKILL.md` }],
+      ['点段 /.', { file_path: `${SKILL_DIR}/./SKILL.md` }],
+    ]
+
+test('B-6 路径拼写：平台专属拼写 / 嵌套对象 / 补丁文本 / `..` 绕行全部被拦', async () => {
   const { guards } = await runApply()
   const guard = guards[0]
   const ws = PACKAGE_ROOT
   const variants = [
     ['绝对路径（正斜杠）', 'write', { file_path: SKILL_MD }],
     ['反斜杠绝对路径', 'write', { file_path: SKILL_MD.replace(/\//g, '\\') }],
-    ['小写盘符', 'write', { file_path: SKILL_MD.replace(/^([A-Za-z]):/, (_, d) => `${d.toLowerCase()}:`) }],
-    ['长路径前缀 \\\\?\\', 'write', { file_path: `\\\\?\\${SKILL_MD.replace(/\//g, '\\')}` }],
+    ...SPELLING_VARIANTS.map(([label, args]) => [label, 'write', args]),
     ['二层嵌套对象（旧 writtenPath 不递归对象）', 'write', { edits: { file: { file_path: SKILL_MD } } }],
     ['数组多文件编辑', 'write', { edits: [{ file_path: SKILL_MD }] }],
     ['str_replace_editor 的 path 键', 'str_replace_editor', { command: 'str_replace', path: SKILL_MD }],
     ['apply_patch 补丁文本', 'apply_patch', { patch: `*** Update File: ${SKILL_MD}\n@@\n-a\n+b\n` }],
     ['unified diff 的 b/ 前缀', 'apply_patch', { input: `--- a/${join('lib', 'index.js')}\n+++ b/${join('lib', 'index.js')}\n` }],
-    ['`..` 绕行', 'write', { file_path: join(SKILL_DIR, 'references', '..', 'SKILL.md') }],
+    // 用**未归一化**的原串测穿越（旧写法 `join(SKILL_DIR,'references','..','SKILL.md')` 会被 join 提前归一，
+    // 等于没测到 guard 的归一化能力——两平台都换成原串）
+    ['`..` 绕行', 'write', { file_path: `${SKILL_DIR}/references/../SKILL.md` }],
     ['入口目录 lib/', 'edit', { file_path: LIB_INDEX }],
     ['包级 cordis.patch.yml', 'write', { file_path: join(PACKAGE_ROOT, 'cordis.patch.yml') }],
   ]
