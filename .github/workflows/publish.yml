@@ -186,3 +186,45 @@ jobs:
           if [ "$DSH_TAG" != "$VER" ]; then
             echo "::warning::dist-tags.dsh=$DSH_TAG ≠ $VER（若已配置 NPM_TOKEN 则不应发生；无 token 时属预期：publish --tag dsh 会自动指向本版本）"
           fi
+
+  # ── GitHub Release（2026-09-21 新增）────────────────────────────────────────────
+  # 为什么此前一直缺（如实记录，这是本作业存在的唯一理由）：publish.yml 从建库起就只有
+  #   「npm 发布」没有「建 release」两步中的任何一步——GitHub Release 全靠维护者手工
+  #   `gh release create` 补。漏补就停更：v18.2.5 / 18.2.6 / 18.2.8 / 18.2.9 / 18.3.0
+  #   五版**均无 Release**（releases 页面长期停在 v18.2.1），直到 2026-09-21 手工补 v18.3.0
+  #   时才暴露。本作业把这一步自动化，使「push tag → npm 发布 → GitHub Release」全链闭环。
+  # 为什么**单独一个作业**（而不是塞进 publish）：建 release 需要 `contents: write`，而
+  #   `publish` 作业已持有 `id-token: write`（发布身份）——两者同作业会让「发布身份」同时
+  #   具备仓库写权。拆开后各持最小权限（与 gates / publish 的拆分同一思路）。
+  # 为什么用**内建 `gh` CLI**而不是第三方 action：本仓 Action 一律 pin commit SHA（供应链纪律），
+  #   而 `gh` 是 runner 预装的内建工具——零新增供应链面，也不引入需要跟踪的上游 SHA。
+  # 幂等：已存在的 tag 重跑（含手工补过 release 的场景）只打印跳过，不会重复创建或改资产。
+  release:
+    needs: publish
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write          # 唯一需要仓库写权的地方（建 release + 传资产）；**不含** id-token
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+          package-manager-cache: false # v5 默认反转为 true；本仓无 lockfile 且不 install（同 publish 作业口径）
+      # 资产 = `npm pack` 产出的 tgz（与既往手工 release 的附件同名同源）
+      - name: 创建 GitHub Release（附 tgz 资产）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VER="$(node -p "require('./package.json').version")"
+          TAG="v$VER"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG 已存在 → 跳过（幂等，可安全重跑）"
+            exit 0
+          fi
+          TARBALL="$(npm pack --silent | tail -n1)"
+          echo "资产：$TARBALL"
+          gh release create "$TAG" "$TARBALL" \
+            --title "$TAG" \
+            --generate-notes
+          echo "✓ Release $TAG 已创建（body 由 --generate-notes 生成，可在网页上补详细说明）"
