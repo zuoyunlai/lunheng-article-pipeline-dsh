@@ -25,32 +25,29 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import os from 'node:os';
 import { installExitGuard } from './_lib/exit-guard.mjs';   // 退出码硬化（v18.0.5）
+import { parseArgs as parseCliArgs, USAGE_CODE as CLI_USAGE_CODE } from './_lib/cli-args.mjs';  // 参数解析唯一实现（v18.2.9，审计 A7）
 installExitGuard();
 
-const args = process.argv.slice(2);
-const wantJson = args.includes('--json');
-const noProbe = args.includes('--no-probe');
-const preferRemote = args.includes('--prefer-remote');
-// v18.0.5（第三方审计 P2）：未知参数与「缺值」此前被静默忽略（`--nope` 直接当无事发生，exit 0），
-//   拼错的旗标会静默走进默认路径。现在显式拒绝并给用法（本脚本 1 = 用法/环境错，4 = 需人工决定）。
-const KNOWN = new Set(['--json', '--no-probe', '--prefer-remote', '--dsh-home']);
-for (let i = 0; i < args.length; i++) {
-  const a = args[i];
-  if (a === '--dsh-home') {
-    if (!args[i + 1]) {
-      console.error('--dsh-home 缺少值\n用法: node scripts/model-routing.mjs [--dsh-home <path>] [--json] [--no-probe] [--prefer-remote]');
-      process.exit(1);
-    }
-    i++; // 跳过旗标取值（它不是位置参数，别当成未知参数）
-    continue;
-  }
-  if (!KNOWN.has(a)) {
-    console.error(`未知参数: ${a}\n用法: node scripts/model-routing.mjs [--dsh-home <path>] [--json] [--no-probe] [--prefer-remote]`);
+// v18.2.9（第三方审计 A7）：参数解析迁移到 `_lib/cli-args.mjs` 唯一实现
+//   （v18.0.5 已拒绝未知参数，本次消除手写 KNOWN/indexOf 双份逻辑；本脚本 1 = 用法/环境错，4 = 需人工决定）
+let wantJson, noProbe, preferRemote, DSH_HOME;
+try {
+  const parsed = parseCliArgs(process.argv.slice(2), {
+    flags: ['--json', '--no-probe', '--prefer-remote'],
+    values: { '--dsh-home': '~/.dsh' },
+    maxPositionals: 0,
+  });
+  wantJson = parsed.flags.has('--json');
+  noProbe = parsed.flags.has('--no-probe');
+  preferRemote = parsed.flags.has('--prefer-remote');
+  DSH_HOME = parsed.opts['--dsh-home'] || process.env.DSH_HOME || join(os.homedir(), '.dsh');
+} catch (e) {
+  if (e && e.code === CLI_USAGE_CODE) {
+    console.error(`${e.message}\n用法: node scripts/model-routing.mjs [--dsh-home <path>] [--json] [--no-probe] [--prefer-remote]`);
     process.exit(1);
   }
+  throw e;
 }
-const homeIdx = args.indexOf('--dsh-home');
-const DSH_HOME = (homeIdx >= 0 && args[homeIdx + 1]) ? args[homeIdx + 1] : (process.env.DSH_HOME || join(os.homedir(), '.dsh'));
 const settingsPath = join(DSH_HOME, 'settings.yaml');
 
 if (!existsSync(settingsPath)) {

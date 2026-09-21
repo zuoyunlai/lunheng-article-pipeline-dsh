@@ -23,18 +23,33 @@ import { existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { installExitGuard, requireExistingDir, EXIT_USAGE, EXIT_INTERNAL } from './_lib/exit-guard.mjs'; // 退出码硬化（v18.0.5）
+import { parseArgs as parseCliArgs, USAGE_CODE as CLI_USAGE_CODE } from './_lib/cli-args.mjs';          // 参数解析唯一实现（v18.2.9，审计 A7）
 installExitGuard();   // fs 类异常 → 10；其余内部错误 → 70（不再让崩溃伪装成「1 = P1 内容残留」）
 
+// v18.2.9（第三方审计 A7）：参数解析迁移到 `_lib/cli-args.mjs` 唯一实现
+//   （旧手写 find/indexOf：未知旗标静默忽略、多余位置参数静默取第一个——详见 cli-args 头注释）。
 const args = process.argv.slice(2);
-const wantJson = args.includes('--json');
-const noSummary = args.includes('--no-summary');
-const reportIdx = args.indexOf('--report');
-const reportPath = reportIdx >= 0 && args[reportIdx + 1] ? args[reportIdx + 1] : null;
-// project = 第一个不以 -- 开头的参数；--report 后跟路径值，需排除
-const project = args.find((a, i) => !a.startsWith('--') && (reportIdx < 0 || i !== reportIdx + 1));
+const FC_USAGE = '用法: node scripts/final-check.mjs <run/项目名> [--no-summary] [--json] [--report <path>]';
+let wantJson, noSummary, reportPath, project;
+try {
+  const parsed = parseCliArgs(args, {
+    flags: ['--json', '--no-summary'],
+    values: { '--report': 'final/final-check-report.json' },
+    minPositionals: 1,
+    maxPositionals: 1,
+    positionalHint: '<run/项目名>',
+  });
+  wantJson = parsed.flags.has('--json');
+  noSummary = parsed.flags.has('--no-summary');
+  reportPath = parsed.opts['--report'];
+  project = parsed.positionals[0];
+} catch (e) {
+  if (e && e.code === CLI_USAGE_CODE) { console.error(e.message); console.error(FC_USAGE); process.exit(10); }
+  throw e;
+}
 
 if (!project || !existsSync(project)) {
-  console.error('用法: node scripts/final-check.mjs <run/项目名> [--no-summary] [--json] [--report <path>]');
+  console.error(FC_USAGE);
   process.exit(10); // v18.0.2 修：参数/路径错误一律 10（旧版 2 与「P0 致命」撞码，且与下方推荐语声称的 else=exit 10 自相矛盾）
 }
 requireExistingDir(project, '项目目录');   // v18.0.5：传文件当项目 → 立即 10（旧版会走到 mkdirSync ENOTDIR 崩溃 → exit 1）

@@ -79,8 +79,15 @@ jobs:
   # （v18.0.0「装了但技能不注册」正是发生在这些门都够不到的地方）。
   # 注意：它**不等于**官方 `dsh-plugin-dev verify`（不启动真实 profile）——本机 verify 受 DSH Desktop
   # 的 dsh shim（硬编码 DSH_HOME）与 pnpm 原生依赖策略阻断，故用等效冒烟替代并在文档里如实标注。
+  #
+  # v18.2.9（第三方审计 B7）：pack-smoke 内部有 **win32 分支**（npm pack/tar 的平台差异），
+  #   旧版只跑 ubuntu = 跨平台易碎代码从未在 CI 的 win/mac 上执行过。零依赖、成本低，故进三平台矩阵。
   pack-smoke:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4  # v5 setup-node 仍按 packageManager 探测 pnpm（package-manager-cache: false 只关缓存不关探测），故显式装上
@@ -90,6 +97,27 @@ jobs:
           package-manager-cache: false # v5 把默认值反转为 true；本仓库无 lockfile 且不 pnpm install（v18.2.4 审计 F.1 维持不缓存）
       - name: 打包产物冒烟（npm pack → 解包 → 入口 apply）
         run: node scripts/pack-smoke.mjs
+
+  # 真实 Loader 冒烟（v18.2.9，第三方审计 A11）：走官方 `dsh-plugin-dev verify`
+  #   （pnpm pack → 装入干净 mkdtemp DSH_HOME profile → 安装 + 启动 + 卸载冒烟）。
+  #   补的是 pack-smoke（mock ctx）与 plugin-surface（静态门）都够不到的「真实 profile 装载」这一层——
+  #   正是 DSH 官方「手动挂载测不到 Loader 层」的事故模式（patch 解析 / bundle 树模块解析 /
+  #   Cordis 无 Config 传参在真实宿主里的形态）。
+  # ⚠️ 本 job 依赖 verify 在干净 CI 环境（无 Desktop dsh shim）可用；本机受 shim 阻断无法预跑，
+  #    若 CI 首跑红，先按 `dsh-plugin-dev verify --help` 核对 --dsh/--base 口径（dsHome 与 pin 见上）。
+  loader-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+          package-manager-cache: false # v5 默认反转为 true；本仓无 lockfile 且不 pnpm install
+      - name: 真实 Loader 冒烟（官方 dsh-plugin-dev verify）
+        env:
+          DSH_PLUGIN_DEV_TIMEOUT: '420000'
+        run: pnpm dlx dsh-plugin-guide@0.3.16 verify .
 
   # 随包脚本回归测试（v2.5.2-dsh.13 新增）
   # 矩阵含 windows-latest 与 macos-latest：final-check 的 POSIX 崩溃、路径含空格、

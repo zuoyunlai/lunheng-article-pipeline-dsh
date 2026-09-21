@@ -31,39 +31,41 @@ import { splitCard } from './_lib/cards.mjs';                          // 卡片
 import { ENDNOTE_SECTIONS, h2Headings, firstEndnoteIndex, sectionBody } from './_lib/sections.mjs'; // 文末节/正文区边界真源（v18.2.6：与 count-chars 同源）
 import { analyzeSvg, svgTextNumbers, figureNoOf, figurePlaceholders } from './_lib/svg.mjs'; // SVG 图件口径真源
 import { installExitGuard, requireExistingFile, requireExistingDir } from './_lib/exit-guard.mjs'; // 退出码硬化（v18.0.5）
+import { parseArgs as parseCliArgs, USAGE_CODE as CLI_USAGE_CODE } from './_lib/cli-args.mjs';      // 参数解析唯一实现（v18.2.9，审计 A7）
 installExitGuard();   // 必须在任何 readFileSync 之前：fs 类异常 → 10，其余内部错误 → 70（避免与「1 = P1 内容失败」撞义）
 
 // 本脚本自身所在目录（用于读取技能包内的真源，如闸门记录模板 / 期刊数据库；v2.5.2-dsh.17）
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const skillRoot = join(scriptDir, '..');
 
+// v18.2.9（第三方审计 A7）：参数解析迁移到 `_lib/cli-args.mjs` 唯一实现。
+//   旧手写 indexOf/filter 解析的两类静默降级（正是 cli-args 头注释描述的 B-4 形态）：
+//     · 未知旗标（拼错的 `--sumary`）被 `filter(a => !a.startsWith('--'))` 静默丢弃 → 用户以为在出摘要，实际拿全量；
+//     · 第 3 个位置参数静默忽略。
+//   现一律 exit 10。原 v18.2.6 的两处防御（--fig-dir 取值不得以 -- 开头、缺值报错）由 cli-args 统一承担。
 const args = process.argv.slice(2);
-const wantSummary = args.includes('--summary');
-// --fig-dir <dir>：图件目录（缺省从定稿路径推 final/图件，v2.5.2-dsh.16 新增）
-const figDirIdx = args.indexOf('--fig-dir');
-const figDirArg = figDirIdx >= 0 && args[figDirIdx + 1] ? args[figDirIdx + 1] : null;
-if (figDirIdx >= 0 && !figDirArg) { console.error('--fig-dir 缺少值'); process.exit(10); }
-// v18.2.6 顺带修：`--fig-dir --report x` 会把 `--report` 当成图件目录取值（缺值被静默接受），
-//   与 apply-diff 的 `--out` 缺值是同一形态 → 取值不得以 `--` 开头。
-if (figDirArg && figDirArg.startsWith('--')) {
-  console.error(`--fig-dir 缺少值（读到下一个参数 "${figDirArg}"）——请写成 --fig-dir <图件目录>`);
-  process.exit(10);
+const MGATE_USAGE = '用法: node m-gate-check.mjs <定稿.md> <证据包目录> [--summary] [--fig-dir <dir>] [--report <path>]';
+let wantSummary, figDirArg, reportPath, positional;
+try {
+  const parsed = parseCliArgs(args, {
+    flags: ['--summary'],
+    values: { '--fig-dir': 'final/图件', '--report': 'final/M-Gate-Report.json' },
+    minPositionals: 2,
+    maxPositionals: 2,
+    positionalHint: '<定稿.md> <证据包目录>',
+  });
+  wantSummary = parsed.flags.has('--summary');
+  figDirArg = parsed.opts['--fig-dir'];
+  reportPath = parsed.opts['--report'];
+  positional = parsed.positionals;
+} catch (e) {
+  if (e && e.code === CLI_USAGE_CODE) { console.error(e.message); console.error(MGATE_USAGE); process.exit(10); }
+  throw e;
 }
-// --report <path>：把结构化报告落盘（供 build-evidence-bundle / T8 审计视图读取，v2.5.2-dsh.13 新增）
-const reportIdx = args.indexOf('--report');
-const reportPath = reportIdx >= 0 && args[reportIdx + 1] ? args[reportIdx + 1] : null;
-// 只有当 --report 真出现时才排除它的取值（v2.5.2-dsh.13 修复：reportIdx=-1 时 reportIdx+1=0
-// 会把第一个位置参数「定稿路径」也排除掉 → 不带 --report 时必然报用法错误；
-// 而 final-check.mjs 正是不带 --report 调用本脚本）
-const flagValueIdx = new Set([
-  ...(reportIdx >= 0 ? [reportIdx + 1] : []),
-  ...(figDirIdx >= 0 ? [figDirIdx + 1] : []),
-]);
-const positional = args.filter((a, i) => !a.startsWith('--') && !flagValueIdx.has(i));
 const draftPath = positional[0];
 const evDir = positional[1];
 if (!draftPath || !evDir) {
-  console.error('用法: node m-gate-check.mjs <定稿.md> <证据包目录> [--summary] [--report <path>]');
+  console.error(MGATE_USAGE);
   process.exit(10);   // 10 = 参数/路径错误（与「1 = P1 内容失败」区分，v2.5.2-dsh.13）
 }
 if (!existsSync(draftPath)) {
@@ -141,6 +143,25 @@ const draftSha256 = createHash('sha256').update(readFileSync(draftPath)).digest(
 const draftBytes = readFileSync(draftPath).length;
 const results = [];
 
+// v18.2.9（第三方审计 B3）：阈值集中为单一对象——旧版 20+ 处魔法数字散落全文，
+//   调整任何阈值需全文 grep，且与 `references/_shared/M-Gate-Algorithm.md` 的文档数字双维护（两处必漂）。
+//   **改阈值只改这里**；下一步由本对象单向生成文档数字表、彻底消除双维护。
+const THRESHOLDS = Object.freeze({
+  mform1MinL: 3,                                        // M-Form-1 学术文献 [Lxx] 下限
+  mform3TempP0: 3,                                      // M-Form-3 占位符 ≥N 处 → P0
+  mform5WeakAICtx: 200,                                 // M-Form-5 弱 AI 痕上下文窗口（字符）
+  mform5P0: 10, mform5P1: 5,                            // M-Form-5 过程语言命中档位
+  mform6P0: 5, mform6P1: 2,                             // M-Form-6 信任级别缺失档位
+  mform8MaxSections: 20, mform8MinSecLen: 100,          // M-Form-8 节扫描上限 / 最短节长
+  mform8WallOverload: 3,                                // M-Form-8 承重墙超载：同一证据被 ≥N 论点标承重
+  exist1ClosureP0: 10,                                  // M-Exist-1 漏引+孤儿 >N → P0
+  mform11MinIndexIds: 30, mform11MinBodyHan: 3000,      // M-Form-11 比率检查前置条件
+  mform11LongHan: 6000, mform11MidHan: 3000,            // M-Form-11 字数分档边界
+  mform11RatioLong: 0.98, mform11RatioMid: 0.94, mform11RatioShort: 0.9,   // 加载率阈值（按正文档位分档）
+  exist10MissingP0: 3, exist10MaxRows: 120,             // M-Exist-10 精简段：缺要素 → P0 阈值 / 行数上限
+  exist3P0: 5, exist3P1: 2,                             // M-Exist-3 引用闭环档位
+})
+
 // === 定位与解析共用助手（v18.0.5 去重：同一推导此前在脚本内各写 2-9 份）===
 //   来源：`audits/论衡冗余审计-v1.md` §二.2（「同脚本内多份重复实现」）。**行为与去重前逐字等价**——
 //   重构前后由 `run/_mgate-baseline.mjs`（37 组真实项目调用，比对 exit + stdout 哈希 + `--report` JSON 哈希）对账。
@@ -151,10 +172,12 @@ const auditsDirOf = ({ withEv = false } = {}) =>
   [join(projectRoot, 'audits'), join(dirname(draftPath), 'audits'), ...(withEv ? [evDir] : [])]
     .find((d) => existsSync(d)) || null;
 // ③ 最新版本化报告：`<前缀>-vN.md` 取 N 最大（N 真源 = 文件名版本号，与 M-Gate-Algorithm §M-Integrity-2 同口径）
+//    v18.2.9（第三方审计 C 项）：prefix 转义后再入正则——含 `.`/`(` 等元字符的前缀旧版会静默失配（「取最大版本」退化为 null）
+const escapeRegExp = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const latestReport = (dir, prefix) => {
   if (!dir || !existsSync(dir)) return null;   // 目录可能在也可能不在（如 analysis/ 尚未创建）→ 一律记 null，不抛
   const cands = readdirSync(dir)
-    .map((f) => ({ f, m: f.match(new RegExp(`^${prefix}-v(\\d+)\\.md$`)) }))
+    .map((f) => ({ f, m: f.match(new RegExp(`^${escapeRegExp(prefix)}-v(\\d+)\\.md$`)) }))
     .filter((x) => x.m).map((x) => ({ f: x.f, n: Number(x.m[1]) }))
     .sort((a, b) => b.n - a.n);
   return cands.length ? { path: join(dir, cands[0].f), n: cands[0].n, name: cands[0].f } : null;
@@ -167,7 +190,9 @@ const latestReport = (dir, prefix) => {
 //    现在：**行尾无 `|` 时按「无尾竖线」切列**（只剥首竖线，不丢末列），两种写法列数一致。
 const PROTECT_CH = '\u0001';
 const tableCells = (line, { protect = false } = {}) => {
-  const src = protect
+  // v18.2.9（审计轻微）：输入行本身含 U+0001 时，保护符会与真实字符撞车 → 退化为不保护切分，防列错乱/竖线注入
+  const effectiveProtect = protect && !line.includes(PROTECT_CH);
+  const src = effectiveProtect
     ? line.replace(/\\\|/g, PROTECT_CH).replace(/`[^`]*`/g, (mm) => mm.replace(/\|/g, PROTECT_CH))
     : line;
   const trimmed = src.replace(/\s+$/, '');
@@ -324,7 +349,7 @@ const textProse = stripCodeSpans(text);   // 占位符残留用（全文，含�
 // === M-Form-1 引用标注完整性（v2.5.2-dsh.5 修订：阈值提升 L≥3）===
 const bodyRefs = bodyProse.match(refRe) || [];
 const L_count = refsOf(bodyProse, 'L').length;
-const min_L = 3;
+const min_L = THRESHOLDS.mform1MinL;
 let mform1Pass, mform1Detail, mform1Severity;
 if (bodyRefs.length === 0) {
   mform1Pass = false;
@@ -379,7 +404,7 @@ const TEMP_MARKERS = [
     detail: tempCount
       ? `命中: ${tempHits.join(',')}（定稿不得留占位符 / 临时标记）`
       : '零占位符残留（正文↔文末编号闭环由 M-Exist-1 负责，本项不重复计）',
-    severity: tempCount >= 3 ? 'P0' : (tempCount > 0 ? 'P1' : '通过'),
+    severity: tempCount >= THRESHOLDS.mform3TempP0 ? 'P0' : (tempCount > 0 ? 'P1' : '通过'),
   });
 }
 
@@ -398,7 +423,7 @@ for (const e of estHits) hits.push(e[0]);
 // 弱 AI 痕仅在上下文 200 字符内无 [Lxx]/[Dxx]/[Cxx] 时算违规
 const weakAIHits = [];
 for (const m of body.matchAll(weakAITrend)) {
-  const start = Math.max(0, m.index - 200);
+  const start = Math.max(0, m.index - THRESHOLDS.mform5WeakAICtx);
   const ctx = body.slice(start, m.index + m[0].length);
   if (!/\[(?:L|D|C)\d+\]/.test(ctx)) weakAIHits.push(m[0]);
 }
@@ -408,7 +433,7 @@ results.push({
   pass: hits.length === 0,
   detail: hits.length ? `命中: ${[...new Set(hits)].join(',')}` : '零命中',
   // v2.5.2-dsh.17：补 P0 档（旧版最高 P1 → P0 分支不可达，与 M-Form-4/M-Form-9 同族不一致）
-  severity: hits.length > 10 ? 'P0' : (hits.length > 5 ? 'P1' : (hits.length > 0 ? 'P2' : '通过')),
+  severity: hits.length > THRESHOLDS.mform5P0 ? 'P0' : (hits.length > THRESHOLDS.mform5P1 ? 'P1' : (hits.length > 0 ? 'P2' : '通过')),
 });
 
 // === M-Form-4 元数据泄露（v2.5.2-dsh.5 重大修订：黑名单转白名单）===
@@ -477,19 +502,24 @@ const ENDNOTE_FORBIDDEN = [
 //   v18.0.0 新增二级扫描的动因是 `## 案例来源` 泄露「案例检索员 + spawn」——**那类节仍照扫**，
 //   故本豁免只针对「AI 使用声明」，不放宽其余四节。
 const ENDNOTE_SCAN_EXEMPT = ['AI 使用声明'];
+// v18.2.9 修（第三方审计 A8）：二级扫描的标题解析改走 `_lib/sections.mjs` 的 `h2Headings` 真源。
+//   旧实现用 `/^##\s+(.+?)\s*$/`——`\s` 含换行、且不认全角空格（\u3000）作标题分隔：
+//   「##　AI 使用声明」（全角空格标题）在此失配 → 豁免不生效 → 命中披露语禁止词 → **假 P0**。
+//   全库其余处已于 v18.2.6 统一走 h2Headings，此处是漏网的双重实现。
 const endnoteScanText = (() => {
-  const secs = [];
-  let cur = null;
-  for (const l of endnote.split('\n')) {
-    const m = /^##\s+(.+?)\s*$/.exec(l);
-    if (m) { cur = { title: m[1], lines: [] }; secs.push(cur); continue; }
-    if (cur) cur.lines.push(l);
+  const heads = h2Headings(endnote);
+  if (heads.length === 0) return endnote;   // 无二级标题（异常布局）→ 不豁免，照旧全扫
+  const kept = [];
+  for (let i = 0; i < heads.length; i++) {
+    const start = heads[i].index;
+    const end = i + 1 < heads.length ? heads[i + 1].index : endnote.length;
+    if (!ENDNOTE_SCAN_EXEMPT.some((w) => heads[i].title === w || heads[i].title.startsWith(w))) {
+      // 豁免后仍保留节标题行，便于 detail 里的「文末节」定位信息不失真
+      kept.push(endnote.slice(start, end));
+    }
   }
-  if (secs.length === 0) return endnote;   // 无二级标题（异常布局）→ 不豁免，照旧全扫
-  const kept = secs.filter((s) => !ENDNOTE_SCAN_EXEMPT.some((w) => s.title === w || s.title.startsWith(w)));
-  if (kept.length === secs.length) return endnote;
-  // 豁免后仍保留节标题，便于 detail 里的「文末节」定位信息不失真
-  return kept.map((s) => `## ${s.title}\n${s.lines.join('\n')}`).join('\n');
+  if (kept.length === heads.length) return endnote;
+  return kept.join('\n');
 })();
 const endnoteNonBiblio = endnoteScanText
   .split('\n')
@@ -501,7 +531,7 @@ for (const pat of ENDNOTE_FORBIDDEN) {
   if (m) endnoteLeakHits.push(...m);
 }
 if (endnoteLeakHits.length > 0) {
-  const secNames = [...endnote.matchAll(/^##\s+(.+)$/gm)].map((m) => m[1]);
+  const secNames = h2Headings(endnote).map((h) => h.title);   // v18.2.9：与 endnoteScanText 同源（旧式 \s 正则不认全角空格）
   const secTag = secNames.length ? `（文末节: ${secNames.join(' / ')}）` : '';
   leakHits.push(...[...new Set(endnoteLeakHits)].map((h) => `文末节泄露「${h}」${secTag}`));
 }
@@ -557,7 +587,7 @@ if (dataCard) {
   } else if (trustLevelMiss.length > 0) {
     mform6Pass = false;
     mform6Detail = `独立段缺失: ${trustLevelMiss.slice(0, 5).join(',')}${trustLevelDescOnly.length ? `; 描述字段仅有: ${trustLevelDescOnly.slice(0, 3).join(',')}` : ''}`;
-    mform6Severity = trustLevelMiss.length > 5 ? 'P0' : (trustLevelMiss.length > 2 ? 'P1' : 'P2');
+    mform6Severity = trustLevelMiss.length > THRESHOLDS.mform6P0 ? 'P0' : (trustLevelMiss.length > THRESHOLDS.mform6P1 ? 'P1' : 'P2');
   } else {
     mform6Pass = false;
     mform6Detail = `独立段缺失（描述字段仅提及）: ${trustLevelDescOnly.slice(0, 5).join(',')}（P2：建议统一迁移到独立段，防描述改写后失锚）`;
@@ -584,8 +614,8 @@ try {
   // （引言以 [先xx] 声明原创性差异点，属论衡原创性机制而非论点论证），之前把「摘要」当正文段查 [Lxx] 导致恒 P0 误报。
   const FRONT_BACK = ['摘要', '关键词', '引言', '结语', '结论', '展望'];
   const sections = body.split(/^##\s+/m).filter((s) => s.trim().length > 0);
-  for (const sec of sections.slice(0, 20)) {
-    if (sec.length < 100) continue;
+  for (const sec of sections.slice(0, THRESHOLDS.mform8MaxSections)) {
+    if (sec.length < THRESHOLDS.mform8MinSecLen) continue;
     const secTitle = sec.split('\n')[0].trim();
     const titleNorm = secTitle.replace(/^[0-9一二三四五六七八九十]+\s*[、.．:：\s]+/u, '').replace(/[：:].*$/u, '').trim();
     if (FRONT_BACK.some((t) => titleNorm === t || titleNorm.startsWith(t) || titleNorm.includes(t))) continue;
@@ -693,7 +723,7 @@ try {
           freq.set(id, (freq.get(id) || 0) + 1);
         }
         wall8.claims = new Set([...block.join('\n').matchAll(/论点\s*([0-9一二三四五六七八九十]+)/g)].map((m) => m[1])).size;
-        wall8.overload = [...freq.entries()].filter(([, n]) => n >= 3).map(([id, n]) => `${id}×${n}论点`);
+        wall8.overload = [...freq.entries()].filter(([, n]) => n >= THRESHOLDS.mform8WallOverload).map(([id, n]) => `${id}×${n}论点`);
         if (wall8.rows === 0) wall8.notes.push('承重墙清单无结构性条目（每个论点须标一条「承重证据 top1」）');
         else if (wall8.claims > wall8.rows) wall8.notes.push(`${wall8.claims} 个论点但只标了 ${wall8.rows} 条承重墙——有论点未标 top1`);
         // 幽灵编号：承重墙标了卡片里不存在的编号
@@ -956,7 +986,7 @@ if (firstIdx === -1) {
     //   假阳性判 exit 2 的直接原因）。`pass` 仍为 false → 走 P2 分支 → 整体 exit 3（需 T8 复核），
     //   留痕不消失，只是不再无条件阻断交付。
     severity: (leaked.length + orphan2.length) > 0
-      ? ((leaked.length + orphan2.length > 10) ? 'P0' : 'P1')
+      ? ((leaked.length + orphan2.length > THRESHOLDS.exist1ClosureP0) ? 'P0' : 'P1')
       : (nonStd.length > 0 ? 'P2' : (extUsed > 0 ? 'P2' : '通过')),
   });
 }
@@ -1141,7 +1171,7 @@ try {
     //   现改为：分子 = |已加载 ∩ 索引|；越出索引的部分另记一条软提示（不参与比率，避免污染结论）。
     const loadedInIndex11 = [...loaded11].filter((x) => cardIndexIds.has(x));
     const loadedBeyondIndex11 = [...loaded11].filter((x) => !cardIndexIds.has(x));
-    const ratioCheckOn = cardIndexIds.size >= 30 && bodyHan11 >= 3000
+    const ratioCheckOn = cardIndexIds.size >= THRESHOLDS.mform11MinIndexIds && bodyHan11 >= THRESHOLDS.mform11MinBodyHan
     // v18.2.5 修（主控实战反哺 P2）：阈值**按正文档位自适应** + 给出**显式消歧路径**。
     //   实测误伤（本项目 ai-cad-cam-impact，8000 字学术综述）：已加载 59 / 索引 61 = **96.7%**
     //   → 触发「>90% 选择性不足，疑似整卡通读」。但长篇论文的合理形态**就是**高加载率——
@@ -1152,7 +1182,7 @@ try {
     //     ① **分档**：长篇（≥6000 汉字）用 0.98、中篇（3000-6000）用 0.94、短篇不启用（沿用前置条件）；
     //     ② **消歧路径**：文案明确「高加载率本身不是缺陷」——真正的缺陷是「未按索引段定位而整卡通读」，
     //        而后者只能由写手留痕声明；故清单头部注明「按需加载」即豁免本提示。
-    const ratioThreshold = bodyHan11 >= 6000 ? 0.98 : (bodyHan11 >= 3000 ? 0.94 : 0.9);
+    const ratioThreshold = bodyHan11 >= THRESHOLDS.mform11LongHan ? THRESHOLDS.mform11RatioLong : (bodyHan11 >= THRESHOLDS.mform11MidHan ? THRESHOLDS.mform11RatioMid : THRESHOLDS.mform11RatioShort);
     const ratioDeclared = /按需加载/.test(lt);
     if (ratioCheckOn && !ratioDeclared && loadedInIndex11.length / cardIndexIds.size > ratioThreshold) {
       soft11.push(`已加载 ${loadedInIndex11.length} / 索引 ${cardIndexIds.size} 条（>${(ratioThreshold * 100).toFixed(0)}%）——加载率偏高、疑似整卡通读；`
@@ -1895,11 +1925,11 @@ try {
       const soft10 = [];
       const notes10 = []; // v18.0.0：备注（不计失败）——用于「两条规范自相矛盾」类项
       if (rows10 < 5) findings10.push(`精简段仅 ${rows10} 行实质内容（须 ≈60 行且含六要素）`);
-      if (missing10.length >= 3) findings10.push(`缺 ${missing10.length} 个要素：${missing10.join(',')}（六要素：论证主线 / 论点-论据映射表 / 反方规划要点 / 字数预算 / 禁做项 / 承重墙清单）`);
+      if (missing10.length >= THRESHOLDS.exist10MissingP0) findings10.push(`缺 ${missing10.length} 个要素：${missing10.join(',')}（六要素：论证主线 / 论点-论据映射表 / 反方规划要点 / 字数预算 / 禁做项 / 承重墙清单）`);
       else if (missing10.length) findings10.push(`缺要素：${missing10.join(',')}`);
       if (!hasTable10) soft10.push('未见「论点-论据映射表」真表格（表头含论点 + 行内含素材编号）');
       if (!budgetNumeric) soft10.push('字数预算未见数字');
-      if (rows10 > 120) soft10.push(`精简段 ${rows10} 行过长（≈60 行为准，过长则失去「只读精简段」的意义）`);
+      if (rows10 > THRESHOLDS.exist10MaxRows) soft10.push(`精简段 ${rows10} 行过长（≈60 行为准，过长则失去「只读精简段」的意义）`);
       if (nextHeading10 !== -1 && ol10.slice(nextHeading10).filter((l) => l.trim()).length > 20) {
         // v18.0.0 修复（冲突③）：本项**不再判 P2**，改为**备注**（notes10）。
         //   原因：04 卡模板本身要求 §11 之后还有 F3 早期框架锁定检查（必填段），
@@ -1919,7 +1949,7 @@ try {
           soft10.length ? `软提示：${soft10.slice(0, 2).join('；')}` : '',
           notes10.length ? notes10[0] : '',
         ].filter(Boolean).join(' ｜ '),
-        severity: hard10 ? (missing10.length >= 3 ? 'P0' : 'P1') : (soft10.length ? 'P2' : '通过'),
+        severity: hard10 ? (missing10.length >= THRESHOLDS.exist10MissingP0 ? 'P0' : 'P1') : (soft10.length ? 'P2' : '通过'),
         ...(notes10.length ? { notes: notes10 } : {}),
       });
     }
@@ -1969,7 +1999,7 @@ if (dataCard) {
   const intextD = new Set(refsOf(bodyProse, 'D').map((s) => s.match(/\d+/)[0]));
   const cardD = new Set(dataCardIds(dataCard));   // v18.0.3：改用 _lib/refs.mjs 真源（旧版在此处重写正则）
   const missing = [...intextD].filter((d) => !cardD.has(d));
-  const mExist3Sev = missing.length > 5 ? 'P0' : (missing.length > 2 ? 'P1' : (missing.length > 0 ? 'P2' : '通过'));
+  const mExist3Sev = missing.length > THRESHOLDS.exist3P0 ? 'P0' : (missing.length > THRESHOLDS.exist3P1 ? 'P1' : (missing.length > 0 ? 'P2' : '通过'));
   results.push({
     gate: 'M-Exist-3 引用闭环',
     pass: missing.length === 0,
@@ -2230,7 +2260,11 @@ if (reportPath) {
     writeFileSync(reportPath, JSON.stringify(out, null, 2), 'utf8');
     console.error(`📄 M-Gate 报告已落盘: ${reportPath}`);
   } catch (e) {
-    console.error(`⚠️ M-Gate 报告落盘失败: ${e.message}`);
+    // v18.2.9（第三方审计 B14）：落盘失败不再吞掉。AGENTS.md 铁律「闸门必须留机械证据（exit code + 产物路径）」
+    //   ——报告写不出来时 exit 0/1/2 会让主控以为证据链完整（磁盘满/权限错时实际拿不到报告）。
+    //   归为 70（内部错误）：stdout 的机械值仍可读，但主控必须先解决落盘问题才能引用本次判定。
+    console.error(`⚠️ M-Gate 报告落盘失败（${e.message}）——闸门机械证据缺失，本次退出码改为 70（内部错误）；请检查磁盘/权限后重跑`);
+    process.exit(70);
   }
 }
 process.exit(exitCode);

@@ -16,6 +16,7 @@ import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import os from 'node:os';
 import { installExitGuard } from './_lib/exit-guard.mjs';   // 退出码硬化（v18.0.5）：fs 类异常 → 10，内部错误 → 70
+import { parseArgs as parseCliArgs, USAGE_CODE as CLI_USAGE_CODE } from './_lib/cli-args.mjs';  // 参数解析唯一实现（v18.2.9，审计 A7）
 installExitGuard();
 
 const args = process.argv.slice(2);
@@ -31,28 +32,46 @@ const USAGE = `用法: node token-cost.mjs --sessions <id1,id2,...> 或 --projec
   --price-in/--price-cache/--price-out <N>  覆盖默认单价（美元/百万 token）
   -h, --help         显示本帮助`;
 if (args.includes('-h') || args.includes('--help')) { console.log(USAGE); process.exit(0); }
-// 参数解析：尾随无值/非数字 → 明确报错而非静默 NaN（v2.5.2-dsh.3 审计修复）
-for (let i = 0; i < args.length; i++) {
-  const a = args[i];
-  const next = () => {
-    const v = args[++i];
-    if (v === undefined) { console.error(`参数 ${a} 缺少值`); process.exit(1); }
+// 参数解析：v18.2.9（第三方审计 A7）迁移到 `_lib/cli-args.mjs` 唯一实现；
+//   数值校验（尾随无值/非数字 → 明确报错而非静默 NaN）保留在调用处（v2.5.2-dsh.3 审计修复的行为不变）。
+try {
+  const parsed = parseCliArgs(args, {
+    flags: [],
+    values: {
+      '--dsh-home': '~/.dsh',
+      '--sessions': '<id1,id2,...>',
+      '--project': 'run/项目名',
+      '--tree': '<主会话ID>',
+      '--top': '10',
+      '--price-in': '0.28', '--price-cache': '0.028', '--price-out': '0.42',
+    },
+    maxPositionals: 0,
+  });
+  if (parsed.opts['--dsh-home']) opt.dshHome = parsed.opts['--dsh-home'];
+  if (parsed.opts['--sessions']) opt.ids = parsed.opts['--sessions'].split(',').map((s) => s.trim()).filter(Boolean);
+  if (parsed.opts['--project']) opt.project = parsed.opts['--project'];
+  if (parsed.opts['--tree']) opt.tree = parsed.opts['--tree'];
+  const num = (flag, val, { integer = false } = {}) => {
+    const v = Number(val);
+    if (!Number.isFinite(v) || (integer && (!Number.isInteger(v) || v <= 0))) {
+      console.error(`${flag} 需为${integer ? '正整数' : '数字'}，收到: ${val}`);
+      process.exit(1);
+    }
     return v;
   };
-  if (a === '--dsh-home') opt.dshHome = next();
-  else if (a === '--price-in') { const v = Number(next()); if (!Number.isFinite(v)) { console.error(`--price-in 需为数字，收到: ${args[i]}`); process.exit(1); } opt.prices.in = v; }
-  else if (a === '--price-cache') { const v = Number(next()); if (!Number.isFinite(v)) { console.error(`--price-cache 需为数字，收到: ${args[i]}`); process.exit(1); } opt.prices.cache = v; }
-  else if (a === '--price-out') { const v = Number(next()); if (!Number.isFinite(v)) { console.error(`--price-out 需为数字，收到: ${args[i]}`); process.exit(1); } opt.prices.out = v; }
-  else if (a === '--sessions') opt.ids = next().split(',').map((s) => s.trim()).filter(Boolean);
-  else if (a === '--project') opt.project = next();
-  else if (a === '--tree') opt.tree = next();
-  // --top N：Top N 成本排名（v2.5.2-dsh.15 实现——旧版头注释与 CHANGELOG 已宣传该参数，代码里却是死变量 `topMode=false`）
-  else if (a === '--top') {
-    const v = Number(next());
-    if (!Number.isInteger(v) || v <= 0) { console.error(`--top 需为正整数，收到: ${args[i]}`); process.exit(1); }
-    opt.top = v;
-  }
-  else { console.error(`未知参数: ${a}\n\n${USAGE}`); process.exit(1); }
+  if (parsed.opts['--price-in']) opt.prices.in = num('--price-in', parsed.opts['--price-in']);
+  if (parsed.opts['--price-cache']) opt.prices.cache = num('--price-cache', parsed.opts['--price-cache']);
+  if (parsed.opts['--price-out']) opt.prices.out = num('--price-out', parsed.opts['--price-out']);
+  if (parsed.opts['--top']) opt.top = num('--top', parsed.opts['--top'], { integer: true });
+} catch (e) {
+  if (e && e.code === CLI_USAGE_CODE) { console.error(`${e.message}\n\n${USAGE}`); process.exit(1); }
+  throw e;
+}
+
+// v18.2.9（第三方审计 B5）：未显式给 --price-* 时，默认价是 DeepSeek 单价——非 DeepSeek 模型
+//   的成本会系统性失真、且会被误当作「实价」写进交付说明。现**响亮标注**（不静默）：引用前须覆盖。
+if (!/--price-(in|cache|out)\b/.test(args.join(' '))) {
+  console.error('⚠️ 未指定 --price-*，成本按默认 DeepSeek 单价估算（0.28/0.028/0.42 美元/百万 token）——非 DeepSeek 模型将失真，交付说明引用前请用 --price-in/--price-cache/--price-out 覆盖');
 }
 
 // 数据源兼容两种布局（v2.5.2-dsh.10+ 适配）：

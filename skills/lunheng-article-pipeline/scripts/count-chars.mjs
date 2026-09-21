@@ -45,8 +45,9 @@ if (flag !== undefined && !['--full', '--summary'].includes(flag)) {
   // 非 UTF-8（GBK/GB18030/Big5…）用 utf8 解码**必然**产生 U+FFFD；反过来，合法 UTF-8 文本里
   // 出现 U+FFFD 只可能是作者手写该字符（本包场景不存在）——故以替换字符为判据足够稳。
   if (probe.toString('utf8').includes('\uFFFD')) {
+    const badIdx = probe.toString('utf8').indexOf('\uFFFD');   // v18.2.9（审计轻微）：附首个替换字符位置，帮助定位粘贴/编码坏点
     console.error(
-      `${file}: 解码出现替换字符 U+FFFD —— 该文件不是合法 UTF-8（常见为 GBK/GB18030 保存）。\n` +
+      `${file}: 解码出现替换字符 U+FFFD（首个出现在解码后第 ${badIdx} 字符处）—— 该文件不是合法 UTF-8（常见为 GBK/GB18030 保存，或从网页粘贴带入非法字节）。\n` +
         `  本脚本只接受 UTF-8（契约见 .gitattributes）；请转码后重跑（旧版此处会静默给出 hanChars 0）。`,
     );
     process.exit(10);

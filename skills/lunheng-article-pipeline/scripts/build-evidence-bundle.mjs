@@ -142,8 +142,9 @@ const LATEST_REPORTS = [
 const latestVersioned = (dir, prefix) => {
   const d = join(project, dir);
   if (!existsSync(d)) return null;
+  const esc = String(prefix).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');   // v18.2.9：prefix 转义，含元字符的前缀不再静默失配
   const cands = readdirSync(d)
-    .map((f) => ({ f, m: f.match(new RegExp(`^${prefix}-v(\\d+)\\.md$`)) }))
+    .map((f) => ({ f, m: f.match(new RegExp(`^${esc}-v(\\d+)\\.md$`)) }))
     .filter((x) => x.m)
     .map((x) => ({ f: x.f, n: Number(x.m[1]) }))
     .sort((a, b) => b.n - a.n || a.f.localeCompare(b.f));

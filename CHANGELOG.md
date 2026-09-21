@@ -2,6 +2,58 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.2.9 — 2026-09-21
+
+> **性质**：**第三方全量审计（v18.2.8）修订落地，分两批**——审计报告见工作区 `论衡插件-第三方全量审计报告-v18.2.8.md`（总分 7.0/10）。第 1 批「一致性止血」（A1-A6 + A8-A10 + 轻微项）；第 2 批「契约收口」（A7 参数解析统一 + B4 原子写 + B9/B14 + B7/B8 CI 面）。其余（真实 Loader CI、巨石拆分等）列入第 3 批。
+> **机制文件改动依据主人显式授权**（「请直接帮我开始修订」），按 `AGENTS.md` 安全流程执行：改前备份（batch1 `…\lunheng-auditfix-batch1-20260921-100253\`、batch2 `…\lunheng-auditfix-batch2-20260921-144338\`）+ `edit` 精确匹配 + 四门验证 + 镜像 MD5 核验同步 + 本条如实标注。详细逐项证据与回滚命令：`docs/审计与修订记录/论衡插件-修订记录-v18.2.9.md`。
+
+### 修：内容层同版本事实性矛盾（A1-A6）
+
+- **A1 README 流水线图漂移**：「八角色」改九角色；G14 并行对象 T6→T9（终闸三层防御口径）；「Phase 4.2 修订」错序上移为「Phase 4 审计打回」并补双轨口径；「Phase 4.5 配图」标注与审稿同段。
+- **A2 白名单计数三处矛盾**：QUICKSTART Q1 与 00-主控卡删除写死的「12 个」、改纯指针（凡写死数字必漂移；真源 = SKILL.md 白名单行，磁盘 13 个由 hygiene 门 ⑥ 派生对账）。
+- **A3 T9 默认开关冲突**：09 卡对齐 00-主控-扩展 §九真源——所有模式（含公众号）默认选中，学术必选；标注旧口径废止来源。
+- **A4 写手「手工数汉字」自相矛盾**：05 卡自检改为「现况 N 由主控 `segment-chars` 前置实测、写手只估修改后侧、主控机检对账」，与「LLM 估算必须脚本实值」铁律对齐。
+- **A5 余额闸门不可执行**：06/07/09 三卡改写——仅当主人投喂余额/计费数据时执行，无数据时跳过并在进展页标注「余额未校验」，不得臆造。
+- **A6 「≤2 轮」对外口径**：README 与 pipeline-readme 补「A 轨 ≤2 轮 / B 轨不限额」双轨限定。
+- **轻微**：05/06 卡悬空 `SOUL.md` 引用改指 `_shared/failure-modes.md`。
+
+### 修：脚本层契约违约（A8-A10 + 前缀转义）
+
+- **A8 假 P0**：`m-gate-check.mjs` 文末节二级扫描的两处旧式 `^##\s+` 正则改走 `_lib/sections.mjs` 的 `h2Headings` 真源——全角空格标题（`##　AI 使用声明`）此前不识别 → 豁免失配 → 假 P0。
+- **A9 撞码**：`_lib/exit-guard.mjs` 补 `unhandledRejection` 处理（fs 类 → 10，其余 → 70）——顶层 `await fetch` reject 此前以 exit 1 崩溃、被读成「P1 内容失败」。
+- **A10 撞码**：`token-budget.mjs` 「项目路径不存在」exit 2 → **10**（与全仓「10 = 参数/路径错」对齐；2 保留给 M 门「P0」语义）；`repo-hygiene-check.mjs` 契约表与 `docs/troubleshooting.md §8`、`tests/scripts.test.mjs` 断言同步。
+- **轻微**：`latestReport` / `latestVersioned` 的前缀入正则前先转义（含 `.`/`(` 的前缀此前静默失配）。
+
+### 第 2 批：契约收口
+
+- **A7 参数解析统一**：`m-gate-check / final-check / token-cost / token-budget / model-routing` 全部迁移到 `_lib/cli-args.mjs` 唯一实现——m-gate-check 的未知旗标/多余位置参数从**静默忽略**改为 exit 10（正是 cli-args 头注释描述的缺陷形态在门禁核心的原样残留）；各脚本自有退出码契约不变。
+- **B4 原子写**：`writeWithSafety` 改 temp + rename——写入中途被杀不再留半写文件（要么旧文件完好、要么新文件完整）。
+- **B14**：m-gate-check `--report` 落盘失败从「告警即吞」改 **exit 70**——「闸门必须留机械证据」铁律下，证据缺失不得伪装成内容判定。
+- **B9**：补 M-Form-5 中档 P1 severity 断言 + 三组新回归用例（A7 参数拒止 / B14 exit 70 / B4 无 temp 残留）。
+- **B7**：pack-smoke 进 ubuntu/windows/macos 三平台矩阵（旧版只跑 ubuntu，其 win32 分支从未在 CI 验证）。
+- **B8**：门禁 CLI pin 抬升 0.3.10 → **0.3.16**（新版 CLI 已本地 dlx 实测通过；审计称「未固定」系误判——实为 pin 陈旧）；publish 的 dispatch 步骤限定默认分支（防未来重签 NPM_TOKEN 后任意分支触发含 token 作业）。
+
+### 第 3 批：结构性（可验证子集）
+
+- **A12 T8 人工裁定双签**：M-Form-8 / M-Integrity-2 由 T8 亲裁定（自审自裁）→ 增独立复核（全新上下文 `subagent` 只复核这两项、出 `audits/T8裁定复核-vN.md`）+ 不一致并列两方结论报主人；同提交抬升 00-主控-扩展职责 词预算 52→53 KB（卫生门第二条合法出路）。
+- **B3 阈值集中**：`m-gate-check.mjs` 新增 `THRESHOLDS` 冻结对象，散落全文的阈值（M-Form-1/3/5/6/8/11、M-Exist-1/3/10 的严重度档位与边界）集中为单一真源——改阈值只改一处。真实项目 M 门抽查 exit 无漂移。
+- **A11 真实 Loader CI**：新增 `loader-smoke` job，走官方 `dsh-plugin-dev verify`（pnpm pack → 干净 DSH_HOME profile 安装+启动+卸载冒烟），补 pack-smoke（mock ctx）与 plugin-surface（静态）都够不到的真实 Loader 层。
+- **缓办**：B2 巨石拆分（需仓库外 37 项目对账基线）、B1 主控链瘦身（牵动多文档词预算棘轮）、B13 检索三卡去重（卡片专属措辞、机械去重更脆）——理由详见修订记录 §七。
+
+### 第 4 批：中等与轻微清尾
+
+- **B5**：`token-cost` 未给 `--price-*` 时响亮告警「默认 DeepSeek 单价、非 DeepSeek 模型将失真」（不再静默当实价）。
+- **B9 后半**：新增「M-Form-5 禁词表逐词注入」契约测试（删任意一词必被测试抓出）。
+- **B11**：`apply-diff` 的 `stripMeta` 记录被剥离注记，进 JSON 契约 `stripped_meta`（防正文括号注被静默改写无迹可查）。
+- **B12**：06 卡两个同名「批判报告格式」标题改「段级清单 / C1-C7」区分；05 卡删孤儿空编号。
+- **轻微**：U+0001 保护符撞车退化、`'x'.repeat` 改中文填充、U+FFFD 报错附位置、han 补「不含扩展 A 区」声明、G14-G 删伪精确百分比、QUICKSTART Step1 补 Phase 0 关系澄清（抬词预算 15→16 KB）、删除 `publish.yml.draft`。
+- **B10 复核**：`parseCard/trustDist/ENTRY_ID_RE` 与 `_lib` 各函数**语义不同**（非真重复），不予强行合并。
+- **B6 复核**：Node 最低版本已由 `package.json` engines 覆盖，无需额外声明。
+
+### 验证与同步
+
+四门：`node --check`（改动脚本全过）✓ / `repo-hygiene-check` ✓ 全绿 / `node --test` 全量通过（含新增回归用例） / `consistency-check`：非 docs **0**（18 处既存历史报告项维持不动）。镜像 `.dsh/skills/` 全部改动文件同步，MD5 双向核验不一致 0。版本号未升（是否与待发的 18.2.8 合批发布，留主人决策，同发版前审计 §四）。
+
 ## 18.2.8 — 2026-09-20
 
 > **性质**：**架构修订——删除 G14「早闸」**，改为「三层防御、仅一次 spawn」。

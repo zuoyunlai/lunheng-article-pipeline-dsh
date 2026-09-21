@@ -1497,6 +1497,71 @@ test('自省审计：M-Form-4 任一泄露即 P0 / M-Form-5 补 P0 档（旧版�
   it = item('M-Form-5')
   assert.equal(it.pass, false)
   assert.equal(it.severity, 'P0', '过程语言 >10 处应 P0：' + it.detail)
+
+  // v18.2.9（审计 B9 变异盲区）：中档 6-10 处 → P1（旧测试只覆盖两端，P1→P2 降档变异测不出）
+  writeFileSync(join(fin, '定稿.md'), DRAFT('\n初稿 承重墙 卡级 批注 修卡 待回查。'))
+  it = item('M-Form-5')
+  assert.equal(it.pass, false)
+  assert.equal(it.severity, 'P1', '过程语言 6-10 处应 P1（防降档变异）：' + it.detail)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('v18.2.9 审计 B9 后半：M-Form-5 禁词表逐词注入（删任意一词必被测试抓出）', () => {
+  const { d, proj, fin, ev } = mkProject()
+  // 与 m-gate-check.mjs 的 bannedBanned 词表逐条对应（正则形态的 v\d+ 稿 / 将在…订正 除外，其余逐词）
+  // 此表即「契约测试」：若实现里删掉某个词，注入该词的用例会从「应命中」变「通过」→ 红。
+  const BANNED_WORDS = [
+    '初稿', '草稿', '修订说明', '上一版', '下一版', '卡级', '修卡', '承重墙', '批注', '待回查',
+    '审计环节', '流水线', '一处两用', '段级条目', '索引段', '素材加载清单', '素材卡', '案例卡', '数据卡', '文献卡',
+  ]
+  const DRAFT = (word) => '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 一、导论\n\n' + '段落。'.repeat(20) + `\n本段含「${word}」。`
+    + '\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n'
+  for (const word of BANNED_WORDS) {
+    writeFileSync(join(fin, '定稿.md'), DRAFT(word))
+    const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])
+    const it = parseJson(r).results.find((x) => x.gate.startsWith('M-Form-5'))
+    assert.equal(it.pass, false, `禁词「${word}」注入后 M-Form-5 必须命中（若实现删了该词则本用例红）`)
+  }
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('v18.2.9 审计 A7：m-gate-check 未知旗标 / 多余位置参数一律 exit 10（旧版静默忽略）', () => {
+  const { d, proj, fin, ev } = mkProject()
+  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
+  // 未知旗标（拼错的 --summary）：旧版被 filter(a => !a.startsWith('--')) 静默丢弃、照常全量运行
+  const r1 = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev, '--sumaryx'])
+  assert.equal(r1.code, 10, '未知旗标应 exit 10（不得静默忽略——用户以为在出摘要，实际拿全量）')
+  assert.match(r1.out + (r1.err || ''), /未知参数/)
+  // 第 3 个位置参数：旧版静默忽略
+  const r2 = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev, join(fin, '多余参数')])
+  assert.equal(r2.code, 10, '多余位置参数应 exit 10')
+  // --fig-dir 缺值（值是最后一个 token）：cli-args 统一承担（原 v18.2.6 手写防御的等价回归）
+  const r3 = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev, '--fig-dir'])
+  assert.equal(r3.code, 10, '--fig-dir 缺值应 exit 10')
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('v18.2.9 审计 B14：--report 落盘失败 → exit 70（闸门机械证据缺失不得伪装成内容判定）', () => {
+  const { d, proj, fin, ev } = mkProject()
+  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
+  // 报告路径的父目录其实是一个普通文件 → mkdirSync 抛 ENOTDIR → 落盘失败（磁盘满/权限错的同构形态）
+  const badReport = join(join(fin, '定稿.md'), 'no', 'report.json')
+  const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev, '--report', badReport])
+  assert.equal(r.code, 70, '报告落盘失败应 exit 70（旧版吞掉后 exit 语义不变 → 主控拿 exit 0 却无机械证据）')
+  assert.match(r.err || r.out || '', /落盘失败/)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('v18.2.9 审计 B4：writeWithSafety 原子写（temp+rename）不在目标目录留 .lunheng-tmp 残留', () => {
+  const { d, proj, fin } = mkProject()
+  const src = join(fin, '定稿.md')
+  writeFileSync(src, '# 源\n\n## 摘要\n\n正文。\n', 'utf8')
+  const out = join(fin, 'export.html')
+  const r = run([join(SCRIPTS, 'md2html.mjs'), src, out])
+  assert.equal(r.code, 0, 'md2html 正常导出应 exit 0：' + (r.err || r.out || ''))
+  const residue = readdirSync(fin).filter((f) => f.includes('lunheng-tmp'))
+  assert.equal(residue.length, 0, '原子写不应留下 temp 残留：' + residue.join(', '))
+  assert.ok(existsSync(out), '导出文件应存在')
   rmSync(d, { recursive: true, force: true })
 })
 
@@ -1594,7 +1659,7 @@ test('token-budget --roles：按角色聚合真实 tokenUsage（纯聚合数学�
   rmSync(d, { recursive: true, force: true })
 })
 
-test('token-budget：参数契约（-h exit 0 / 未知参数 exit 1+用法 / 无模式 exit 1 / 路径不存在 exit 2）', () => {
+test('token-budget：参数契约（-h exit 0 / 未知参数 exit 1+用法 / 无模式 exit 1 / 路径不存在 exit 10）', () => {
   const help = run([join(SCRIPTS, 'token-budget.mjs'), '--help'])
   assert.equal(help.code, 0, '--help 应 exit 0')
   assert.match(help.stdout, /--project/)
@@ -1606,7 +1671,7 @@ test('token-budget：参数契约（-h exit 0 / 未知参数 exit 1+用法 / 无
   assert.equal(none.code, 1, '无模式应 exit 1')
   assert.match(none.out, /--project|--roles/)
   const missing = run([join(SCRIPTS, 'token-budget.mjs'), '--project', join(tmpdir(), 'no-such-proj-xyz')])
-  assert.equal(missing.code, 2, '项目路径不存在应 exit 2')
+  assert.equal(missing.code, 10, '项目路径不存在应 exit 10（v18.2.9：旧版 2 与 M 门「2 = P0」撞义，已改）')
 })
 
 test('cordis.patch.yml：三档 agentOptions 表达式形态正确（未设=undefined，只给 model 亦生效，含一键退路）', () => {

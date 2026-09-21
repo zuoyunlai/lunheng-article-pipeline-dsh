@@ -84,7 +84,13 @@ if (inPlace && !overwritesTarget) {
 
 // ---- 元注记剥离（防「（按 XX 报告 NN）」写进正文）----
 const META_TAIL = /\s*[（(](?:按|参|依据|参见|详见|对应|v\d)[^）)]{0,60}[）)]\s*$/u;
-const stripMeta = (s) => s.replace(META_TAIL, '').trim();
+// v18.2.9（第三方审计 B11）：记录被剥离的注记，防「（依据上述分析）」类正文括号被静默改写后无迹可查
+const strippedMeta = [];
+const stripMeta = (s) => {
+  const m = s.match(META_TAIL);
+  if (m && m[0].trim()) strippedMeta.push(m[0].trim());
+  return s.replace(META_TAIL, '').trim();
+};
 
 // ---- 最小差异法：返回 {oldPart, newPart, at, prefixLen, suffixLen} ----
 const extractDelta = (a, b) => {
@@ -257,6 +263,7 @@ console.log(JSON.stringify({
   in_place: overwritesTarget, written, backup,
   list_items: items.length,
   applied: applied.length, skipped: skipped.length, unparsed: unparsed.length,
+  stripped_meta: [...new Set(strippedMeta)],   // v18.2.9（审计 B11）：被剥离的元注记留痕
   han_before: beforeHan, han_after: afterHan, han_delta: delta,
   skipped_detail: skipped.slice(0, 8),
   unparsed_detail: summary.unparsed_items.slice(0, 8),

@@ -23,8 +23,8 @@
 //   assertNotSameFile(mdPath, htmlPath);                       // 同文件 → 抛 SameFileError（调用方 exit 10）
 //   if (sameFile(out, target) && !inPlace) { …exit 10… }
 //   writeWithSafety(out, text, { inPlace, source: target });   // 覆盖前自动 .bak（带时间戳）
-import { existsSync, statSync, realpathSync, copyFileSync, writeFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { existsSync, statSync, realpathSync, copyFileSync, writeFileSync, renameSync, unlinkSync } from 'node:fs'
+import { resolve, dirname, join } from 'node:path'
 
 const WIN = process.platform === 'win32'
 
@@ -107,16 +107,27 @@ export function backupFile(p, { stamp = null } = {}) {
 }
 
 /**
- * 带安全网写盘：同文件守卫（可选，给出 source 时生效）+ 覆盖前自动 .bak + 写入。
+ * 带安全网写盘：同文件守卫（可选，给出 source 时生效）+ 覆盖前自动 .bak + **原子写入**。
  *   ① `source` 给出时先 `assertNotSameFile(source, p)`——除非 `inPlace: true`（调用方**显式声明**
  *      要覆盖输入源，此时守卫让路，但第 ② 步的备份照做）。
  *   ② 目标已存在 → `backupFile(p)` 落一份带时间戳的 .bak。
+ *   ③ v18.2.9（第三方审计 B4）：写入改为 **temp + rename**——旧版 `writeFileSync(p, …)` 直接覆写，
+ *      进程在写入中途被杀（超时 kill / 断电 / Ctrl-C）会留下**半写损坏**的目标文件（有 .bak 可恢复但需人工）。
+ *      rename 在同一目录内、同卷上原子（Windows 走 MoveFileEx REPLACE_EXISTING），要么旧文件完好、
+ *      要么新文件完整。temp 命名带 pid + 随机段避免并发冲突；任何一步失败都清掉 temp、目标保持原状。
  * 返回 `{ path, backup, inPlace }`（backup = 本次备份路径，未备份为 null）。
  */
 export function writeWithSafety(p, text, { inPlace = false, source = null } = {}) {
   if (!p) throw new Error('writeWithSafety: 缺少写入路径（p 为空）')
   if (source && !inPlace) assertNotSameFile(source, p)
   const backup = backupFile(p)
-  writeFileSync(p, text, 'utf8')
+  const tmp = join(dirname(resolve(p)), `.${Math.random().toString(36).slice(2, 10)}-${process.pid}.lunheng-tmp`)
+  try {
+    writeFileSync(tmp, text, 'utf8')
+    renameSync(tmp, p)
+  } catch (e) {
+    try { unlinkSync(tmp) } catch { /* temp 可能尚未创建 */ }
+    throw e
+  }
   return { path: p, backup, inPlace }
 }

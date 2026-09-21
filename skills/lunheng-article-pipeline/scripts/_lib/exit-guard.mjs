@@ -19,21 +19,26 @@ export const EXIT_INTERNAL = 70
 
 const FS_CODES = new Set(['EISDIR', 'ENOTDIR', 'ENOENT', 'EACCES', 'EPERM', 'EMFILE', 'ENFILE', 'ENAMETOOLONG', 'ELOOP', 'EBUSY'])
 
-/** 安装异常兜底：fs 类 → 10；其余 → 70。幂等（重复调用只装一次）。 */
+/** 安装异常兜底：fs 类 → 10；其余 → 70。幂等（重复调用只装一次）。
+ *  v18.2.9（第三方审计 A9）：补 `unhandledRejection`——旧版只装 uncaughtException，而顶层
+ *  `await fetch(...)`（model-routing.mjs）reject 时走的是 unhandledRejection 路径：现代 Node
+ *  默认以 exit 1 崩溃，会被主控按「1 = P1 内容失败」误读（正是本模块要消灭的撞码场景）。 */
 export function installExitGuard() {
   if (globalThis.__lunhengExitGuard) return
   globalThis.__lunhengExitGuard = true
-  process.on('uncaughtException', (err) => {
+  const classify = (err, origin) => {
     const code = err && typeof err.code === 'string' ? err.code : ''
     if (FS_CODES.has(code)) {
-      console.error(`参数/路径错误（${code}）：${err.message}`)
+      console.error(`参数/路径错误（${code}${origin ? `，${origin}` : ''}）：${err && err.message}`)
       console.error(`→ 退出码 ${EXIT_USAGE}（参数或路径错误，与「1 = P1 内容失败」区分；见 docs/troubleshooting.md §8）`)
       process.exit(EXIT_USAGE)
     }
-    console.error(`内部错误（脚本缺陷，非内容判定）：${err && err.stack ? err.stack : err}`)
+    console.error(`内部错误（脚本缺陷，非内容判定${origin ? `，${origin}` : ''}）：${err && err.stack ? err.stack : err}`)
     console.error(`→ 退出码 ${EXIT_INTERNAL}（EX_SOFTWARE）——请连同上面的栈与命令回报 issue`)
     process.exit(EXIT_INTERNAL)
-  })
+  }
+  process.on('uncaughtException', (err) => classify(err))
+  process.on('unhandledRejection', (reason) => classify(reason instanceof Error ? reason : new Error(String(reason)), 'unhandledRejection'))
 }
 
 /** 路径必须是**已存在的文件**（目录/软链到目录都算错），否则 exit 10。返回规范化后的路径。 */

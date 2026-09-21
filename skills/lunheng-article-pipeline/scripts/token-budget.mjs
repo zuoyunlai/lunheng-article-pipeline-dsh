@@ -11,7 +11,7 @@
 //   node token-budget.mjs --project <项目> --roles        # 两者都跑
 //   node token-budget.mjs --roles --dsh-home <path>       # 指定 DSH_HOME
 //   node token-budget.mjs --project <项目> --json         # 机器可读
-// 退出码：0 成功｜1 用法/未知参数｜2 项目路径不存在
+// 退出码：0 成功｜1 用法/未知参数｜10 项目路径不存在（v18.2.9：旧版用 2，与 M 门「2 = P0 致命」撞义——主控统一按 0/1/2/3/10/70 读码会误判；对齐全仓「10 = 参数或路径错误」）
 //
 // ⚠️ token 口径（**估算区间，非计费值**）：
 //   汉字 ≈ 0.6~1.0 token/字（BPE 对中文的常见区间）；ASCII ≈ 1 token / 4 字符。
@@ -21,6 +21,7 @@ import { join, dirname, basename } from 'node:path';
 import { homedir } from 'node:os';
 import { countHan } from './_lib/han.mjs';   // 汉字口径唯一真源（v18.0.3 起）
 import { installExitGuard } from './_lib/exit-guard.mjs';   // 退出码硬化（v18.0.5）：fs 类异常 → 10，内部错误 → 70
+import { parseArgs as parseCliArgs, USAGE_CODE as CLI_USAGE_CODE } from './_lib/cli-args.mjs';  // 参数解析唯一实现（v18.2.9，审计 A7）
 installExitGuard();
 
 const args = process.argv.slice(2);
@@ -32,27 +33,36 @@ if (args.includes('-h') || args.includes('--help')) {
 --dsh-home <path>  指定 DSH_HOME（默认 $DSH_HOME 或 ~/.dsh）
 --json             输出 JSON（机器可读）
 -h, --help         本帮助
-退出码：0 成功｜1 用法/未知参数｜2 项目路径不存在
+退出码：0 成功｜1 用法/未知参数｜10 项目路径不存在（v18.2.9 起与全仓 10=路径错 对齐）
 ⚠️ token 为**估算区间**（汉字 0.6~1.0 token/字，ASCII 1/4 字符）；真实值见 --roles 读的 tokenUsage。`);
   process.exit(0);
 }
-const KNOWN = new Set(['--project', '--roles', '--json', '--dsh-home']);
-const valOf = (flag) => { const i = args.indexOf(flag); return i >= 0 && args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : null; };
-for (const a of args) if (a.startsWith('--') && !KNOWN.has(a)) {
-  console.error(`未知参数: ${a}\n用法: node token-budget.mjs [--project <run/项目>] [--roles] [--json] [--dsh-home <path>]`);
-  process.exit(1);
+// v18.2.9（第三方审计 A7）：参数解析迁移到 `_lib/cli-args.mjs` 唯一实现（本脚本用法错 = exit 1，保持自有契约）
+let wantJson, projArg, wantRoles, dshHome;
+try {
+  const parsed = parseCliArgs(args, {
+    flags: ['--json', '--roles'],
+    values: { '--project': 'run/项目', '--dsh-home': '~/.dsh' },
+    maxPositionals: 0,
+  });
+  wantJson = parsed.flags.has('--json');
+  projArg = parsed.opts['--project'];
+  wantRoles = parsed.flags.has('--roles');
+  dshHome = parsed.opts['--dsh-home'] || process.env.DSH_HOME || join(homedir(), '.dsh');
+} catch (e) {
+  if (e && e.code === CLI_USAGE_CODE) {
+    console.error(`${e.message}\n用法: node token-budget.mjs [--project <run/项目>] [--roles] [--json] [--dsh-home <path>]`);
+    process.exit(1);
+  }
+  throw e;
 }
-const wantJson = args.includes('--json');
-const projArg = valOf('--project');
-const wantRoles = args.includes('--roles');
-const dshHome = valOf('--dsh-home') || process.env.DSH_HOME || join(homedir(), '.dsh');
 if (!projArg && !wantRoles) {
   console.error('需至少给一个模式：--project <run/项目> 或 --roles\n用法: node token-budget.mjs [--project <run/项目>] [--roles] [--json]');
   process.exit(1);
 }
 if (projArg && !existsSync(projArg)) {
   console.error(`项目路径不存在: ${projArg}`);
-  process.exit(2);
+  process.exit(10);   // v18.2.9：旧版 exit 2 与 M 门「2 = P0」撞义，改 10（参数/路径错误）
 }
 
 // ---- token 估算（口径见头注释）----
@@ -105,7 +115,7 @@ if (projArg) {
   const outline = readIf(join(projArg, 'analysis', '分析大纲.md')) || readIf(join(ev, '分析大纲.md')) || '';
   if (outline) {
     const s11 = sectionOf(outline, /写手版|精简段/);
-    add('T5 写作', '分析大纲：全文 → §11 精简段', outline, s11 === null ? ('x'.repeat(60 * 40)) : s11,
+    add('T5 写作', '分析大纲：全文 → §11 精简段', outline, s11 === null ? ('字'.repeat(60 * 40)) : s11,   // v18.2.9（审计轻微）：估缺失 §11 用中文填充（旧 'x'.repeat 用 ASCII 密度 1/4，低估中文 0.6-1.0/字的真实 token）
       s11 === null ? '大纲未含 §11（未启用）——按模板规格 ≈60 行×40 字 est' : '');
   }
   // ② T4/T5：三卡全文 vs 索引段

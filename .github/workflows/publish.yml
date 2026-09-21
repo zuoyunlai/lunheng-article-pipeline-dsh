@@ -126,7 +126,10 @@ jobs:
       #   18.2.6 即按此手工补齐。要恢复自动化就重新签发细粒度 token 并 `gh secret set NPM_TOKEN`
       #   （治理要求见 SECURITY.md「NPM_TOKEN 的用途与治理」）。
       - name: 核对 dist-tag（只读；有 token 才补打 latest）
-        if: steps.guard.outputs.skip == 'false' || github.event_name == 'workflow_dispatch'
+        # v18.2.9（第三方审计 B8）：dispatch 限定默认分支——token 一旦按上方注释重新签发，
+        #   任何有 write 权限者本可对任意分支 dispatch 触发含 NPM_TOKEN 的作业；限定默认分支收窄该面。
+        #   tag 触发路径不受影响（tag 本身即受保护语义）。
+        if: (steps.guard.outputs.skip == 'false' || github.event_name == 'workflow_dispatch') && (startsWith(github.ref, 'refs/tags/') || github.ref == format('refs/heads/{0}', github.event.repository.default_branch))
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
