@@ -96,7 +96,16 @@ const isLegacyProtocol = (f) => f.endsWith('执行韧化协议-v2.1.0.md');
 const active = files.filter((f) => !isArchive(f) && !isLegacyProtocol(f));
 
 // M 门口径派生真源（v2.5.2-dsh.16）：规则 ⑥b 的数字全部从 m-gate-check.mjs 的 gate 标签算出，规则自身不会过期
-const gateSrc = readFileSync(join(ROOT, 'scripts', 'm-gate-check.mjs'), 'utf8');
+//   v18.3.1（审计 B2 阶段 1）：M-Exist 门族 + M-Integrity-1 已抽离到 `_lib/mgate-gates/`——
+//   派生源改为「主脚本 + 门模块」拼接（缺目录的 P0 在文末规则区报，此处仅记标志）。
+const gateModDir = join(ROOT, 'scripts', '_lib', 'mgate-gates');
+const gateModMissing = !existsSync(gateModDir);
+let gateSrc = readFileSync(join(ROOT, 'scripts', 'm-gate-check.mjs'), 'utf8');
+if (!gateModMissing) {
+  for (const f of readdirSync(gateModDir).filter((x) => x.endsWith('.mjs'))) {
+    gateSrc += '\n' + readFileSync(join(gateModDir, f), 'utf8');
+  }
+}
 const GATE_DERIVED = (() => {
   const grab = (pre) => new Set([...gateSrc.matchAll(new RegExp(`gate:\\s*'(M-${pre}-\\d+)`, 'g'))].map((m) => m[1])).size;
   const form = grab('Form'), exist = grab('Exist'), integ = grab('Integrity');
@@ -1070,6 +1079,12 @@ if (langStats.length > 1) {
       }
     }
   }
+}
+
+// v18.3.1（审计 B2 阶段 1）配套：门模块目录存在性——缺目录说明拆分被回退/误删，
+//   GATE_DERIVED 将数错门数（errors 定义在 gateSrc 之后，故检测延迟到这里报）。
+if (gateModMissing) {
+  errors.push('[P0 派生源失效] scripts/_lib/mgate-gates/ 门模块目录不存在——B2 阶段 1 拆分被回退或目录被误删，M 门项数派生将失真，请恢复');
 }
 
 if (errors.length) {
