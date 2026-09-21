@@ -1869,8 +1869,9 @@ test('主人侧三件套与输入模板齐备，且确认单含回填段与 Phas
   for (const k of ['路径存在且可读', '口径 / 范围 / 时间齐全', '可对外引用性明确', '脱敏与知情同意已确认']) {
     assert.ok(feed.includes(k), `投喂清单应含校验项: ${k}`)
   }
-  // 契约表登记（防新产物游离在机检之外）
-  const cs = readFileSync(join(SCRIPTS, 'consistency-check.mjs'), 'utf8')
+  // 契约表登记（防新产物游离在机检之外）——v18.3.1（审计 B2 阶段 3）：CONTRACTS 表已随 ⑲ 迁入
+  //   _lib/cc-rules/content-rules.mjs，断言真源随之更新（实现文件位置变化 ≠ 契约本身变化）
+  const cs = readFileSync(join(SCRIPTS, '_lib', 'cc-rules', 'content-rules.mjs'), 'utf8')
   for (const k of ['进展-主人版', '阶段确认-', '主人投喂清单', 'style-baseline']) {
     assert.ok(cs.includes(`['${k}'`), `交接契约表应登记 ${k}`)
   }
@@ -1881,7 +1882,7 @@ test('主人侧三件套与输入模板齐备，且确认单含回填段与 Phas
   // v2.5.2-dsh.17 续：模型路由表（模板存在 + 主控卡声明 + 契约表登记 + token-cost 帮助）
   assert.ok(existsSync(join(TPL, '模型路由表-template.md')), '模型路由表模板应存在')
   assert.match(coord, /模型路由表/, '主控卡应声明 Phase 0 落模型路由表')
-  assert.ok(readFileSync(join(SCRIPTS, 'consistency-check.mjs'), 'utf8').includes("['模型路由表'"), '交接契约表应登记模型路由表')
+  assert.ok(readFileSync(join(SCRIPTS, '_lib', 'cc-rules', 'content-rules.mjs'), 'utf8').includes("['模型路由表'"), '交接契约表应登记模型路由表')
   const help = run([join(SCRIPTS, 'token-cost.mjs'), '--help'])
   assert.equal(help.code, 0, 'token-cost --help 应 exit 0')
   assert.match(help.stdout, /--top N/, '帮助应列出 --top')
