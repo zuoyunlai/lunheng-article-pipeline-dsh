@@ -1998,3 +1998,36 @@ test('v18.2.9 方案：m-gate M-Form-8 裸断言段——长段落零引用 → 
   assert.match(it.detail, /裸断言/, '350 字零引用段应报裸断言 P2 提示：' + it.detail)
   rmSync(d, { recursive: true, force: true })
 })
+
+test('v18.3.0 阶段 2：apply-diff 数值守恒——改稿改数字 → numeric_drift；数字不变 → 不报', () => {
+  const { d, proj, fin, ev } = mkProject()
+  const target = join(fin, '定稿.md')
+  writeFileSync(target, '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 一、导论\n\n' + '段落内容。'.repeat(20) + '\n\n据统计该比例为 58%。\n\n## 参考文献\n\n[L01] a\n')
+  // ① 改措辞但改了数字（58% → 60%）→ numeric_drift
+  const list1 = join(fin, '清单1.md')
+  writeFileSync(list1, '# 清单\n\n[P0-1]\n- 现况：据统计该比例为 58%。\n- 修改：据测算该比例为 60%。\n')
+  const r1 = run([join(SCRIPTS, 'apply-diff.mjs'), target, list1, '--out', join(fin, 'v2.md')])
+  assert.equal(r1.code, 0)
+  const j1 = parseJson(r1)
+  assert.equal(j1.numeric_drift.length, 1, '58→60 应记 numeric_drift：' + JSON.stringify(j1.numeric_drift))
+  // ② 只改措辞、数字不变（58% 保留）→ 不报
+  const list2 = join(fin, '清单2.md')
+  writeFileSync(list2, '# 清单\n\n[P0-1]\n- 现况：据统计该比例为 58%。\n- 修改：据测算该比例仍为 58%。\n')
+  const r2 = run([join(SCRIPTS, 'apply-diff.mjs'), target, list2, '--out', join(fin, 'v3.md')])
+  assert.equal(r2.code, 0)
+  const j2 = parseJson(r2)
+  assert.equal(j2.numeric_drift.length, 0, '数字不变不应记 numeric_drift')
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('v18.3.0 阶段 3：m-gate M-Form-8 句长异常——超长句 → P2 提示', () => {
+  const { d, proj, fin, ev } = mkProject()
+  // 构造一个 >120 字的无标点长句
+  const longSent = '这是一个非常长的句子' + '内容'.repeat(60) + '。'
+  const draft = '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 一、导论\n\n段落 [L01]。\n\n## 二、方法\n\n' + longSent + '\n\n## 参考文献\n\n[L01] a\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n'
+  writeFileSync(join(fin, '定稿.md'), draft)
+  const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])
+  const it = parseJson(r).results.find((x) => x.gate.startsWith('M-Form-8'))
+  assert.match(it.detail, /异常长句/, '超长句应报句长异常 P2 提示：' + it.detail)
+  rmSync(d, { recursive: true, force: true })
+})

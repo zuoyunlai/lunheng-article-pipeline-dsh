@@ -182,6 +182,9 @@ const applied = [];
 const skipped = [];
 // v18.3.0 方案（G 体系机械下沉）：causal 守恒——改稿时因果强度升级（中/弱档 → 强档）且改动段内无新增引用 → 记 P2 提示
 const causalUpgrades = [];
+// v18.3.0 阶段 2（G 体系机械下沉）：数值/单位守恒——改稿时数值静默漂移 → P2 提示（机械只挑「数字变了」，是否故意修正归主控/T7）
+const numericDrift = [];
+const numsOf = (s) => (String(s ?? '').replace(/\[(?:L|D|C|先)\d+(?:-基-\d+)?\]/g, '').match(/\d+(?:\.\d+)?/g) || []);   // strip 引用编号后取数字
 const occurrences = (haystack, needle) => {
   if (!needle) return 0;
   let c = 0, idx = 0;
@@ -199,6 +202,12 @@ for (const it of parsed) {
   const causalNew = causalStrength(newPart);
   if (CAUSAL_RANK[causalNew] > CAUSAL_RANK[causalOld] && !/\[(?:L|D|C)\d+\]/.test(newPart)) {
     causalUpgrades.push({ id: it.id, line: it.line, from: causalOld, to: causalNew });
+  }
+  // 数值/单位守恒（v18.3.0 阶段 2）：改动段内数字序列变了（有数字消失/新增/改变，非删除意图）→ P2 提示
+  const numsOld = numsOf(oldPart);
+  const numsNew = numsOf(newPart);
+  if (numsOld.length && newPart !== '' && numsOld.join(',') !== numsNew.join(',')) {
+    numericDrift.push({ id: it.id, line: it.line, from: numsOld, to: numsNew });
   }
   const r = locateAndReplace(text, oldPart, newPart, curTxt, prefixLen, suffixLen);
   if (!r.ok) {
@@ -274,6 +283,7 @@ console.log(JSON.stringify({
   applied: applied.length, skipped: skipped.length, unparsed: unparsed.length,
   stripped_meta: [...new Set(strippedMeta)],   // v18.2.9（审计 B11）：被剥离的元注记留痕
   causal_upgrades: causalUpgrades,             // v18.3.0 方案：causal 强度升级无证据（P2 提示）
+  numeric_drift: numericDrift,                // v18.3.0 阶段 2：数值静默漂移（P2 提示）
   han_before: beforeHan, han_after: afterHan, han_delta: delta,
   skipped_detail: skipped.slice(0, 8),
   unparsed_detail: summary.unparsed_items.slice(0, 8),

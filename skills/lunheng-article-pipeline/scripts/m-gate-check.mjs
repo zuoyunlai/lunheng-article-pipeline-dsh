@@ -157,6 +157,7 @@ const THRESHOLDS = Object.freeze({
   mform8MaxSections: 20, mform8MinSecLen: 100,          // M-Form-8 节扫描上限 / 最短节长
   mform8WallOverload: 3,                                // M-Form-8 承重墙超载：同一证据被 ≥N 论点标承重
   mform8BareMinHan: 300,                                // M-Form-8 裸断言段：段内汉字 >N 且零引用 → P2 软提示（v18.3.0 方案）
+  mform8LongSentenceHan: 120,                           // M-Form-8 异常长句：单句汉字 >N → P2 软提示（v18.3.0 阶段 3）
   exist1ClosureP0: 10,                                  // M-Exist-1 漏引+孤儿 >N → P0
   mform11MinIndexIds: 30, mform11MinBodyHan: 3000,      // M-Form-11 比率检查前置条件
   mform11LongHan: 6000, mform11MidHan: 3000,            // M-Form-11 字数分档边界
@@ -571,6 +572,11 @@ try {
     const secRefs = (secProse.match(refRe) || []).length;
     if (secHan > THRESHOLDS.mform8BareMinHan && secRefs === 0) {
       mform8Findings.soft.push(`「${secTitle.slice(0, 20)}」${secHan} 字零引用（疑似裸断言）`);
+    }
+    // 句长异常（v18.3.0 阶段 3）：正文异常长句（单句 >阈值汉字）→ P2 软提示（机械只挑长句，是否该拆归 G4/G14）
+    const longSents = secProse.split(/[。！？；;!?]/).filter((s) => countHan(s) > THRESHOLDS.mform8LongSentenceHan);
+    if (longSents.length) {
+      mform8Findings.soft.push(`「${secTitle.slice(0, 20)}」${longSents.length} 个异常长句（>${THRESHOLDS.mform8LongSentenceHan} 字）`);
     }
   }
   // ---- 承重墙超载机检（v2.5.2-dsh.17 新增）----
