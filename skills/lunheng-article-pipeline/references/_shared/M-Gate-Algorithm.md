@@ -122,6 +122,39 @@
 
 ---
 
+<!-- THRESHOLDS-AUTO-START (由 scripts/m-gate-check.mjs 的 THRESHOLDS 单向生成，勿手改) -->
+
+## 阈值总表（唯一真源 = scripts/m-gate-check.mjs `THRESHOLDS` 对象）
+
+| 阈值键 | 值 | 语义 |
+|---|---|---|
+| `mform1MinL` | 3 | M-Form-1 学术文献 [Lxx] 下限 |
+| `mform3TempP0` | 3 | M-Form-3 占位符 ≥N 处 → P0 |
+| `mform5WeakAICtx` | 200 | M-Form-5 弱 AI 痕上下文窗口（字符） |
+| `mform5P0` | 10 | M-Form-5 过程语言命中档位 |
+| `mform5P1` | 5 | M-Form-5 过程语言命中档位 |
+| `mform6P0` | 5 | M-Form-6 信任级别缺失档位 |
+| `mform6P1` | 2 | M-Form-6 信任级别缺失档位 |
+| `mform8MaxSections` | 20 | M-Form-8 节扫描上限 / 最短节长 |
+| `mform8MinSecLen` | 100 | M-Form-8 节扫描上限 / 最短节长 |
+| `mform8WallOverload` | 3 | M-Form-8 承重墙超载：同一证据被 ≥N 论点标承重 |
+| `mform8BareMinHan` | 300 | M-Form-8 裸断言段：段内汉字 >N 且零引用 → P2 软提示（v18.3.0 方案） |
+| `mform8LongSentenceHan` | 120 | M-Form-8 异常长句：单句汉字 >N → P2 软提示（v18.3.0 阶段 3） |
+| `exist1ClosureP0` | 10 | M-Exist-1 漏引+孤儿 >N → P0 |
+| `mform11MinIndexIds` | 30 | M-Form-11 比率检查前置条件 |
+| `mform11MinBodyHan` | 3000 | M-Form-11 比率检查前置条件 |
+| `mform11LongHan` | 6000 | M-Form-11 字数分档边界 |
+| `mform11MidHan` | 3000 | M-Form-11 字数分档边界 |
+| `mform11RatioLong` | 0.98 | 加载率阈值（按正文档位分档） |
+| `mform11RatioMid` | 0.94 | 加载率阈值（按正文档位分档） |
+| `mform11RatioShort` | 0.9 | 加载率阈值（按正文档位分档） |
+| `exist10MissingP0` | 3 | M-Exist-10 精简段：缺要素 → P0 阈值 / 行数上限 |
+| `exist10MaxRows` | 120 | M-Exist-10 精简段：缺要素 → P0 阈值 / 行数上限 |
+| `exist3P0` | 5 | M-Exist-3 引用闭环档位 |
+| `exist3P1` | 2 | M-Exist-3 引用闭环档位 |
+
+<!-- THRESHOLDS-AUTO-END -->
+
 ## M-Form 形式合规门（11 项，含 v2.2.1.2 + v2.3.5 + v2.3.7 + v2.5.2-dsh.16 图件闭环 + v2.5.2-dsh.17 索引段完整性 / 素材按需加载闭环）
 
 > **共性口径（v17.0.0，端到端测试反哺）：引用扫描前先剥离「代码块 / 行内反引号」内容。**

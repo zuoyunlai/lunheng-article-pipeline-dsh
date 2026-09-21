@@ -45,6 +45,29 @@ const skillRoot = join(scriptDir, '..');
 //     · 未知旗标（拼错的 `--sumary`）被 `filter(a => !a.startsWith('--'))` 静默丢弃 → 用户以为在出摘要，实际拿全量；
 //     · 第 3 个位置参数静默忽略。
 //   现一律 exit 10。原 v18.2.6 的两处防御（--fig-dir 取值不得以 -- 开头、缺值报错）由 cli-args 统一承担。
+// v18.3.1（第三方审计 B3）：`--dump-thresholds` 打印「阈值总表」后退出——这是
+//   `references/_shared/M-Gate-Algorithm.md` 里 THRESHOLDS-AUTO 生成块的**唯一生成源**。
+//   阈值真源 = 下方 `THRESHOLDS` 对象；此处读自身源码解析（与 consistency-check ㉓ 的派生同法），
+//   避免把 THRESHOLDS 定义搬到文件头（改动面更小）。必须在解析位置参数之前短路：
+//   该旗标不接受 <定稿.md> <证据包目录>。
+if (process.argv.includes('--dump-thresholds')) {
+  const selfSrc = readFileSync(fileURLToPath(import.meta.url), 'utf8');
+  const thBlock = selfSrc.match(/const THRESHOLDS = Object\.freeze\(\{([\s\S]*?)\n\}\)/);
+  if (!thBlock) { console.error('无法解析 THRESHOLDS（Object.freeze 结构变化）'); process.exit(70); }
+  const rows = [];
+  for (const line of thBlock[1].split('\n')) {
+    const label = (line.match(/\/\/\s*(.*)$/) || [])[1]?.trim() || '';
+    for (const k of line.matchAll(/(\w+):\s*([0-9.]+),/g)) rows.push(`| \`${k[1]}\` | ${k[2]} | ${label} |`);
+  }
+  console.log('<!-- THRESHOLDS-AUTO-START (由 scripts/m-gate-check.mjs 的 THRESHOLDS 单向生成，勿手改) -->\n');
+  console.log('## 阈值总表（唯一真源 = scripts/m-gate-check.mjs `THRESHOLDS` 对象）\n');
+  console.log('| 阈值键 | 值 | 语义 |');
+  console.log('|---|---|---|');
+  console.log(rows.join('\n'));
+  console.log('\n<!-- THRESHOLDS-AUTO-END -->');
+  process.exit(0);
+}
+
 const args = process.argv.slice(2);
 const MGATE_USAGE = '用法: node m-gate-check.mjs <定稿.md> <证据包目录> [--summary] [--fig-dir <dir>] [--report <path>]';
 let wantSummary, figDirArg, reportPath, positional;

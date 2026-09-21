@@ -1,9 +1,9 @@
 // 论衡插件一致性自检脚本（DSH）— 发布/commit 前运行
 // 用法：node scripts/consistency-check.mjs
-// 覆盖 22 类主规则 + 5 个子规则（编号规则见下；子规则 = ④b 占位符残留 / ⑥b M 门项数 /
+// 覆盖 23 类主规则 + 5 个子规则（编号规则见下；子规则 = ④b 占位符残留 / ⑥b M 门项数 /
 //   ⑥c 非 DSH 工具名 / ⑩b 脚本计数 / ⑩c 分档映射）——演进：.5 为 9 类，.13 加 ⑩-⑭，
-//   .15 加 ⑮-⑰，.16 加 ⑱，.17 加 ④b + ⑲ + ⑳，18.0.2 加 ⑩b，18.0.3 加 ⑩c，18.2.6 加 ㉒。
-//   **本处两个数字（22 类 / 5 个子规则）不做机械门**——改规则时**手工同步**即可：
+//   .15 加 ⑮-⑰，.16 加 ⑱，.17 加 ④b + ⑲ + ⑳，18.0.2 加 ⑩b，18.0.3 加 ⑩c，18.2.6 加 ㉒，18.3.1 加 ㉓。
+//   **本处两个数字（23 类 / 5 个子规则）不做机械门**——改规则时**手工同步**即可：
 //   边界如实声明：脚本无法可靠地从自身文本里数「规则数」（正文里到处是「①-㉑」的引用），
 //   所以这里只做**人工同步 + 注释留痕**，不做派生（v18.2.6 审计修复：旧文写「21 类 + 4 个子规则」，
 //   实测子规则是 5 个——⑥c 从未被列入清单，属「清单漏项」而非规则缺失）。
@@ -32,6 +32,7 @@
 //   ⑳ M 门文档自洽（M-Gate-Algorithm.md 节头括注项数 == 节内 ### 子节数 == 脚本 gate 标签数；子节编号连续）
 //   ㉑ 五语 README 结构镜像（切换器行 + 表格行数 + ## 标题数，五份必须一致）
 //   ㉒ 按需查节锚点存在性（SKILL.md 启动清单里 `文件#锚点` 指向的锚点必须真实存在——「按需查节」的机械可定位性）
+//   ㉓ 阈值总表自洽（M-Gate-Algorithm.md 阈值总表 == m-gate-check.mjs THRESHOLDS，防阈值双维护漂移）
 // 退出码 0 = 通过；1 = 有漂移（列在 stderr）
 // (重写用法：node scripts/consistency-check.mjs [--fix]
 //   --fix：自动修复可逆的简单漂移（P2 级，如「（检查）」占位符替换）
@@ -1037,6 +1038,36 @@ if (langStats.length > 1) {
     }
     if (checked === 0) {
       errors.push('[P0 锚点断言失效] SKILL.md 启动清单里没有任何 `文件.md#锚点` 引用——规则形同虚设，请恢复锚点引用');
+    }
+  }
+}
+
+// ㉓ 阈值总表自洽（v18.3.1 审计 B3）：THRESHOLDS 是唯一真源；M-Gate-Algorithm.md 的「阈值总表」必须与其
+//   逐键逐值一致（由 `node scripts/m-gate-check.mjs --dump-thresholds` 单向生成、勿手改）。旧版阈值数字散落在
+//   正文伪代码里，与脚本双维护、必漂。这里**结构派生**：从 m-gate-check.mjs 源码解析 THRESHOLDS（与 ⑩c 的
+//   GATE_DERIVED 同法），再与文档总表逐行比对——改 THRESHOLDS 而不重新生成总表 → 本规则报 P1。
+{
+  const TH = (() => {
+    const m = gateSrc.match(/const THRESHOLDS = Object\.freeze\(\{([\s\S]*?)\n\}\)/);
+    return m ? [...m[1].matchAll(/(\w+):\s*([0-9.]+),/g)].map((x) => [x[1], x[2]]) : null;
+  })();
+  const gaPath = join(ROOT, 'references', '_shared', 'M-Gate-Algorithm.md');
+  const gaText = readFileSync(gaPath, 'utf8');
+  const block = gaText.match(/<!-- THRESHOLDS-AUTO-START[^]*?<!-- THRESHOLDS-AUTO-END -->/);
+  if (!TH) {
+    errors.push('[P0 阈值总表] 无法从 m-gate-check.mjs 解析 THRESHOLDS——规则失效即静默放行，请检查 Object.freeze 结构');
+  } else if (!block) {
+    errors.push('[P1 阈值总表] M-Gate-Algorithm.md 缺 THRESHOLDS-AUTO 生成块（用 `node scripts/m-gate-check.mjs --dump-thresholds` 重新生成）');
+  } else {
+    const rows = [...block[0].matchAll(/^\|\s*`(\w+)`\s*\|\s*([0-9.]+)\s*\|/gm)].map((x) => [x[1], x[2]]);
+    if (rows.length !== TH.length) {
+      errors.push(`[P1 阈值总表] 键数不一致：脚本 ${TH.length} 项 vs 文档 ${rows.length} 项——改 THRESHOLDS 后须用 --dump-thresholds 重新生成总表`);
+    } else {
+      for (let i = 0; i < TH.length; i++) {
+        if (rows[i][0] !== TH[i][0] || rows[i][1] !== TH[i][1]) {
+          errors.push(`[P1 阈值总表] 第 ${i + 1} 项漂移：脚本 ${TH[i][0]}=${TH[i][1]} vs 文档 ${rows[i][0]}=${rows[i][1]}——改 THRESHOLDS 后须用 --dump-thresholds 重新生成总表`);
+        }
+      }
     }
   }
 }

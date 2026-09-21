@@ -23,8 +23,8 @@
 //   assertNotSameFile(mdPath, htmlPath);                       // 同文件 → 抛 SameFileError（调用方 exit 10）
 //   if (sameFile(out, target) && !inPlace) { …exit 10… }
 //   writeWithSafety(out, text, { inPlace, source: target });   // 覆盖前自动 .bak（带时间戳）
-import { existsSync, statSync, realpathSync, copyFileSync, writeFileSync, renameSync, unlinkSync } from 'node:fs'
-import { resolve, dirname, join } from 'node:path'
+import { existsSync, statSync, realpathSync, copyFileSync, writeFileSync, renameSync, unlinkSync, readdirSync } from 'node:fs'
+import { resolve, dirname, join, basename } from 'node:path'
 
 const WIN = process.platform === 'win32'
 
@@ -91,7 +91,30 @@ function timestamp(d = new Date()) {
  * 目标不存在（或不是普通文件 = 目录/坏链）→ 返回 null（无备份可做）。
  * 为什么时间戳而不是固定 `.bak`：一轮修订里同一文件可能被写多次（多条目 diff 分次落盘），
  * 固定名会把上一次的回滚点抹掉。
+ * v18.3.1（第三方审计 B4）：写完后做 `.bak` 上限回收——旧版每次覆盖都新增一个时间戳 `.bak`，
+ *   一轮多条目修订对同一文件写多次 → `.bak` **无上限累积**（实测项目 final/ 下数十个 .bak 污染）。
+ *   现每个原文件最多保留 `BAK_MAX` 个回滚点，超出删除最旧者。
+ *   排序用 `mtimeMs`（.bak 由 copyFileSync 新建、此后不再改写 → mtimeMs == 创建时间），
+ *   而非文件名——`<path>.<秒级时间戳>.bak` 的「无序号 = 最旧」假设在**回收后**会被同秒内的下一次写盘
+ *   **复用同名**而破坏（实测：无序号名被回收后立即被新备份复用，按文件名排序会误删新备份、保留中段）。
  */
+export const BAK_MAX = 20
+
+/** 回收 `<p>` 最旧的 `.bak`，使每个原文件最多保留 `BAK_MAX` 个回滚点。 */
+function pruneBackups(p) {
+  const dir = dirname(resolve(p))
+  const base = basename(p)
+  let entries
+  try { entries = readdirSync(dir) } catch { return }   // 目录不可读 → 放弃回收（不阻断写盘）
+  const backs = entries
+    .filter((f) => f.startsWith(base + '.') && /\d{8}-\d{6}(?:-\d+)?\.bak$/.test(f))
+    .sort((a, b) => statSync(join(dir, a)).mtimeMs - statSync(join(dir, b)).mtimeMs)
+  while (backs.length > BAK_MAX) {
+    const victim = backs.shift()
+    try { unlinkSync(join(dir, victim)) } catch { /* 单个回收失败不阻断主流程 */ }
+  }
+}
+
 export function backupFile(p, { stamp = null } = {}) {
   if (!p || !existsSync(p)) return null
   try {
@@ -103,6 +126,7 @@ export function backupFile(p, { stamp = null } = {}) {
   let dest = `${p}.${s}.bak`
   for (let n = 1; existsSync(dest) && n < 100; n++) dest = `${p}.${s}-${n}.bak`
   copyFileSync(p, dest)
+  pruneBackups(p)   // v18.3.1（审计 B4）：.bak 上限回收
   return dest
 }
 

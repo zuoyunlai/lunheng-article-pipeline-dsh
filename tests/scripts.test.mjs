@@ -2031,3 +2031,244 @@ test('v18.3.0 阶段 3：m-gate M-Form-8 句长异常——超长句 → P2 提�
   assert.match(it.detail, /异常长句/, '超长句应报句长异常 P2 提示：' + it.detail)
   rmSync(d, { recursive: true, force: true })
 })
+
+// ===== v18.3.1 审计 B9 补齐：P0/P1 严重度档位断言（防「P1 改 P2 / P0 改 P1」降档变异）=====
+// 第三方审计 B9：多数门只有 `pass === false` 断言、无 `severity === 'P0'/'P1'` 断言——把某门的
+//   P1 静默改 P2（软提示）或 P0 改 P1，`pass === false` 仍成立 → 用例不变红。M-Form-5 禁词表删词
+//   已在 v18.2.9 用「逐词注入」封死；这里补其余无严重度断言的门，每门钉死其 P0 与/或 P1 硬档。
+// 注：以下用「M-Form-1 」带空格前缀，避免 startsWith('M-Form-1') 连带命中 M-Form-10/11。
+
+test('v18.3.1 审计 B9：M-Form-1 正文零 [Lxx] 必须 P0（L=0 漏检根因，防降档）', () => {
+  const { d, fin, ev } = mkProject()
+  setupCards(ev)
+  const draft = join(fin, '定稿.md')
+  // 正文只有 [D01][C01]、无任何 [Lxx] → L_count = 0 → P0
+  writeFileSync(draft, '# 标题\n\n## 摘要\n\n正文 [D01] [C01]。\n\n## 参考文献\n\n[D01] a\n\n## 数据来源\n\n[D01] d\n\n## 案例来源\n\n[C01] c\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
+  const it = gateOf(draft, ev, 'M-Form-1 ')
+  assert.equal(it.pass, false)
+  assert.equal(it.severity, 'P0', '正文无 [Lxx] 应 P0：' + it.detail)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('v18.3.1 审计 B9：M-Form-6 数据卡缺失 P0 / 缺信任级别段 3 条 P1（防降档）', () => {
+  const { d, fin, ev } = mkProject()
+  const draft = join(fin, '定稿.md')
+  // ① 数据卡缺失 → P0
+  writeFileSync(draft, DRAFT_OK)
+  writeFileSync(join(ev, '文献卡.md'), cardOk('文献卡', ['L01']))
+  writeFileSync(join(ev, '案例卡.md'), cardOk('案例卡', ['C01']))
+  let it = gateOf(draft, ev, 'M-Form-6')
+  assert.equal(it.pass, false)
+  assert.equal(it.severity, 'P0', '数据卡缺失应 P0：' + it.detail)
+  // ② 数据卡 3 条缺独立信任级别段 → P1（mform6P1=2 < 3 ≤ mform6P0=5）
+  writeFileSync(draft, '# 标题\n\n## 摘要\n\n正文 [L01] [D01] [D02] [D03]。\n\n## 参考文献\n\n[L01] a\n\n## 数据来源\n\n[D01] a\n[D02] b\n[D03] c\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
+  writeFileSync(join(ev, '数据卡.md'), cardOk('数据卡', ['D01', 'D02', 'D03']).replace(/信任级别：已发布/g, ''))
+  it = gateOf(draft, ev, 'M-Form-6')
+  assert.equal(it.pass, false)
+  assert.equal(it.severity, 'P1', '3 条缺信任级别段应 P1：' + it.detail)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('v18.3.1 审计 B9：M-Form-7 文末混入非白名单节必须 P0（防 P0 降 P1）', () => {
+  const { d, fin, ev } = mkProject()
+  setupCards(ev)
+  const draft = join(fin, '定稿.md')
+  writeFileSync(draft, DRAFT_OK.replace('## AI 使用声明', '## 主控签字\n\n已终检。\n\n## AI 使用声明'))
+  const it = gateOf(draft, ev, 'M-Form-7')
+  assert.equal(it.pass, false)
+  assert.equal(it.severity, 'P0', '文末混入非白名单节应 P0：' + it.detail)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('v18.3.1 审计 B9：M-Form-8 论点段缺 [Lxx] 必须 P0（防 P0 降 P1）', () => {
+  const { d, fin, ev } = mkProject()
+  setupCards(ev)
+  const draft = join(fin, '定稿.md')
+  writeFileSync(draft, '# 标题\n\n## 摘要\n\n摘要若干字。\n\n## 一、导论\n\n'
+    + '正文 [D01] [C01]。'.repeat(12)
+    + DRAFT_OK.slice(DRAFT_OK.indexOf('\n\n## 参考文献')))
+  const it = gateOf(draft, ev, 'M-Form-8')
+  assert.equal(it.pass, false)
+  assert.equal(it.severity, 'P0', '论点段缺 [Lxx] 应 P0：' + it.detail)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('v18.3.1 审计 B9：M-Form-10 索引段缺条 ×3 卡 → P0（防 P0 降 P1）', () => {
+  const { d, fin, ev } = mkProject()
+  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01] [D01] [C01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n[D01] d\n\n## 案例来源\n\n[C01] c\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
+  // 三张卡：正文条目 2 条、索引段只 1 条 → 每卡一个「索引段缺」finding → 合计 3 → P0
+  const card2 = (name, ids) => `# ${name}\n\n## 📇 索引段\n\n[${ids[0]}] 主题 ｜ 论点1\n\n## 正文\n\n` + ids.map((id) => `### [${id}] 条目\n信任级别：已发布\n`).join('\n')
+  writeFileSync(join(ev, '文献卡.md'), card2('文献卡', ['L01', 'L02']))
+  writeFileSync(join(ev, '数据卡.md'), card2('数据卡', ['D01', 'D02']))
+  writeFileSync(join(ev, '案例卡.md'), card2('案例卡', ['C01', 'C02']))
+  const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])
+  const it = parseJson(r).results.find((x) => x.gate.startsWith('M-Form-10'))
+  assert.equal(it.pass, false)
+  assert.equal(it.severity, 'P0', '三卡各缺 1 条索引应 P0：' + it.detail)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('v18.3.1 审计 B9：M-Exist-1 漏引 1 条 P1 / 漏引 >10 条 P0（防降档）', () => {
+  const { d, fin, ev } = mkProject()
+  setupCards(ev)
+  const draft = join(fin, '定稿.md')
+  // ① 1 条漏引 → P1
+  writeFileSync(draft, DRAFT_OK.replace('正文 [L01] [D01] [C01] [先01]。', '正文 [L01] [D01] [C01] [先01] [L99]。'))
+  let it = gateOf(draft, ev, 'M-Exist-1 ')
+  assert.equal(it.pass, false)
+  assert.equal(it.severity, 'P1', '1 条漏引应 P1：' + it.detail)
+  // ② 12 条漏引 → P0
+  const many = '正文 ' + ['L20', 'L21', 'L22', 'L23', 'L24', 'L25', 'L26', 'L27', 'L28', 'L29', 'L30', 'L31'].map((x) => `[${x}]`).join(' ') + '。'
+  writeFileSync(draft, DRAFT_OK.replace('正文 [L01] [D01] [C01] [先01]。', many))
+  it = gateOf(draft, ev, 'M-Exist-1 ')
+  assert.equal(it.pass, false)
+  assert.equal(it.severity, 'P0', '漏引 >10 条应 P0：' + it.detail)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('v18.3.1 审计 B9：M-Exist-3 悬空 [Dxx] 3 条 P1 / 6 条 P0（防降档）', () => {
+  const { d, fin, ev } = mkProject()
+  setupCards(ev)   // 数据卡只有 [D01]
+  const draft = join(fin, '定稿.md')
+  const withD = (ids) => DRAFT_OK.replace('正文 [L01] [D01] [C01] [先01]。', '正文 [L01] ' + ids.map((x) => `[${x}]`).join(' ') + ' [C01] [先01]。')
+  // ① 3 条悬空 → P1
+  writeFileSync(draft, withD(['D01', 'D91', 'D92', 'D93']))
+  let it = gateOf(draft, ev, 'M-Exist-3')
+  assert.equal(it.pass, false)
+  assert.equal(it.severity, 'P1', '3 条悬空应 P1：' + it.detail)
+  // ② 6 条悬空 → P0
+  writeFileSync(draft, withD(['D01', 'D91', 'D92', 'D93', 'D94', 'D95', 'D96']))
+  it = gateOf(draft, ev, 'M-Exist-3')
+  assert.equal(it.pass, false)
+  assert.equal(it.severity, 'P0', '6 条悬空应 P0：' + it.detail)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('v18.3.1 审计 B9：M-Exist-4 修订任务书 1 项硬问题 P1 / 多项结构缺失 P0（防降档）', () => {
+  const { d, proj, fin, ev, aud } = mkProject({ audits: true })
+  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
+  const AUD = join(aud, '审计报告-v1.md')
+  const HEAD = '| 编号 | 严重度 | 改哪里（文件+位置） | 怎么改（具体动作） | 验收标准 | 关闭状态 |\n|---|---|---|---|---|---|\n'
+  const item = () => {
+    const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])
+    return parseJson(r).results.find((x) => x.gate.startsWith('M-Exist-4'))
+  }
+  // ① 初轮（无复核报告）预填「已关闭」→ 1 项硬问题 → P1
+  writeFileSync(AUD, `# 审计报告 v1\n\n结论：打回修订 ❌\n\n## 修订任务书\n\n${HEAD}| P0-1 | P1 | 初稿.md §三 | 补 [L01] | 该段含 [L01] | 已关闭 |\n`)
+  let it = item()
+  assert.equal(it.pass, false)
+  assert.equal(it.severity, 'P1', '初轮预填已关闭应 P1：' + it.detail)
+  // ② 3 行每行 位置/动作/验收 三列全空 → >2 项硬问题 → P0
+  const bad = ['X1', 'X2', 'X3'].map((id) => `| ${id} | P1 |  |  |  | 待复核 |`).join('\n')
+  writeFileSync(AUD, `# 审计报告 v1\n\n结论：打回修订 ❌\n\n## 修订任务书\n\n${HEAD}${bad}\n`)
+  it = item()
+  assert.equal(it.pass, false)
+  assert.equal(it.severity, 'P0', '多项结构缺失应 P0：' + it.detail)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('v18.3.1 审计 B9：M-Exist-6 总评分≠分项和 P1 / 期刊行缺百分比 ×3 P0（防降档）', () => {
+  const { d, proj, fin, ev, aud } = mkProject({ audits: true })
+  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
+  const REP = join(aud, '审稿报告-v2.md')
+  const DIMS = ['原创性', '方法论', '证据强度', '论证结构', '写作质量', '引文规范']
+  const base = (total, dims, journalRows = '') => '# 同行评审报告\n\n> **总评分**：' + total + '/30\n\n'
+    + '| 维度 | 得分 | 一句话评价 |\n|------|------|-----------|\n'
+    + DIMS.map((x, i) => `| ${x} | ${dims[i]}/5 | 好 |`).join('\n')
+    + (journalRows ? `\n\n| 目标方向 | 综合匹配度 | 主题契合 | 风格契合 | 审稿周期 | 推荐理由 |\n|---------|-----------|---------|---------|---------|---------|\n${journalRows}\n` : '')
+  const item = () => {
+    const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])
+    return parseJson(r).results.find((x) => x.gate.startsWith('M-Exist-6'))
+  }
+  // ① 总分 27 ≠ 6 维之和 24 → 1 项硬问题 → P1
+  writeFileSync(REP, base(27, [4, 4, 4, 4, 4, 4]))
+  let it = item()
+  assert.equal(it.pass, false)
+  assert.equal(it.severity, 'P1', '总评分≠分项和应 P1：' + it.detail)
+  // ② 3 行期刊匹配度缺百分比 → 3 项硬问题 → P0
+  const rows = [
+    '| 《管理世界》 |  | 90% | 80% | 3-6 月 | 主题契合 |',
+    '| 《中国工业经济》 |  | 85% | 80% | 4-8 月 | 主题契合 |',
+    '| 《南开管理评论》 |  | 80% | 85% | 3-6 月 | 主题契合 |',
+  ].join('\n')
+  writeFileSync(REP, base(24, [4, 4, 4, 4, 4, 4], rows))
+  it = item()
+  assert.equal(it.pass, false)
+  assert.equal(it.severity, 'P0', '期刊行缺百分比 ×3 应 P0：' + it.detail)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('v18.3.1 审计 B9：M-Exist-7 缺 1 固定字段 P1 / 缺 5 字段 P0（防降档）', () => {
+  const { d, proj, fin, ev } = mkProject()
+  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
+  const DD = join(fin, '交付说明.md')
+  const SECTIONS = [
+    '## 1. 路径\n\n- 定稿：final/定稿.md',
+    '## 2. 图件清单\n\n- 图1 | 趋势 | [D01]',
+    '## 3. 遗留风险\n\n- 无',
+    '## 4. 人工核验项\n\n- 无',
+    '## 5. 数据溯源 check-list\n\n- 付费墙文献：无',
+    '## 6. 成本指标\n\n- token：1.2M',
+    '## 7. 建议 merge 的反哺清单\n\n- 反哺规则 A → 05 卡',
+    '## 8. AI 使用披露（完整版）\n\n- AI 生成段：全文初稿',
+    '## 9. 证据包指纹\n\n- sha256：[哈希校验待主人回填]',
+    '## 10. 投稿就绪检查表\n\n- 推荐期刊：见审稿报告',
+    '## 11. 主人决策记录\n\n- 四门：Phase 0 通过｜Phase 2.5 通过｜Phase 3.5 通过｜Phase 5 通过',
+    '## 12. 终检结论\n\n- M 门 exit = 0',
+  ]
+  const joinS = (arr) => arr.join('\n\n') + '\n'
+  const item = () => {
+    const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])
+    return parseJson(r).results.find((x) => x.gate.startsWith('M-Exist-7'))
+  }
+  // ① 缺 1 字段（成本指标）→ P1
+  writeFileSync(DD, joinS(SECTIONS.filter((s) => !s.startsWith('## 6.'))))
+  let it = item()
+  assert.equal(it.pass, false)
+  assert.equal(it.severity, 'P1', '缺 1 固定字段应 P1：' + it.detail)
+  // ② 缺 5 字段 → P0
+  writeFileSync(DD, joinS(SECTIONS.filter((s) => !['## 3.', '## 4.', '## 6.', '## 8.', '## 10.'].some((p) => s.startsWith(p)))))
+  it = item()
+  assert.equal(it.pass, false)
+  assert.equal(it.severity, 'P0', '缺 5 固定字段应 P0：' + it.detail)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('v18.3.1 审计 B3：m-gate-check --dump-thresholds 输出阈值总表（生成源可跑、无需位置参数）', () => {
+  const r = run([join(SCRIPTS, 'm-gate-check.mjs'), '--dump-thresholds'])
+  assert.equal(r.code, 0, r.out.slice(0, 300))
+  assert.match(r.out, /THRESHOLDS-AUTO-START/, '应输出生成块起始标记')
+  assert.match(r.out, /`mform1MinL` \| 3/, '应含 mform1MinL=3 一行')
+  assert.match(r.out, /THRESHOLDS-AUTO-END/, '应输出生成块结束标记')
+})
+
+test('v18.3.1 审计 B3：阈值总表自洽——改文档总表数字必须被 consistency-check 抓出（注入验证）', () => {
+  const { d, repo, R } = mkRepo()
+  const ga = join(R, 'references', '_shared', 'M-Gate-Algorithm.md')
+  const cc = join(R, 'scripts', 'consistency-check.mjs')
+  // ① 基线：真源仓库总表与 THRESHOLDS 一致 → 不报阈值总表漂移
+  const base = run([cc]).out
+  assert.doesNotMatch(base, /阈值总表/, '基线不应报阈值总表漂移：' + base.slice(-400))
+  // ② 把文档总表里的 mform1MinL 从 3 改成 9 → 必须报 P1
+  writeFileSync(ga, readFileSync(ga, 'utf8').replace('| `mform1MinL` | 3 |', '| `mform1MinL` | 9 |'))
+  const bad = run([cc]).out
+  assert.match(bad, /阈值总表.*mform1MinL/, '改总表数字必须被 ㉓ 抓出：' + bad.slice(-400))
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('v18.3.1 审计 B4：.bak 上限回收——同文件写 N 次只留最近 BAK_MAX 个回滚点', async () => {
+  const { writeWithSafety, BAK_MAX } = await import(pathToFileURL(join(SCRIPTS, '_lib', 'destructive-write.mjs')).href)
+  const d = tmp()
+  const f = join(d, 'a.md')
+  writeFileSync(f, 'v0')
+  // 写 30 次（每次覆盖前自动备份上一次内容）→ 30 个 .bak → 回收至 BAK_MAX
+  for (let i = 1; i <= 30; i++) writeWithSafety(f, `v${i}`, { inPlace: true })
+  const baks = readdirSync(d).filter((x) => x.startsWith('a.md.') && x.endsWith('.bak'))
+  assert.equal(baks.length, BAK_MAX, `应只保留 ${BAK_MAX} 个 .bak（实测 ${baks.length}）`)
+  assert.equal(readFileSync(f, 'utf8'), 'v30', '最终内容应为最后一次写入')
+  const contents = baks.map((x) => readFileSync(join(d, x), 'utf8'))
+  assert.ok(contents.includes('v29'), '最新回滚点 v29 应保留')
+  assert.ok(contents.includes('v10'), '第 11 新回滚点 v10 应保留（旧 10 个已回收）')
+  assert.ok(!contents.includes('v9'), 'v9 及更早应被回收（防无限累积）')
+  rmSync(d, { recursive: true, force: true })
+})
