@@ -2,6 +2,34 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.4.0 — 2026-09-21
+
+> **性质**：**B2 巨石拆分全量收官 + 审计 B9/B3/B4 收尾**。承接 v18.3.0 的「结构性重构」，把第三方审计（v18.2.8）点名的两座巨石（`m-gate-check` 2246 行 / `consistency-check` 1096 行）彻底拆为「门模块/规则族 + 聚合器」。
+> **机制文件改动依据主人显式授权**（「继续修订」「继续阶段 2」「继续阶段 3」「升号发版」），沿用 AGENTS.md 安全流程：改前备份 + edit/结构化搬移 + 六门 + run/ 49 组真实项目 baseline 对账 + 镜像同步。
+
+### B2 · 巨石拆分（三阶段，全程 baseline 等价对账）
+
+- **阶段 1**：M-Exist 门族（1-10）+ M-Integrity-1 抽离为 `_lib/mgate-gates/`（mexist-gates.mjs / mintegrity-gate.mjs），主脚本 2246 → 1235 行。
+- **阶段 2**：M-Form 门族（1-11）抽离为 `_lib/mgate-gates/mform-gates.mjs`，主脚本 → 428 行；唯一非逐字变换 = mForm6 的 dataCard 由顶层 `let` 改函数尾回写 ctx（时序不变，模块头已标注）。
+- **阶段 3**：consistency-check 23 类规则按族抽离为 `_lib/cc-rules/` 五模块（script / docs-version / content / mgate-doc / repo-surface），主脚本 1096 → 484 行；GATE_DERIVED 派生源改「主脚本 + 门模块」拼接。
+- 等价性：**run/ 49 组真实项目 baseline（exit + stdout sha256 + report sha256）0 差异**；137/137 测试（含 12 组注入验证）。
+
+### B9 · 严重度档位变异盲区
+
+- 补齐 9 个 P0/P1 门的 `severity === 'P0'/'P1'` 断言（M-Form-1/6/7/8/10 + M-Exist-1/3/4/6/7），防「P1 改 P2 / P0 改 P1」降档变异；M-Form-5 禁词表逐词注入已于 18.2.9 封死。
+
+### B3 · 阈值双维护（单向生成）
+
+- `m-gate-check --dump-thresholds` 从 THRESHOLDS 唯一真源导出「阈值总表」；M-Gate-Algorithm.md 落 THRESHOLDS-AUTO 生成块；consistency-check 新规则 ㉓ 逐键核对（doc-budget 84→86 KB 显式抬升）。
+
+### B4 · `.bak` 上限回收
+
+- `destructive-write` 按 mtimeMs 保留每文件最近 20 个回滚点（修复文件名排序的同秒复用陷阱）。
+
+### 验证
+
+`node --test` 137/137 · 六门全绿 · baseline 49 组 0 差异 · 镜像同步 0 漂移。
+
 ## 18.3.0 — 2026-09-21
 
 > **性质**：**结构性重构 + G 体系机械下沉首刀**。承接 v18.2.9 审计修订的「缓办项」与 Writing Guard 借鉴。
