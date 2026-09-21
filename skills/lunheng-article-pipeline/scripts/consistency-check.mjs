@@ -495,6 +495,7 @@ for (const f of claimTargets) {
   if (seenClaim.has(f)) continue;
   seenClaim.add(f);
   const rel = relative(REPO_ROOT, f).replaceAll('\\', '/');
+  if (/^docs\/(审计与修订记录|验证记录)\//.test(rel)) continue;   // 历史归档目录：审计/修订/验证记录记成文时旧口径，整体豁免（发版前审计 §二）
   readFileSync(f, 'utf8').split('\n').forEach((l, i) => {
     if (/串联/.test(l)) return;                                          // 「自动串联 3 脚本」= 子集断言
     if (/旧版|历史|当时|曾经|教训|漂移|更正|修复|不再/.test(l)) return;   // 清仓注解须能引用旧数字
@@ -629,6 +630,7 @@ const docsDir = join(REPO_ROOT, 'docs');
 if (existsSync(docsDir)) {
   for (const f of walk(docsDir)) {
     const rel = 'docs/' + relative(docsDir, f).replaceAll('\\', '/');
+    if (/^docs\/(审计与修订记录|验证记录)\//.test(rel)) continue;   // 历史归档目录整体豁免（与规则 ⑩b 同一口径）
     let inHistory = false;
     readFileSync(f, 'utf8').split('\n').forEach((l, i) => {
       const h = l.match(/^#{1,4}\s*(.+)/);
