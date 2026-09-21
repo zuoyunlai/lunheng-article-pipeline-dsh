@@ -101,10 +101,9 @@ jobs:
   # 真实 Loader 冒烟（v18.2.9，第三方审计 A11）：走官方 `dsh-plugin-dev verify`
   #   （pnpm pack → 装入干净 mkdtemp DSH_HOME profile → 安装 + 启动 + 卸载冒烟）。
   #   补的是 pack-smoke（mock ctx）与 plugin-surface（静态门）都够不到的「真实 profile 装载」这一层——
-  #   正是 DSH 官方「手动挂载测不到 Loader 层」的事故模式（patch 解析 / bundle 树模块解析 /
-  #   Cordis 无 Config 传参在真实宿主里的形态）。
-  # ⚠️ 本 job 依赖 verify 在干净 CI 环境（无 Desktop dsh shim）可用；本机受 shim 阻断无法预跑，
-  #    若 CI 首跑红，先按 `dsh-plugin-dev verify --help` 核对 --dsh/--base 口径（dsHome 与 pin 见上）。
+  #   正是 DSH 官方「手动挂载测不到 Loader 层」的事故模式。
+  # verify 的 --dsh 默认「从 PATH 找 dsh」，故先 npm 全局装 @deepseek-ai/dsh（compat pin 要求 ≥0.1.5-rc.1）；
+  # verify 内部每条 dsh 命令都带 env: DSH_HOME=mkdtemp 隔离，不依赖全局 DSH_HOME（本机已实测 verify 全绿）。
   loader-smoke:
     runs-on: ubuntu-latest
     steps:
@@ -114,6 +113,8 @@ jobs:
         with:
           node-version: '24'
           package-manager-cache: false # v5 默认反转为 true；本仓无 lockfile 且不 pnpm install
+      - name: 装 dsh（verify 的 --dsh 默认从 PATH 找）
+        run: npm i -g @deepseek-ai/dsh@0.1.5-rc.2
       - name: 真实 Loader 冒烟（官方 dsh-plugin-dev verify）
         env:
           DSH_PLUGIN_DEV_TIMEOUT: '420000'
