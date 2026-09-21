@@ -26,7 +26,7 @@ import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { refsOf, dataCardIds } from './_lib/refs.mjs';                 // 引用编号口径真源
-import { countHan } from './_lib/han.mjs';                              // 汉字口径真源（v18.2.9 方案：M-Form-8 裸断言段）
+import { countHan } from './_lib/han.mjs';                              // 汉字口径真源（v18.3.0 方案：M-Form-8 裸断言段）
 import { TRUST_COMPLIANT_RE, TRUST_LOOSE_RE } from './_lib/trust.mjs'; // 信任级别口径真源
 import { splitCard } from './_lib/cards.mjs';                          // 卡片切块口径真源
 import { ENDNOTE_SECTIONS, h2Headings, firstEndnoteIndex, sectionBody } from './_lib/sections.mjs'; // 文末节/正文区边界真源（v18.2.6：与 count-chars 同源）
@@ -156,7 +156,7 @@ const THRESHOLDS = Object.freeze({
   mform6P0: 5, mform6P1: 2,                             // M-Form-6 信任级别缺失档位
   mform8MaxSections: 20, mform8MinSecLen: 100,          // M-Form-8 节扫描上限 / 最短节长
   mform8WallOverload: 3,                                // M-Form-8 承重墙超载：同一证据被 ≥N 论点标承重
-  mform8BareMinHan: 300,                                // M-Form-8 裸断言段：段内汉字 >N 且零引用 → P2 软提示（v18.2.9 方案）
+  mform8BareMinHan: 300,                                // M-Form-8 裸断言段：段内汉字 >N 且零引用 → P2 软提示（v18.3.0 方案）
   exist1ClosureP0: 10,                                  // M-Exist-1 漏引+孤儿 >N → P0
   mform11MinIndexIds: 30, mform11MinBodyHan: 3000,      // M-Form-11 比率检查前置条件
   mform11LongHan: 6000, mform11MidHan: 3000,            // M-Form-11 字数分档边界
@@ -175,7 +175,7 @@ const auditsDirOf = ({ withEv = false } = {}) =>
   [join(projectRoot, 'audits'), join(dirname(draftPath), 'audits'), ...(withEv ? [evDir] : [])]
     .find((d) => existsSync(d)) || null;
 // ③ 最新版本化报告 / ④ 表格切列 / ⑤ 段体范围 / ⑥ 索引段 / ⑧⑨ 卡片编号 / ⑩ 递归列 .md
-//   → 已抽离到 `_lib/mgate-helpers.mjs`（纯函数，v18.2.9 审计 B2）。行为逐字等价（baseline 对账）。
+//   → 已抽离到 `_lib/mgate-helpers.mjs`（纯函数，v18.3.0 审计 B2）。行为逐字等价（baseline 对账）。
 // ⑦ 素材卡定位：证据包根扁平名 → 证据包子目录（旧版 build-evidence-bundle 的按相对路径拷贝形态）
 //    → 项目内规范相对路径；都不在 → null（0 条场景合法，调用方记 N/A）
 //    v18.0.5（第三方审计 P1-2）：加第二档——实测 `test-paper-01` 的证据包是 `证据包/{data,literature,…}/卡.md`
@@ -566,7 +566,7 @@ try {
     const cov = (hasL ? 1 : 0) + (hasD ? 1 : 0) + (hasC ? 1 : 0);
     if (!hasL) { mform8Findings.L_missing++; mform8Findings.details.push(`段缺[Lxx]: ${sec.split('\n')[0].slice(0, 30)}`); }
     if (cov < 2) mform8Findings.weak++;
-    // 裸断言段（v18.2.9 方案 G 下沉）：长段落零引用 → P2 软提示（机械只挑可疑，定罪归 G3/G6）
+    // 裸断言段（v18.3.0 方案 G 下沉）：长段落零引用 → P2 软提示（机械只挑可疑，定罪归 G3/G6）
     const secHan = countHan(secProse);
     const secRefs = (secProse.match(refRe) || []).length;
     if (secHan > THRESHOLDS.mform8BareMinHan && secRefs === 0) {

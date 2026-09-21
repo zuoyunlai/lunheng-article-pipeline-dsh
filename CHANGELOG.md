@@ -2,6 +2,29 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.3.0 — 2026-09-21
+
+> **性质**：**结构性重构 + G 体系机械下沉首刀**。承接 v18.2.9 审计修订的「缓办项」与 Writing Guard 借鉴。
+> **机制文件改动依据主人显式授权**（「继续做第三批」「修订 B1/B2/B13」「升版发布吧」），沿用 `AGENTS.md` 安全流程（改前备份 + `edit` 精确匹配 + 四门 + baseline 对账 + 镜像 MD5 核验）。
+
+### 结构性重构（第三方审计 B1/B2/B13）
+
+- **B13 三卡去重**：三检索卡「注入防御段」收敛为 `_shared/检索注入防御.md` 单一真源，三卡只留「事实类型 / 落卡文件」变量 + 指针（消除教训 #156 同段复制漂移）。
+- **B2 巨石拆分（安全子集）**：`m-gate-check.mjs` 的纯函数/常量抽离到 `_lib/mgate-helpers.mjs`（escapeRegExp/latestReport/tableCells/sectionRange/indexSection/CARD_SPECS/entryIds/idsByToken/walkMd 等）。**49 组真实项目 baseline 对账 0 差异**。
+- **B1 主控链瘦身**：`00-主控-扩展职责.md` 顶部加「必读 / 按需」分层索引（读时按章、不必全文 53KB）。
+
+### G 体系机械下沉首刀（借鉴 Writing Guard）
+
+- **causal 守恒**：新建 `_lib/causal.mjs`（三档因果词表，词表单一真源、正则生成、可逐词注入）；`apply-diff.mjs` 段级 diff 内做守恒——强档因果词替换中/弱档且无新增引用 → 记 `causal_upgrades`（P2）。机械只守恒，强度判定归 G3 逻辑。
+- **裸断言段**：`m-gate-check.mjs` M-Form-8 加 P2 软提示（段 >300 汉字零引用，排除 FRONT_BACK），不改 severity/exit。
+- **CUT 铁律**：T5 写作卡加「删优于改（Prefer CUT over REWRITE）」。
+- **对照表**：`规范-机械门对照表.md` 加两行勾稽（因果守恒 / 裸断言段）。
+- 方案文档：`docs/审计与修订记录/论衡插件-G体系机械下沉方案.md`。
+
+### 验证
+
+`node --test` 122/122（+4：逐词注入 / causal 守恒×2 / 裸断言）· `repo-hygiene-check` 全绿 · `consistency-check` 非 docs 0 · baseline 49 组 **exit 0 差异**（判定逻辑无漂移）。镜像同步 MD5 不一致 0。
+
 ## 18.2.9 — 2026-09-21
 
 > **性质**：**第三方全量审计（v18.2.8）修订落地，分两批**——审计报告见工作区 `论衡插件-第三方全量审计报告-v18.2.8.md`（总分 7.0/10）。第 1 批「一致性止血」（A1-A6 + A8-A10 + 轻微项）；第 2 批「契约收口」（A7 参数解析统一 + B4 原子写 + B9/B14 + B7/B8 CI 面）。其余（真实 Loader CI、巨石拆分等）列入第 3 批。

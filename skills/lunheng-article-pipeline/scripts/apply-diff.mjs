@@ -39,7 +39,7 @@ import { countHan } from './_lib/han.mjs';
 import { installExitGuard, requireExistingFile } from './_lib/exit-guard.mjs';
 import { sameFile, realPath, writeWithSafety } from './_lib/destructive-write.mjs';   // 破坏性写策略（v18.2.6）
 import { parseArgs, USAGE_CODE } from './_lib/cli-args.mjs';   // 参数解析唯一实现（v18.2.6）
-import { causalStrength, CAUSAL_RANK } from './_lib/causal.mjs';   // 因果强度守恒（v18.2.9 方案）
+import { causalStrength, CAUSAL_RANK } from './_lib/causal.mjs';   // 因果强度守恒（v18.3.0 方案）
 installExitGuard();
 
 const argv = process.argv.slice(2);
@@ -180,7 +180,7 @@ let text = readFileSync(targetPath, 'utf8');
 const beforeHan = countHan(text);
 const applied = [];
 const skipped = [];
-// v18.2.9 方案（G 体系机械下沉）：causal 守恒——改稿时因果强度升级（中/弱档 → 强档）且改动段内无新增引用 → 记 P2 提示
+// v18.3.0 方案（G 体系机械下沉）：causal 守恒——改稿时因果强度升级（中/弱档 → 强档）且改动段内无新增引用 → 记 P2 提示
 const causalUpgrades = [];
 const occurrences = (haystack, needle) => {
   if (!needle) return 0;
@@ -273,7 +273,7 @@ console.log(JSON.stringify({
   list_items: items.length,
   applied: applied.length, skipped: skipped.length, unparsed: unparsed.length,
   stripped_meta: [...new Set(strippedMeta)],   // v18.2.9（审计 B11）：被剥离的元注记留痕
-  causal_upgrades: causalUpgrades,             // v18.2.9 方案：causal 强度升级无证据（P2 提示）
+  causal_upgrades: causalUpgrades,             // v18.3.0 方案：causal 强度升级无证据（P2 提示）
   han_before: beforeHan, han_after: afterHan, han_delta: delta,
   skipped_detail: skipped.slice(0, 8),
   unparsed_detail: summary.unparsed_items.slice(0, 8),
