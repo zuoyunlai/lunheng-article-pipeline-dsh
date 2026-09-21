@@ -2,6 +2,40 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.5.0 — 2026-09-21
+
+> **性质**：**B12 修补收口 + §五.1「lunheng-stats」遥测看板落地 + `/lunheng-stats` 命令**。承接 v18.4.0 第三方审计遗留与战略方向，feature 占主导 → **minor 升版**。
+> **机制文件改动依据主人显式授权**（「先做第① ② 项」「升号发版」），沿用 AGENTS.md 安全流程：改前备份 + edit/结构化搬移 + 六门 + baseline 对账 + 镜像同步。
+
+### B12 · §11 位置口径从「靠注记仲裁」改为真修复
+
+- 04 卡：「写在本文件末尾的 §11」→「§11 节（位于 F3 检查 / 缺口表之前）」；「位置口径澄清」注记从「仲裁矛盾」改写为「位置说明」。
+- 一事实多处收口（同一假口径还散在 4 处）：dispatch-cards T5 派发卡、M-Gate-Algorithm M-Exist-10 ×2、规范-机械门对照表 §11 行——同步更正；mexist-gates.mjs 的 notes10 备注文案去「口径冲突」框架。
+- 详见 commit `46a614a`。
+
+### §五.1 · lunheng-stats 运行时遥测看板
+
+- **核心动机（审计 §五.1 点名）**：「机制是否真的在拦问题」长期靠手写轶事、无法用数据核验——run/ 19 个真实项目的数据躺在磁盘上，无汇总看板。
+- **脚本（`scripts/lunheng-stats.mjs`，纯只读聚合）**：逐项目抽取 阶段 / 修订轮数 / M 门证据 / 字数（`_lib/han.mjs` 同源）/ 审稿评分 / token 量级；跨项目汇总「闸门证据覆盖率 + 门拦截频率 TOP + 平均修订轮数」。
+- **数据考古容错**：run/ 横跨 4 个版本代际，M-Gate 报告**位置三处回退**（final → audits 版本化 → M-Gate-final）、**格式三桶**（machine 有 `results[]` / llm-legacy 无 results[] / none）——只对 machine 做机械聚合。
+- **`/lunheng-stats` 人类命令（v18.5.0 新增）**：`lib/commands.js` 新增 `installStatsCommand`（`spawnSync` 跑脚本，宿主进程非沙箱），`lib/index.js` C 组注册。`spawn` 与 `!spawn` 分离：工具走沙箱 `spawn`，命令走宿主 `spawnSync`。
+- **白名单**：随包脚本 13 → **14**（SKILL.md 真源 + DSH-集成方案 + SECURITY 计数同步）。
+- **看板实测快照**：19 项目、M 门证据覆盖率仅 **26%**（5 机器 / 7 LLM 兜底 / 7 无证据）、平均 2.9 轮、累计 P0=8 P1=9 P2=11；门拦截 TOP = M-Exist-5 / M-Form-8 / M-Exist-1。
+- **裁剪/补齐分析（存于 `docs/审计与修订记录/论衡插件-遥测看板落地与门裁剪分析.md`）**：
+  - 「没拦到」≠「该裁剪」（M-Form-2/3/7 是绊线，裁了拆安全网）；
+  - 裁剪信号是**假阳性率**（`_t8_conclusion.true_p0/true_p1`），不是拦截率；
+  - 历史 14 个无证据项目**不回填**（跨代际、改写历史数据风险高）；
+  - 不动任何门，等样本 ≥10 后加 `--gate-health` 模式聚合真假拦截率。
+- 详见 commits `6e0e6c4` + `853314a` + `ff9a33a`。
+
+### 版本判定说明
+
+按仓库 semver 约定，feature 占主导 → **minor 升版**（v18.4.0 → v18.5.0）。本批"修补（B12）+ feature（lunheng-stats）"合并发布。
+
+### 验证
+
+139/139 测试（含 2 个 lunheng-stats 用例：三桶分类 / 拦截频率 / exit 10）· 六门全绿 · run/ 49 组真实项目 baseline 对账（exit + stdout/report sha256）0 差异 · 镜像同步 0 漂移 · `/lunheng-stats` 命令可直接调用。
+
 ## 18.4.0 — 2026-09-21
 
 > **性质**：**B2 巨石拆分全量收官 + 审计 B9/B3/B4 收尾**。承接 v18.3.0 的「结构性重构」，把第三方审计（v18.2.8）点名的两座巨石（`m-gate-check` 2246 行 / `consistency-check` 1096 行）彻底拆为「门模块/规则族 + 聚合器」。

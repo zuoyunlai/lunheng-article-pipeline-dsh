@@ -1,4 +1,4 @@
-// 论衡运行时遥测看板（v18.4.1 新增，第三方审计 §五.1「lunheng-stats」落地）
+// 论衡运行时遥测看板（v18.5.0 新增，第三方审计 §五.1「lunheng-stats」落地）
 //
 // 用途：把 run/ 目录里真实项目散落的「闸门证据 / 修订轮数 / 字数 / 审稿」聚合成一张看板，
 //   让「机制是否真的在拦问题」从轶事变成数据——这是审计点名的「当前最大结构性空白」。
@@ -6,7 +6,7 @@
 //
 // 用法：node lunheng-stats.mjs [--run-dir <run目录>] [--json]
 //
-// 数据考古（如实声明，v18.4.1 探针实测）：run/ 横跨 4 个版本代际，M-Gate 报告位置与格式不一致：
+// 数据考古（如实声明，v18.5.0 探针实测）：run/ 横跨 4 个版本代际，M-Gate 报告位置与格式不一致：
 //   · 位置：final/M-Gate-Report.json（新）→ audits/M-Gate-Report-vN.json（旧，取最大 N）→ audits/M-Gate-final.json
 //   · 格式：① machine（有 `results[]` 数组，v18.x 机器报告，含/不含 exit、可能带 BOM、gate 总数 12 或 22）；
 //     ② llm-legacy（v2.5.2-dsh.x 的 LLM 兜底，形态多样：`M-Form_形式合规门` 嵌套 / `m_checks` 键值 /
