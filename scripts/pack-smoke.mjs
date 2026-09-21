@@ -209,8 +209,8 @@ try {
       bad(`机制写保护未注册（guards=${captured.guards}）`)
     }
     const cmdNames = captured.commands.map((c) => c.name)
-    if (cmdNames.length === 1 && cmdNames[0] === 'lunheng-status') {
-      ok('人类命令已注册：/lunheng-status（不产生模型消息）')
+    if (cmdNames.length === 2 && cmdNames.includes('lunheng-status') && cmdNames.includes('lunheng-stats')) {
+      ok('人类命令已注册：/lunheng-status ＋ /lunheng-stats（均不产生模型消息）')
       const r = captured.commands[0].handler({ rawInput: '', signal: new AbortController().signal })
       if (r && r.kind === 'success' && typeof r.text === 'string') ok('命令 handler 返回 CommandResult（可读文本）')
       else bad(`命令 handler 返回形态不符：${JSON.stringify(r)?.slice(0, 160)}`)
