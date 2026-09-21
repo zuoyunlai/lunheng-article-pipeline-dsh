@@ -32,6 +32,7 @@ import { ENDNOTE_SECTIONS, h2Headings, firstEndnoteIndex, sectionBody } from './
 import { analyzeSvg, svgTextNumbers, figureNoOf, figurePlaceholders } from './_lib/svg.mjs'; // SVG 图件口径真源
 import { installExitGuard, requireExistingFile, requireExistingDir } from './_lib/exit-guard.mjs'; // 退出码硬化（v18.0.5）
 import { parseArgs as parseCliArgs, USAGE_CODE as CLI_USAGE_CODE } from './_lib/cli-args.mjs';      // 参数解析唯一实现（v18.2.9，审计 A7）
+import { escapeRegExp, latestReport, PROTECT_CH, tableCells, isSeparatorRow, sectionRange, indexSection, CARD_SPECS, ENTRY_ID_RE, entryIds, idsByToken, walkMd } from './_lib/mgate-helpers.mjs';   // 定位与解析纯函数（v18.2.9，审计 B2 抽离）
 installExitGuard();   // 必须在任何 readFileSync 之前：fs 类异常 → 10，其余内部错误 → 70（避免与「1 = P1 内容失败」撞义）
 
 // 本脚本自身所在目录（用于读取技能包内的真源，如闸门记录模板 / 期刊数据库；v2.5.2-dsh.17）
@@ -171,50 +172,8 @@ const projectRoot = dirname(dirname(draftPath));
 const auditsDirOf = ({ withEv = false } = {}) =>
   [join(projectRoot, 'audits'), join(dirname(draftPath), 'audits'), ...(withEv ? [evDir] : [])]
     .find((d) => existsSync(d)) || null;
-// ③ 最新版本化报告：`<前缀>-vN.md` 取 N 最大（N 真源 = 文件名版本号，与 M-Gate-Algorithm §M-Integrity-2 同口径）
-//    v18.2.9（第三方审计 C 项）：prefix 转义后再入正则——含 `.`/`(` 等元字符的前缀旧版会静默失配（「取最大版本」退化为 null）
-const escapeRegExp = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const latestReport = (dir, prefix) => {
-  if (!dir || !existsSync(dir)) return null;   // 目录可能在也可能不在（如 analysis/ 尚未创建）→ 一律记 null，不抛
-  const cands = readdirSync(dir)
-    .map((f) => ({ f, m: f.match(new RegExp(`^${escapeRegExp(prefix)}-v(\\d+)\\.md$`)) }))
-    .filter((x) => x.m).map((x) => ({ f: x.f, n: Number(x.m[1]) }))
-    .sort((a, b) => b.n - a.n);
-  return cands.length ? { path: join(dir, cands[0].f), n: cands[0].n, name: cands[0].f } : null;
-};
-// ④ markdown 表格行切单元格。`protect: true` 先保护「转义竖线 `\|`」与「行内代码块内的竖线」——
-//    v18.0.0 修复（冲突⑩）：验收标准里写正则 `a|b|c` 会被裸 split 切错列 → 误读「关闭状态」。
-//    v18.2.6 修（第三方审计 P2）：旧实现 `split('|').slice(1, -1)` **假定每行都以 `|` 结尾**——
-//    手写表格漏写行尾竖线（`| A | B | 已关闭`）时最后一列被静默丢弃，而丢弃的往往正是
-//    「关闭状态 / 结论 / 验收」列 → 该列缺失被读成「空」→ 误判「关闭状态为空」或「结论无实据」。
-//    现在：**行尾无 `|` 时按「无尾竖线」切列**（只剥首竖线，不丢末列），两种写法列数一致。
-const PROTECT_CH = '\u0001';
-const tableCells = (line, { protect = false } = {}) => {
-  // v18.2.9（审计轻微）：输入行本身含 U+0001 时，保护符会与真实字符撞车 → 退化为不保护切分，防列错乱/竖线注入
-  const effectiveProtect = protect && !line.includes(PROTECT_CH);
-  const src = effectiveProtect
-    ? line.replace(/\\\|/g, PROTECT_CH).replace(/`[^`]*`/g, (mm) => mm.replace(/\|/g, PROTECT_CH))
-    : line;
-  const trimmed = src.replace(/\s+$/, '');
-  const hasTrailingPipe = trimmed.endsWith('|');
-  const cells = trimmed.split('|');
-  // 首竖线（行首 `|` 或 `| `）不计入单元格；仅当行尾真有 `|` 时才剥掉末尾那个空段
-  if (cells.length > 0 && cells[0].trim() === '') cells.shift();
-  if (hasTrailingPipe && cells.length > 0) cells.pop();
-  return cells.map((c) => c.trim().replace(new RegExp(PROTECT_CH, 'g'), '|'));
-};
-const isSeparatorRow = (cells) => cells.every((c) => /^:?-{2,}:?$/.test(c) || c === '');
-// ⑤ 段体范围：返回标题行之后的段体（`body`），边界为下一个标题（默认 `^##`，可调为 `^#{2,4}`）
-const sectionRange = (lines, start, boundary = /^##\s/) => {
-  let end = lines.findIndex((l, i) => i > start && boundary.test(l));
-  if (end === -1) end = lines.length;
-  return { start, end, body: lines.slice(start + 1, end) };
-};
-// ⑥ 「## 📇 索引段」段体（无该标题 → null）
-const indexSection = (lines) => {
-  const start = lines.findIndex((l) => /^##\s*📇\s*索引段/.test(l));
-  return start === -1 ? null : sectionRange(lines, start);
-};
+// ③ 最新版本化报告 / ④ 表格切列 / ⑤ 段体范围 / ⑥ 索引段 / ⑧⑨ 卡片编号 / ⑩ 递归列 .md
+//   → 已抽离到 `_lib/mgate-helpers.mjs`（纯函数，v18.2.9 审计 B2）。行为逐字等价（baseline 对账）。
 // ⑦ 素材卡定位：证据包根扁平名 → 证据包子目录（旧版 build-evidence-bundle 的按相对路径拷贝形态）
 //    → 项目内规范相对路径；都不在 → null（0 条场景合法，调用方记 N/A）
 //    v18.0.5（第三方审计 P1-2）：加第二档——实测 `test-paper-01` 的证据包是 `证据包/{data,literature,…}/卡.md`
@@ -228,18 +187,7 @@ const findCard = (name, rel) => {
   const alt = join(projectRoot, rel);
   return existsSync(alt) ? alt : null;
 };
-// ⑧ 卡片正文条目编号（`### [L01] 主题` 形态）。三张卡 + 先行者清单的路径口径同 `CARD_SPECS`
-const CARD_SPECS = [
-  ['文献卡.md', 'literature/文献卡.md'],
-  ['数据卡.md', 'data/数据卡.md'],
-  ['案例卡.md', 'cases/案例卡.md'],
-  ['先行者清单.md', 'literature/先行者清单.md'],
-];
-const ENTRY_ID_RE = /^#{2,4}\s*\[([LDC])(\d+)\]/gm;
-const entryIds = (cardText) => new Set([...cardText.matchAll(ENTRY_ID_RE)].map((m) => `[${m[1]}${m[2]}]`));
-// ⑨ 同 ⑧ 但编号形态可配（M-Form-11 需纳入基线 `[D-基-x-NN]` 与先行者 `[先NN]`，v18.0.0 修「漏计 10 条」）
-const idsByToken = (cardText, token) =>
-  new Set([...cardText.matchAll(new RegExp(`^#{2,4}\\s*\\[(${token})\\]`, 'gm'))].map((m) => `[${m[1]}]`));
+// ⑧ 卡片正文条目编号 / ⑨ 可配编号形态 → 已抽离到 `_lib/mgate-helpers.mjs`（entryIds / idsByToken / CARD_SPECS / ENTRY_ID_RE）。
 // ⑩ 证据包布局体检（v18.0.5 新增，第三方审计 P1-2）
 //   契约：`build-evidence-bundle.mjs` 把素材卡**扁平拷进** `final/证据包/`。若证据包是按子目录组织的
 //   （如 `证据包/data/数据卡.md`），旧脚本里「只认扁平名」的门（M-Form-6 / M-Exist-2 / M-Exist-3）
@@ -258,18 +206,7 @@ const evidenceLayout = (() => {
   return { flat: top.length, nestedDirs: nestedDirsWithMd, anomaly };
 })();
 const layoutAnomaly = evidenceLayout.anomaly;
-// 递归列出证据包内的 .md（供 M-Exist-2 统计；布局异常另有独立 finding，不再重复计 P0）
-const walkMd = (dir) => {
-  const out = [];
-  let entries = [];
-  try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return out; }
-  for (const e of entries) {
-    const p = join(dir, e.name);
-    if (e.isDirectory()) out.push(...walkMd(p));
-    else if (e.name.endsWith('.md')) out.push(p);
-  }
-  return out;
-};
+// 递归列出证据包内的 .md（M-Exist-2 统计）→ 已抽离到 `_lib/mgate-helpers.mjs`（walkMd）。
 
 // === v2.5.2-dsh.5 修订：白名单 5 节 + AI 使用声明（M-Form-2 / M-Form-7 一致）===
 // v18.2.6：列表真源上收到 `_lib/sections.mjs`（`ENDNOTE_SECTIONS`）——同一份清单此前在
