@@ -26,6 +26,7 @@ import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { refsOf, dataCardIds } from './_lib/refs.mjs';                 // 引用编号口径真源
+import { countHan } from './_lib/han.mjs';                              // 汉字口径真源（v18.2.9 方案：M-Form-8 裸断言段）
 import { TRUST_COMPLIANT_RE, TRUST_LOOSE_RE } from './_lib/trust.mjs'; // 信任级别口径真源
 import { splitCard } from './_lib/cards.mjs';                          // 卡片切块口径真源
 import { ENDNOTE_SECTIONS, h2Headings, firstEndnoteIndex, sectionBody } from './_lib/sections.mjs'; // 文末节/正文区边界真源（v18.2.6：与 count-chars 同源）
@@ -155,6 +156,7 @@ const THRESHOLDS = Object.freeze({
   mform6P0: 5, mform6P1: 2,                             // M-Form-6 信任级别缺失档位
   mform8MaxSections: 20, mform8MinSecLen: 100,          // M-Form-8 节扫描上限 / 最短节长
   mform8WallOverload: 3,                                // M-Form-8 承重墙超载：同一证据被 ≥N 论点标承重
+  mform8BareMinHan: 300,                                // M-Form-8 裸断言段：段内汉字 >N 且零引用 → P2 软提示（v18.2.9 方案）
   exist1ClosureP0: 10,                                  // M-Exist-1 漏引+孤儿 >N → P0
   mform11MinIndexIds: 30, mform11MinBodyHan: 3000,      // M-Form-11 比率检查前置条件
   mform11LongHan: 6000, mform11MidHan: 3000,            // M-Form-11 字数分档边界
@@ -545,7 +547,7 @@ if (dataCard) {
 }
 
 // === M-Form-8 三角验证（v2.5.2-dsh.5 修订：每论点强制含 L + coverage ≥ 2）===
-let mform8Findings = { L_missing: 0, weak: 0, total: 0, details: [] };
+let mform8Findings = { L_missing: 0, weak: 0, total: 0, details: [], soft: [] };
 try {
   // v2.5.2-dsh.5 修复：排除前置/收尾非论点段（摘要/关键词/引言/结语）——摘要与引言天然不引 [Lxx]
   // （引言以 [先xx] 声明原创性差异点，属论衡原创性机制而非论点论证），之前把「摘要」当正文段查 [Lxx] 导致恒 P0 误报。
@@ -564,6 +566,12 @@ try {
     const cov = (hasL ? 1 : 0) + (hasD ? 1 : 0) + (hasC ? 1 : 0);
     if (!hasL) { mform8Findings.L_missing++; mform8Findings.details.push(`段缺[Lxx]: ${sec.split('\n')[0].slice(0, 30)}`); }
     if (cov < 2) mform8Findings.weak++;
+    // 裸断言段（v18.2.9 方案 G 下沉）：长段落零引用 → P2 软提示（机械只挑可疑，定罪归 G3/G6）
+    const secHan = countHan(secProse);
+    const secRefs = (secProse.match(refRe) || []).length;
+    if (secHan > THRESHOLDS.mform8BareMinHan && secRefs === 0) {
+      mform8Findings.soft.push(`「${secTitle.slice(0, 20)}」${secHan} 字零引用（疑似裸断言）`);
+    }
   }
   // ---- 承重墙超载机检（v2.5.2-dsh.17 新增）----
   // 承重墙 = 支撑力最强的单条证据，T4 在大纲「承重墙清单」里逐论点标 top1；论衡定的规则是
@@ -710,6 +718,7 @@ try {
       wallBit2,
       wall8.parseError || '',   // v18.2.6：解析异常**无条件**出现在 detail（不再无痕跳过）
       (wall8.checked && wall8.rows > 0 && !wall8.overload.length && wall8.notes.length) ? `备注：${wall8.notes[0]}` : '',
+      mform8Findings.soft.length ? `P2 提示（裸断言段）：${mform8Findings.soft.slice(0, 2).join('；')}${mform8Findings.soft.length > 2 ? ` 等 ${mform8Findings.soft.length} 段` : ''}` : '',
     ].filter(Boolean).join(' ｜ '),
     severity: mform8Severity,
   });

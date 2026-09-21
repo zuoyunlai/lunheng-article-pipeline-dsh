@@ -6,6 +6,7 @@ import assert from 'node:assert/strict'
 import { writeFileSync, readFileSync, existsSync, rmSync, mkdirSync, cpSync, statSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { ROOT, SCRIPTS, run, parseJson, tmp, mkProject, mkRepo, MD, mkSvg, DRAFT_WITH_ENDNOTES, CARD, NPM_UNAVAILABLE, PIPE_SPAWN_BLOCKED, skipWhen } from './_fixtures.mjs'
 
 test('count-chars：缺「## 摘要」时正文口径必须显式标记 degraded（不得静默退化）', () => {
@@ -1936,4 +1937,64 @@ test('model-routing：退出码 3 已改为 4（避免与 M 门「仅 P2 可放�
   assert.ok(!/process\.exit\(3\)/.test(src), 'model-routing 不得再用 exit 3')
   assert.match(src, /process\.exit\(anyMissing \? 4 : 0\)/, '缺档位的退出码应为 4')
   assert.match(src, /返回码：0 = 三档都有主选；4 =/, '头注释必须写明新的返回码语义')
+})
+
+test('v18.2.9 方案：causal.mjs 三档词表逐词注入（删任意一词必红）', async () => {
+  const { causalStrength, CAUSAL_WORDS } = await import(pathToFileURL(join(SCRIPTS, '_lib', 'causal.mjs')).href)
+  const cases = [
+    ['strong', CAUSAL_WORDS.strong.en, CAUSAL_WORDS.strong.zh],
+    ['suggestive', CAUSAL_WORDS.suggestive.en, CAUSAL_WORDS.suggestive.zh],
+    ['null', CAUSAL_WORDS.null.en, CAUSAL_WORDS.null.zh],
+  ]
+  for (const [tier, en, zh] of cases) {
+    for (const w of en) assert.equal(causalStrength(`The result ${w} the outcome.`), tier, `英文「${w}」应判 ${tier}`)
+    for (const w of zh) assert.equal(causalStrength(`该发现${w}该结论`), tier, `中文「${w}」应判 ${tier}`)
+  }
+  // 反例：无因果词 → null；弱档词不被强档误判
+  assert.equal(causalStrength('这是一段没有因果词的叙述。'), null)
+  assert.equal(causalStrength('no significant difference'), 'null')
+})
+
+test('v18.2.9 方案：apply-diff causal 守恒——强档替换中档且无新增引用 → causal_upgrades', () => {
+  const { d, proj, fin, ev } = mkProject()
+  // 目标正文（含一处中档因果句）
+  const target = join(fin, '定稿.md')
+  writeFileSync(target, '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 一、导论\n\n' + '段落内容。'.repeat(20) + '\n\n研究发现该变量与结果相关。\n\n## 参考文献\n\n[L01] a\n')
+  // 段级 diff 清单：把「相关」升级为「导致」，且不新增引用
+  const list = join(fin, '清单.md')
+  writeFileSync(list, '# 清单\n\n[P0-1]\n- 现况：研究发现该变量与结果相关。\n- 修改：研究发现该变量导致该结果。\n')
+  const r = run([join(SCRIPTS, 'apply-diff.mjs'), target, list, '--out', join(fin, '初稿-v2.md')])
+  assert.equal(r.code, 0, 'apply-diff 应成功应用：' + r.out)
+  const j = parseJson(r)
+  assert.equal(j.causal_upgrades.length, 1, '中档→强档且无新增引用应记 1 条 causal_upgrades：' + JSON.stringify(j.causal_upgrades))
+  assert.equal(j.causal_upgrades[0].from, 'suggestive')
+  assert.equal(j.causal_upgrades[0].to, 'strong')
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('v18.2.9 方案：apply-diff causal 守恒——升级但新增引用 → 不报', () => {
+  const { d, proj, fin, ev } = mkProject()
+  const target = join(fin, '定稿.md')
+  writeFileSync(target, '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 一、导论\n\n' + '段落内容。'.repeat(20) + '\n\n研究发现该变量与结果相关。\n\n## 参考文献\n\n[L01] a\n')
+  const list = join(fin, '清单.md')
+  // 升级因果的同时新增 [D05] 引用（有证据支撑 → 不算无证据升级）
+  writeFileSync(list, '# 清单\n\n[P0-1]\n- 现况：研究发现该变量与结果相关。\n- 修改：研究发现该变量导致该结果 [D05]。\n')
+  const r = run([join(SCRIPTS, 'apply-diff.mjs'), target, list, '--out', join(fin, '初稿-v2.md')])
+  assert.equal(r.code, 0)
+  const j = parseJson(r)
+  assert.equal(j.causal_upgrades.length, 0, '升级但新增引用应不记 causal_upgrades')
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('v18.2.9 方案：m-gate M-Form-8 裸断言段——长段落零引用 → P2 提示；引言段不报', () => {
+  const { d, proj, fin, ev } = mkProject()
+  // 正文：一导论含正常引用，另有一段 350 字零引用的裸断言段（放在「## 二、方法」下）
+  const bare = '这是一个没有任何引用的长段。'.repeat(18)   // 18 × 16 字 ≈ 288 字，再加补足
+  const bareLong = bare + '继续补充内容以确保超过阈值。'.repeat(8)
+  const draft = '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 一、导论\n\n段落内容 [L01]。\n\n## 二、方法\n\n' + bareLong + '\n\n## 参考文献\n\n[L01] a\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n'
+  writeFileSync(join(fin, '定稿.md'), draft)
+  const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])
+  const it = parseJson(r).results.find((x) => x.gate.startsWith('M-Form-8'))
+  assert.match(it.detail, /裸断言/, '350 字零引用段应报裸断言 P2 提示：' + it.detail)
+  rmSync(d, { recursive: true, force: true })
 })
