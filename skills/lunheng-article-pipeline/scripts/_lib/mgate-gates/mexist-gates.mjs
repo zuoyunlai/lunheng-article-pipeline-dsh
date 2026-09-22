@@ -594,6 +594,21 @@ try {
       if (/<[^>]{1,60}>/.test(raw7)) findings7.push(`字段「${label}」仍含模板占位符（<…> 未填）`);
       else if (bodyTxt.length < 1) findings7.push(`字段「${label}」为空（仅标题无内容）`);
     }
+    // ⑦ §6 成本指标：实测值必须 `~NN[MKB]` 格式（v18.6.3 反哺：看板 17/21 token 列空，模板未写死格式，主控易写定性描述「已耗 12 次 spawn」漏报）
+    {
+      const i6 = dl.findIndex((l) => /成本指标/.test(l));
+      if (i6 !== -1) {
+        let j6 = dl.length;
+        for (let k = i6 + 1; k < dl.length; k++) { if (/^#{1,6}\s/.test(dl[k])) { j6 = k; break; } }
+        const s6 = dl.slice(i6 + 1, j6).join('\n');
+        // 三选一即可：① `~NN[MKB]`（标准） ② 中文前缀（已耗/耗/消耗/总用）+ `NN[MKB]` ③ `NN[MKB]` 后接 token/缓存/cacheRead 关键字（说明这是成本数据）。裸 `NN[MKB]`（如"版本 5M"）不匹，防误报
+        const hasMeasure = /~\s*\d+(?:\.\d+)?\s*[KMB]|(?:已耗|耗|消耗|总用)\s*[~\s]*\d+(?:\.\d+)?\s*[KMB]|\d+(?:\.\d+)?\s*[KMB]\s+(?:token|缓存|cacheRead|cache_write|chars|tokens)/.test(s6);
+        const hasUnavail = /实测不可得[：:]/.test(s6);
+        if (!hasMeasure && !hasUnavail) {
+          findings7.push('§6 成本指标缺实测值——必须含 `~NN[MKB]`（如 `~5M`）或 `实测不可得：<原因>`（v18.6.3 反馈：定性描述「已耗 12 次 spawn」无法匹到，看板 token 列空）');
+        }
+      }
+    }
     if (!/\[哈希校验待主人回填\]|sha256\s*[:：]?\s*[0-9a-f]{16,}/i.test(dt)) {
       findings7.push('缺「证据包指纹」段或 sha256 占位符 `[哈希校验待主人回填]`（M-Integrity-2 步骤 4 的输入）');
     }
