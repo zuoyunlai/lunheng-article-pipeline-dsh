@@ -61,6 +61,15 @@ const classifyReport = (path) => {
   } catch { return { format: 'unparseable' }; }
 };
 
+// === 成本数字归一化（v18.6.3 看板反馈：原始 B 数字可达 10^9，秒级可读性差） ===
+//   B（字节，10^9 进制）+ K（10^3）+ M（10^6）按 size 自动换算到最可读单位
+function normalizeCost(value, unit) {
+  if (unit === 'B' && value >= 1e6) return Number((value / 1e6).toFixed(2)) + 'M';
+  if (unit === 'B' && value >= 1e3) return Number((value / 1e3).toFixed(2)) + 'K';
+  if (unit === 'K' && value >= 1e3) return Number((value / 1e3).toFixed(2)) + 'M';
+  return value + unit;
+}
+
 // === 逐项目抽取 ===
 const projects = [];
 for (const name of readdirSync(root)) {
@@ -101,15 +110,30 @@ for (const name of readdirSync(root)) {
     }
   }
 
-  // token：交付说明 §6 成本指标是「~NNM cacheRead」表格，取最大（总计行）量级
+  // token：交付说明 §6 成本指标的多种写法（v18.6.3 看板反馈：原正则只认 `~NNM`，17/21 项目 token 列空；放宽）
+  //   标准 `~NN[MKB]`（推荐）+ 绝对值 `NN[MKB] token/缓存/cacheRead/cache_write` + 中文前缀「已耗/耗/消耗」
   let cost = null;
+  let costStatus = '—';
   const dd = join(base, 'final', '交付说明.md');
   if (existsSync(dd)) {
-    const matches = [...readFileSync(dd, 'utf8').matchAll(/~\s*(\d+(?:\.\d+)?)\s*([KMB])/g)];
-    if (matches.length) { const best = matches.reduce((a, b) => (parseFloat(a[1]) >= parseFloat(b[1]) ? a : b)); cost = best[1] + best[2]; }
+    const txt = readFileSync(dd, 'utf8');
+    // 前缀可选：~ / 已耗/耗/消耗/总用 + 可选空白；核心必须 NN + [KMB]；后可接 token/缓存/cacheRead/cache_write/chars/tokens
+    const re = /(?:~\s*|(?:已耗|耗|消耗|总用)\s*[~\s]*)?(\d+(?:\.\d+)?)\s*([KMB])(?:\s+(?:token|缓存|cacheRead|cache_write|chars|tokens))?/g;
+    const matches = [...txt.matchAll(re)];
+    // 「实测不可得」标记：写了说明但无实测值 → 显示「不可得 + 原因」
+    const unavail = txt.match(/实测不可得[：:]\s*([^\n\r]+)/);
+    if (matches.length) {
+      // 单位换算：K=10^3、M=10^6、B=10^9（**实测值是 cacheRead/cache_write，几乎都在 MB 或 GB 级**，B 是字节单位、不会超过 KB）
+      const order = { K: 1e3, M: 1e6, B: 1e9 };
+      const best = matches.reduce((a, b) => (Number(a[1]) * order[a[2]] >= Number(b[1]) * order[b[2]] ? a : b));
+      cost = best[1] + best[2];
+      costStatus = normalizeCost(Number(best[1]), best[2]);
+    } else if (unavail) {
+      costStatus = '不可得：' + unavail[1].trim().slice(0, 30);
+    }
   }
 
-  projects.push({ name, stage, rounds, han, mgate, review, cost });
+  projects.push({ name, stage, rounds, han, mgate, review, cost: costStatus });
 }
 
 // === 跨项目汇总 ===
