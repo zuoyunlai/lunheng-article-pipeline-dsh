@@ -102,6 +102,7 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 - 工具：subagent=派发（分档预设按角色选 subagent_retrieval/strong/audit）｜list_agents=查看｜todo_write=计划｜web_search/web_fetch=检索｜pwsh=命令｜edit/write=文件
 - 闸门：T2.5（检索→分析）/ T7.5（审计→终检）；M 门 exit 0；修订回环双轨 ≤2 轮（A 轨）
 - 闸门留痕（v2.5.2-dsh.17）：两道闸门各落一份 `audits/闸门记录-T2.5.md` / `-T7.5.md`（模板 `templates/闸门记录-template.md`）——「实据」列必须是路径/exit code/命令，写「已检查」被判 P1（机检 **M-Exist-5**）
+- 收报验收（v18.6.0）：收到交接报告后调 `lunheng_handoff_check --role Tn` 验产物/回报；exit 20 重派 / 21 补交 / 22 放行
 - 素材按需加载留痕（v2.5.2-dsh.17）：T5 每轮覆盖写 `analysis/素材加载清单.md`（模板同名）——正文引用须 ⊆ 「## 已加载」，机检 **M-Form-11**（引了没读 = 引用不可信）
 - 审计视图（v2.5.2-dsh.15）：Phase 2/3.6/4/4.5/5 派发前主控跑 `build-evidence-bundle.mjs <项目> --summary` 刷新 `audits/审计视图-v0.md`（源三级回退：`--source` ＞ `final/定稿.md` ＞ `drafts/` 最高版本）；读前看视图头「视图源 + 阶段」
 - 检索收敛（v2.5.2-dsh.15）：T1/T2/T3 首轮软预算 ≤40 步；**连续 2 轮无新增卡即判饱和停**（饱和照实报，不补占位）
