@@ -1,6 +1,6 @@
 # 交接门（handoff-check）规格 v1
 
-> **状态**：**规格（未实现）**。本文件只写规格，**不修改任何机制文件**（`SKILL.md` / `AGENTS.md` / `references/**` / `scripts/**` / `cordis.patch.yml`）；实现须走主人显式授权 + AGENTS.md 安全流程。
+> **状态**：**已实现（v18.6.0，commit `c4779af`）**。本文件原为「规格（未实现）」，v18.6.0 已按 §12 三岔口决策落地——退出码 20/21/22、`handoffLevel` 默认 `basic`、回报侧强制进闸门实据列；实现走主人显式授权 + AGENTS.md 安全流程（改前备份 + 四道门 + 镜像同步）。
 > **依据**：v18.5.0 工作树实测（含未提交的 v18.5.1 preflight 反注改动）。
 > **位置说明**：本文件放在 `docs/审计与修订记录/`（**不在 `package.json#files` 白名单内**），故不进 npm 包、不受 `repo-hygiene-check` 规则⑨ 词预算门约束。
 

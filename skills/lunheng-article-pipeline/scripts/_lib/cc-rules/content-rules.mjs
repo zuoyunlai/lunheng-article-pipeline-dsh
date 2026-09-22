@@ -4,7 +4,6 @@
 import { readFileSync, readdirSync, statSync, existsSync, writeFileSync, copyFileSync } from 'node:fs'
 import { join, relative, dirname } from 'node:path'
 
-// ⑮ 派发卡行数上限机械校验（v2.5.2-dsh.15 新增）：文档自称「每卡 ≤12 行」但此前**无任何脚本校验**——
 // ⑲ 交接契约表真源（v18.6.0 上提为模块级常量并 export）：原内联在 runContentRules 函数体内，
 //    handoff-check.mjs 需 import 派生「角色 → 必需产物」；数组是纯静态清单、不依赖 ctx，上提后行为不变。
 export const CONTRACTS = [
@@ -39,6 +38,7 @@ export const CONTRACTS = [
 
 export function runContentRules(ctx) {
   const { ROOT, REPO_ROOT, files, active, skillText, gateSrc, GATE_DERIVED, gateModMissing, checkGateCounts, SEMVER, normVer, pkgVer, inlineTagTargets, isArchive, UPSTREAM_SPEC_VERSIONS, walk, errors } = ctx;
+// ⑮ 派发卡行数上限机械校验（v2.5.2-dsh.15 新增）：文档自称「每卡 ≤12 行」但此前**无任何脚本校验**——
 //    token 优化契约若不可机检，膨胀回潮没人挡（与 ⑩ 白名单同思路）。
 const dispatchPath = join(ROOT, 'references', 'dispatch-cards.md');
 if (existsSync(dispatchPath)) {

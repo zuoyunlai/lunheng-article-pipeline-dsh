@@ -184,8 +184,10 @@ test('B-3/B-7 Config：默认值、合法值、非法值（响亮失败）三条
   assert.equal(d.quiet, false)
   assert.equal(d.scriptTimeoutMs, 120000)
   assert.ok(d.scriptMaxOutputBytes > 0, '输出上限必须有默认值（旧版无界缓冲）')
+  assert.equal(d.handoffLevel, 'basic', '交接门灰度开关默认 basic（v18.6.0）')
   assert.equal(mod.resolveConfig({ scriptTimeoutMs: 5000 }).scriptTimeoutMs, 5000)
-  for (const [label, bad] of [['未知键', { nope: 1 }], ['类型错', { quiet: 'yes' }], ['负数', { scriptTimeoutMs: -1 }], ['整块是数组', []]]) {
+  assert.equal(mod.resolveConfig({ handoffLevel: 'strict' }).handoffLevel, 'strict', 'handoffLevel 合法枚举值须通过')
+  for (const [label, bad] of [['未知键', { nope: 1 }], ['类型错', { quiet: 'yes' }], ['负数', { scriptTimeoutMs: -1 }], ['整块是数组', []], ['枚举非法', { handoffLevel: 'bogus' }]]) {
     assert.throws(() => mod.resolveConfig(bad), `${label} 必须响亮失败（静默回落 = 审计 B-3 的形态）`)
   }
 })
