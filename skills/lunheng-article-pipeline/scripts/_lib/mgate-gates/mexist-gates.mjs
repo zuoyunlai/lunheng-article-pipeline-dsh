@@ -797,7 +797,14 @@ try {
     results.push({ gate: 'M-Exist-10 大纲 §11 精简段', pass: true, detail: 'N/A：未找到分析大纲（尚未进入 Phase 2）', severity: '通过' });
   } else {
     const ol10 = readFileSync(outline10, 'utf8').split('\n');
-    const hIdx10 = ol10.findIndex((l) => /^#{2,4}\s/.test(l) && /写手版|精简段/.test(l));
+    // v18.6.2 反哺（假 P0 修复）：旧版 findIndex 返回**首个**匹配，若大纲任何 ## 标题含「精简段/写手版」
+    //   （如 `## §D 图表建议（…§11 写手精简段引用）`）会误命中该标题 → §11 段范围错位、六要素漏检 → 假 P0。
+    //   改为优先锚定**标题开头**的 §11（`^#{2,4}\s*§11`），排除正文标题里「引用 §11」的中置写法；
+    //   找不到回退旧的宽松匹配（兼容用「十一」中文编号或无 §11 章节号的旧大纲）。
+    let hIdx10 = ol10.findIndex((l) => /^#{2,4}\s*§\s*11\b/.test(l) && /写手版|精简段|精简/.test(l));
+    if (hIdx10 === -1) {
+      hIdx10 = ol10.findIndex((l) => /^#{2,4}\s/.test(l) && /写手版|精简段/.test(l));
+    }
     if (hIdx10 === -1) {
       results.push({
         gate: 'M-Exist-10 大纲 §11 精简段',

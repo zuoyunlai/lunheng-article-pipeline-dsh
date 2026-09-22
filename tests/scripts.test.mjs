@@ -1375,6 +1375,13 @@ test('m-gate-check M-Exist-10：大纲 §11 精简段六要素（缺段 / 缺要
   writeFileSync(OUT, '# 分析大纲\n\n## 十一、写手版精简段\n\n- 论证主线：X\n- 反方规划要点：Y\n- 字数预算：4000 字\n- 禁做项：Z\n- 承重墙清单：X\n- 映射表：论点 → 论据\n- 补充行 1\n')
   it = item()
   assert.match(it.detail, /真表格|映射表/)
+
+  // ⑥ 前置 §D 标题含中置「§11 写手精简段引用」不误命中；真 §11 在后方 → 仍识别 6/6（v18.6.2 反哺）
+  writeFileSync(OUT, '# 分析大纲\n\n## 一、论点\n\n内容\n\n## §D 图表建议（v2.4.6，§11 写手精简段引用）\n\n内容\n\n## §11 写手版精简段\n\n- 论证主线：X\n- 反方规划要点：Y\n- 字数预算：4000 字\n- 禁做项：Z\n- 承重墙清单：| 论点1 | [C01] |\n- 映射表：| 论点 | 论据 |\n|---|---|\n| 论点1 | [L01] |\n')
+  it = item()
+  assert.equal(it.pass, true, '§D 中置「§11 引用」不得误命中：' + it.detail)
+  assert.match(it.detail, /六要素实到 6\/6/)
+
   rmSync(d, { recursive: true, force: true })
 })
 

@@ -1,4 +1,4 @@
-> 版本：v18.6.1（DSH bundle 插件）
+> 版本：v18.6.2（DSH bundle 插件）
 
 
 # 论衡（lunheng-article-pipeline）— 通用深度长文多 Agent 流水线 运行手册（v2.2.14）
@@ -450,6 +450,11 @@ H. 党报话语堆砌（重要讲话精神等，全文 ≥3 处，政治学科�
 8. 交接报告六要素（含 status.md 更新）
 9. **先行者检索（原创性保证）**：主动搜「该主题是否已有公开深度文/论文写过类似核心论点」，产出 `literature/先行者清单.md`（每条含：文章标题/作者/来源/年份/URL + 核心论点 + 与本文的差异点）
 ```
+
+> **主控派发前自检（v18.6.2 反哺）**：T1 话术必须**逐字包含**第 9 条的产物名 `literature/先行者清单.md`；T1 settle 后主控**先跑**
+> `node scripts/handoff-check.mjs --project <项目> --role T1`——
+> **exit 20 = 缺 `literature/先行者清单.md`** → 兜底补写（并在文件头标注「主控兜底 v1.0」+ 失败原因）或重派，**不得直接进 T2.5 闸门**。
+> **实战**：本项目 T1 交付 12 张扎实文献卡（含 Pettit 命门原文页）却**漏产先行者清单** → handoff-check exit 20 → 主控兜底补写 5 条（Pateman / Anderson / Gädeke / Mackenzie-Stoljar / 刘训练）后才 exit 0。
 
 ### 数据检索员（并行②，T2）
 
