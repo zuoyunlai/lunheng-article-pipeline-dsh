@@ -129,7 +129,7 @@ test('C 组降级：宿主无 tools / commands 服务时，技能仍注册且不
   assert.equal(captured.guards, 0)
 })
 
-test('C 组：注册 2 个只读原生工具，规范值可复算（真跑一次 M 门与字数）', {
+test('C 组：注册 3 个只读原生工具，规范值可复算（真跑一次 M 门与字数）', {
   // v18.2.6：带探测的条件跳过（不是无条件 skip）。本用例要**真跑随包脚本**，而工具在**测试进程内**
   //   `spawn`（`lib/tools.js` 的 `runScript`），受限 DSH 会话（workspace-write 沙箱）禁止被围栏进程
   //   开命名管道 → 必红。恒红会训练人无视红灯，故探测到该环境即带理由跳过；**CI / 无沙箱 host shell
@@ -146,10 +146,10 @@ test('C 组：注册 2 个只读原生工具，规范值可复算（真跑一次
     skillRoot: join(PACKAGE_ROOT, 'skills', 'lunheng-article-pipeline'),
     defineToolFactory: async () => ({ defineTool: fakeDefineTool }),
   })
-  assert.equal(disposers.length, 2, '应返回 2 个 disposer')
-  assert.equal(regs.length, 2, '应注册 lunheng_m_gate 与 lunheng_char_count 两个工具')
+  assert.equal(disposers.length, 3, '应返回 3 个 disposer')
+  assert.equal(regs.length, 3, '应注册 lunheng_m_gate / lunheng_char_count / lunheng_handoff_check 三个工具')
   const names = regs.map((t) => t.name).sort()
-  assert.deepEqual(names, ['lunheng_char_count', 'lunheng_m_gate'])
+  assert.deepEqual(names, ['lunheng_char_count', 'lunheng_handoff_check', 'lunheng_m_gate'])
 
   const charTool = regs.find((t) => t.name === 'lunheng_char_count')
   assert.equal(charTool.parameters?.file?.required, true, 'file 参数必填')
@@ -232,7 +232,7 @@ test('C 组：工具定义必须符合宿主 value schema DSL（required 只在�
     skillRoot: join(PACKAGE_ROOT, 'skills', 'lunheng-article-pipeline'),
     defineToolFactory: async () => ({ defineTool: (def) => def }),
   })
-  assert.equal(regs.length, 2)
+  assert.equal(regs.length, 3)
   for (const t of regs) {
     const bad = [...dslViolations(t.output?.schema, `${t.name}.output.schema`)]
     // `parameters` 本身是**属性映射**（`{ 参数名: schema }`），逐个参数按其自身 schema 走（此处 required 合法）

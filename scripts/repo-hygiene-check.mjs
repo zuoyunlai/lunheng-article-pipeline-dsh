@@ -291,6 +291,9 @@ const EXIT_CONTRACT = {
   //   装了 exit-guard 却**无门核其退出码**——即「有守卫、无契约」，新增的越界码不会被任何门拦下。
   //   口径取自该脚本头注释：0 = 全部条目应用成功 / 1 = 有跳过或未解析条目、或清单解析出 0 条 / 10 = 参数或路径错。
   'apply-diff.mjs': [0, 1, 10, 70],
+  // v18.6.0 补登（交接门规格 §5「登记义务」）：handoff-check 的退出码与 M 门 1/2/3 刻意分离——
+  //   20 = 产物缺失或 0 字节 / 21 = 结构·版本·成对·回报段不合 / 22 = 仅软提示；10/70 走 exit-guard 通用语义。
+  'handoff-check.mjs': [0, 20, 21, 22, 10, 70],
 }
 const scriptDir = join(ROOT, 'skills', 'lunheng-article-pipeline', 'scripts')
 const dynamicScripts = []

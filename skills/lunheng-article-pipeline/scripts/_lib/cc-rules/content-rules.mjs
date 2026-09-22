@@ -5,6 +5,38 @@ import { readFileSync, readdirSync, statSync, existsSync, writeFileSync, copyFil
 import { join, relative, dirname } from 'node:path'
 
 // ⑮ 派发卡行数上限机械校验（v2.5.2-dsh.15 新增）：文档自称「每卡 ≤12 行」但此前**无任何脚本校验**——
+// ⑲ 交接契约表真源（v18.6.0 上提为模块级常量并 export）：原内联在 runContentRules 函数体内，
+//    handoff-check.mjs 需 import 派生「角色 → 必需产物」；数组是纯静态清单、不依赖 ctx，上提后行为不变。
+export const CONTRACTS = [
+  // [产物匹配子串（族名）, 产出者卡, 可接受的消费者（任一命中即算通过）]
+  ['文献卡.md', '01-文献检索-literature-scout.md', ['04-分析-analyst.md', '05-写作-writer.md', 'build-evidence-bundle.mjs']],
+  ['先行者清单.md', '01-文献检索-literature-scout.md', ['deliverables.md', '05-写作-writer.md', 'build-evidence-bundle.mjs']],
+  ['数据卡.md', '02-数据检索-data-scout.md', ['04-分析-analyst.md', '05-写作-writer.md', 'build-evidence-bundle.mjs']],
+  ['案例卡.md', '03-案例检索-case-scout.md', ['04-分析-analyst.md', '05-写作-writer.md', 'build-evidence-bundle.mjs']],
+  ['分析大纲.md', '04-分析-analyst.md', ['05-写作-writer.md', 'dispatch-cards.md', 'build-evidence-bundle.mjs']],
+  ['写手版精简段', '04-分析-analyst.md', ['05-写作-writer.md', 'dispatch-cards.md']],
+  ['初稿-v', '05-写作-writer.md', ['06-批判-critical-companion.md', '07-审计-auditor.md', '09-审稿-peer-reviewer.md']],
+  ['修订说明', '05-写作-writer.md', ['07-审计-auditor.md', 'build-evidence-bundle.mjs']],
+  ['批判报告', '06-批判-critical-companion.md', ['07-审计-auditor.md', '09-审稿-peer-reviewer.md', 'build-evidence-bundle.mjs']],
+  ['审计报告', '07-审计-auditor.md', ['05-写作-writer.md', '09-审稿-peer-reviewer.md', 'build-evidence-bundle.mjs']],
+  ['复核报告', '07-审计-auditor.md', ['build-evidence-bundle.mjs']],
+  ['反哺报告', '07-审计-auditor.md', ['00-主控-coordinator.md', 'build-evidence-bundle.mjs']],
+  ['审稿报告', '09-审稿-peer-reviewer.md', ['build-evidence-bundle.mjs', '08-终检-finalizer.md']],
+  ['G14-检测报告', 'checkers/中文AI痕迹-checker.md', ['09-审稿-peer-reviewer.md', 'audit-checklist-quickref.md', 'build-evidence-bundle.mjs']],
+  ['定稿.md', '08-终检-finalizer.md', ['build-evidence-bundle.mjs']],
+  ['M-Gate-Report.json', '08-终检-finalizer.md', ['build-evidence-bundle.mjs']],
+  // 主人侧三件套（v2.5.2-dsh.17）：产出者是主控，消费者是主人/运行手册
+  ['进展-主人版', '00-主控-coordinator.md', ['pipeline-readme.md']],
+  ['阶段确认-', '00-主控-扩展职责.md', ['pipeline-readme.md']],
+  ['主人投喂清单', '00-主控-扩展职责.md', ['数据卡-template.md', 'pipeline-readme.md']],
+  ['style-baseline', '00-主控-扩展职责.md', ['05-写作-writer.md', '06-批判-critical-companion.md']],
+  ['模型路由表', '00-主控-coordinator.md', ['pipeline-readme.md']],
+  // v2.5.2-dsh.17 续（第二批）：素材按需加载留痕 / 闸门记录表 / 交付说明
+  ['素材加载清单', '05-写作-writer.md', ['07-审计-auditor.md', '04-分析-analyst.md', 'build-evidence-bundle.mjs']],
+  ['闸门记录-', '00-主控-扩展职责.md', ['pipeline-readme.md', '00-主控-coordinator.md']],
+  ['交付说明', '08-终检-finalizer.md', ['build-evidence-bundle.mjs', '00-主控-扩展职责.md']],
+];
+
 export function runContentRules(ctx) {
   const { ROOT, REPO_ROOT, files, active, skillText, gateSrc, GATE_DERIVED, gateModMissing, checkGateCounts, SEMVER, normVer, pkgVer, inlineTagTargets, isArchive, UPSTREAM_SPEC_VERSIONS, walk, errors } = ctx;
 //    token 优化契约若不可机检，膨胀回潮没人挡（与 ⑩ 白名单同思路）。
@@ -96,35 +128,7 @@ for (const f of active) {
 //    表即契约真源——新增产物时在此登记，与文档同步演进。
 //    键用「版本无关的族名」（`初稿-v` / `修订说明` / `审计报告` …）——下游文档天然按族名引用，
 //    用精确文件名当键会把正常引用判成断链（本轮实测：4 个假阳性全部来自这一点）。
-const CONTRACTS = [
-  // [产物匹配子串（族名）, 产出者卡, 可接受的消费者（任一命中即算通过）]
-  ['文献卡.md', '01-文献检索-literature-scout.md', ['04-分析-analyst.md', '05-写作-writer.md', 'build-evidence-bundle.mjs']],
-  ['先行者清单.md', '01-文献检索-literature-scout.md', ['deliverables.md', '05-写作-writer.md', 'build-evidence-bundle.mjs']],
-  ['数据卡.md', '02-数据检索-data-scout.md', ['04-分析-analyst.md', '05-写作-writer.md', 'build-evidence-bundle.mjs']],
-  ['案例卡.md', '03-案例检索-case-scout.md', ['04-分析-analyst.md', '05-写作-writer.md', 'build-evidence-bundle.mjs']],
-  ['分析大纲.md', '04-分析-analyst.md', ['05-写作-writer.md', 'dispatch-cards.md', 'build-evidence-bundle.mjs']],
-  ['写手版精简段', '04-分析-analyst.md', ['05-写作-writer.md', 'dispatch-cards.md']],
-  ['初稿-v', '05-写作-writer.md', ['06-批判-critical-companion.md', '07-审计-auditor.md', '09-审稿-peer-reviewer.md']],
-  ['修订说明', '05-写作-writer.md', ['07-审计-auditor.md', 'build-evidence-bundle.mjs']],
-  ['批判报告', '06-批判-critical-companion.md', ['07-审计-auditor.md', '09-审稿-peer-reviewer.md', 'build-evidence-bundle.mjs']],
-  ['审计报告', '07-审计-auditor.md', ['05-写作-writer.md', '09-审稿-peer-reviewer.md', 'build-evidence-bundle.mjs']],
-  ['复核报告', '07-审计-auditor.md', ['build-evidence-bundle.mjs']],
-  ['反哺报告', '07-审计-auditor.md', ['00-主控-coordinator.md', 'build-evidence-bundle.mjs']],
-  ['审稿报告', '09-审稿-peer-reviewer.md', ['build-evidence-bundle.mjs', '08-终检-finalizer.md']],
-  ['G14-检测报告', 'checkers/中文AI痕迹-checker.md', ['09-审稿-peer-reviewer.md', 'audit-checklist-quickref.md', 'build-evidence-bundle.mjs']],
-  ['定稿.md', '08-终检-finalizer.md', ['build-evidence-bundle.mjs']],
-  ['M-Gate-Report.json', '08-终检-finalizer.md', ['build-evidence-bundle.mjs']],
-  // 主人侧三件套（v2.5.2-dsh.17）：产出者是主控，消费者是主人/运行手册
-  ['进展-主人版', '00-主控-coordinator.md', ['pipeline-readme.md']],
-  ['阶段确认-', '00-主控-扩展职责.md', ['pipeline-readme.md']],
-  ['主人投喂清单', '00-主控-扩展职责.md', ['数据卡-template.md', 'pipeline-readme.md']],
-  ['style-baseline', '00-主控-扩展职责.md', ['05-写作-writer.md', '06-批判-critical-companion.md']],
-  ['模型路由表', '00-主控-coordinator.md', ['pipeline-readme.md']],
-  // v2.5.2-dsh.17 续（第二批）：素材按需加载留痕 / 闸门记录表 / 交付说明
-  ['素材加载清单', '05-写作-writer.md', ['07-审计-auditor.md', '04-分析-analyst.md', 'build-evidence-bundle.mjs']],
-  ['闸门记录-', '00-主控-扩展职责.md', ['pipeline-readme.md', '00-主控-coordinator.md']],
-  ['交付说明', '08-终检-finalizer.md', ['build-evidence-bundle.mjs', '00-主控-扩展职责.md']],
-];
+
 {
   const readLazy = (() => {
     const cache = new Map();

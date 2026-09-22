@@ -2,6 +2,29 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.6.0 — 2026-09-22
+
+> **性质**：**新能力（feature）→ minor 升版**。落地「交接门 handoff-check」规格（`docs/审计与修订记录/交接门-handoff-check-规格-v1.md`）：把主控收报后的第一动作（产物落盘校验 + 回报齐备性）从手工 read/ls 变成一次只读机检，是 v18.5.1「派发前 preflight 反注」的**收报侧对偶**。
+> **机制文件改动依据主人显式授权**（「交接门规格你看看，没问题一并修订」+ 三岔口「20/21/22 / 加 handoffLevel 默认 basic / 回报侧强制进闸门实据列」），沿用 AGENTS.md 安全流程。
+> **独立前置提交**：`deliverables.md:43` 案例卡路径漂移 `case-studies/` → `cases/`（commit `3ef7e82`，与 mgate-helpers `CARD_SPECS` 对齐）。
+
+### 交接门 handoff-check（新脚本 + 新原生工具）
+
+- **`scripts/handoff-check.mjs`**（第 15 个随包脚本）：A 组产物侧（A1 存在 / A2 非空 / A3 结构 / A4 版本对齐 / A5 成对 / A6 agents-log）+ B 组回报侧（B1 六要素 / B2 AI 披露 / B3 ≤10 行 / B4 路径匹配 / B5 空段）。角色→必需产物从 `cc-rules/content-rules.mjs` 的 **CONTRACTS** 反查（该数组 v18.6.0 上提为模块级 `export`），路径从 `CARD_SPECS` + 内置 `PATH_SPECS` 派生，**不新建第二份清单**。
+- **退出码 20/21/22**（与 M 门 1/2/3 刻意分离）：`20` 产物缺失或 0 字节（重派）/ `21` 结构·版本·成对·回报段不合（续接补交）/ `22` 仅软提示（人工复核放行）。
+- **灰度开关 `handoffLevel`（Config，默认 `basic`）**：basic 只跑 A1/A2/B1；strict 全量 A1-A6+B1-B5。唯一新增 Config 键。
+- **原生工具 `lunheng_handoff_check`**（`lib/tools.js` 第 3 个工具）；`describeScriptFailure` 从三元硬编码改为**按脚本名传参**（规格 §7.4 点 2）。
+- **7 处文档接入**：00-主控卡 L50（第一动作机械验收）/ pipeline-readme 三段式第①步 / dispatch-cards 9 卡「回报 + 六要素」/ troubleshooting §8 登记 20/21/22 / 规范-机械门对照表新增一行 / AGENTS.md 退出码段 / 闸门记录模板实据列（回报侧强制落地的 M-Exist-5 抓手）。
+- **`tests/handoff-check.test.mjs`**（7 用例，覆盖规格 §9 V2 证伪 + V3 不误伤 + 参数错误）。
+
+### 词预算抬限
+
+- **无抬限**：本轮 doc 增长（00-主控卡 / pipeline-readme / dispatch-cards / troubleshooting / AGENTS / 闸门记录模板 / 规范对照表）均在各自 DOC_BUDGET 棘轮内；`handoff-check.mjs` / `handoff-check.test.mjs` 不在词预算门范围内（脚本与测试不受规则⑨ 约束）。
+
+### 验证
+
+- `node scripts/consistency-check.mjs` 0 漂移 · `node --test "tests/**/*.test.mjs"` 146/146 · `node scripts/plugin-surface-check.mjs` 通过 · `node scripts/repo-hygiene-check.mjs` 通过 · 镜像同步 0 漂移。
+
 ## 18.5.1 — 2026-09-22
 
 > **性质**：**修补 + 机制借鉴**。两批改动合并发布——① `ai-content-farm-retractions` 反哺报告-v1 的 7 项修补（脚本 bug + 文档契约，已在工作区未提交）；② 对照外部插件 `dsh-plugin-writing-guard` 的「反哺报告-writing-guard借鉴-v1」两动议（rule/action 分离 + 目标刊文体校准）。patch 升版。
