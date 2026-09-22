@@ -87,6 +87,9 @@ jobs:
           fi
 
       # 幂等守卫（v2.5.2-dsh.13）：该版本已发布 → 跳过发布（含补打历史 tag 的场景），避免 EPUBLISHCONFLICT 噪声
+      # ⚠️ 补打历史 tag 的连带后果（2026-09-22 实测）：乱序发布时，每个 tag 的 `npm publish --tag dsh` 都会覆盖
+      #    `dsh` dist-tag，最终停在**最后完成的旧版**而非最新版。补推后须手工 `npm dist-tag add …@<最新> dsh`
+      #    （`latest` 同理）——完整口径见 CONTRIBUTING §升级流程「补推历史 tag」条。
       - name: 幂等检查（已发布则跳过）
         id: guard
         run: |

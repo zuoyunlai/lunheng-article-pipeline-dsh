@@ -43,6 +43,7 @@
    - **发布前多跑一步打包产物验证**：`npm pack` 后解包，确认新增脚本/库/入口随包且能从解包副本运行（两条历史教训：`_lib/` 重构后必须确认相对 `import` 未因 `files` 白名单而丢失；入口移入 `lib/` 后必须确认 `apply` 真能读到 `SKILL.md`——后者现由 `tests/entry.test.mjs` 在 CI 里常驻防守）
    - **发布面裁剪是机械门，不是自觉**（v18.2.0）：`repo-hygiene-check` 规则⑥ 与 `scripts/pack-smoke.mjs` 都带**负清单**——`CHANGELOG.md` / `CONTRIBUTING.md` / `scripts/` / `tests/` / `.github/` **不得随包**；把仓库向文件加回 `package.json` 的 `files` 白名单会**直接红**。另：npm **强制包含**根目录 `README*` 与 `LICENSE`（从 `files` 删掉、加 `.npmignore` 均**无效**，已实测），故五语 README 一定在包内——别把它当缺陷报。
    - ⚠️ **一次只能推 1 个 tag**：GitHub 对「单次 push 超过 3 个 tag」**不触发任何 workflow**（实测：一次推 4 个 tag → 0 个运行）；
+   - ⚠️ **补推历史 tag = 乱序发布，会覆盖 `dsh` dist-tag（2026-09-22 实测教训）**：`npm publish --tag dsh` 每次把 `dsh` 指到当前发布版本。若在最新版**之后**补推旧 tag（如已推 v18.6.1、再补推 v18.5.1 / v18.6.0），每个旧 tag 的 publish 会依次把 `dsh` 覆盖回旧版，最终停在**最后完成的旧版**而非最新版。**补推后必须手工重设**：`npm dist-tag add lunheng-article-pipeline@<最新版> dsh`（`latest` 同理——它因 `NPM_TOKEN` 已删而从不自动前移，见 `publish.yml`「核对 dist-tag」步注释）；
    - ⚠️ **禁止本地 `npm publish`**（会绕过 CI 的四道门 + 回归测试与 OIDC provenance，且 npm 版本不可覆盖）；
    - tag 触发的 `publish.yml` 分**两个 job**（v18.2.6 起）：
      - **`gates`**（`permissions: contents: read`，**不持 `id-token`、不读 `NPM_TOKEN`**）：跑**门 1/4 一致性自检 → 门 2/4 打包面检查（`STRICT_WARN=1`）→ 门 3/4 机械卫生门 → 门 4/4 打包产物冒烟（`pack-smoke`）→ 随包脚本回归测试**；
