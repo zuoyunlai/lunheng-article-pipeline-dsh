@@ -2,6 +2,41 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.5.1 — 2026-09-22
+
+> **性质**：**修补 + 机制借鉴**。两批改动合并发布——① `ai-content-farm-retractions` 反哺报告-v1 的 7 项修补（脚本 bug + 文档契约，已在工作区未提交）；② 对照外部插件 `dsh-plugin-writing-guard` 的「反哺报告-writing-guard借鉴-v1」两动议（rule/action 分离 + 目标刊文体校准）。patch 升版。
+> **机制文件改动依据主人显式授权**（「开始修订论衡插件」+ 三选「v18.5.1 一起提交 / 两个动议都做 / 文体字段只加结构留占位」），沿用 AGENTS.md 安全流程：改前备份 + edit 精确匹配 + 四道门 + 镜像同步。
+
+### A · ai-content-farm-retractions 反哺（7 项，承接 2026-09-22 实战）
+
+- **M-Form-3** 正则加 `(?!CASE)` 排除断言——`[D-CASExx]` 合法编号不再误判为临时编号（消除 65 处假 P0）。
+- **M-Integrity-1** 数据条目统计纳入 `data/撤稿案例数据集.md` 的 `[D-CASExx]`（跨文件统计口径，消除假 P0）。
+- **M-Exist-6** 评分正则支持小数半分制（`4.0 / 3.5 / 24.5`，旧 `(\d)` 回溯错取 0/5）。
+- **pipeline-readme** 新增「派发前 preflight 反注」+ T6/T9 意见强制附机械证据（无证据降级 P2）+ 规范冲突仲裁前置。
+- **glossary** §12.1 补「正文字数」单一真源 + §12.3「文末五节 vs 国标不重复著录」仲裁。
+- **任务简报模板**「需找数据点 vs 需找案例」标签口径说明。
+- 详见 `run/ai-content-farm-retractions/audits/反哺报告-v1.md` §八。
+
+### B · writing-guard 借鉴（反哺报告-writing-guard借鉴-v1）
+
+**动议二 · 目标刊文体校准（优先级中）**：
+- `期刊数据库.md`：新增「文体偏好」字段（4 维：句长区间 / 人称倾向 / claim 密度 / 引文形态），当前 41 期刊统一标「待回填」——**无真实数据源、不编造**，主人回填后校准才有标靶。
+- `期刊匹配算法.md`：新增「步骤 7（可选）文体校准」——对首推期刊跑 4 项比对、输出偏差清单（只出清单不改写）；缺标靶诚实降级。
+- `09-审稿卡`「扩写清单」扩为「字数 + 文体偏差」双维度。
+
+**动议一 · 审计建议 rule/action 分离（优先级低）**：
+- `07-审计卡`修订任务书新增「违反规范」列 + 「怎么改」列处置动作动词前缀（补/删/改/降级）。
+- `09-审稿卡`建议段追加「违反规范 + 处置动作」两字段，明确「只给方向与约束，不代写句子」。
+- （06 卡 C1-C7 的 rule/action 同步为报告中的「可选」项，本次未做——T6 输出是论证攻击而非规范映射，且 06 卡已无词预算余量。）
+
+### 词预算抬限（同提交）
+
+- `repo-hygiene-check.mjs` DOC_BUDGET：**批 A**（ai-content-farm-retractions 反哺改动，此前未提交故棘轮未抬）pipeline-readme 75→78 KB、glossary 32→34 KB、任务简报模板 21→22 KB；**批 B**（writing-guard 借鉴）07 卡 22→23 KB、09 卡 18→19 KB。
+
+### 验证
+
+- `node scripts/consistency-check.mjs` 0 漂移 · `node --test "tests/**/*.test.mjs"` 全绿 · `node scripts/plugin-surface-check.mjs`（dsh-plugin-dev）通过 · `node scripts/repo-hygiene-check.mjs`（含词预算棘轮）通过 · 镜像同步 0 漂移。
+
 ## 18.5.0 — 2026-09-21
 
 > **性质**：**B12 修补收口 + §五.1「lunheng-stats」遥测看板落地 + `/lunheng-stats` 命令**。承接 v18.4.0 第三方审计遗留与战略方向，feature 占主导 → **minor 升版**。

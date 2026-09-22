@@ -8,7 +8,7 @@ import { sectionBody } from '../sections.mjs'
 
 // === M-Integrity-1 T2.5 完整性门（脚本佐证；v2.5.2-dsh.17 补两次关键对账）===
 export function mIntegrity1(ctx) {
-  const { draftPath, dataCard, dataCardReadError, results, findBriefUpward } = ctx;
+  const { draftPath, dataCard, dataCardReadError, results, findBriefUpward, projectRoot } = ctx;
 // 自省审计发现：旧版只核「任务简报存在且有子问题」，严重度恒为 'LLM 兜底' → **永不 P0/P1**；
 //   而 M-Gate-Algorithm 的 M-Integrity-1 明写「单子项失败 P0（信任级别缺失 / 数据条目不足）」——
 //   文档承诺的 P0 在脚本里不可达，「佐证」等于什么也没佐证。现补两次对账（文档步骤 2-6 口径）：
@@ -110,11 +110,25 @@ try {
 {
   // ① 数据条目数（双格式并集；与 M-Gate-Algorithm M-Integrity-1 步骤 2 同口径）
   let dataEntries = 0;
+  let dataCardN = 0;
+  let caseSetN = 0;
   if (dataCard) {
     const idSet = new Set(dataCardIds(dataCard));
     const tableRows = (dataCard.match(/^\|\s*\d+\.\d+\s*\|/gm) || []).length;
-    dataEntries = idSet.size + tableRows;
+    dataCardN = idSet.size + tableRows;
   }
+  // v18.5.1（反哺报告-v1 改动 3，主人授权修订）：数据条目统计**纳入 `data/撤稿案例数据集.md` 的 [D-CASExx] 编号**——
+  //   实战（2026-09-22 ai-content-farm-retractions）：30 条案例集中在该文件、数据卡仅 12 条宏观数据，
+  //   旧口径「只读数据卡」把「56 > 52 满足」误报为「12 < 38 不足」→ 假 P0 触发不存在的 T2 重检索。
+  //   仅当该文件存在时追加计数（不存在 → 行为与旧版逐字等价，run/ 49 组 baseline 不受影响）；读取失败按 0 计并在下方留痕。
+  let caseSetReadError = null;
+  try {
+    const caseSetPath = join(projectRoot ?? dirname(dirname(draftPath)), 'data', '撤稿案例数据集.md');
+    if (existsSync(caseSetPath)) {
+      caseSetN = new Set([...readFileSync(caseSetPath, 'utf8').matchAll(/\[D-CASE\d+\]/g)].map((m) => m[0])).size;
+    }
+  } catch (e) { caseSetReadError = e.message; }
+  dataEntries = dataCardN + caseSetN;
   const needsT2 = briefData.minDataPoints;
   const mForm6 = results.find((r) => r.gate.startsWith('M-Form-6'));
   const mForm6Bad = !!mForm6 && mForm6.pass !== true;
@@ -150,7 +164,7 @@ try {
     detail: briefData.parseError
       ? hardWhy.join(' ｜ ')   // 解析异常：只报异常本身，不假装拿到了简报数据
       : briefData.hasBrief
-        ? `任务简报 ${briefData.subclaims} 子问题（口径：${briefData.subclaimsSource}） / 需找数据点 ${needsT2} 条${briefData.placeholder ? `（${briefData.placeholder} 处占位未填）` : ''}｜数据卡 ${dataEntries} 条`
+        ? `任务简报 ${briefData.subclaims} 子问题（口径：${briefData.subclaimsSource}） / 需找数据点 ${needsT2} 条${briefData.placeholder ? `（${briefData.placeholder} 处占位未填）` : ''}｜数据条目 ${dataEntries} 条（数据卡 ${dataCardN} + 案例集 ${caseSetN}${caseSetReadError ? `；案例集读取失败：${caseSetReadError}` : ''}）`
           + (hardWhy.length ? ` ｜ 硬问题：${hardWhy.slice(0, 2).join('；')}` : ' ｜ 条目数与信任级别对账通过（脚本佐证，主控 L4 跨文件判断）')
         : '任务简报不存在（**已确认未找到 01-任务简报.md**，脚本佐证，主控 L4 跨文件判断）',
     severity: hardHits > 0 ? 'P0' : (scriptSkipHits > 0 ? 'P1' : 'LLM 兜底'),

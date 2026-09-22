@@ -415,11 +415,13 @@ try {
     const DIMS = ['原创性', '方法论', '证据强度', '论证结构', '写作质量', '引文规范'];
     const dimScores = [];
     for (const d of DIMS) {
-      const m = rt.match(new RegExp(`${d}[^\\n]*?(\\d)\\s*/\\s*5`)) || rt.match(new RegExp(`${d}\\s*\\|\\s*(\\d)\\s*/\\s*5`));
+      // v18.5.1（反哺报告-v1 B3 补深，主人授权修订）：支持小数半分制（4.0 / 3.5 / 4.5）——实战 T9 打半分，
+      //   旧正则 `(\d)` 对「4.0/5」回溯错取 0、对「3.5/5」错取 5 → 维度和失真；总评 24.5 同理失配。
+      const m = rt.match(new RegExp(`${d}[^\\n]*?(\\d(?:\\.\\d)?)\\s*/\\s*5`)) || rt.match(new RegExp(`${d}\\s*\\|\\s*(\\d(?:\\.\\d)?)\\s*/\\s*5`));
       if (!m) soft6.push(`未找到「${d}」的 x/5 评分（模板 6 维须齐全）`);
       else dimScores.push(Number(m[1]));
     }
-    const total6 = rt.match(/总评分[^\d]{0,8}(\d{1,2})\s*\/\s*30/) || rt.match(/总分[^\d]{0,12}(\d{1,2})\s*\/\s*30/);
+    const total6 = rt.match(/总评分[^\d]{0,8}(\d{1,2}(?:\.\d)?)\s*\/\s*30/) || rt.match(/总分[^\d]{0,12}(\d{1,2}(?:\.\d)?)\s*\/\s*30/);
     const declaredTotal = total6 ? Number(total6[1]) : null;
     if (declaredTotal === null) findings6.push('审稿报告缺「总评分 XX/30」');
     else if (dimScores.length === 6) {
