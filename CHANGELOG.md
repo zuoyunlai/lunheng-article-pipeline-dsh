@@ -2,6 +2,34 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.6.1 — 2026-09-22
+
+> **性质**：**修补 + 重构（refactor）→ patch 升版**。两件事——① 整体审查收尾（v18.6.0 后的 4 个 P2 收尾项 + 2 处 handoff 接入点补齐）；② 常驻集瘦身专项（SKILL.md + AGENTS.md 冗余细节下沉，解除「写一个字都要抬限」的 30 B 余量危机）。
+> **机制文件改动依据主人显式授权**（「先整体审查一遍」「先修掉」「现在开始做」「启动瘦身专项」），沿用 AGENTS.md 安全流程：改前备份 + edit 精确匹配 + 四道门 + 镜像同步。
+
+### A · 整体审查收尾（4 个 P2 + P2-2 补齐）
+
+- **P2-1 规格时态**：`交接门-handoff-check-规格-v1.md` 状态「规格（未实现）」→「已实现（v18.6.0，commit c4779af）」。
+- **P2-3 注释错位**：`cc-rules/content-rules.mjs` 的「⑮ 派发卡行数」注释从 CONTRACTS 上方归位到函数体内 `dispatchPath` 上方。
+- **P2-5 枚举缺测**：`tests/guard-config.test.mjs` 补 `handoffLevel` 三条断言（默认 basic / 合法 strict / 非法 bogus 响亮失败）。
+- **P2-2 接入点补齐**：`SKILL.md` 启动速查表补「收报验收」行 + `00-主控-扩展职责.md` 补「闸门公共动作：收报验收」段。
+- **原生工具行修 stale**：`SKILL.md`「原生工具」行补上 v18.6.0 新增的 `lunheng_handoff_check`（原漏列）。
+
+### B · 常驻集瘦身专项（SKILL.md + AGENTS.md）
+
+- **目标**：常驻集（SKILL.md + AGENTS.md，每次会话的固定开销）已到 30 B 余量（「写一个字都要抬限」），本专项把冗余细节下沉为指针、只留唯一事实 + 锚点。
+- **SKILL.md 省 2.9 KB**（32786 → 29864）：模型分配 / 包形态 / 技能来源自检（实践含义 + v18.0.5 更正 + frontmatter 契约）/ 闸门留机械证据（去历史撞码教训）/ 启动清单按需读（去「实战预习」教训注）5 处浓缩。
+- **AGENTS.md 省 1.6 KB**（21456 → 19856）：模型分配块（6 条子 bullet）浓缩为一句指针，细节单一真源 = `模型路由.md`。
+- **结果**：常驻集 52.8 → 48.6 KB，余量 **30 B → 4.4 KB**。
+
+### 词预算抬限（上一 commit 已做）
+
+- `repo-hygiene-check.mjs` DOC_BUDGET：SKILL.md 32→33 KB、主控扩展职责 53→54 KB（P2-2 接入点新增字段，commit b0d66a1）；本次瘦身后 SKILL.md 已回到 33 KB 限内（余 3.8 KB）。
+
+### 验证
+
+- `node skills/lunheng-article-pipeline/scripts/consistency-check.mjs` 0 漂移 · `node --test "tests/**/*.test.mjs"` 146/146 · `node scripts/plugin-surface-check.mjs`（STRICT_WARN=1）通过 · `node scripts/repo-hygiene-check.mjs` 通过 · 镜像同步 0 漂移。
+
 ## 18.6.0 — 2026-09-22
 
 > **性质**：**新能力（feature）→ minor 升版**。落地「交接门 handoff-check」规格（`docs/审计与修订记录/交接门-handoff-check-规格-v1.md`）：把主控收报后的第一动作（产物落盘校验 + 回报齐备性）从手工 read/ls 变成一次只读机检，是 v18.5.1「派发前 preflight 反注」的**收报侧对偶**。
