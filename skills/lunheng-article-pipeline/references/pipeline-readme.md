@@ -1,4 +1,4 @@
-> 版本：v18.6.2（DSH bundle 插件）
+> 版本：v18.7.0（DSH bundle 插件）
 
 
 # 论衡（lunheng-article-pipeline）— 通用深度长文多 Agent 流水线 运行手册（v2.2.14）
@@ -114,6 +114,31 @@ v2.1.4（2026-08-15，**测试期 finding，本地修订未发布**）：**文�
 6. spawn 分析员 → 分析大纲产出 → Phase 2.5 送主人确认 → 通过后 spawn 写手
 7. spawn 审计员 → 审计不过 → 写手交修订说明 + 修订稿（A 轨 ≤2 轮；B 轨主控触发轮不限额）→ 终检交付（含证据包）
 ```
+
+## 进阶用法：/lunheng 斜杠命令（v18.7.0 借鉴 Ai4Scholar v2.9.5）
+
+论衡还提供 11 个斜杠命令供中途干预使用（详见独立技能 `lunheng-commands`，本仓库 v18.7.0 起独立发布）：
+
+```
+/lunheng -draft [task]      # 启动完整流水线（轻量别名）
+/lunheng -resume <id>        # 续跑已有项目
+/lunheng -cite <text>        # 对指定段落跑 auto_cite（默认免费，借鉴 Ai4Scholar）
+/lunheng -cite -auto # 对当前定稿全文跑 auto_cite
+/lunheng -cite -manual <marker> # 手动模式（用户已标 [CITE]）
+/lunheng -audit              # 仅跑 T7 G 审计 + M 门（不改稿）
+/lunheng -journal <name>     # 改目标期刊 + 重跑 T9
+/lunheng -ppt                # 把当前定稿 → PPT 大纲
+/lunheng -history            # 列 run/* 历史
+/lunheng -rollback<id> --confirm  # 回滚到历史版本（必须 --confirm 二次确认）
+/lunheng -status [id]        # 显示当前进度（≤15 行人类可读）
+/lunheng -help               # 列可用命令
+```
+
+注意：
+- 斜杠命令是「中途干预」机制——主控仍按论衡原机制运行；lunheng-commands 仅做命令路由
+- `-cite` 命令免费（借鉴 Ai4Scholar v2.9.5"斜杠命令引用免费"），不消耗 auto_cite 积分
+- `-rollback` 必须 `--confirm` 二次确认，防误操作
+- 完整路由表：`lunheng-commands/references/command-routing.md`
 
 ## 调度模型健康度预检（v2.3 新增，教训 #35）
 
@@ -451,7 +476,7 @@ H. 党报话语堆砌（重要讲话精神等，全文 ≥3 处，政治学科�
 9. **先行者检索（原创性保证）**：主动搜「该主题是否已有公开深度文/论文写过类似核心论点」，产出 `literature/先行者清单.md`（每条含：文章标题/作者/来源/年份/URL + 核心论点 + 与本文的差异点）
 ```
 
-> **主控派发前自检（v18.6.2 反哺）**：T1 话术必须**逐字包含**第 9 条的产物名 `literature/先行者清单.md`；T1 settle 后主控**先跑**
+> **主控派发前自检（v18.7.0 反哺）**：T1 话术必须**逐字包含**第 9 条的产物名 `literature/先行者清单.md`；T1 settle 后主控**先跑**
 > `node scripts/handoff-check.mjs --project <项目> --role T1`——
 > **exit 20 = 缺 `literature/先行者清单.md`** → 兜底补写（并在文件头标注「主控兜底 v1.0」+ 失败原因）或重派，**不得直接进 T2.5 闸门**。
 > **实战**：本项目 T1 交付 12 张扎实文献卡（含 Pettit 命门原文页）却**漏产先行者清单** → handoff-check exit 20 → 主控兜底补写 5 条（Pateman / Anderson / Gädeke / Mackenzie-Stoljar / 刘训练）后才 exit 0。
@@ -572,6 +597,35 @@ H. 党报话语堆砌（重要讲话精神等，全文 ≥3 处，政治学科�
 
 派发话术示例（主控在 prompt 顶部加）：
 > 【T5 段级 diff 模式】v2/v3 修订轮，**不要重读 draft/初稿-vN.md 全文**！只读 `audits/审计报告-vN.md` 的 P0/P1 段 + `修订说明-vN.md`。**不要直接覆写初稿同路径**！输出段级 diff 清单（[P0/P1] 定位+现况+修改+字数），主控拿到清单后做机械编辑。≤25 步。
+```
+
+**【铁律（v18.7.0 借鉴 Ai4Scholar v2.9.4）】**：每条 [Lxx]/[Dxx] 必须保留完整卷期页码：
+- 期刊文献 [J]：作者. 题名[J]. 期刊名, 年, 卷(期): 起-止页.
+- 专著 [M]：作者. 题名[M]. 出版地: 出版者, 年: 起-止页.
+- 报告 [R]：作者. 题名[R]. 出版地: 出版者, 年.
+若 auto_cite 返回的元数据缺 → 标记「⚠ 待补卷期」并触发 Phase 1.5 补检索；
+不可在缺卷期页码的情况下交付（即使 GB/T 7714 接受"待补"占位，论衡不接受）。
+
+### 文献补标注检索员（T3.5，v18.7.0 可选，主人 Phase 0 显式开启，借鉴 Ai4Scholar v2.9.1）
+
+```
+你是「文献补标注检索员」。任务编号 **T3.5**（v18.7.0 新增可选阶段）。
+**触发条件**：任务简报 §v2.5.0 可选项 □ 启用 T3.5 auto_cite 预标注 = ✓
+项目目录：run/<项目名>/
+前置条件：T1/T2/T3 全部完成后
+任务：
+1. 读取 01-任务简报.md §研究问题 + 已完成的 literature/文献卡.md + cases/案例卡.md + data/数据卡.md
+2. 调用 DSH 原生 auto_cite（field=任务简报 §领域，min_citations=任务简报 §最小引用数，citation_style=任务简报 §引用格式 默认值）
+3. 按 references/templates/auto_cite-补充-template.md 输出 literature/auto_cite-补充.md
+4. 交接报告六要素照常
+
+铁律：
+- 不修改文献卡/数据卡/案例卡（与 T1/T2/T3 互不干涉铁律一致）
+- 主人显式关闭 → 直接跳过本阶段
+- 检索失败 → 写 [空卡]，不抛错
+- 不修改任务简报、不发起新外发请求超出 auto_cite 必需范围
+
+判据：M-Form-10 索引段完整性会在 T8 终检核对 auto_cite-补充.md 的索引段。
 ```
 
 ### 批判伙伴（T6，v2.3.0 改 T8→T6）

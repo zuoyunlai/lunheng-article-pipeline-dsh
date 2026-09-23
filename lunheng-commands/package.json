@@ -1,0 +1,41 @@
+{
+  "name": "lunheng-commands",
+  "version": "1.0.0",
+  "description": "论衡（lunheng-article-pipeline）的斜杠命令薄壳 wrapper。提供 11 个 /lunheng 命令：-draft/-resume/-cite/-audit/-journal/-ppt/-history/-rollback/-status/-help。借鉴 Ai4Scholar v2.9.5「斜杠命令 UX」设计；所有重活仍走论衡 9 角色流水线。",
+  "type": "module",
+  "main": "scripts/route-command.mjs",
+  "exports": {
+    ".": "./scripts/route-command.mjs",
+    "./route": "./scripts/route-command.mjs",
+    "./history": "./scripts/history-cli.mjs"
+  },
+  "files": [
+    "SKILL.md",
+    "README.md",
+    "references/",
+    "scripts/",
+    "tests/"
+  ],
+  "scripts": {
+    "test": "node --test tests/route.test.mjs",
+    "route": "node scripts/route-command.mjs"
+  },
+  "keywords": [
+    "dsh",
+    "skill",
+    "lunheng",
+    "article-pipeline",
+    "slash-command",
+    "ai4scholar-inspired"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "author": "左运来 (zuoyunlai)",
+  "dependencies": {},
+  "devDependencies": {},
+  "peerDependencies": {
+    "lunheng-article-pipeline": "^18.7.0"
+  }
+}

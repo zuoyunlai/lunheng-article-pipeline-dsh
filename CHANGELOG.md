@@ -2,6 +2,52 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.7.0 — 2026-09-23
+
+> **性质**：借鉴 https://ai4scholar.net/ 第一梯队调研落地——APA + 卷期页码 + T3.5 auto_cite + 引用数量/期刊指定 + /lunheng 斜杠命令 UX。整合发布 4 份反哺报告（v1-v4），合并到 v18.7.0 单版。**本次改动依据主人显式授权（"按 C：合并为 v18.7.0 一个大版"）；AGENTS.md 主人授权例外条款适用，安全流程（备份 + 行数基线 + edit 精确匹配 + 三门验证）全走。**
+
+### 整合背景
+
+调研 https://ai4scholar.net/ 后产出 4 份反哺报告，主人在第四轮批示「C：合并为 v18.7.0 一个大版」。
+
+| 反哺 | 借鉴点 | 论衡增量 | 验证 |
+|------|--------|---------|------|
+| **v1** | Ai4Scholar v2.9.4–v2.9.5 APA + 卷期页码 | M-Form-2 v2 卷期页码完整性分支 + 任务简报 §引用格式 卷期页码段 + 写手铁律 + auto_cite-integration.md 新文件 | 三门 |
+| **v2** | Ai4Scholar v2.9.1 文献自动标注 | T3.5 auto_cite 预标注可选阶段 + glossary §核心角色 T3.5 + M-Form-10 T3.5 扩展 + auto_cite-补充-template.md 新模板 | 三门 |
+| **v3** | Ai4Scholar v2.9.4 引用数量+期刊指定 | 任务简报 §引用数量与质量控制 字段 + 09-审稿 §引用匹配度 段 + G15 引用匹配度审计项 + M-Exist-6 v18.7.0 扩展 + glossary §关键术语 | 三门 |
+| **v4** | Ai4Scholar v2.9.5 斜杠命令 UX | 论衡 SKILL.md description 增量（≤60 字）+ pipeline-readme.md §进阶用法 + 任务简报 §v2.5.0 启用 /lunheng 勾选 + **lunheng-commands 独立技能包**（6 文件：SKILL.md / package.json / command-routing.md / route-command.mjs / history-cli.mjs / route.test.mjs） | 三门 + 独立测试 |
+
+### 机制改动清单（本次机制文件改动依据主人显式授权）
+
+> ⚠️ 本次为 AGENTS.md 唯一例外下的安全流程：① 备份真源到 `E:\HERNESS\_backup\lunheng-source-pre-v187-20260923-093600/`（1273 文件） ② 记录行数基线（见 `E:\HERNESS\_backup\baselines-pre-v187.txt`） ③ 用 `edit` 精确匹配（禁 sed -i） ④ 改后三门验证（consistency-check + dsh-plugin-dev check + node --test） ⑤ 全程可回滚 ⑥ 如实标注。
+
+| 序号 | 文件 | 改动类型 | 反哺 |
+|------|------|---------|------|
+| 1 | `skills/lunheng-article-pipeline/SKILL.md` | frontmatter description + version 18.6.2→18.7.0 + 卡头版本注解 | v4 |
+| 2 | `skills/lunheng-article-pipeline/references/templates/任务简报-template.md` | §引用格式后加 §引用数量与质量控制 + §卷期页码完整性；§v2.5.0 加 3 个新选项（APA 优先输出 / T3.5 / /lunheng） | v1+v2+v3+v4 |
+| 3 | `skills/lunheng-article-pipeline/references/_shared/M-Gate-Algorithm.md` | §M-Form-2 v18.7.0 卷期页码扩展 + §M-Form-10 v18.7.0 T3.5 扩展 + §M-Exist-6 v18.7.0 G15 扩展 | v1+v2+v3 |
+| 4 | `skills/lunheng-article-pipeline/references/_shared/audit-checklist-quickref.md` | G15 引用匹配度审计项 | v3 |
+| 5 | `skills/lunheng-article-pipeline/references/_shared/auto_cite-integration.md` | **新建** | v1 |
+| 6 | `skills/lunheng-article-pipeline/references/templates/auto_cite-补充-template.md` | **新建** | v2 |
+| 7 | `skills/lunheng-article-pipeline/references/glossary.md` | §核心角色 +T3.5；§关键术语 +引用匹配度 | v2+v3 |
+| 8 | `skills/lunheng-article-pipeline/references/pipeline-readme.md` | §快速开始后 +§进阶用法 /lunheng；§写手 +卷期页码铁律；§T3.5 派发话术段 | v1+v2+v4 |
+| 9 | `skills/lunheng-article-pipeline/references/agents/09-审稿-peer-reviewer.md` | §期刊投稿建议后 +§引用匹配度 段（6 维表格 + 判定） | v3 |
+| 10 | `lunheng-commands/SKILL.md` 等 6 文件 | **新建独立技能包**（不入 bundle） | v4 |
+| 11 | `audits/反哺报告-v1-v4.md` | **新建**（4 份） | 整合准备 |
+
+### 验证（apply 后必走）
+
+- [ ] 三门（consistency-check.mjs + dsh-plugin-dev check + node --test tests/**/*.test.mjs）全绿
+- [ ] 实战首单：5000 字测试论文 + 勾选"APA 优先输出 + 启用 T3.5 auto_cite / 启用 /lunheng" + 设目标期刊 Nature + 引用数 [15, 20]
+- [ ] 同步镜像：`cp -r skills/lunheng-article-pipeline/ <DSH_HOME>/skills/lunheng-article-pipeline/`
+
+### 风险与回滚
+
+- 单行 `git revert <commit-hash-of-v18.7.0>`
+- 备份目录保留：`E:\HERNESS\_backup\lunheng-source-pre-v187-20260923-093600/`
+
+---
+
 ## 18.6.3 — 计划中（未发布）
 
 > **性质**：词预算预冲 + 内容工作进行中。本段先登记**词预算预冲**（按 repo-hygiene-check 规则 ⑨「显式抬限必须写明理由」）；具体内容子项在 v18.6.3 落地时回填本段对应子节。

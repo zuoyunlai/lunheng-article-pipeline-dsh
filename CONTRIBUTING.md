@@ -39,7 +39,7 @@
    > ```
    > `--test-isolation=none` 让测试文件在**同一进程**内跑，是受限 DSH 会话里**唯一能跑通**的形态（`node --test` 默认模式由 runner 自己 spawn 子进程 → EPERM）。代价与边界（如实）：**隔离模式不覆盖跨进程行为**——CI 与发布链仍用标准隔离模式（`.github/workflows/*.yml`），两处结论不一致时**以 CI 为准**。另有三个用例按环境**带理由跳过**（工具内部 spawn / `npm pack` / `final-check` 子步骤），跳过会出现在 `ℹ skipped N` 里——**跳过 ≠ 通过**，不得据此宣称机检已过。
 5. 提交并推送分支；
-6. **发布 = 只推 tag**：`git tag v18.6.2 && git push origin v18.6.2`（tag 必须等于 `v` + `package.json.version`，publish 工作流会校验；**v18.2.1 更正：本行示例上一版停在 `v18.0.4`——bump 脚本的点位正则按行首锚定，扫不到这种内联形态，两次都漏了**；**v18.2.2 更正：第三处人工刷新**；**v18.2.3 更正：第四处人工刷新 —— 根因与终结方案见 §版本号约定 的「已知漏点」注**）
+6. **发布 = 只推 tag**：`git tag v18.7.0 && git push origin v18.7.0`（tag 必须等于 `v` + `package.json.version`，publish 工作流会校验；**v18.2.1 更正：本行示例上一版停在 `v18.0.4`——bump 脚本的点位正则按行首锚定，扫不到这种内联形态，两次都漏了**；**v18.2.2 更正：第三处人工刷新**；**v18.2.3 更正：第四处人工刷新 —— 根因与终结方案见 §版本号约定 的「已知漏点」注**）
    - **发布前多跑一步打包产物验证**：`npm pack` 后解包，确认新增脚本/库/入口随包且能从解包副本运行（两条历史教训：`_lib/` 重构后必须确认相对 `import` 未因 `files` 白名单而丢失；入口移入 `lib/` 后必须确认 `apply` 真能读到 `SKILL.md`——后者现由 `tests/entry.test.mjs` 在 CI 里常驻防守）
    - **发布面裁剪是机械门，不是自觉**（v18.2.0）：`repo-hygiene-check` 规则⑥ 与 `scripts/pack-smoke.mjs` 都带**负清单**——`CHANGELOG.md` / `CONTRIBUTING.md` / `scripts/` / `tests/` / `.github/` **不得随包**；把仓库向文件加回 `package.json` 的 `files` 白名单会**直接红**。另：npm **强制包含**根目录 `README*` 与 `LICENSE`（从 `files` 删掉、加 `.npmignore` 均**无效**，已实测），故五语 README 一定在包内——别把它当缺陷报。
    - ⚠️ **一次只能推 1 个 tag**：GitHub 对「单次 push 超过 3 个 tag」**不触发任何 workflow**（实测：一次推 4 个 tag → 0 个运行）；
@@ -93,7 +93,7 @@ npm 版本**不可覆盖**：一旦某版本发布，仓库里**不得**再改�
 **发布 = 推 tag**，由 `.github/workflows/publish.yml` 以 **OIDC Trusted Publishing + `--provenance`** 完成：
 
 ```sh
-git tag v18.6.2 && git push origin v18.6.2   # 工作流会校验 tag == v + package.json.version
+git tag v18.7.0 && git push origin v18.7.0   # 工作流会校验 tag == v + package.json.version
 ```
 
 > ⚠️ **不要在本机 `npm publish`**：会绕过 CI 的**四道门 + 回归测试**与来源证明，且 npm 版本**不可覆盖**（发错只能 bump 重发）。

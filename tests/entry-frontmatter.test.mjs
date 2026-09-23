@@ -88,7 +88,7 @@ test('C.1 CRLF 行尾：SKILL.md 是 CRLF 时 frontmatter 仍必须解析（不�
     const { regs, logs, errs } = await runApply(root)
     assert.equal(regs.length, 1, '技能必须照常注册')
     assert.notEqual(regs[0].description, FALLBACK, 'CRLF 行尾下退回了内置兜底 description（审计 C.1 回归）')
-    assert.match(regs[0].description, /论衡：DSH 原生多 Agent 深度长文流水线/, 'description 必须来自 frontmatter 真源')
+    assert.match(regs[0].description, /论衡 v18\.7\.0：DSH 原生多 Agent 深度长文流水线/, 'description 必须来自 frontmatter 真源（v18.7.0 借鉴 Ai4Scholar 加前缀）')
     assert.equal(typeof regs[0].whenToUse, 'string', 'CRLF 下 whenToUse 也必须注册（丢了 = 模型侧路由字段整块消失）')
     assert.equal(regs[0].content, realBody(), '正文必须与真源一致（行尾归一是既定行为）')
     assert.deepEqual(logs.warn, [], '解析成功时不得报「未解析」')
@@ -97,7 +97,8 @@ test('C.1 CRLF 行尾：SKILL.md 是 CRLF 时 frontmatter 仍必须解析（不�
 })
 
 test('C.1 UTF-8 BOM：文件带 BOM 时 frontmatter 仍必须解析', async () => {
-  await withTemp((raw) => `\uFEFF${raw}`, async (root) => {
+  // v18.7.0 修订：先剥 raw 自带的 BOM 字符，再注入一个（避免双重 BOM；早期 v18.2.4 修 BOM 剥除仅剥一个）
+  await withTemp((raw) => '\uFEFF' + raw.replace(/^\uFEFF/, ''), async (root) => {
     const { regs, logs } = await runApply(root)
     assert.equal(regs.length, 1)
     assert.notEqual(regs[0].description, FALLBACK, 'BOM 下退回了内置兜底 description')
