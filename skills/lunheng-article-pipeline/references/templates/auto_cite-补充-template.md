@@ -1,6 +1,6 @@
-> 版本：v18.7.0（DSH bundle 插件）
+> 版本：v18.7.1（DSH bundle 插件）
 
-# auto_cite 预标注补充清单（v18.7.0 借鉴 Ai4Scholar v2.9.1）
+# auto_cite 预标注补充清单（v18.7.1 借鉴 Ai4Scholar v2.9.1）
 
 > **T3.5 阶段产出**：auto_cite 扫描 T1/T2/T3 输出 + 任务简报 §研究问题，标记「已有素材未能覆盖、auto_cite 推荐补充引用」的论点。
 > **不替代 T1 检索**——仅给 T4 分析 / T5 写手参考。

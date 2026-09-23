@@ -81,6 +81,25 @@
 
 **数据源**：`run/<id>/history.jsonl`（论衡 v18.7.0 项目化新增字段）。
 
+<a id="stats"></a>
+
+## `-stats` / `-stats --run-dir <path>` / `-stats --json`
+
+**行为**：调用论衡 v18.5.0 已有的 `scripts/lunheng-stats.mjs`（运行时遥测看板），输出 `run/` 目录下所有项目的汇总看板：
+- 项目名 / 当前阶段 / 修订轮数 / M 门状态 / P0-P1-P2 计数 / 字数 / 审稿评分 / token 消耗
+- 末尾自动汇总：项目分布（final/empty/draft）+ M 门证据分类（机器/LLM 兜底/无）+ 累计 P0/P1/P2
+- 门拦截频率 TOP：跨项目统计哪些 M 门被触发最多
+
+**参数**：
+- `--run-dir <path>`：扫描指定目录（默认 `<cwd>/run`）
+- `--json`：JSON 输出（程序化消费）
+
+**薄壳实现**：`lunheng-commands/scripts/stats-cli.mjs` spawn 调用论衡 `lunheng-stats.mjs`，透传所有参数与退出码。
+
+**数据源**：三位置回退（run/<id>/final/M-Gate-Report.json → audits/M-Gate-Report-vN.json → audits/M-Gate-final.json）+ drafts/ 时间戳 + final/字数控件。
+
+**v18.7.0 → v18.7.1 bug fix**：v18.7.0 lunheng-commands v1.0.0 发布时漏注册此命令（论衡 v18.5.0 已存在但未纳入斜杠命令包装）；v18.7.1 补回。
+
 <a id="rollback"></a>
 
 ## `-rollback <id> --confirm`

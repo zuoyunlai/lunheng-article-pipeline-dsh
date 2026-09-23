@@ -150,6 +150,7 @@ try {
     else bad(`入口 inject 未声明 skills：${JSON.stringify(mod.inject)}`)
 
     let registered = null
+    const allRegistered = []  // v18.7.1：支持多技能注册（主 + 子如 lunheng-commands）
     let effectUsed = false
     let disposerCalled = false
     // C 组（v18.1.0）：发布物侧同样要覆盖「可选能力」的注册与降级。
@@ -173,8 +174,13 @@ try {
       },
       skills: {
         register(def) {
-          registered = def
-          return () => { registered = null }
+          registered = def  // v18.7.1 前：只保留最后一次（子技能会覆盖）
+          allRegistered.push(def)  // v18.7.1：保留所有注册的技能，主技能断言改为 allRegistered.find
+          return () => {
+            registered = null
+            const idx = allRegistered.indexOf(def)
+            if (idx >= 0) allRegistered.splice(idx, 1)
+          }
         },
       },
     }
@@ -222,15 +228,17 @@ try {
     } else {
       bad(`期望降级为 0 个原生工具，实得 ${captured.tools.length}`)
     }
-    if (registered) {
-      if (registered.name === PKG_NAME) ok(`apply 注册技能 name = ${registered.name}`)
-      else bad(`apply 注册名 = ${registered.name}`)
-      const content = String(registered.content || '')
+    // v18.7.1：主技能断言改为从 allRegistered 数组中查找 PKG_NAME
+    const mainReg = allRegistered.find((r) => r && r.name === PKG_NAME) || registered
+    if (mainReg) {
+      if (mainReg.name === PKG_NAME) ok(`apply 注册技能 name = ${mainReg.name}`)
+      else bad(`apply 注册名 = ${mainReg.name}`)
+      const content = String(mainReg.content || '')
       if (content.length > 500) ok(`技能正文非空（${content.length} 字符）`)
       else bad(`技能正文过短（${content.length} 字符）——SKILL.md 可能未随包`)
       if (!content.startsWith('---')) ok('正文已剥离 frontmatter')
       else bad('正文未剥离 frontmatter（首行仍是 ---）')
-      const rb = registered.resourceBase
+      const rb = mainReg.resourceBase
       const rbPath = rb && typeof rb === 'object' ? rb.path : null
       // 两侧都走 canon：入口给的 `resourceBase.path` 由 Node realpath 得到（规范化），
       // 解包目录也必须是规范化路径才可比（macOS `/var` ↔ `/private/var`、Windows junction）

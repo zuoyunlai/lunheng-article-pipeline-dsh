@@ -76,7 +76,7 @@ test('apply 注册技能：字段齐备 + resourceBase 指向真实技能目录'
   mod.apply(ctx)
 
   assert.ok(captured.effects >= 1, 'apply must register through ctx.effect (reversible registration)')
-  assert.equal(captured.registrations.length, 1, 'apply must register exactly one skill')
+  assert.equal(captured.registrations.length, 2, 'apply must register main skill + lunheng-commands sub-skill (v18.7.1)')
 
   const reg = captured.registrations[0]
   assert.equal(reg.name, 'lunheng-article-pipeline')
@@ -123,7 +123,7 @@ test('C 组降级：宿主无 tools / commands 服务时，技能仍注册且不
   const { ctx, captured } = makeCtx() // 不注入任何服务
   mod.apply(ctx)
   await settle()
-  assert.equal(captured.registrations.length, 1, '缺 tools/commands 服务不得影响技能注册（第一职责）')
+  assert.equal(captured.registrations.length, 2, '缺 tools/commands 服务不得影响技能注册（主 + 子，v18.7.1）')
   assert.equal(captured.tools.length, 0)
   assert.equal(captured.commands.length, 0)
   assert.equal(captured.guards, 0)

@@ -7,7 +7,8 @@
   "exports": {
     ".": "./scripts/route-command.mjs",
     "./route": "./scripts/route-command.mjs",
-    "./history": "./scripts/history-cli.mjs"
+    "./history": "./scripts/history-cli.mjs",
+    "./stats": "./scripts/stats-cli.mjs"
   },
   "files": [
     "SKILL.md",

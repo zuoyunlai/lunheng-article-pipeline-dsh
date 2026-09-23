@@ -2,6 +2,75 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.7.1 — 2026-09-23
+
+> **性质**：架构整合 + bug fix 增量——把 v18.7.0 作为独立 npm 包发布的 lunheng-commands v1.0.0 **嵌入**论衡 bundle 内（`skills/lunheng-commands/`），让 `dsh plugin add lunheng-article-pipeline` 自动获得 12 个 /lunheng 斜杠命令（不再需要单独 install）。同步补回 v18.7.0 漏注册的 `/lunheng -stats` 命令（论衡 v18.5.0 已有的 `scripts/lunheng-stats.mjs` 现在通过 lunheng-commands 暴露）。
+
+### 整合背景
+
+v18.7.0 发布后实战暴露 2 个 UX 缺陷：
+
+1. **双包安装繁琐**：`lunheng-commands v1.0.0` 是独立 npm 包，但 `peerDependencies: lunheng-article-pipeline: ^18.7.0`，主人需要分别安装两个包——破坏"一次安装"原则。
+2. **`/lunheng -stats` 漏注册**：论衡 v18.5.0 已有 `scripts/lunheng-stats.mjs`（跨项目运行时遥测看板，独立 CLI）；`pack-smoke.mjs:212` 和 SKILL.md 都明确把 `/lunheng-stats` 列为"应注册的人类命令"——但 v18.7.0 lunheng-commands v1.0.0 漏注册。
+
+主人选 **C 方案：嵌回论衡 bundle**（v18.7.0 反哺报告 v4 升级路径 A）。
+
+### 核心改动
+
+**物理嵌入**：
+- `mv lunheng-commands/ skills/lunheng-commands/`（1385 → 1457 文件搬迁）
+
+**入口升级**（`lib/index.js`）：
+- 单 skill 注册 → 双 skill 注册
+- 自动检测 `skills/lunheng-commands/SKILL.md` 存在 → 注册为 `lunheng-commands` 子技能
+- 缺失时仅警告（`子技能未找到——12 个 /lunheng 命令不可用（论衡主流程仍 100% 运行）`），不阻塞主技能
+
+**前端升级**（两个 SKILL.md）：
+- 论衡 description：去掉"详见独立技能包"，改为"内嵌 lunheng-commands 子技能（12 个 /lunheng 斜杠命令 UX）"
+- lunheng-commands description：从"独立技能包"改为"论衡 v18.7.1 **内嵌子技能**"，自动安装零配置
+
+**stats-cli 路径更新**（`scripts/stats-cli.mjs`）：
+- 候选路径从 monorepo 布局改为 v18.7.1+ 嵌入布局（`skills/lunheng-commands/scripts/` 找到 `skills/lunheng-article-pipeline/scripts/lunheng-stats.mjs`）
+- 保留旧路径候选为兼容回退
+
+**子技能元数据保留**（不删除）：
+- `skills/lunheng-commands/package.json`：作为子目录 npm 标识（非包级，与 AGENTS.md 镜像污染规则不冲突）
+- `skills/lunheng-commands/README.md`：v18.7.0 实战首单引用保留
+
+### 新增能力
+
+- ✅ `/lunheng -stats` 命令（v18.7.0 漏注册，v18.7.1 补回）→ 调用论衡 v18.5.0 `scripts/lunheng-stats.mjs` 输出 run/ 项目汇总看板
+- ✅ 12 个 /lunheng 命令统一在 lunheng-commands 包内管理（version 1.0.1）
+
+### 验证
+
+- 门 1 consistency-check：69 个 .md + cordis.patch.yml/examples/.dsh 同步，0 处漂移
+- 门 2a check:surface：9 项 pass / 0 fail / 1 warn / 4 skip
+- 门 2b check:hygiene：全部通过
+- 门 3 test：229 + 22（lunheng-commands）= **251 测试全过**
+
+### 实战验证（v18.7.0 实战首单）
+
+```
+$ /lunheng -stats --run-dir E:\HERNESS\run
+run 遥测看板（E:\HERNESS\run）
+项目 22 个：final 19 / empty 2 / draft 1
+M 门证据：机器格式 7 / LLM 兜底 8 / 无证据 7
+累计 P0=8 P1=9 P2=20｜累计字数 177125
+
+== 门拦截频率 TOP ==
+M-Form-8  P0×1  P1×1  P2×0     ← v18.7.0 实战暴露的 [C01] 承重超载
+M-Exist-1 P0×1  P1×1  P2×0     ← 双语混标引用
+```
+
+### 风险与回滚
+
+- **风险**：入口 lib/index.js 改动 → 主技能注册失败会同时阻断 lunheng-commands
+- **缓解**：try/catch 包裹子技能注册，失败仅警告
+- **回滚**：单行 `git revert <commit-hash-of-v18.7.1>`；恢复备份 `E:\HERNESS\_backup\lunheng-source-pre-v1871-20260923-102630/`（1385 文件）
+
+---
+
 ## 18.7.0 — 2026-09-23
 
 > **性质**：借鉴 https://ai4scholar.net/ 第一梯队调研落地——APA + 卷期页码 + T3.5 auto_cite + 引用数量/期刊指定 + /lunheng 斜杠命令 UX。整合发布 4 份反哺报告（v1-v4），合并到 v18.7.0 单版。**本次改动依据主人显式授权（"按 C：合并为 v18.7.0 一个大版"）；AGENTS.md 主人授权例外条款适用，安全流程（备份 + 行数基线 + edit 精确匹配 + 三门验证）全走。**

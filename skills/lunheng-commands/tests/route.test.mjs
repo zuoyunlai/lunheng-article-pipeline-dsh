@@ -106,6 +106,19 @@ test('valid command -status with id', () => {
   assert.deepEqual(result.args, ['my-project']);
 });
 
+test('valid command -stats', () => {
+  const result = routeCommand(['node', '-lunheng', '-stats']);
+  assert.equal(result.ok, true);
+  assert.equal(result.action, 'stats');
+});
+
+test('valid command -stats with --run-dir', () => {
+  const result = routeCommand(['node', '-lunheng', '-stats', '--run-dir', '/tmp/run']);
+  assert.equal(result.ok, true);
+  assert.equal(result.action, 'stats');
+  assert.deepEqual(result.args, ['--run-dir', '/tmp/run']);
+});
+
 // -help
 test('valid command -help', () => {
   const result = routeCommand(['node', '-lunheng', '-help']);
@@ -138,10 +151,11 @@ test('missing command fails', () => {
 });
 
 // listCommands 函数
-test('listCommands returns 11 commands', () => {
+test('listCommands returns 11 commands (filtered out -h alias)', () => {
   const cmds = listCommands();
   assert.equal(cmds.length, 11);
   assert.ok(cmds.find(c => c.cmd === '-draft'));
   assert.ok(cmds.find(c => c.cmd === '-cite'));
   assert.ok(cmds.find(c => c.cmd === '-rollback'));
+  assert.ok(cmds.find(c => c.cmd === '-stats'));
 });

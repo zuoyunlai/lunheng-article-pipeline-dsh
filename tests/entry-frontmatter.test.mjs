@@ -88,7 +88,7 @@ test('C.1 CRLF 行尾：SKILL.md 是 CRLF 时 frontmatter 仍必须解析（不�
     const { regs, logs, errs } = await runApply(root)
     assert.equal(regs.length, 1, '技能必须照常注册')
     assert.notEqual(regs[0].description, FALLBACK, 'CRLF 行尾下退回了内置兜底 description（审计 C.1 回归）')
-    assert.match(regs[0].description, /论衡 v18\.7\.0：DSH 原生多 Agent 深度长文流水线/, 'description 必须来自 frontmatter 真源（v18.7.0 借鉴 Ai4Scholar 加前缀）')
+    assert.match(regs[0].description, /论衡 v18\.7\.1：DSH 原生多 Agent 深度长文流水线/, 'description 必须来自 frontmatter 真源（v18.7.1 借鉴 Ai4Scholar 加前缀）')
     assert.equal(typeof regs[0].whenToUse, 'string', 'CRLF 下 whenToUse 也必须注册（丢了 = 模型侧路由字段整块消失）')
     assert.equal(regs[0].content, realBody(), '正文必须与真源一致（行尾归一是既定行为）')
     assert.deepEqual(logs.warn, [], '解析成功时不得报「未解析」')
@@ -136,7 +136,7 @@ test('C.3 无 logger 宿主：退回 console.error，信息不丢', async () => 
   await withTemp(() => '\n坏文件（无 frontmatter）\n', async (root) => {
     const { logs, errs } = await runApply(root, { logger: false })
     assert.deepEqual(logs.warn, [], '无 logger 时不该走 logger')
-    assert.equal(errs.length, 1, '宿主无日志面时必须退回 console.error（宁可见勿静默）')
+    assert.equal(errs.length, 2, '宿主无日志面时必须退回 console.error（宁可见勿静默；v18.7.1 多 1 条子技能注册 info）')
     assert.match(errs[0], /frontmatter 未解析/)
   })
 })

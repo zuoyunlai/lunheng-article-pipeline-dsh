@@ -1,4 +1,4 @@
-﻿# examples/preset/ — 论衡分档安装指南
+# examples/preset/ — 论衡分档安装指南
 
 > **v18.0.0 复核（v18.2.6 复核计数）**：本目录**只有两个文件**——`preset.yml`（给主人读的分档说明）+ 本文件（安装指南），
 > **不含任何可加载的 cordis 配置**。分档行为来自包根 `cordis.patch.yml` 的 **4 段 `- insert:` 行**（第 1 段 = 本包自注册行，第 2-4 段 = 三档分档工具），
@@ -13,7 +13,7 @@
 ```sh
 # 1. 在 profile 里声明 bundle 依赖（DSH 读 dsh.bundle.patch 找到 cordis.patch.yml 加载）
 dsh plugin --profile web add lunheng-article-pipeline@dsh   # 推荐：跟随最新 DSH 迭代版
-# 锁定具体版本：dsh plugin --profile web add lunheng-article-pipeline@18.7.0
+# 锁定具体版本：dsh plugin --profile web add lunheng-article-pipeline@18.7.1
 
 # 2. （可选，但要让三档工具真的挂上就必做）设三档 subagent 工具的 provider/model 环境变量
 #    v18.2.6 起：不设任何变量 = 三档行**根本不装载**（不再是「装载但全继承」）
