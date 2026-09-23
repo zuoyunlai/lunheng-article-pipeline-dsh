@@ -1,8 +1,8 @@
-> 版本：v1.0.0（lunheng-commands 独立技能包）
+> 版本：v1.0.1（lunheng-commands 独立技能包）
 
 # /lunheng 命令路由表（单一真源）
 
-> 本文档是 11 个命令如何路由到论衡阶段的**唯一真源**。
+> 本文档是 11 个命令如何路由到论衡阶段的**唯一真源**（`-cite` 含 3 种模式：默认 / `-auto` / `-manual`；`-h` 是 `-help` 的别名——命令数真源 = `scripts/route-command.mjs` 的 COMMANDS 表，v18.7.3 定案口径「11 个命令」）。
 > 修改命令行为只改本文档 + `route-command.mjs`；
 > `SKILL.md` 只列命令清单与文档锚点。
 
@@ -98,7 +98,7 @@
 
 **数据源**：三位置回退（run/<id>/final/M-Gate-Report.json → audits/M-Gate-Report-vN.json → audits/M-Gate-final.json）+ drafts/ 时间戳 + final/字数控件。
 
-**v18.7.0 → v18.7.1 bug fix**：v18.7.0 lunheng-commands v1.0.0 发布时漏注册此命令（论衡 v18.5.0 已存在但未纳入斜杠命令包装）；v18.7.1 补回。
+**v18.7.0 → v18.7.1 bug fix**：v18.7.0 lunheng-commands v1.0.1 发布时漏注册此命令（论衡 v18.5.0 已存在但未纳入斜杠命令包装）；v18.7.1 补回。
 
 <a id="rollback"></a>
 

@@ -15,18 +15,27 @@
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { countHan } from './_lib/han.mjs';   // 汉字口径真源（与 count-chars 同源）
+import { installExitGuard } from './_lib/exit-guard.mjs';   // 退出码硬化（v18.7.3 P1-5：旧版未装，run/ 下目录 readFileSync 抛错会以默认 exit 1 收场，与「1 = 内容失败」撞义）
+import { parseArgs, USAGE_CODE } from './_lib/cli-args.mjs'; // 参数解析唯一实现（v18.7.3 P1-5）
+installExitGuard();
 
-// === 参数解析（最小手写，fail-closed）===
-const argv = process.argv.slice(2);
-let runDir = null, wantJson = false;
-for (let i = 0; i < argv.length; i++) {
-  const a = argv[i];
-  if (a === '--json') wantJson = true;
-  else if (a === '--run-dir') { runDir = argv[++i]; if (!runDir) { console.error('用法: node lunheng-stats.mjs [--run-dir <dir>] [--json]'); process.exit(10); } }
-  else if (a === '-h' || a === '--help') { console.log('用法: node lunheng-stats.mjs [--run-dir <dir>] [--json]\n  缺省扫描 <cwd>/run，纯只读聚合。'); process.exit(0); }
-  else { console.error(`未知参数: ${a}\n用法: node lunheng-stats.mjs [--run-dir <dir>] [--json]`); process.exit(10); }
+// === 参数解析（v18.7.3 P1-5 改走 _lib/cli-args.mjs，fail-closed 且唯一实现）===
+const USAGE = '用法: node lunheng-stats.mjs [--run-dir <dir>] [--json]';
+let stFlags, stOpts;
+try {
+  ({ flags: stFlags, opts: stOpts } = parseArgs(process.argv.slice(2), {
+    flags: ['--json', '-h', '--help'],
+    values: { '--run-dir': 'run' },
+  }));
+} catch (e) {
+  if (e && e.code === USAGE_CODE) { console.error(e.message); console.error(USAGE); process.exit(10); }
+  throw e;
 }
-const root = resolve(runDir || join(process.cwd(), 'run'));
+if (stFlags.has('-h') || stFlags.has('--help')) {
+  console.log(`${USAGE}\n  缺省扫描 <cwd>/run，纯只读聚合。`);
+  process.exit(0);
+}
+const root = resolve(stOpts['--run-dir'] || join(process.cwd(), 'run'));
 if (!existsSync(root)) { console.error(`run 目录不存在: ${root}`); process.exit(10); }
 
 // === 定位 M-Gate 报告（三位置回退）===
@@ -171,7 +180,7 @@ const summary = {
 };
 
 // === 输出 ===
-if (wantJson) {
+if (stFlags.has('--json')) {
   console.log(JSON.stringify({ projects: projects.map((p) => ({ name: p.name, stage: p.stage, rounds: p.rounds, hanChars: p.han, mgate: p.mgate.format, exit: p.mgate.exit ?? null, p0: p.mgate.p0 ?? null, p1: p.mgate.p1 ?? null, p2: p.mgate.p2 ?? null, review: p.review, cost: p.cost })), summary }, null, 2));
 } else {
   const fmt = (p) => p.mgate.format === 'machine' ? `exit=${p.mgate.exit}` : (p.mgate.format === 'llm-legacy' ? 'LLM兜底' : (p.mgate.format === 'none' ? '无证据' : `?${p.mgate.format}`));

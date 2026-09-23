@@ -106,12 +106,20 @@ function pruneBackups(p) {
   const base = basename(p)
   let entries
   try { entries = readdirSync(dir) } catch { return }   // 目录不可读 → 放弃回收（不阻断写盘）
-  const backs = entries
-    .filter((f) => f.startsWith(base + '.') && /\d{8}-\d{6}(?:-\d+)?\.bak$/.test(f))
-    .sort((a, b) => statSync(join(dir, a)).mtimeMs - statSync(join(dir, b)).mtimeMs)
+  // v18.7.3（P1-6，全量审计）：statSync 包 try/catch 且预计算 mtime——旧实现在 sort 比较器内逐次
+  //   statSync，readdir 与 stat 之间文件被删（并发/杀毒扫描）会未捕获地沿 backupFile → writeWithSafety
+  //   冒泡成 exit 70 **中断写盘**，与「回收失败不阻断」的意图相悖。
+  const backs = []
+  for (const f of entries) {
+    if (!f.startsWith(base + '.') || !/\d{8}-\d{6}(?:-\d+)?\.bak$/.test(f)) continue
+    let mt = 0
+    try { mt = statSync(join(dir, f)).mtimeMs } catch { continue }   // 单个 .bak 状态异常 → 跳过（不阻断）
+    backs.push({ f, mt })
+  }
+  backs.sort((a, b) => a.mt - b.mt)
   while (backs.length > BAK_MAX) {
     const victim = backs.shift()
-    try { unlinkSync(join(dir, victim)) } catch { /* 单个回收失败不阻断主流程 */ }
+    try { unlinkSync(join(dir, victim.f)) } catch { /* 单个回收失败不阻断主流程 */ }
   }
 }
 

@@ -28,29 +28,35 @@ import { readFileSync, existsSync } from 'node:fs'
 import { countHan } from './_lib/han.mjs'
 import { allHeadings, bodyStartOfHeading } from './_lib/sections.mjs'
 import { installExitGuard, requireExistingFile } from './_lib/exit-guard.mjs'
+import { parseArgs, USAGE_CODE } from './_lib/cli-args.mjs'   // 参数解析唯一实现（v18.7.3 P1-5）
 
 installExitGuard()
 
-const argv = process.argv.slice(2)
-const file = argv[0]   // 约定：文件路径必须是第一个参数（便于「<文件> --section …」的直观写法）
-const wantList = argv.includes('--list')
-const selectors = []
-for (let i = 0; i < argv.length; i++) {
-  if (argv[i] === '--section') {
-    const v = argv[i + 1]
-    if (v === undefined || v.startsWith('--')) {
-      console.error('--section 后缺少选择器（如 --section "3.6"）')
-      process.exit(10)
-    }
-    selectors.push(v)
-    i++
+// v18.7.3（P1-5，全量审计）：改走 _lib/cli-args.mjs（唯一实现，含可重复 --section）。
+//   旧手写循环对未知 `-` token（如拼错的 --lst）不报「未知参数」而是落到「至少给一个 --section」——
+//   报错口径偏了；且与全库解析实现分叉。
+let sgFlags, sgOpts, sgPositionals
+try {
+  ({ flags: sgFlags, opts: sgOpts, positionals: sgPositionals } = parseArgs(process.argv.slice(2), {
+    flags: ['--list'],
+    values: { '--section': '"3.6"' },
+    repeat: ['--section'],
+    minPositionals: 1,
+    maxPositionals: 1,
+    positionalHint: '<文件.md>',
+  }))
+} catch (e) {
+  if (e && e.code === USAGE_CODE) {
+    console.error(e.message)
+    console.error('用法: node segment-chars.mjs <文件.md> --list | --section <sel> [--section <sel>]...')
+    process.exit(10)
   }
+  throw e
 }
+const file = sgPositionals[0]   // 约定：文件路径必须是第一个参数（便于「<文件> --section …」的直观写法）
+const wantList = sgFlags.has('--list')
+const selectors = sgOpts['--section']
 
-if (!file || file.startsWith('--')) {
-  console.error('用法: node segment-chars.mjs <文件.md> --list | --section <sel> [--section <sel>]...')
-  process.exit(10)
-}
 if (!existsSync(file)) {
   console.error(`文件不存在: ${file}`)
   process.exit(10)

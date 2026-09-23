@@ -51,11 +51,12 @@ export function parseArgs(argv, spec = {}) {
   const flags = new Set()
   const valueNames = Object.keys(spec.values || {})
   const valueExamples = spec.values || {}
+  const repeatNames = spec.repeat || []   // v18.7.3 P1-5：可重复值旗标（如 segment-chars 的多个 --section）→ opts 值为数组
   const minPos = spec.minPositionals ?? 0
   const maxPos = spec.maxPositionals ?? Infinity
   const posHint = spec.positionalHint || '<位置参数>'
   const known = [...(spec.flags || []), ...valueNames]
-  const opts = Object.fromEntries(valueNames.map((n) => [n, null]))
+  const opts = Object.fromEntries(valueNames.map((n) => [n, repeatNames.includes(n) ? [] : null]))
   const positionals = []
 
   for (let i = 0; i < argv.length; i++) {
@@ -68,7 +69,8 @@ export function parseArgs(argv, spec = {}) {
         const eg = valueExamples[a] ? `（示例：${a} ${valueExamples[a]}）` : `（${a} 后必须紧跟一个值）`
         throw new UsageError(`${a} 缺少值${eg}`)
       }
-      opts[a] = v
+      if (repeatNames.includes(a)) opts[a].push(v)
+      else opts[a] = v
       i++
       continue
     }

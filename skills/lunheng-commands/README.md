@@ -27,7 +27,7 @@
 
 ## 借鉴来源
 
-[2026-09-22 调研 https://ai4scholar.net/](https://ai4scholar.net/) 后的第一梯队落地。详见论衡仓库 [`audits/反哺报告-v4-lunheng-commands斜杠命令.md`](../lunheng-article-pipeline-dsh/audits/反哺报告-v4-lunheng-commands斜杠命令.md)。
+[2026-09-22 调研 https://ai4scholar.net/](https://ai4scholar.net/) 后的第一梯队落地。详见论衡仓库 [`audits/反哺报告-v4-lunheng-commands斜杠命令.md`](../../audits/反哺报告-v4-lunheng-commands斜杠命令.md)。
 
 **Ai4Scholar 借鉴点**：
 - **v2.9.5**「斜杠命令合并重复的引用/搜索为统一入口」——避免 UX 噪声

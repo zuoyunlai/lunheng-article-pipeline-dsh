@@ -176,4 +176,50 @@ for (const f of active) {
   }
 }
 
+// ⑳ 命令数口径（v18.7.3 P1-3，全量审计「命令数 12/11/13 三处漂移」的机械化）：
+//    /lunheng 命令数唯一真源 = skills/lunheng-commands/scripts/route-command.mjs 的 COMMANDS 表
+//    （排除 `-h` 这类同 phase 别名键）。凡文档写「N 个 /lunheng 命令 / 斜杠命令」且 N ≠ 真源数 → P1。
+//    `-cite` 的 3 种模式（默认/-auto/-manual）与 `-h` 别名不计入命令数（口径已在 command-routing.md 定案）。
+{
+  const rcPath = join(REPO_ROOT, 'skills', 'lunheng-commands', 'scripts', 'route-command.mjs');
+  if (existsSync(rcPath)) {
+    const rcSrc = readFileSync(rcPath, 'utf8');
+    const keys = [...rcSrc.matchAll(/^\s*'(-[A-Za-z0-9]+)':\s*\{\s*phase:/gm)].map((m) => m[1]);
+    const phases = new Set();
+    let cmdTrue = 0;
+    for (const k of keys) {
+      const ph = rcSrc.match(new RegExp(`'${k}'\\s*:\\s*\\{\\s*phase:\\s*'([^']+)'`));
+      const phase = ph ? ph[1] : k;
+      if (phases.has(phase)) continue;   // 同 phase 的后续键 = 别名（如 -h → help）
+      phases.add(phase); cmdTrue++;
+    }
+    const claimRe = /(\d+)\s*个\s*\/lunheng\s*(?:斜杠)?命令/g;
+    const scanFile = (absPath, rel) => {
+      if (!existsSync(absPath)) return;
+      const lines = readFileSync(absPath, 'utf8').split('\n');
+      lines.forEach((l, i) => {
+        for (const m of l.matchAll(claimRe)) {
+          if (Number(m[1]) !== cmdTrue) {
+            errors.push(`[P1 命令数口径漂移] ${rel}:${i + 1} 写「${m[1]} 个 /lunheng 命令」≠ 真源 ${cmdTrue} 个（route-command.mjs COMMANDS 表，-cite 3 模式与 -h 别名不计入）`);
+          }
+        }
+      });
+    };
+    for (const f of active) scanFile(f, relative(ROOT, f).replaceAll('\\', '/'));
+    // lunheng-commands 子技能自身（在主技能目录之外，单独扫）
+    const cmdDir = join(REPO_ROOT, 'skills', 'lunheng-commands');
+    if (existsSync(cmdDir)) {
+      const walkLocal = (dir) => {
+        for (const e of readdirSync(dir, { withFileTypes: true })) {
+          const p = join(dir, e.name);
+          if (e.isDirectory()) walkLocal(p);
+          else if (e.name.endsWith('.md') || e.name.endsWith('.mjs')) scanFile(p, relative(REPO_ROOT, p).replaceAll('\\', '/'));
+        }
+      };
+      walkLocal(cmdDir);
+    }
+    scanFile(join(REPO_ROOT, 'lib', 'index.js'), 'lib/index.js');
+  }
+}
+
 }

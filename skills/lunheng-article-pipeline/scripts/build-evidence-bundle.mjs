@@ -287,16 +287,29 @@ if (wantSummary) {
   const datN = cnt('data/数据卡.md');
   const casN = cnt('cases/案例卡.md');
   // 信任级别分布
-  const trustDist = (p) => {
+  // v18.7.3（P1-2，全量审计）：旧实现用 `[Aa] 级|核心期刊…` 一套与 _lib/trust.mjs 三档
+  //   （主人投喂/二手转引/已发布）完全不同且无映射的口径，且 C 档词表混杂「二手转引」——
+  //   审计视图的信任分布与 M-Form-6 判定体系两张皮。现改为与 M-Form-6 同一真源：
+  //   逐行走 TRUST_COMPLIANT_RE 计数已声明档位；未声明 = 该类卡条数（编号去重）− 已声明行数（下限 0）。
+  //   splitCard 只覆盖 [Dxx]（cards.mjs 契约），故 L/D 两类卡统一用「行级声明」口径，不切块。
+  const trustDist = (p, kind) => {
     if (!existsSync(join(project, p))) return null;
     const t = readText(join(project, p), project);   // v18.2.6：剥 BOM
-    const a = (t.match(/[Aa] 级|A 级|核心期刊|权威机构/g) || []).length;
-    const b = (t.match(/[Bb] 级|B 级|一般期刊/g) || []).length;
-    const c = (t.match(/[Cc] 级|C 级|网络来源|媒体报道|二手转引/g) || []).length;
-    return { a, b, c };
+    const dist = { '主人投喂': 0, '二手转引': 0, '已发布': 0, 未声明: 0 };
+    let declared = 0;
+    for (const line of t.split(/\r?\n/)) {
+      const m = TRUST_COMPLIANT_RE.exec(line);
+      if (m) { dist[m[1]]++; declared++; }
+    }
+    const ids = new Set();
+    const re = new RegExp(`\\[${kind}\\d+\\]`, 'g');
+    let mm;
+    while ((mm = re.exec(t)) !== null) ids.add(mm[0]);
+    dist.未声明 = Math.max(0, ids.size - declared);
+    return dist;
   };
-  const litT = trustDist('literature/文献卡.md');
-  const datT = trustDist('data/数据卡.md');
+  const litT = trustDist('literature/文献卡.md', 'L');
+  const datT = trustDist('data/数据卡.md', 'D');
   // M 门状态：真源 = final/M-Gate-Report.json（文档全仓一致口径），兼容 audits/ 旧路径
   const mCandidates = [join(project, 'final', 'M-Gate-Report.json'), join(project, 'audits', 'M-Gate-Report.json'), join(project, 'audits', 'M-Gate-Report-v0.json')];
   const mReportPath = mCandidates.find((p) => existsSync(p));
@@ -368,10 +381,10 @@ ${src ? sections.join('\n') : '（无正文源：本视图不含正文结构，�
 
 ## 二、素材卡数量
 
-| 类型 | 数量 | 信任级别分布（A / B / C） |
+| 类型 | 数量 | 信任级别分布（主人投喂 / 二手转引 / 已发布 / 未声明；v18.7.3 与 M-Form-6 同口径） |
 |------|------|----------------------------|
-| 文献卡 [Lxx] | ${litN} | ${litT ? `${litT.a} / ${litT.b} / ${litT.c}` : '—'} |
-| 数据卡 [Dxx] | ${datN} | ${datT ? `${datT.a} / ${datT.b} / ${datT.c}` : '—'} |
+| 文献卡 [Lxx] | ${litN} | ${litT ? `${litT['主人投喂']} / ${litT['二手转引']} / ${litT['已发布']} / ${litT.未声明}` : '—'} |
+| 数据卡 [Dxx] | ${datN} | ${datT ? `${datT['主人投喂']} / ${datT['二手转引']} / ${datT['已发布']} / ${datT.未声明}` : '—'} |
 | 案例卡 [Cxx] | ${casN} | — |
 
 ### 图件对账（v2.5.2-dsh.16，M-Form-9 同口径）

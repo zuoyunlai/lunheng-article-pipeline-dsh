@@ -123,7 +123,10 @@ const locateAndReplace = (text, oldPart, newPart, a, i, j) => {
     const n = occurrences(text, locateStr);
     if (n !== 1) continue;
     const head = locateStr.slice(0, L);
-    const tail = locateStr.slice(L - from + oldPart.length);
+    // v18.7.2（P0-1 致命修复，全量审计实证）：旧偏移 `L - from + oldPart.length` 在公共前缀 i > CTX 时为
+    //   `2L - i + oldPart.length` < 正确值，tail 会多取 `i - 2L` 个字符——把 oldPart 尾部 + 前缀字符
+    //   **重复注入**目标文本且报告 ok:true（静默损坏修订稿）。正确偏移 = 定位串内 `head(L) + oldPart` 之后 = `L + oldPart.length`。
+    const tail = locateStr.slice(L + oldPart.length);
     // v18.2.6（B-4 附带修）：旧版把 `head + newPart + tail` 当**字符串替换串**传进去 → `$$` / `$&` / `` $` `` / `$'`
     //   会被 String.replace 展开（实测 `$$`→`$`，把行间公式降级为行内）。改**函数式回调**，替换文本一律按字面量插入。
     return { ok: true, text: text.replace(locateStr, () => head + newPart + tail), ctx: CTX, locateStr };

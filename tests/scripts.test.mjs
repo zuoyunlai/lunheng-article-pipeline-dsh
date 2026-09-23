@@ -495,17 +495,26 @@ test('m-gate-check M-Exist-7：§6 成本指标必须含 `~NN[MKB]` 或「实测
   rmSync(d, { recursive: true, force: true })
 })
 
-test('normalize-trust-level：默认 dry-run 不落盘；--write 才落盘并写 .bak', () => {
+test('normalize-trust-level：默认 dry-run 不落盘；--write 落盘写时间戳 .bak，两次写盘不抹上一次回滚点（v18.7.3 P1-1）', () => {
   const d = tmp()
   const f = join(d, '卡.md')
   writeFileSync(f, '# 数据卡\n\n## [D07] 某报告\n摘要：本数据二手转引自某日报。\n')
   const dry = run([join(SCRIPTS, 'normalize-trust-level.mjs'), f])
   assert.equal(dry.code, 0)
   assert.ok(!readFileSync(f, 'utf8').includes('信任级别：'), 'dry-run 不得落盘')
+  const baks = () => readdirSync(d).filter((x) => x.startsWith('卡.md.') && x.endsWith('.bak'))
   const w = run([join(SCRIPTS, 'normalize-trust-level.mjs'), f, '--write'])
   assert.equal(w.code, 0)
   assert.match(readFileSync(f, 'utf8'), /信任级别：二手转引/)
-  assert.ok(existsSync(f + '.bak'), '应写 .bak 备份')
+  assert.ok(baks().length === 1, '应写时间戳 .bak 备份（writeWithSafety）：' + baks().join(','))
+  // 二次写盘（再插入一条不同卡）：旧实现的固定名 .bak 会抹掉第一次的回滚点——时间戳 .bak 必须保留两个
+  const firstBak = baks()[0]
+  writeFileSync(f, readFileSync(f, 'utf8') + '\n## [D08] 另一报告\n摘要：主人投喂的内部数据。\n', 'utf8')
+  const w2 = run([join(SCRIPTS, 'normalize-trust-level.mjs'), f, '--write'])
+  assert.equal(w2.code, 0)
+  assert.ok(baks().includes(firstBak), '第二次写盘不得抹掉第一次的回滚点：' + baks().join(','))
+  assert.ok(baks().length >= 2, '两次写盘应留下两个回滚点：' + baks().join(','))
+  assert.match(readFileSync(f, 'utf8'), /信任级别：主人投喂/)
   rmSync(d, { recursive: true, force: true })
 })
 
@@ -879,6 +888,35 @@ test('consistency-check --fix：dry-run 不得改写任何文件（旧版一跑�
   assert.equal(readFileSync(join(SCRIPTS, 'consistency-check.mjs'), 'utf8'), before)
 })
 
+// v18.7.2 P0-2 回归：--write 此前被参数守卫拒绝（exit 1）→ `--fix --write` 落盘 100% 不可达。
+// 用 tmp 副本跑（绝不碰真仓库）；副本按「仓库布局」摆放（tmp/package.json + tmp/skills/<name>/）。
+test('v18.7.2 P0-2：consistency-check 参数契约——--write 可达、--fix --write 真落盘+备份、--nope 仍拒', () => {
+  const d = tmp()
+  const repoLayout = join(d, 'repo')
+  mkdirSync(join(repoLayout, 'skills'), { recursive: true })
+  cpSync(join(SCRIPTS, '..'), join(repoLayout, 'skills', 'lunheng-article-pipeline'), { recursive: true })
+  writeFileSync(join(repoLayout, 'package.json'), JSON.stringify({ name: 'fixture', version: '0.0.0' }))
+  const cc = join(repoLayout, 'skills', 'lunheng-article-pipeline', 'scripts', 'consistency-check.mjs')
+  const victim = join(repoLayout, 'skills', 'lunheng-article-pipeline', 'references', 'fixture-fix-target.md')
+  writeFileSync(victim, '# fixture\n\n示例（检查）一处。\n')
+  // ① --write 单独出现不再被守卫拒绝（旧行为：stderr「未知参数」+ exit 1 且不执行任何检查）
+  //    注：tmp 副本存在内容性发现时 exit 1 属正常（内容判定），与守卫拒绝（打印「未知参数」）区分。
+  const rW = run([cc, '--write'])
+  assert.ok(!/未知参数/.test(rW.out), '不得再报未知参数：' + rW.out)
+  assert.ok(rW.out.length > 0 || rW.code === 0, '脚本应正常执行（守卫放行）：' + rW.out)
+  // ② --fix --write 真落盘 + .bak-fix 备份存在
+  const rFW = run([cc, '--fix', '--write'])
+  assert.match(rFW.out, /--fix --write 完成/, '应打印完成文案：' + rFW.out)
+  const after = readFileSync(victim, 'utf8')
+  assert.ok(!after.includes('（检查）'), '落盘后不得残留（检查）：' + after)
+  assert.ok(after.includes('（按主控 phase 0 协议）'), '落盘后应为替换文本：' + after)
+  assert.ok(existsSync(victim + '.bak-fix'), '落盘前必须写 .bak-fix 备份')
+  assert.match(readFileSync(victim + '.bak-fix', 'utf8'), /（检查）/, '备份内容应为修复前原文')
+  // ③ --nope 仍被拒（守住 v18.0.5 初衷不回退）
+  assert.equal(run([cc, '--nope']).code, 1, '未知参数仍应 exit 1')
+  rmSync(d, { recursive: true, force: true })
+})
+
 test('token-cost --top N：按 cacheRead 降序给出排名（旧版只有头注释与 CHANGELOG 承诺，代码里是死变量 topMode=false）', () => {
   const d = tmp()
   const home = join(d, 'dshhome')
@@ -1045,6 +1083,25 @@ test('build-evidence-bundle：尚无正文也要出素材阶段视图；--source
   const view = readFileSync(join(proj, 'audits', '审计视图-v0.md'), 'utf8')
   assert.match(view, /无正文源/, '无正文时必须显式标注，不得留空结构冒充')
   assert.match(view, /素材卡数量/, '素材段必须在（T4 分析/Phase 2 消费）')
+  rmSync(d, { recursive: true, force: true })
+})
+
+// v18.7.3 P1-2 回归：信任分布必须走 _lib/trust.mjs 三档口径（旧 A/B/C 正则与 M-Form-6 两张皮，且 C 档混杂「二手转引」）
+test('v18.7.3 P1-2：build-evidence-bundle 信任分布 = 三档 + 未声明（与 M-Form-6 同口径，旧 A/B/C 键不再出现）', () => {
+  const { d, proj, fin, ev } = mkProject()
+  mkdirSync(join(proj, 'literature'), { recursive: true })
+  mkdirSync(join(proj, 'data'), { recursive: true })
+  writeFileSync(join(proj, 'literature', '文献卡.md'),
+    '# 文献卡\n\n## [L01] 甲文献\n信任级别：主人投喂（内部资料）\n\n## [L02] 乙文献\n摘要：网络来源报道。\n')
+  writeFileSync(join(proj, 'data', '数据卡.md'),
+    '# 数据卡\n\n### [D01] 某统计\n信任级别：**已发布**\n\n### [D02] 另一数据\n摘要：来源待核。\n')
+  const r = run([join(SCRIPTS, 'build-evidence-bundle.mjs'), proj, '--summary'])
+  assert.equal(r.code, 0, r.out.slice(0, 300))
+  const view = readFileSync(join(proj, 'audits', '审计视图-v0.md'), 'utf8')
+  assert.match(view, /主人投喂 \/ 二手转引 \/ 已发布 \/ 未声明/, '表头必须是三档 + 未声明：' + view.slice(view.indexOf('素材卡数量'), view.indexOf('素材卡数量') + 400))
+  assert.match(view, /\| 文献卡 \[Lxx\] \| 2 \| 1 \/ 0 \/ 0 \/ 1 \|/, 'L 卡：1 条主人投喂 + 1 条未声明')
+  assert.match(view, /\| 数据卡 \[Dxx\] \| 2 \| 0 \/ 0 \/ 1 \/ 1 \|/, 'D 卡：1 条已发布（含加粗形态）+ 1 条未声明')
+  assert.ok(!/A \/ B \/ C/.test(view), '旧 A/B/C 口径不得残留')
   rmSync(d, { recursive: true, force: true })
 })
 
@@ -4040,6 +4097,38 @@ test('v18.2.9 审计 A7：m-gate-check 未知旗标 / 多余位置参数一律 e
   rmSync(d, { recursive: true, force: true })
 })
 
+// v18.7.3 P1-5 回归：md2html / segment-chars / lunheng-stats 接入 cli-args + exit-guard。
+// 旧实现拼错的 `--` token（--strick/--lst）被静默丢弃或报错口径偏移；lunheng-stats 无 exit-guard，
+// run/ 下 readFileSync 抛错以默认 exit 1 收场（与「1 = 内容失败」撞义）。
+test('v18.7.3 P1-5：md2html/segment-chars/lunheng-stats 参数契约——拼错旗标 exit 10 + 未知参数报错 + stats fs 异常 exit 10', () => {
+  const { d, proj, fin, ev } = mkProject()
+  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文。\n\n## 参考文献\n\nx\n')
+  const out = join(fin, 'o.html')
+  // md2html：拼错 --strict → exit 10（旧版静默丢弃、strict 不生效 exit 0）
+  const m1 = run([join(SCRIPTS, 'md2html.mjs'), join(fin, '定稿.md'), out, '--strick'])
+  assert.equal(m1.code, 10, 'md2html 拼错旗标应 exit 10')
+  assert.match(m1.out + (m1.err || ''), /未知参数/)
+  // md2html：多余位置参数 → exit 10（旧版静默忽略 positional[3+]）
+  const m2 = run([join(SCRIPTS, 'md2html.mjs'), join(fin, '定稿.md'), out, join(fin, '定稿.md'), join(fin, '多余')])
+  assert.equal(m2.code, 10, 'md2html 多余位置参数应 exit 10')
+  // segment-chars：拼错 --list → exit 10 且报「未知参数」（旧版落到「至少给一个 --section」口径偏移）
+  const s1 = run([join(SCRIPTS, 'segment-chars.mjs'), join(fin, '定稿.md'), '--lst'])
+  assert.equal(s1.code, 10, 'segment-chars 拼错旗标应 exit 10')
+  assert.match(s1.out + (s1.err || ''), /未知参数/)
+  // segment-chars：多 --section 仍可用（可重复值旗标）
+  const s2 = run([join(SCRIPTS, 'segment-chars.mjs'), join(fin, '定稿.md'), '--list'])
+  assert.equal(s2.code, 0, 'segment-chars --list 应照常成功：' + s2.out)
+  // lunheng-stats：未知参数仍 10；run 目录不存在仍 10（行为保持）
+  assert.equal(run([join(SCRIPTS, 'lunheng-stats.mjs'), '--nope']).code, 10, 'lunheng-stats 未知参数应 exit 10')
+  assert.equal(run([join(SCRIPTS, 'lunheng-stats.mjs'), '--run-dir', join(d, 'no-such-run')]).code, 10, 'run 目录不存在应 exit 10')
+  // lunheng-stats：fs 异常 → exit 10（exit-guard 归类）。用「文件充当 run 目录」构造 readFileSync EISDIR 之外的场景：
+  //   传一个存在的普通文件作 --run-dir → existsSync 过，后续 readdirSync(文件) 抛 ENOTDIR → exit-guard 应归 10 而非裸 1
+  const fakeRun = join(fin, '定稿.md')
+  const st = run([join(SCRIPTS, 'lunheng-stats.mjs'), '--run-dir', fakeRun])
+  assert.equal(st.code, 10, 'lunheng-stats fs 异常应 exit 10（exit-guard），实得 exit=' + st.code + '：' + (st.out || st.err || '').slice(0, 120))
+  rmSync(d, { recursive: true, force: true })
+})
+
 test('m-gate-check M-Exist-7：§6 成本指标必须含 `~NN[MKB]` 或「实测不可得」（v18.6.3 反哺：原只看「字段有内容」漏报，看板 17/21 token 列空）', () => {
   const { d, proj, fin, ev } = mkProject()
   writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
@@ -5034,6 +5123,41 @@ test('m-gate-check M-Exist-7：§6 成本指标必须含 `~NN[MKB]` 或「实测
   assert.match(it.detail, /成本指标缺实测值/)
   rmSync(d, { recursive: true, force: true })
 })
+
+// v18.7.2 P0-1 回归：公共前缀 > CTX 时 tail 切片索引错——旧实现把 oldPart 尾部+前缀字符重复注入修订稿且报 ok:true。
+// 参数化 prefixLen ∈ {12, 20, 36, 68}，分别落进 CTX=8/16/32/64 的「前缀超过 CTX」区间。
+for (const prefixLen of [12, 20, 36, 68]) {
+  test(`v18.7.2 P0-1：apply-diff 公共前缀(${prefixLen})>CTX——替换结果必须逐字节等于期望，不得重复注入旧文（致命缺陷回归）`, () => {
+    const { d, proj, fin, ev } = mkProject()
+    const target = join(fin, '定稿.md')
+    const before = '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 一、导论\n\n段落甲。'
+    const after = '段落甲。'
+    const oldSent = '前'.repeat(prefixLen) + '旧内容旧内容。'
+    const newSent = '前'.repeat(prefixLen) + '新内容新内容。'
+    const tailPara = '\n\n段落后文。\n\n## 参考文献\n\n[L01] a\n'
+    writeFileSync(target, before + oldSent + tailPara)
+    const list = join(fin, '清单.md')
+    writeFileSync(list, '# 清单\n\n[P0-1]\n- 现况：' + oldSent + '\n- 修改：' + newSent + '\n')
+    const r = run([join(SCRIPTS, 'apply-diff.mjs'), target, list, '--out', join(fin, '初稿-v2.md')])
+    assert.equal(r.code, 0, 'apply-diff 应成功应用：' + r.out)
+    const j = parseJson(r)
+    assert.ok(j.applied >= 1, '至少应用 1 条：' + r.out)
+    const out = readFileSync(join(fin, '初稿-v2.md'), 'utf8')
+    const expected = before + newSent + tailPara
+    assert.equal(out, expected, `prefixLen=${prefixLen}：输出必须逐字节等于期望文本（旧缺陷会重复注入前缀/旧文片段）\n--- 实际 ---\n${out}\n--- 期望 ---\n${expected}`)
+    // 纯插入场景回归（v18.2.5 修复形态，防修一漏一）：oldPart 退化为空格时仍须正确定位
+    const target2 = join(fin, '定稿2.md')
+    writeFileSync(target2, '# 标题\n\n## 摘要\n\n唯一锚点句 [L01] 结尾。\n\n## 参考文献\n\n[L01] a\n')
+    const list2 = join(fin, '清单2.md')
+    writeFileSync(list2, '# 清单\n\n[P0-2]\n- 现况：唯一锚点句 [L01] 结尾。\n- 修改：唯一锚点句 [L01]（辅助证据） 结尾。\n')
+    const r2 = run([join(SCRIPTS, 'apply-diff.mjs'), target2, list2, '--out', join(fin, 'v2-2.md')])
+    assert.equal(r2.code, 0, '纯插入场景应成功：' + r2.out)
+    const out2 = readFileSync(join(fin, 'v2-2.md'), 'utf8')
+    assert.ok(out2.includes('[L01]（辅助证据）'), '纯插入结果须含插入文本：' + out2)
+    assert.ok(!out2.includes('（辅助证据））'), '纯插入结果不得重复右括号：' + out2)
+    rmSync(d, { recursive: true, force: true })
+  })
+}
 
 test('v18.2.9 方案：apply-diff causal 守恒——升级但新增引用 → 不报', () => {
   const { d, proj, fin, ev } = mkProject()

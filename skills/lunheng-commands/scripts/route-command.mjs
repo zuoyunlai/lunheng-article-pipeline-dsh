@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // route-command.mjs — /lunheng <cmd> [args] 路由到论衡阶段
-// 版本：v1.0.0
+// 版本：v1.0.1
 // 本脚本为论衡（lunheng-article-pipeline v18.7.0+）的薄壳 wrapper 命令解析器
 // 不引入新角色 / 新阶段 / 新 M 门；所有重活仍走论衡子代理
 

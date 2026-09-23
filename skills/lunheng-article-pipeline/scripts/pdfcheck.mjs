@@ -15,8 +15,11 @@ const buf = readFileSync(pdfPath);
 const latin = buf.toString('latin1');
 
 const counts = {
-  Page: (latin.match(/\/Page/g) || []).length,
-  Font: (latin.match(/\/Font/g) || []).length,
+  // v18.7.3（P1-6，全量审计）：`/\/Page/g` 同时匹配页树节点 `/Pages` → Page 计数 ≈2 倍虚高、
+  //   `>=5` 阈值随之失真。改负向断言 `/\/Page(?!s)/g` 只数真实页对象；阈值同步按「页数 = Page 对象数」
+  //   口径校准（旧口径下 5 ≈ 实际 2-3 页，新口径 5 = 真实 5 页，判定更严且语义诚实）。
+  Page: (latin.match(/\/Page(?!s)/g) || []).length,
+  Font: (latin.match(/\/Font(?!s)/g) || []).length,
   ToUnicode: (latin.match(/ToUnicode/g) || []).length,
   CIDFont: (latin.match(/CIDFont/g) || []).length,
   Image: (latin.match(/\/Image/g) || []).length,

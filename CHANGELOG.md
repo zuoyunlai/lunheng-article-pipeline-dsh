@@ -2,6 +2,63 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.8.0 — 2026-09-23
+
+> **性质**：P2 文档瘦身战役（两轮）+ 注解密度门机械化——按修订方案 P2 段，分两轮交付（首轮 SKILL.md + maintainers.md + 注解密度门首轮阈值 16%；第二轮手动聚合 3 大 outlier（07-审计/08-终检/任务简报）+ 标题豁免 + 阈值降至 12%）。
+
+### 已完成（v18.8.0 主交付）
+
+1. **SKILL.md 瘦身**：rank 表整张迁移（`maintainers.md` §一）+ guard 已知边界长注压缩为指针 + 模板计数去数字化（`ls` 为准）+ 描述精简（仍带「论衡 v18.8.0：…」前缀，测试断言兼容）+ 「本包为使用者发布版」段歧义改正（双包保证引用 maintainers §四）。
+2. **新增 `references/maintainers.md`**：rank 表考证 / guard 已知边界与部署处方 / 更正史与教训编号索引 / 发布面事实——运行期角色不读。
+3. **AGENTS.md 加「维护者向背景资料」指针** → maintainers.md。
+4. **`repo-hygiene-check` 规则 ⑩ 注解密度门**：references/**/*.md 版本注解行占比 ≤ **12%**（v18.8.0 第二轮实测阈值；锚链 `[display](#anchor)`、表格行、标题行、已聚合引言豁免）；规则本身**禁止抬升**——任何后续提交超 12% 即失败，强制回退到「先瘦身再涨」。
+5. **P2a 第二轮 · 手动聚合 3 个 outlier**（07-审计-auditor 29 行 / 08-终检-finalizer 8 行 / 任务简报-template 11 行——共计 22+48=74 处 inline 版本注解压缩为 `（注解聚合：v18.8.0；…）`），使阈值从 16% 降至 12%。
+
+### 已完成（v18.8.0 首轮，已交付）
+
+1-4 项（v18.8.0 首轮，见「v18.8.0 头」消息）。
+
+### 待办（v18.8.x backlog，本次上下文预算外）
+
+- **注解聚合剩余文件**（00-主控-coordinator 8.2% / deliverables 8.0% / 05-写作-writer 7.6% / 02-数据检索 7.5% / 06-批判 8.6% / 00-主控-扩展职责 8.3%）：均在 ≤12% 阈值内，但个别接近——下次版本务必先聚合再改。
+- **`tests/scripts.test.mjs` (391KB / 177 用例) 拆分为 `tests/scripts/<被测脚本>.test.mjs`** + 静态门自测（`tests/hygiene-self.test.mjs` 用静态源码断言代替机械注入，规避 ROOT 写死导致的子代理失败）+ CI loader-smoke 扩 OS 矩阵 → v18.8.1 单独批次。
+- P4 渐进项：用法退出码统一 exit 10 / exit-guard stdout 保障 / CHANGELOG 归档 / 70KB 大门文件按门拆分 → 随日常迭代。
+
+### 验证
+
+consistency-check exit 0（含新规则 ⑳）｜`node --test` 全绿（236/236）｜repo-hygiene exit 0（含规则 ⑩ 阈值 12%）｜link-check exit 0。
+
+## 18.7.3 — 2026-09-23
+
+> **性质**：P1 写盘与口径收口——修订方案 P1 段六项，全量审计「严重/中等」级问题清零。
+
+### 修复与收口
+
+1. **严重 · `normalize-trust-level.mjs` 接入 writeWithSafety**：旧实现固定名 `.bak`（抹掉上一次回滚点）+ `writeFileSync` 直接覆写（非原子，中途被杀留半写文件），与全库「破坏性写唯一实现」策略背离。现获得时间戳 .bak + 上限回收 + temp-rename 原子写。回归：两次写盘不抹第一个回滚点。
+2. **严重 · `build-evidence-bundle.mjs` 信任分布统一口径**：旧 `[Aa] 级|核心期刊…` 正则与 `_lib/trust.mjs` 三档无映射且 C 档混杂「二手转引」；现逐行走 `TRUST_COMPLIANT_RE` 计数三档 + 「未声明」列（= 卡数 − 已声明），与 M-Form-6 同一真源。回归：L/D 卡混合档位视图断言。
+3. **中等 · /lunheng 命令数定案**：三处口径（12/11/13）统一为「11 个命令（`-cite` 含 3 种模式，`-h` 为别名）」，真源 = route-command.mjs COMMANDS 表；consistency-check 新增规则 ⑳ 机械防守（文档写 N 个 ≠ 真源即 P1，扫描主技能 + lunheng-commands + lib/index.js）。
+4. **中等 · 写手卡 shell 边界矛盾收口**：`05-写作-writer.md` 四处「写完即跑 count-chars」与卡头「写手不调用 shell」矛盾；统一为「写手 read+推理估算并标注『估算』，权威值由主控（脚本或 lunheng_char_count 工具）取回，偏差 >10% 按实值修订」。
+5. **中等 · 参数解析统一**：`md2html` / `segment-chars` / `lunheng-stats` 接入 `_lib/cli-args.mjs`（新增可重复值旗标 `repeat` 支持，向后兼容）——拼错旗标从「静默丢弃」变为 exit 10；`lunheng-stats` 补装 `installExitGuard`（fs 异常 → 10 而非裸 1）。
+6. **中等 · 小修**：`pdfcheck.mjs` `/\/Page(?!s)/g` 修 `/Pages` 误匹配（Page 计数 ≈2 倍虚高）；`destructive-write.mjs` pruneBackups 的 statSync 容错 + 预计算 mtime（单个 .bak 状态异常不再冒泡成 exit 70 中断写盘）。
+
+### 验证
+
+consistency-check exit 0（含新规则 ⑳ 与 .dsh 镜像同步后）｜`node --test` 全绿（本批新增 4 用例）。
+
+## 18.7.2 — 2026-09-23
+
+> **性质**：P0 hotfix——依据全量审计报告（`audits/全量审计报告-v18.7.1.md`，综合 7.6/10）与修订方案（`docs/审计与修订记录/论衡插件-修订方案-v18.7.2.md`）修复 3 项「自检门自身带病」缺陷。主人显式授权，走 AGENTS.md 安全流程（备份 → edit → 验证 → 可回滚 → 如实标注；备份在 `<DSH_HOME>/_backup/lunheng-2026-09-23/`）。
+
+### 修复
+
+1. **致命 · `apply-diff.mjs:126` tail 切片索引错**：旧偏移 `L - from + oldPart.length`（= `2L - i + oldPart.length`）在「现况/修改」公共前缀 i 超过被选 CTX（8/16/32/64）时小于正确值，`tail` 多取 `i - 2L` 个字符——把 oldPart 尾部 + 前缀字符**重复注入**目标文本且报告 `ok:true`（静默损坏修订稿，全量审计内存复现实证）。改为 `locateStr.slice(L + oldPart.length)`。回归：4 档参数化用例（前缀 12/20/36/68 落进 CTX 各区间，断言输出逐字节等于期望）+ 纯插入场景回归（v18.2.5 修复形态防回退）。
+2. **严重 · `consistency-check.mjs` `--fix --write` 不可达**：顶部未知参数守卫只放行 `--fix`，`--write` 被拒 exit 1——而 `--fix` 分支内 `applyFix` 与完成文案均依赖该旗标 → 自动修复落盘 100% 死路。守卫白名单加入 `--write`。回归：tmp 副本上验证 `--write` 放行、`--fix --write` 真落盘 + `.bak-fix` 备份、`--nope` 仍拒（守住 v18.0.5 初衷）。
+3. **严重 · `skills/lunheng-commands/README.md` 断链**：反哺报告 v4 相对路径少一级（`../lunheng-article-pipeline-dsh/…` → `../../audits/…`），`link-check` 复验 exit 0。
+
+### 验证
+
+consistency-check exit 0（含 .dsh 镜像同步后）｜`node --test` 全绿（新增 5 用例）｜link-check exit 0｜repo-hygiene exit 0。
+
 ## 18.7.1 — 2026-09-23
 
 > **性质**：架构整合 + bug fix 增量——把 v18.7.0 作为独立 npm 包发布的 lunheng-commands v1.0.0 **嵌入**论衡 bundle 内（`skills/lunheng-commands/`），让 `dsh plugin add lunheng-article-pipeline` 自动获得 12 个 /lunheng 斜杠命令（不再需要单独 install）。同步补回 v18.7.0 漏注册的 `/lunheng -stats` 命令（论衡 v18.5.0 已有的 `scripts/lunheng-stats.mjs` 现在通过 lunheng-commands 暴露）。

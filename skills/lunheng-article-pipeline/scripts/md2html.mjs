@@ -22,24 +22,32 @@ import { join, basename } from 'node:path';
 import { analyzeSvg, figureNoOf, figurePlaceholders } from './_lib/svg.mjs';
 import { installExitGuard, requireExistingFile, requireExistingDir } from './_lib/exit-guard.mjs'; // 退出码硬化（v18.0.5）
 import { assertNotSameFile, writeWithSafety, SAME_FILE_CODE } from './_lib/destructive-write.mjs'; // 破坏性写策略（v18.2.6）
+import { parseArgs, USAGE_CODE } from './_lib/cli-args.mjs';  // 参数解析唯一实现（v18.7.3 P1-5）
 installExitGuard();
 
-const argv = process.argv.slice(2);
-const figDirIdx = argv.indexOf('--fig-dir');
-const figDir = figDirIdx >= 0 && argv[figDirIdx + 1] ? argv[figDirIdx + 1] : null;
-// v18.0.5（第三方审计 P1-1/口径统一）：**参数与路径错一律 10**（与全库契约一致；退出码 2 保留给
-//   「结构/图件异常」这类内容判定）。旧版这里全用 1，与「1 = P1 内容失败」撞义。
-if (figDirIdx >= 0 && !figDir) { console.error('--fig-dir 缺少值'); process.exit(10); }
-const strict = argv.includes('--strict');
-const positional = argv.filter((a, i) => !a.startsWith('--') && !(figDirIdx >= 0 && i === figDirIdx + 1));
-const mdPath = positional[0];
-const htmlPath = positional[1];
-let svgFile = positional[2] || null;
-
-if (!mdPath || !htmlPath) {
-  console.error('用法: node md2html.mjs <md> <html> [--fig-dir <图件目录>] [<svgFile>] [--strict]');
-  process.exit(10);
+// v18.7.3（P1-5，全量审计）：参数解析改走 _lib/cli-args.mjs（唯一实现）。旧手写解析
+//   （indexOf/filter）会把拼错的 `--strick` 当位置参数外的 `--` token **静默丢弃** → strict 不生效 exit 0；
+//   多余 positional[3+] 同样静默忽略——正是 cli-args 头注释点名要消灭的 B-4 形态。
+const USAGE = '用法: node md2html.mjs <md> <html> [--fig-dir <图件目录>] [<svgFile>] [--strict]';
+let mdFlags, mdOpts, mdPositionals;
+try {
+  ({ flags: mdFlags, opts: mdOpts, positionals: mdPositionals } = parseArgs(process.argv.slice(2), {
+    flags: ['--strict'],
+    values: { '--fig-dir': 'final/图件' },
+    minPositionals: 2,
+    maxPositionals: 3,
+    positionalHint: '<md> <html> [<svgFile>]',
+  }));
+} catch (e) {
+  if (e && e.code === USAGE_CODE) { console.error(e.message); console.error(USAGE); process.exit(10); }
+  throw e;   // 其他异常交 installExitGuard 归类（fs 类 10 / 内部 70）
 }
+const figDir = mdOpts['--fig-dir'];
+const strict = mdFlags.has('--strict');
+const mdPath = mdPositionals[0];
+const htmlPath = mdPositionals[1];
+const svgFile = mdPositionals[2] || null;
+
 requireExistingFile(mdPath, 'Markdown');                                    // 10（含「传目录」）
 // v18.2.6 审计修复（B-1 数据丢失 P0）：旧守卫 `mdPath === htmlPath` 是**字符串比较**，不归一化路径 ——
 //   实测 `md2html.mjs a.md ./a.md` → 守卫放行 → 末尾 writeFileSync 把**源 Markdown 覆盖成 HTML**

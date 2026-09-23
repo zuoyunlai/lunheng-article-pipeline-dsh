@@ -3,11 +3,10 @@
 //
 // 用法: node scripts/normalize-trust-level.mjs <数据卡.md> [<数据卡2.md> ...] [--write]
 //   默认 **dry-run**：只打印将为每条 [Dxx] 追加的行，不落盘。
-//   --write：落盘，且先写备份（v18.2.6 审计修复 P2：**备份位置 = 紧邻原文件的同名 `.bak`**，
-//     即 `<数据卡.md>.bak`。旧注释只说「同名 .bak 备份」却把它挂在「符合 AGENTS.md 文件修改安全流程」
-//     之后，而 AGENTS.md 的备份要求是**主人授权改机制文件**时的「工作区外 <DSH_HOME>/_backup/… 全量备份」——
-//     本脚本改的是**项目数据卡**（非机制文件），故按脚本级就地备份处理：`.bak` 与原文件同目录，
-//     回滚命令即 `cp <卡>.bak <卡>`；`tests/scripts.test.mjs` 亦断言该路径存在）。
+//   --write：落盘，写盘统一走 `_lib/destructive-write.mjs:writeWithSafety`（v18.7.3 P1-1）——
+//     覆盖前落**带时间戳**的同目录备份 `<数据卡.md>.<YYYYMMDD-HHmmss>.bak`（一轮多次写不抹上一次
+//     回滚点；上限 20 个自动回收）+ temp-rename 原子写（中途被杀不留半写文件）。
+//     回滚命令：`cp <卡>.<最新时间戳>.bak <卡>`。
 //
 // 幂等性（v18.2.6 审计修复 P2）：判据是 `_lib/trust.mjs:TRUST_COMPLIANT_RE` ——
 //   只要块内已有合规的「信任级别：<档>」声明就**不插入**。旧版该正则不容忍
@@ -23,10 +22,11 @@
 //   现在：无 token → 该条**不写**、列入未决清单，脚本以 exit 1 收尾，由 T2/人工显式判定后重跑。
 //   ⚠️ 退出码命名空间（v18.0.2 澄清）：本脚本**不是流水线闸门**，`1` 在本脚本里表示「有未决条目/用法错」，
 //      与 M 门约定（`1`=P1 内容失败 / `10`=参数路径错）**不共用语义**；但「参数/路径错」仍统一用 `10` 以降低误读。
-import { readFileSync, writeFileSync, copyFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { dataCardIds } from './_lib/refs.mjs';              // 引用编号口径真源
 import { TRUST_COMPLIANT_RE, pickTrustToken } from './_lib/trust.mjs';   // 信任级别口径真源
 import { splitCard } from './_lib/cards.mjs';               // 卡片切块口径真源
+import { writeWithSafety } from './_lib/destructive-write.mjs';  // 破坏性写统一策略（v18.7.3 P1-1）
 import { installExitGuard } from './_lib/exit-guard.mjs';   // 退出码硬化（v18.0.5）
 installExitGuard();   // 传目录等 fs 类异常 → 10（旧版未捕获 EISDIR → exit 1 = 与「有未决条目」撞义）
 
@@ -69,10 +69,13 @@ for (const file of files) {
     if (!write) console.log(`  · ${file} [D${id}] → ${inserted.trim()}`);
   }
   if (write && changed > 0) {
-    // 备份位置 = 紧邻原文件的同名 .bak（v18.2.6：与头部注释口径统一；回滚 = `cp <卡>.bak <卡>`）
-    copyFileSync(file, file + '.bak');
-    writeFileSync(file, text, 'utf8');
-    console.log(`✓ ${file}: ${changed} 条已规范化（备份 ${file}.bak）`);
+    // v18.7.3（P1-1，全量审计）：写盘改走 _lib/destructive-write.mjs 的 writeWithSafety——
+    //   旧实现「固定名 .bak + writeFileSync 直接覆写」有两缺陷：① 固定名 .bak 会抹掉上一次回滚点
+    //   （destructive-write 头注释批判过的形态）；② 非原子写，进程中途被杀留半写文件。
+    //   现获得：带时间戳 .bak（一轮多次写不丢回滚点）+ 上限回收（BAK_MAX=20）+ temp-rename 原子写。
+    //   回滚命令相应变为：`cp <卡>.<时间戳>.bak <卡>`（取目录下最新 .bak）。
+    const r = writeWithSafety(file, text, { inPlace: true });
+    console.log(`✓ ${file}: ${changed} 条已规范化（备份 ${r.backup ?? '（原文件新建，无备份可做）'}）`);
   } else if (!write) {
     console.log(`· ${file}: 将规范化 ${changed} 条（dry-run 未落盘；加 --write 生效）`);
   } else {

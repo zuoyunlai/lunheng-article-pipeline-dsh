@@ -50,9 +50,12 @@ import { runRepoSurfaceRules } from './_lib/cc-rules/repo-surface-rules.mjs';  /
 installExitGuard();
 // v18.0.5（第三方审计 P2）：未知参数此前被静默忽略（`--nope` → exit 0「自检通过」），
 //   拼错 `--fix` 会静默走**只读模式**（想自动修却没修，且无提示）。现在显式拒绝。
+//   v18.7.2（P0-2 修复，全量审计实证）：旧守卫只放行 `--fix`，`--write` 被拒 exit 1——
+//   而 --fix 分支内 `applyFix = process.argv.includes('--write')` 与「--fix --write 完成」文案
+//   均依赖该旗标 → 宣传的自动修复落盘 100% 不可达（只能 dry-run）。白名单加入 `--write`。
 for (const a of process.argv.slice(2)) {
-  if (a !== '--fix') {
-    console.error(`未知参数: ${a}\n用法: node scripts/consistency-check.mjs [--fix]`);
+  if (a !== '--fix' && a !== '--write') {
+    console.error(`未知参数: ${a}\n用法: node scripts/consistency-check.mjs [--fix] [--write]`);
     process.exit(1);
   }
 }

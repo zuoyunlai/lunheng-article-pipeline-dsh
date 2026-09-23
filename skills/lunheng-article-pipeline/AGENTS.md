@@ -98,6 +98,8 @@ Phase 5 终检     → T8 终检（独立角色，主控 T0 以 T8 身份亲完�
 
 **冲突裁决顺序**：① 官方 `references/official-docs/**`（官方仓库原文）→ ② 本包 `AGENTS.md` / `SKILL.md` → ③ 其他文档。**官方与本包冲突时以官方为准**，并按上表判断应改本包哪一处；改完跑双门。
 
+**维护者向背景资料（v18.8.0 新增）**：rank 表考证 / guard 已知边界与部署处方 / 更正史 / 发布面事实，单一真源 = [`references/maintainers.md`](references/maintainers.md)——运行期角色不读；SKILL.md 只保留运行期要点 + 指针。
+
 **何时必须查官方资料**：改 `package.json` / `cordis.patch.yml` / `lib/**`；新增工具或服务；改 `SKILL.md` frontmatter；调整审计/门禁的**执行方式**（而非检查内容）；打包发布前。
 
 **本包与官方的已知刻意偏离**：见 [`references/glossary.md`](references/glossary.md) **§十二**（自用术语 + 文档约定 + 偏离理由与代价）——改动前先读该节，避免把「刻意设计」当成疏漏改掉。
