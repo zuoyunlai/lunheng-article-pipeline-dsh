@@ -119,15 +119,12 @@ jobs:
       #      → 幂等守卫必然把 skip 置真 → 本步被**整个跳过** → **文档承诺的手工补救路径从来不会执行**。
       #      这是「文档声称强于事实」的又一例，只有真的需要补救时才暴露。现改为「待发布」或「手动 dispatch」都跑。
       #   ④ **失败必须可操作（区分「缺」与「失效」）**：缺 token 仍是 warning（设计如此）；但 token
-      #      **存在却失效**（E401 = 已撤销/过期）是真问题——它让 latest 静默卡在旧版。故捕获后打
-      #      `::error::` 并给出**可直接复制**的补救命令，仍 exit 1（fail-closed，不把「latest 没跟上」伪装成成功）。
-      #      v18.2.4 即由维护者在有凭据的机器上执行该命令补齐（latest / dsh 均已 → 18.2.4）。
-      # v18.2.6 末状态变更（2026-09-19）：`NPM_TOKEN` **已被主人删除**（它在 18.2.4 与 18.2.6 两次发布
-      #   时都已失效，使本步在**发布成功后**仍把作业判红）。删除后本步走上面的「缺 token」分支 → 仅
-      #   `::warning::`、作业绿。**运维后果**：每次发版后 `latest` 不再自动前移（`dsh` 由
-      #   `npm publish --tag dsh` 自动指向新版，不受影响），需手工 `npm dist-tag add …@<版本> latest`；
-      #   18.2.6 即按此手工补齐。要恢复自动化就重新签发细粒度 token 并 `gh secret set NPM_TOKEN`
-      #   （治理要求见 SECURITY.md「NPM_TOKEN 的用途与治理」）。
+      #      **存在却失效**（E401 = 已撤销/过期/无 dist-tag:write 范围）是真问题——它让 latest 静默卡在旧版。
+      #      故捕获后打 `::error::` 并给出**可直接复制**的补救命令，仍 exit 1（fail-closed，不把「latest 没跟上」伪装成成功）。
+      # v18.8.0 现状（2026-09-23）：`NPM_TOKEN` 已在 repo secrets 恢复（主人 v18.7.1 发布后手工补打 latest
+      #   时同步换发）。本步在 tag 触发路径会自动把 `latest` 写到本次版本（除非 token 范围不足）。
+      #   workflow_dispatch 路径仍可用作「只补 dist-tag，不重发 npm」的手动补救——满足 v2.5.2-dsh.13
+      #   「手工补救路径」的设计意图。token 治理要求见 SECURITY.md「NPM_TOKEN 的用途与治理」。
       - name: 核对 dist-tag（只读；有 token 才补打 latest）
         # v18.2.9（第三方审计 B8）：dispatch 限定默认分支——token 一旦按上方注释重新签发，
         #   任何有 write 权限者本可对任意分支 dispatch 触发含 NPM_TOKEN 的作业；限定默认分支收窄该面。

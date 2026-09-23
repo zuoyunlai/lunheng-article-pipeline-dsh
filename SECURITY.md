@@ -37,10 +37,16 @@
 - **幂等守卫**：目标版本已存在于 npm 时跳过发布。
 - **发布后审计**：断言 `npm view <pkg>@<ver> gitHead` == 本次提交 SHA，且 `dist-tags.dsh` 指向该版本。
 - 历史版本 `2.5.2-dsh.8`–`.12` 为**本地手工发布、无 provenance**（已在 `CHANGELOG.md` 记录）；自 `2.5.2-dsh.13` 起恢复 tag + OIDC 流程。
-- **`NPM_TOKEN` 的用途与治理（v18.2.4 增补，第三方审计 G.1；v18.2.6 末已删除该 secret）**：发布本身走 OIDC、**不需要** token；该 secret 曾经**只**用于发布后 `npm dist-tag add … latest` 这一步——OIDC 覆盖的是 `npm publish`，而 `npm dist-tag` 仍需写鉴权（工作流注释已记实测：无 token 时该命令因无鉴权 exit 1；故工作流写成「无 token 只告警、不失败」）。
-  > **治理要求**：① 用**细粒度 token**、只授本包写权限、设最短有效期；② 定期轮换；③ **一旦出现在聊天记录 / 日志 / 截图 / CI 输出中即视为已泄露**，立即 revoke 并重发；④ 该 token 永远不得打印（`publish.yml` 只经 `env:` 传递，不 `echo`）。
+- **`NPM_TOKEN` 的用途与治理（v18.2.4 增补，第三方审计 G.1）**：发布本身走 OIDC、**不需要** token；该 secret 曾经**只**用于发布后 `npm dist-tag add … latest` 这一步——OIDC 覆盖的是 `npm publish`，而 `npm dist-tag` 仍需写鉴权（工作流注释已记实测：无 token 时该命令因无鉴权 exit 1；故工作流写成「无 token 只告警、不失败」）。
+  > **治理要求**：① 用**细粒度 Automation token**（npmjs.com → Access Tokens → Generate New Token → type=Automation, packages=@all-scoped / @zuoyunlai-scoped、perms=read+write）、只授本包写权限、设最短有效期；② 定期轮换；③ **一旦出现在聊天记录 / 日志 / 截图 / CI 输出中即视为已泄露**，立即 revoke 并重发；④ 该 token 永远不得打印（`publish.yml` 只经 `env:` 传递，不 `echo`）；⑤ 仓库 secret 命名固定为 `NPM_TOKEN`，不得改名（yml 内引用硬编码）。
   > **当前状态（2026-09-19 记录）**：该 secret **已删除** —— 它在 v18.2.4 与 v18.2.6 两次发布时均已失效（实测 `E401`，见 `CHANGELOG.md` 对应段），使「核对 dist-tag」这一步在**发布成功后**仍把作业判红。删除后该步走「无 token」分支（仅 `::warning::`，作业绿）。
-  > **运维后果（后来者须知）**：**每次发版后 `latest` 不再自动前移**（`dsh` 由 `npm publish --tag dsh` 自动指向新版本，不受影响）。发布后请在有凭据的机器上执行：`npm dist-tag add lunheng-article-pipeline@<版本> latest`（首次发布 18.2.6 时即按本仓发布日志中的同一条命令手工补打）。若要恢复自动化，重新签发细粒度 token 并按上面 ①–④ 治理，然后 `gh secret set NPM_TOKEN`。
+  > **故障排查（维护者侧）**：
+  >   1. `npm view lunheng-article-pipeline dist-tags` 应见 `latest` / `dsh` 同步到当前最新 tag；
+  >   2. 若 `latest` 落后 → 本地执行 `npm dist-tag add lunheng-article-pipeline@<版本> latest`（dsh 永远由 OIDC `npm publish --tag dsh` 自动指向，无须修）；
+  >   3. CI dist-tag 步若打 `NPM_TOKEN 存在但鉴权失败（E401）` → token 在 npm 端失效，按治理 ⑤ `npm token revoke <id>` 后重新签发并 `gh secret set NPM_TOKEN <新 token>`；
+  >   4. CI dist-tag 步若打 `未配置 NPM_TOKEN`（warning）→ 仓库 secret 槽位实际为空或该 job 上下文未取到，主人 `gh secret list` 确认存在后用 `gh secret set NPM_TOKEN <token>` 重新写入；
+  >   5. workflow_dispatch 手动路径：UI → Actions → publish.yml → Run workflow → 默认分支 master → 触发「仅 dist-tag 不重发 npm」的补救（idempotent guard 见 `publish.yml` 的「幂等检查」步）。
+  > **完整发布链（v18.8.0 实测）**：本地门 → git commit → tag push → CI gates（4门 + 回归） → OIDC npm publish（`--tag dsh` 自动指向）→ dist-tag 步（若有 token 则同步 `latest`，否则 warning）→ 发布后审计（gitHead 轮询等待） → release job（创建 GitHub Release + 附 tgz 资产）。
 
 ## 支持的版本
 
