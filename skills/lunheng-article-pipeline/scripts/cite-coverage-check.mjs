@@ -151,7 +151,7 @@ const exitCode = allPass ? 0 : (hasP1 ? 1 : 3);
 
 const result = {
   file,
-  version: 'v18.10.0',
+  version: 'v18.11.0',
   checks: {
     'C-Strength': {
       name: '引用关联强度分布',

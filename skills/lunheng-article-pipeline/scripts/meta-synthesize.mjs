@@ -137,7 +137,7 @@ const heterogeneityHints = [
 // === 输出 ===
 const result = {
   project: projectPath,
-  version: 'v18.10.0',
+  version: 'v18.11.0',
   trigger: { threshold: trigger, actualCards: totalCards, triggered: true },
   prismaFlow,
   effectSizeCandidates,

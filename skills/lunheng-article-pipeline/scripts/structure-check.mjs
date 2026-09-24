@@ -124,7 +124,7 @@ const exitCode = allPass ? 0 : (hasP1 ? 1 : 3);
 const result = {
   file,
   mode: humanities ? 'IMRaD-Alternate (人文)' : 'IMRaD (实证)',
-  version: 'v18.10.0',
+  version: 'v18.11.0',
   checks: {
     'S-IMRaD': {
       pass: sImradPass,

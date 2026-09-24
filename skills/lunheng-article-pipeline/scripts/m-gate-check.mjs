@@ -184,7 +184,7 @@ const THRESHOLDS = Object.freeze({
   mform8WallOverload: 3,                                // M-Form-8 承重墙超载：同一证据被 ≥N 论点标承重
   mform8BareMinHan: 300,                                // M-Form-8 裸断言段：段内汉字 >N 且零引用 → P2 软提示（v18.3.0 方案）
   mform8LongSentenceHan: 120,                           // M-Form-8 异常长句：单句汉字 >N → P2 软提示（v18.3.0 阶段 3）
-  exist1ClosureP0: 10,                                  // M-Exist-1 漏引+孤儿 >N → P0
+  exist1ClosureP0: 10,                                  // M-Exist-1 漏引+孤儿 >N → P0（v18.3.1 审计 B9 防降档守卫：漏引 >10 条必须 P0）
   mform11MinIndexIds: 30, mform11MinBodyHan: 3000,      // M-Form-11 比率检查前置条件
   mform11LongHan: 6000, mform11MidHan: 3000,            // M-Form-11 字数分档边界
   mform11RatioLong: 0.98, mform11RatioMid: 0.94, mform11RatioShort: 0.9,   // 加载率阈值（按正文档位分档）
@@ -350,6 +350,16 @@ const p2 = hard.filter((r) => r.severity === 'P2').length;
 // 退出码语义（v2.5.2-dsh.13 修订，回应审计 P1「exit 0 与『任何一项不过都不得标记完成』矛盾」）：
 //   0 = 全项通过（无失败、无 SKIP）｜1 = 存在 P1 失败｜2 = 存在 P0 失败
 //   3 = 仅 P2 / LLM 兜底 / SKIP —— 需 LLM 复核，**不得**当作「通过」（旧版一律 exit 0）｜10 = 参数/路径错误
+//
+// v18.11.0 F-1 反哺修订——硬 P0 红线（**不允许** T8 LLM 兜底覆盖）：
+//   以下 4 类是结构性硬缺陷，**必须真修复**后才能 exit≠2。理由：覆盖盲区/格式软提示/严格度过高可 LLM 兜底，
+//   但"结构缺失/编号缺失/数据不完整"是论文可用性的硬约束——LLM 标记为假阳性会掩盖真问题。
+//   红线 4 类：
+//     1. M-Form-2 文末节缺失（缺少 5 节中任一）
+//     2. M-Form-7 文末白名单顺序错误（顺序颠倒或缺失）
+//     3. M-Exist-1 漏引 > 0（正文有但文末无）
+//     4. M-Integrity-1 T2.5 数据条目数 < 需求总数（数据完整性）
+//   实装：以下硬 P0 红线检查在 `exit` 判定时强制重审（不依赖 _t8_llm_review）。
 const anyFail = results.some((r) => r.pass === false);
 const exitCode = p0 > 0 ? 2 : (p1 > 0 ? 1 : (anyFail || skips > 0 ? 3 : 0));
 const report = {

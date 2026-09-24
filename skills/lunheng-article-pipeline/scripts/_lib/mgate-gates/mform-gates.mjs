@@ -143,9 +143,12 @@ export function mForm5(ctx) {
   const { body, THRESHOLDS, results } = ctx;
 //     v2.5.2-dsh.17 补严重度分级——自省审计发现旧版最高只到 P1，**P0 分支不可达**，
 //     与同族的 M-Form-4（元数据泄露）/ M-Form-9 不一致：过程语言成规模 = 读者看到流水线内部 = 交付级缺陷）===
-// v18.0.0 修复（冲突⑨）：旧表列「承重墙 / 承重案例」**全词** → 正文写「承重证据」即漏网
-//   （实战：本文 §5.3 末段「承重证据之脆弱环」判「零命中」，由 T7 独立扫出）。
-//   现改为「承重」**前缀词整体入表**，并补 05 卡内部术语（一处两用 / 段级条目 / 素材卡类名）。
+// ⚠️ v18.11.0 F-1' **已回滚**（回归测试驳回）：曾按 v1 反哺报告建议从词表**删除**「承重墙」，
+//   但 `tests/scripts.test.mjs` 的「M-Form-5 禁词表逐词注入」与「M-Form-4 任一泄露即 P0」两条用例
+//   把「承重墙」写成**契约词**（注入即须命中，且按 6-10 处 / >10 处锁死 P1/P0 档位）——
+//   删除后计数降 1，两条用例同时变红。**词表是契约，不得单方删减**。
+//   真问题的正解在**稿件侧**：学术写作避免沿用流水线内部话术（「承重墙」在本流水线里既是
+//   M-Form-8 的分析术语、又是 M-Form-5 的禁词——写手应改用「核心支撑论点 / 主导机制」等中性表述）。
 const bannedBanned = /v\d+ 稿|初稿|草稿|修订说明|上一版|下一版|(?<!板)卡级|修卡|承重|批注|待回查|审计环节|流水线|将在[^，。\n]{0,8}订正|一处两用|段级条目|索引段|素材加载清单|素材卡|案例卡|数据卡|文献卡/g;
 const estRe = /据行业经验估算/g;
 const weakAITrend = /据可靠来源|据悉|据了解|研究显示|专家表示/g;
@@ -227,6 +230,10 @@ const ENDNOTE_FORBIDDEN = [
   /论衡[^\n。；]{0,12}(?:agent|流水线|技能|测试轮)/g,
   // v18.0.0：补「读者面内部术语」——实战本轮文末「数据来源」节出现「数据卡 [D02] 未记页码」
   //   （行 147，由 T7 独立发现、M-Form-5 因 body 不含文末节而漏检）
+  // ⚠️ v18.11.0 F-2 **已回滚**（回归测试驳回）：曾建议文末扫描同样豁免「承重」，但 M-Form-4 的
+  //   契约用例（自省审计）以过程语言注入锁死档位，且「文末节不得含内部术语」是本门立法目的本身。
+  //   正解同样在稿件侧：文末节（参考文献/数据来源/案例来源/先行者文献）写**纯书目信息**，
+  //   不写「承重证据落在…」这类分析性散文。
   /承重|素材卡|案例卡|数据卡|文献卡|索引段|素材加载清单|一处两用|段级条目|卡级|修卡/g,
 ];
 // v18.2.2（主人授权的机制修订；依据 2026-09-12 ai-era-humanity-crisis 全量测试反哺）：
@@ -358,7 +365,11 @@ let mform8Findings = { L_missing: 0, weak: 0, total: 0, details: [], soft: [] };
 try {
   // v2.5.2-dsh.5 修复：排除前置/收尾非论点段（摘要/关键词/引言/结语）——摘要与引言天然不引 [Lxx]
   // （引言以 [先xx] 声明原创性差异点，属论衡原创性机制而非论点论证），之前把「摘要」当正文段查 [Lxx] 导致恒 P0 误报。
-  const FRONT_BACK = ['摘要', '关键词', '引言', '结语', '结论', '展望'];
+  // v18.11.0 F-2' 反哺——补英文摘要/关键词段：旧表只有中文标题 → 英文学术论文的
+  //   `## Abstract` / `## Keywords` 段被当作正文段查 [Lxx]，恒报「段缺[Lxx]」（v1 反哺报告问题 2）。
+  //   实测：本项目 v4 的 `## Keywords` 段被判 P0（T8 只能靠加 [Lxx] hack 绕过——那本身是违规改写）。
+  const FRONT_BACK = ['摘要', '关键词', '引言', '结语', '结论', '展望',
+    'Abstract', 'Keywords', 'Keyword', 'Acknowledg', 'References', 'Bibliography'];
   const sections = body.split(/^##\s+/m).filter((s) => s.trim().length > 0);
   for (const sec of sections.slice(0, THRESHOLDS.mform8MaxSections)) {
     if (sec.length < THRESHOLDS.mform8MinSecLen) continue;
@@ -431,49 +442,64 @@ try {
         ? /^#{2,4}\s*(承重墙|承重证据|承重清单)/.test(l)
         : /承重证据\s*top\s*1/i.test(l);
       let fenceOn = false;
-      let headIdx = -1;
-      let textIdx = -1;
+      const headCandidates = [];
+      const textCandidates = [];
       for (let i = 0; i < ol.length; i++) {
         if (isFenceLine(ol[i])) { fenceOn = !fenceOn; continue; }
         if (fenceOn) continue;
-        if (headIdx === -1 && wallHeadAnchor(ol[i])) headIdx = i;
-        if (textIdx === -1 && wallTextAnchor(ol[i])) textIdx = i;
+        if (wallHeadAnchor(ol[i])) headCandidates.push(i);
+        if (wallTextAnchor(ol[i])) textCandidates.push(i);
       }
-      const sIdx = headIdx !== -1 ? headIdx : textIdx;
+      // v18.11.0 F-8 反哺——锚点候选 fallback（修「选错表」）：
+      //   旧实现只取**第一个**表头锚点（headIdx）——但大纲里常有多个含「承重」的表格行
+      //   （如 §〇 骨架表的「| §4 | 机制分解：四重锁定（**承重墙**） | …」紧随其后的行、
+      //    或自检表的「| 承重墙清单（15 行含论点N） | §五 RL 清单 | ✓ |」），
+      //   首个候选往往落在**非承重墙清单**的表上 → block 内无结构性条目 → 假报 P0。
+      //   实测（本项目）：锚点选中自检表行 → 报「承重墙清单无结构性条目」，
+      //   而真清单在 `### 承重墙清单（M-Form-8 机检锚点；每行带「论点N」）` 标题下齐备。
+      //   修法：按「表头候选 → 标题候选」顺序逐个试算 block 与 structRows，
+      //   取**第一个能解析出结构性条目**的候选；全为 0 时退回首个候选（保留原有留痕行为）。
+      const resolveBlock = (idx) => {
+        const head = /^(#{1,6})\s/.exec(ol[idx]);
+        let e = ol.length;
+        if (head) {
+          const re = new RegExp(`^#{1,${head[1].length}}\\s`);
+          for (let i = idx + 1; i < ol.length; i++) { if (re.test(ol[i])) { e = i; break; } }
+        } else {
+          const contRe = wallHeadAnchor(ol[idx]) ? /^\s*\|/ : /^\s*(\||[-*]\s)/;
+          let gap = 0;
+          for (let i = idx + 1; i < ol.length; i++) {
+            if (/^\s*$/.test(ol[i])) { if (++gap > 3) { e = i; break; } continue; }
+            if (!contRe.test(ol[i])) { e = i; break; }
+            gap = 0;
+          }
+        }
+        const blk = ol.slice(idx, e);
+        const loose = blk.filter((l) => /\[[LDC]\d+\]/.test(l) && /论点/.test(l));
+        const strict = blk.filter((l) => /\[[LDC]\d+\]/.test(l) && /论点\s*[0-9一二三四五六七八九十]/.test(l));
+        return { block: blk, rows: Math.max(loose.length, strict.length), strict, loose };
+      };
+      const orderedCandidates = [...headCandidates, ...textCandidates];
+      let sIdx = -1, resolved = null;
+      for (const c of orderedCandidates) {
+        const r = resolveBlock(c);
+        if (r.rows > 0) { sIdx = c; resolved = r; break; }
+      }
+      if (sIdx === -1 && orderedCandidates.length > 0) {
+        sIdx = orderedCandidates[0];
+        resolved = resolveBlock(sIdx);
+      }
       if (sIdx !== -1) {
         wall8.checked = true;
         // v18.2.5 新增：记录**实际选中的表头行**，让 detail 自带「锚点选对了哪张表」的证据——
         //   本次 bug 的教训是「选错表」在旧 detail 里完全不可见（只报超载结果，不报依据）。
         wall8.headRow = String(ol[sIdx] || '').trim();
-        const head = /^(#{1,6})\s/.exec(ol[sIdx]);
-        let eIdx = ol.length;
-        if (head) {
-          const re = new RegExp(`^#{1,${head[1].length}}\\s`);
-          for (let i = sIdx + 1; i < ol.length; i++) { if (re.test(ol[i])) { eIdx = i; break; } }
-        } else {
-          // 行内式 / 表头式锚点（无标题）：收**表格行**（表头锚点）或**表格/列表行**（行内锚点），
-          //   并**容忍 ≤3 行空行间隔**（v18.2.2：旧实现在空行处即停 → 表头与表体被空行分开时只收到表头）。
-          //   ⚠️ v18.2.2 **二修**——首次修订引入的回归，由回归验证子代理实测发现（2026-09-12）：
-          //   旧续行谓词 `/^\s*[|*-]/` 会把**加粗散文行**当结构性行（`**三角验证覆盖率自检**：…[L02]…`
-          //   行首 `*` 命中字符类 `*`）→ 该段的方括号编号被计入承重频次 → **假报**
-          //   「承重墙超载：[L02]×3论点,[L03]×3论点,[D03]×3论点」。
-          //   真值：表内 10 行 top1 = L02×2 / L03×2 / D03×1，**无超载**（大纲自检段亦明示不超载）。
-          //   故收紧为：**表头锚点只收表格行** `^\s*\|`；行内锚点的列表项也要求 `[-*]` 后**跟空白**
-          //   （`^\s*[-*]\s`）——不再用裸字符类 `[|*-]`。
-          const contRe = wallHeadAnchor(ol[sIdx]) ? /^\s*\|/ : /^\s*(\||[-*]\s)/;
-          let gap = 0;
-          for (let i = sIdx + 1; i < ol.length; i++) {
-            if (/^\s*$/.test(ol[i])) { if (++gap > 3) { eIdx = i; break; } continue; }
-            if (!contRe.test(ol[i])) { eIdx = i; break; }
-            gap = 0;
-          }
-        }
-        const block = ol.slice(sIdx, eIdx);
-        // 只认「结构性行」：表格行 / 列表项 / 含论点标记的行（防把散文里的编号算成承重墙标注）
-        // 结构性行要求**同时**：① 行内有编号；② 行内带「论点N」标记（承重墙清单是「每论点一条 top1」的语义）
-        //   —— 只认「含论点标记」的行，防止把「论点-论据映射表」（一行可含多个编号）算成承重墙标注
-        const structRows = block.filter((l) => /\[[LDC]\d+\]/.test(l) && /论点\s*[0-9一二三四五六七八九十]/.test(l));
-        wall8.rows = structRows.length;
+        // 段体边界与结构性行均由上方 `resolveBlock()` 计算（F-8 锚点候选 fallback）；
+        // 结构性行判据（v18.11.0 F-8 简化）：行内含编号 + 含「论点」标记，**宽松优先**——
+        //   紧凑表格（「论点 N | 承重证据」）行内编号与论点标记并存即可，不再要求「论点」后必须跟数字。
+        const block = resolved.block;
+        const structRows = resolved.loose.length >= resolved.strict.length ? resolved.loose : resolved.strict;
+        wall8.rows = resolved.rows;
         const freq = new Map();
         for (const l of structRows) for (const m of l.matchAll(/\[([LDC])(\d+)\]/g)) {
           const id = `[${m[1]}${m[2]}]`;
@@ -481,8 +507,15 @@ try {
         }
         wall8.claims = new Set([...block.join('\n').matchAll(/论点\s*([0-9一二三四五六七八九十]+)/g)].map((m) => m[1])).size;
         wall8.overload = [...freq.entries()].filter(([, n]) => n >= THRESHOLDS.mform8WallOverload).map(([id, n]) => `${id}×${n}论点`);
+        // v18.11.0 F-8 反哺——「有论点未标 top1」按**横排布局**折算（避免双列清单误报）：
+        //   旧实现直接比 `claims > rows`——但大纲常把承重墙清单排成 2 列/行
+        //   （`| 论点N | 承重证据 | 次数 | 论点N | 承重证据 | 次数 |`），15 个论点只需 8 行，
+        //   于是「15 > 8」恒报「有论点未标 top1」（实测本项目）。真值：8 行 × 2 列 = 15 个论点齐全。
+        //   修法：按每行**实际出现的「论点」标记数**折算容量 `rows × perRow`，只有超出容量才算缺标。
+        const perRow = Math.max(1, ...[...structRows.map((l) => (l.match(/论点\s*[0-9一二三四五六七八九十]+/g) || []).length)]);
+        const capacity = wall8.rows * perRow;
         if (wall8.rows === 0) wall8.notes.push('承重墙清单无结构性条目（每个论点须标一条「承重证据 top1」）');
-        else if (wall8.claims > wall8.rows) wall8.notes.push(`${wall8.claims} 个论点但只标了 ${wall8.rows} 条承重墙——有论点未标 top1`);
+        else if (wall8.claims > capacity) wall8.notes.push(`${wall8.claims} 个论点但只标了 ${capacity} 条承重墙（${wall8.rows} 行 × ${perRow} 列）——有论点未标 top1`);
         // 幽灵编号：承重墙标了卡片里不存在的编号
         const cardIds8 = new Set();
         // v18.0.0：纳入 **先行者清单** —— `[先NN]` 编号不在三张素材卡内（存在 `literature/先行者清单.md`），
@@ -620,7 +653,17 @@ try {
       const union = unionRaw + '\n' + unionRaw.replace(/(\d),(?=\d{3}\b)/g, '$1');
       for (const [n, f] of fileNos) {
         const nums = svgTextNumbers(readFileSync(join(figDir, f), 'utf8'));
-        const unmatched = [...nums.keys()].filter((t) => t.length >= 2 && !union.includes(t));
+        // v18.11.0 F-10 反哺——加「数学推算白名单」：图上数字由数据卡数字加减得出（如 3196-147=3049）
+        //   时不算「无出处」。旧实现只做字符串包含比对 → 推算值被判无出处（v2 反哺报告问题 10）。
+        //   判据：从数据卡/正文提取全部数字集合，若某图上数字 = 集合内两数之差/和，则视为可推算。
+        const knownNums = [...new Set((unionRaw.match(/\d+(?:\.\d+)?/g) || []).map(Number))];
+        const derivable = new Set();
+        for (const a of knownNums) for (const b of knownNums) {
+          if (a === b) continue;
+          const d = a - b; if (d > 0) derivable.add(String(d));
+          const s = a + b; if (s > 0) derivable.add(String(s));
+        }
+        const unmatched = [...nums.keys()].filter((t) => t.length >= 2 && !union.includes(t) && !derivable.has(t));
         if (unmatched.length) {
           softNotes.push(`图${n} 图上数字 ${unmatched.slice(0, 5).join(',')}${unmatched.length > 5 ? ` 等 ${unmatched.length} 个` : ''} 在数据卡/正文中找不到出处（启发式：可能为刻度或坐标，请人工确认）`);
         }
@@ -679,6 +722,11 @@ try {
     const idx = indexSection(lines);
     if (!idx) { findings.push(`${name}: 缺「## 📇 索引段」标题`); continue; }
     const indexBlock = idx.body.join('\n');
+    // ⚠️ v18.11.0 F-6 **已回滚**（回归测试当场驳回）：曾把「整张卡的 [Lxx] 集合」并入 idxIds，
+    //   结果 idxIds 与 bodyIds 恒等 → `missing` 永为空 → **「索引缺条」检查彻底失效**
+    //   （tests:「m-gate-check M-Form-10：索引段缺条必须报」+「v18.3.1 B9 防 P0 降 P1」两条用例变红）。
+    //   正解：索引段条目须按规定格式写方括号（`| [L01] | 作者 | …`，见 `_shared/机检硬格式.md` 条 3）；
+    //   表格写成 `| L01 |`（无方括号）**本就是不合规**，脚本报缺条是**正确行为**，不得为迁就单篇放宽。
     const idxIds = new Set([...indexBlock.matchAll(/\[([LDC])(\d+)\]/g)].map((m) => m[1] + m[2]));
     const bodyIds = new Set([...entryIds(cardText)].map((id) => id.slice(1, -1)));   // `[L01]` → `L01`（本段口径无方括号）
     const missing = [...bodyIds].filter((x) => !idxIds.has(x));       // 索引缺条 → 下游漏卡（硬）
@@ -690,6 +738,12 @@ try {
     if (missing.length) findings.push(`${name}: 索引段缺 ${missing.length} 条（${missing.slice(0, 5).join(',')}）→ 下游按索引定位会漏卡`);
     if (extra.length) softFindings.push(`${name}: 索引段有 ${extra.length} 个编号在正文无对应条目（${extra.slice(0, 5).join(',')}）`);
     if (thin.length) softFindings.push(`${name}: ${thin.length} 行索引信息量不足（需 编号 + 主题 + 支撑论点）`);
+    // ⚠️ v18.11.0 F-2 **已回滚**（回归测试驳回）：曾把「头部声明 ≠ 正文条目」由 hard finding 降为
+    //   soft，理由是「best-effort 解析可能误匹配」。但 `tests/scripts.test.mjs`
+    //   「m-gate-check M-Form-10：索引段缺条必须报…」用例断言该串必须以**硬问题**出现
+    //   （`/头部声明 5 条 ≠ 正文条目 2 条/`）——降档即红。**头部声明对账是契约，不得降档**。
+    //   正解在稿件侧：头部「总条数」只写本类条目数、且勿在他处写「（合计 N 条）」诱发 best-effort 误取
+    //   （这条已写进 `pipeline-readme.md` §派发话术的「格式硬约束 7 条」第 6 条）。
     const headN = cardText.match(/(?:总条数|合计)[^\d]{0,10}(\d+)\s*条/);
     if (headN && bodyIds.size && Number(headN[1]) !== bodyIds.size) {
       findings.push(`${name}: 头部声明 ${headN[1]} 条 ≠ 正文条目 ${bodyIds.size} 条（best-effort 解析头部声明）`);

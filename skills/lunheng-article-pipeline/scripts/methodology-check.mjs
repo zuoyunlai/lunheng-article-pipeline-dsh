@@ -132,7 +132,7 @@ const exitCode = allPass ? 0 : (hasP0 ? 2 : (hasP1 ? 1 : 3));
 
 const result = {
   file,
-  version: 'v18.10.0',
+  version: 'v18.11.0',
   checks: {
     'M-Form-12': {
       name: '方法节参数完整性',

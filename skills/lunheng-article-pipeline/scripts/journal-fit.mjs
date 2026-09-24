@@ -148,7 +148,7 @@ const exitCode = allPass ? 0 : ((jReasonSeverity === 'P1' || jCycleSeverity === 
 const result = {
   journal: jName,
   category: jCategory,
-  version: 'v18.10.0',
+  version: 'v18.11.0',
   projectPath: projectPath || null,
   projectWordCount,
   checks: {
