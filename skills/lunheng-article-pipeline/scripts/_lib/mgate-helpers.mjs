@@ -68,9 +68,12 @@ export const CARD_SPECS = [
 export const ENTRY_ID_RE = /^#{2,4}\s*\[([LDC])(\d+)\]/gm
 export const entryIds = (cardText) => new Set([...cardText.matchAll(ENTRY_ID_RE)].map((m) => `[${m[1]}${m[2]}]`));
 
-/** 同 entryIds 但编号形态可配（M-Form-11 需纳入基线 `[D-基-x-NN]` 与先行者 `[先NN]`）。 */
+/** 同 entryIds 但编号形态可配（M-Form-11 需纳入基线 `[D-基-x-NN]` 与先行者 `[先NN]`）。
+ *  v18.8.x 反哺补丁（2026.09.22）：`#{2,4}` → `#{0,4}`——先行者清单的条目是**行首裸编号**
+ *  `[先01] 标题 | 作者 | 年份 | URL`（模板即如此，非 `### [先01]` 标题形态），旧正则一条都
+ *  扫不到 → M-Form-11 把清单里的 [先NN] 全判 ghost（假 P0）。锚定行首，表格行/句中引用不误伤。 */
 export const idsByToken = (cardText, token) =>
-  new Set([...cardText.matchAll(new RegExp(`^#{2,4}\\s*\\[(${token})\\]`, 'gm'))].map((m) => `[${m[1]}]`));
+  new Set([...cardText.matchAll(new RegExp(`^#{0,4}\\s*\\[(${token})\\]`, 'gm'))].map((m) => `[${m[1]}]`));
 
 /** 递归列出目录内 .md（供 M-Exist-2 统计证据包）。 */
 export const walkMd = (dir) => {

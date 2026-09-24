@@ -390,6 +390,35 @@ test('consistency-check ⑫：加粗版版本头 `> **版本**：vX.Y.Z` 漂移�
   rmSync(d, { recursive: true, force: true })
 })
 
+test('consistency-check ㉖：UTF-8 BOM 污染必须报 P1（v18.9.0 反哺 / 教训 #2026-09-24 edit 工具静默注入 \\ufeff）', () => {
+  const { d, repo, R } = mkRepo()
+  const cc = join(R, 'scripts', 'consistency-check.mjs')
+
+  // 基线：fixture 仓库（已 BOM-clean）不应报 BOM 污染
+  const base = run([cc]).out
+  assert.doesNotMatch(base, /BOM 污染/, '夹具基线不应报 BOM 污染（fixture 仓库已 BOM-clean）：' + base.slice(-400))
+
+  // 注入 BOM 到一个新文件 + 修改一个 fixture 文件首部
+  const bomFile = join(repo, 'test-bom-inject.md')
+  writeFileSync(bomFile, '\ufeff# Test\n', 'utf8')
+  const skillReadme = join(R, 'README.md')
+  const before = readFileSync(skillReadme, 'utf8')
+  const bomBytes = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(before, 'utf8')])
+  writeFileSync(skillReadme, bomBytes)
+
+  const bad = run([cc]).out
+  assert.match(
+    bad,
+    /\[P1 BOM 污染\][^\n]*(test-bom-inject\.md|README\.md)/,
+    'BOM 污染必须被报（v18.9.0 教训：edit 工具在含 BOM 文件上静默注入 \\ufeff）：' + bad.slice(-400),
+  )
+
+  // 清理
+  rmSync(bomFile, { force: true })
+  writeFileSync(skillReadme, before, 'utf8')
+  rmSync(d, { recursive: true, force: true })
+})
+
 test('m-gate-check M-Exist-7：§6 成本指标必须含 `~NN[MKB]` 或「实测不可得」（v18.6.3 反哺：原只看「字段有内容」漏报，看板 17/21 token 列空）', () => {
   const { d, proj, fin, ev } = mkProject()
   writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')

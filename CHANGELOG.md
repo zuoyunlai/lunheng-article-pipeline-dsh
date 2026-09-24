@@ -2,6 +2,73 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.9.0 — 2026-09-24
+
+> **性质**：「数字社交-关系重构」项目实战反哺（两轮交付）——第一轮堵 M 门假阳性 + T6/T5 契约，第二轮补 P0/P1/P2 内容质量 + 角色边界 + 自动化 + 模板化。核心成果：实战项目 M 门从 p0=2 / p1=4 / exit=2 一路修到 p0=0 / p1=0 / exit=3（仅剩内容级 P2 软提示），双门（consistency-check + node --test 236/236）全绿。
+
+### 第一轮（v18.8.x 实战反哺）
+
+1. **M 门假阳性修复**：M-Form-11 适配 `###` 子段与行首裸编号（`idsByToken` regex `#{2,4}`→`#{0,4}` + sectionRange 边界改 `## `）；M-Exist-1 先行者孤儿软处理（`[先NN]` 同篇双列 → P2 + 决策记录自动检测）；M-Exist-4 结论行判定（`isReject` 不再全文扫「打回」）；M-Exist-6 表头单元格精确匹配（`综合匹配度` 不再命中前文提及格）+ 建议条目表格行计入。
+2. **T6 豁免规则**：任务简报 `trigger=false` 的 Permanent Gap 项 T6 不主动攻击（避免防御性「加固失败降级预案」膨胀字数 1.4x）。
+3. **T5 字数估算 +20% buffer**：治 LLM 估算历史偏差 1.44x 导致主控 4 次微压缩。
+4. **新增 `apply-revision-cycle.mjs`**：主控修订循环 8 步手工 → 1 条命令（cp + count + diff + grep + bundle + 修订说明骨架）。
+5. **白名单 15→16**。
+
+### 第二轮（v18.9.0 P0/P1/P2）
+
+- **P0-1**：T1 文献 DOI/ISBN 双写契约（`01-文献检索-literature-scout.md`）。
+- **P0-2**：T5 元数据泄露词表（`05-写作-writer.md`，与 M-Form-4/5 黑名单同源）。
+- **P0-3**：T7 G 项实据最小样板（`07-审计-auditor.md`，治「G2 通过」无实据 → M-Exist-9 P2）。
+- **P1-1**：T6/T7 职责边界表（两 agent 卡，治重叠审同一论点）。
+- **P1-2**：T4 §11 与修订说明字段对齐表（`04-分析-analyst.md`）。
+- **P1-3**：T9 LLM 补充行契约 + M-Exist-6.5 子门（`09-审稿-peer-reviewer.md` + `mexist-gates.mjs`）。
+- **P2-1**：反哺报告 v18.9.x 模板（7 节固定结构）。
+- **P2-2**：新增 `apply-compression-cycle.mjs`（字数压缩收尾编排）。
+- **P2-3**：consistency-check 规则⑮（脚本数次级数字外泄扫描）+ 规则⑩b 反哺报告豁免（`audits/反哺报告-` 历史快照不回溯改写）。
+- **白名单 16→17**。
+
+### 修复过程中抓到的真 bug
+
+1. `mexist-gates.mjs` LLM_REQUIRED_PHRASE 正则 syntax error（未转义 `)` + 模板字符串嵌套反引号）→ 修后 236/236 全过。
+2. 规则⑮ HIST_DOC_BLACKLIST 锚定 bug（`^docs` 锚定绝对路径失败）→ 去锚定。
+3. 规则⑩b 误报反哺报告 → 加 `audits/反哺报告-` 豁免。
+
+### 验证
+
+consistency-check exit 0（含新规则⑮ + ⑩b 豁免）｜`node --test` 236/236 全过｜实战项目 M-gate p0=0 / p1=0 / exit=3。
+
+### v18.9.0 发版预飞（2026-09-24 / 主人在「继续」+「能发版吗」指令下）
+
+v18.9.0 apply + 审计 + 修复全部完成后，进入发版预飞。按 `.github/workflows/publish.yml` 的 4 道机械门（fail-closed）逐项核验：
+
+1. **consistency-check**：✅ exit=0（含新规则⑮ + ⑩b 豁免 + 新增规则 ㉖「全仓库 .md BOM 检测」+ SKILL.md M 门口径优化）。
+2. **plugin-surface-check（STRICT_WARN=1）**：✅ exit=0（9 项通过 / 0 失败 / 1 warn 已登记豁免「`README-zh.md` 连字符命名 vs 本仓 `README.zh.md` 点号命名」/ 4 skip 结构不可达）。
+3. **repo-hygiene-check**：❌→✅ exit=1 → 0（详见下文 doc-budget 抬升）。
+4. **pack-smoke**：✅ exit=0（解包入口 + patch 自注册行 + 技能注册 + guard 全过 / 136 文件 / 1698 KB）。
+
+**doc-budget 抬升（v18.9.0 反哺承重内容，按 repo-hygiene-check.mjs「同一次提交显式抬升」原则）**：
+
+| 文件 | 旧上限 | 新上限 | 抬升理由（v18.9.0 实战反哺承重） |
+|------|--------|--------|-------------------------------|
+| `05-写作-writer.md` | 45 KB (46080) | 52 KB (53248) | 字数估算 +20% buffer（v18.8.x 反哺）+ 🚫 元数据泄露词表（v18.9.0 反哺）|
+| `07-审计-auditor.md` | 24 KB (24576) | 28 KB (28672) | 与 T6 职责边界表 + G 项实据最小样板 |
+| `06-批判-critical-companion.md` | 18 KB (18432) | 24 KB (24576) | trigger=false 豁免规则 + 与 T7 职责边界表 |
+| `04-分析-analyst.md` | 15 KB (15360) | 16 KB (16384) | §11 字段对齐表（M-Exist-10 契约源头）|
+| `09-审稿-peer-reviewer.md` | 20 KB (20480) | 24 KB (24576) | LLM 补充行契约（M-Exist-6.5 契约源头）|
+| `01-文献检索-literature-scout.md` | **未登记** | 16 KB (16384) | **首次登记**：卷期页码双写契约（M-Form-2 v2 分支契约源头），越过 12 KB 登记线 |
+
+**长期目标**：v18.9.1 起考虑瘦身（把实战反哺教训细节迁到 `references/_shared/v18.9.0-反哺/`，主卡只留指针与判据）；本次按 AGENTS.md「主人显式授权例外」条款按「同一次提交显式抬升并写明理由」处理。
+
+### v18.9.0 apply 后已知错差（2026-09-24 审计发现，待 v18.9.1 修复）
+
+1. **SECURITY.md 缺失 → apply 时同步恢复**：v18.8.x 反哺路线图写过「SECURITY.md 计数 16→17 + 安全面补 1 段」，但 SECURITY.md 在 v18.8.x 期间被意外删除（git HEAD 无该文件），导致 README 链接 404。**v18.9.0 apply 时已从备份恢复并同步 v18.9.0 计数（16→17）**（备份 `lunheng-v18.8.x-pre-v18.9.0-patch-20260923-221628\SECURITY.md`）。改动清单 §八 第 23 项原写「glossary.md 首行 BOM 清除」是冰山一角——实际波及 95 个 .md 文件（仓库 50 + 镜像 45），已批量剔除。
+2. **BOM 注入回归 → 加规则 ㉖ 防止重演**：`edit` 工具在含 UTF-8 BOM 的 .md 文件上做行 1 字符串替换时，会**静默注入 `\ufeff`（3 字节 `EF BB BF`）**——本次 apply 触发 95 个文件污染，但靠人工字节扫描才被发现（一致性门此前静默漏检）。**v18.9.0 同步加 consistency-check 规则 ㉖「全仓库 .md BOM 检测」**（含镜像 `.dsh/skills/<name>`）——扫到即报 P1。
+3. **SKILL.md line 56 M 门口径表述欠明确**：原写「共 22 项」（机械口径），与全仓其他文档明示的「23 项 = 机械 22 + 人工 1」表述不一致但实质正确。**v18.9.0 apply 时已改为「总 23 项 = 机械 22 + 人工 1」**，与 `M-Gate-Algorithm.md:23` / `glossary.md:449` / `deliverables.md:135` 等口径对齐。
+4. **反哺报告 v18.9.0-实战 口径错位**（仅作差错记录，不影响运行）：
+   - line 106 写「M 门数 22→23」——实际 M-Exist-6.5 是新增**子门规则**，M 门总项数仍是 23 项（v2.5.2-dsh.17 起就是 23 项）。
+   - line 131 写「135/236 M-Exist-7 测试 fixture 失败待 v19.x 修复」——实际 `mexist-gates.mjs` regex bug 已修，236/236 全过（反哺报告生成时未及时同步 236 全过的事实）。
+   - line 113 写「SECURITY.md 计数 16→17 + 安全面补 1 段」——对应文件已不存在（差错 1 已修复，但反哺报告作为历史快照不回头改）。
+
 ## 18.8.0 — 2026-09-23
 
 > **性质**：P2 文档瘦身战役（两轮）+ 注解密度门机械化——按修订方案 P2 段，分两轮交付（首轮 SKILL.md + maintainers.md + 注解密度门首轮阈值 16%；第二轮手动聚合 3 大 outlier（07-审计/08-终检/任务简报）+ 标题豁免 + 阈值降至 12%）。

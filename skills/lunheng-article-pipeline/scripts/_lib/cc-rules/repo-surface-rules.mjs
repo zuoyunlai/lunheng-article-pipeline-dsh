@@ -1,7 +1,7 @@
-// ⑧ patch+examples 版本引用 / ⑨ .dsh 双写同步 / ㉑ 五语 README 镜像 / ㉒ 锚点存在 / ㉓ 阈值总表 + 门模块目录
+// ⑧ patch+examples 版本引用 / ⑨ .dsh 双写同步 / ㉑ 五语 README 镜像 / ㉒ 锚点存在 / ㉓ 阈值总表 + 门模块目录 / ㉖ .md BOM 检测
 // v18.3.1（审计 B2 阶段 3）：从 consistency-check.mjs 按规则族抽离，行为逐字等价（回归测试的
 //   注入验证用例 + 真源仓库自跑兜底）。共享态（errors / 派生源 / 版本真源等）由主脚本构建 ctx 传入。
-import { readFileSync, readdirSync, statSync, existsSync, writeFileSync, copyFileSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync, existsSync, writeFileSync, copyFileSync, openSync, readSync, closeSync } from 'node:fs'
 import { join, relative, dirname } from 'node:path'
 
 // ⑧ cordis.patch.yml + examples/ 版本引用（v2.5.2-dsh.5 审计新增：防安装文档指向未发布版本）
@@ -193,6 +193,119 @@ if (langStats.length > 1) {
 //   GATE_DERIVED 将数错门数（errors 定义在 gateSrc 之后，故检测延迟到这里报）。
 if (gateModMissing) {
   errors.push('[P0 派生源失效] scripts/_lib/mgate-gates/ 门模块目录不存在——B2 阶段 1 拆分被回退或目录被误删，M 门项数派生将失真，请恢复');
+}
+
+// ㉕ 脚本数次级数字外泄扫描（v18.9.0 实战反哺补丁 / 2026-09-23）
+//   背景：v18.8.x 实战改 SKILL.md 白名单「15 → 16」时，consistency-check 只查 SKILL.md 那一行
+//   （白名单字段），**SECURITY.md / DSH-集成方案.md / AGENTS.md / docs/审计与修订记录/* 等次级文档里
+//   散落的脚本数字不查**——如 SECURITY.md line 29「15 个 .mjs」、DSH-集成方案.md line 4「15 个门禁脚本」、
+//   AGENTS.md line 551/575/619 等「15 个真实项目」/ CHANGELOG.md line 551「handoff-check.mjs 第 15 个」。
+//   本规则把白名单数字 = 真源数，**与外泄到次级文档的硬编码数一并对账**。
+//   实现：抓 SKILL.md「随包脚本白名单」行（单行字面提取脚本清单）作真源集合 + 数字，
+//   再扫 SKILL.md 全文 / SECURITY.md / AGENTS.md / references/_shared/*.md / docs/审计与修订记录/*.md
+//   所有含 `\d+ 个 (?:脚本|\.mjs|门禁脚本|真实项目|随包脚本)` 等的字面数字，**必须 = 真源数字**。
+//   边界：含「数量真源 = ...」的指针行（SKILL.md 白名单字段本身）豁免；注解行（… 起 / 更正 / 修订 / 历史 等）豁免，
+//   防止「历史版本提到旧数字」误报。
+{
+  // 1) 真源：从 SKILL.md 抓「随包脚本白名单」行的脚本清单与数字
+  const skillPath = join(REPO_ROOT, 'SKILL.md');
+  const skillContent = skillText || readFileSync(skillPath, 'utf8');
+  const wlLine = skillContent.split('\n').find((l) => /随包脚本白名单/.test(l));
+  if (!wlLine) {
+    errors.push('[P0 白名单失效] SKILL.md 未找到「随包脚本白名单」行 — 规则 ㉕ 失效即静默放行');
+  } else {
+    // 数字：行内第一个 N 个
+    const numMatch = wlLine.match(/(\d+)\s*个/);
+    const truthNum = numMatch ? Number(numMatch[1]) : null;
+    // 脚本清单：从「`scripts/*.mjs` = 」开始到「+ 有限验证」之前的所有 `name` 单词
+    const eqIdx = wlLine.indexOf(' = ');
+    const head = eqIdx >= 0 ? wlLine.slice(eqIdx + 3) : '';
+    const tailIdx = head.indexOf(' + ');
+    const scriptSeg = tailIdx >= 0 ? head.slice(0, tailIdx) : head;
+    const truthSet = new Set([...scriptSeg.matchAll(/([A-Za-z][A-Za-z0-9_-]*)\s*\//g)].map((m) => m[1].replace(/\/$/, '')).filter(Boolean));
+    if (!truthNum || truthSet.size === 0) {
+      errors.push('[P0 白名单失效] SKILL.md 白名单行未抓到数字或脚本清单 — 规则 ㉕ 失效');
+    } else {
+      // 2) 扫描次级文档：SKILL.md 全文（豁免白名单行）/ SECURITY.md / AGENTS.md / references/_shared/*.md / docs/审计与修订记录/*.md
+      // docs/ 下临时扫描令牌豁免历史审计报告目录（一次性快照，按当时版本数字写定）——
+      //   docs/审计与修订记录/* = v18.2.x / v18.3.x 全量审计报告副本（一次性历史快照）
+      //   docs/token-optimization-plan.md = v18.2.5 token 优化方案（一次性历史快照）
+      //   docs/CHANGELOG.md 历史条目亦豁免（CHANGELOG 行内 reAnno 已覆盖）
+      //   ——只对 docs/顶层新增的**当前生效**文档做扫描（如 docs/install.md / docs/usage.md 等）
+      const HIST_DOC_BLACKLIST = /token-optimization-plan\.md$|docs[\/\\]审计与修订记录[\/\\]|audits[\/\\]反哺报告-/;
+      const wlIdx = skillContent.split('\n').indexOf(wlLine);
+      const scanRoots = [
+        { path: skillPath, skipLineIdx: wlIdx },
+        { path: join(REPO_ROOT, 'SECURITY.md'), skipLineIdx: -1 },
+        { path: join(REPO_ROOT, 'AGENTS.md'), skipLineIdx: -1 },
+        { path: join(REPO_ROOT, 'references', '_shared'), skipLineIdx: -1, isDir: true },
+        { path: join(REPO_ROOT, 'docs'), skipLineIdx: -1, isDir: true },
+      ];
+      const reDigit = /(\d+)\s*个(?:\s*脚本|\s*\.mjs|\s*门禁脚本|\s*真实项目|\s*随包脚本)/g;
+      const reAnno = /起|之前|新增|修订|教训|历史|更正|及以后|变化数|命中|无新|判定|实测|评测|反例|含角色|含.*不剥离/;
+      for (const r of scanRoots) {
+        if (!existsSync(r.path)) continue;
+        const files = r.isDir ? walk(r.path).filter((f) => f.endsWith('.md')) : [r.path];
+        for (const f of files) {
+          // 历史快照豁免（docs/token-optimization-plan.md + docs/审计与修订记录/*）
+          const relForHistCheck = f.replaceAll('\\', '/');
+          if (HIST_DOC_BLACKLIST.test(relForHistCheck)) continue;
+          const lines = readFileSync(f, 'utf8').split('\n');
+          for (let i = 0; i < lines.length; i++) {
+            if (i === r.skipLineIdx) continue;  // 豁免 SKILL.md 白名单行本身
+            const l = lines[i];
+            if (reAnno.test(l)) continue;       // 豁免注解行
+            const matches = [...l.matchAll(reDigit)];
+            for (const m of matches) {
+              const num = Number(m[1]);
+              if (num !== truthNum) {
+                errors.push(`[P1 脚本数外泄] ${f.replaceAll('\\', '/').replace(REPO_ROOT + '/', '')}:${i + 1} 含 ${m[0]} ≠ 白名单真源 ${truthNum} — 次级文档硬编码脚本数必须与 SKILL.md 白名单同步`);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// ㉖ 全仓库 .md BOM 检测（v18.9.0 反哺 / 审计 B+1 增补 / 教训 #2026-09-24）
+//   · 背景：`edit` 工具在含 UTF-8 BOM（EF BB BF）的 .md 文件上做行 1 字符串替换时，
+//     会静默注入 `\ufeff` 到新行首；v18.9.0 apply 时波及 95 个文件（仓库 50 + 镜像 45）。
+//   · 教训：纯靠人眼 `read` 看不到 BOM（首字节被 read 工具吞掉），必须字节级扫描；
+//     一致性门静默漏检 = 真实的 silent failure。
+//   · 规则：扫描仓库根 + 镜像（`.dsh/skills/<name>`）中所有 .md 文件，
+//     发现首 3 字节 = EF BB BF 即报 P1（BOM 本身不破坏 UTF-8 解析，但会引起
+//     「首行内容匹配」类机检假阴性——如规则⑫ 的 `> 版本：` 首行匹配）。
+//   · 豁免：仓库根 `.git` / `node_modules` / `_backup` 下的所有文件不扫。
+for (const baseDir of [REPO_ROOT, join(REPO_ROOT, '.dsh', 'skills', 'lunheng-article-pipeline')]) {
+  if (!existsSync(baseDir)) continue;
+  const stack = [baseDir];
+  while (stack.length) {
+    const cur = stack.pop();
+    let ents;
+    try { ents = readdirSync(cur); } catch { continue; }
+    for (const e of ents) {
+      const p = join(cur, e);
+      let st;
+      try { st = statSync(p); } catch { continue; }
+      if (st.isDirectory()) {
+        // 豁免目录
+        if (/\.git$|node_modules|_backup/.test(p)) continue;
+        stack.push(p);
+      } else if (st.isFile() && p.endsWith('.md')) {
+        const fd = openSync(p, 'r');
+        try {
+          const buf = Buffer.alloc(3);
+          const n = readSync(fd, buf, 0, 3, 0);
+          if (n === 3 && buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF) {
+            const rel = relative(REPO_ROOT, p).replaceAll('\\', '/');
+            errors.push(`[P1 BOM 污染] ${rel} 首 3 字节为 UTF-8 BOM（EF BB BF）——edit 工具静默注入残留，须二进制剔除前 3 字节`);
+          }
+        } finally { closeSync(fd); }
+      }
+    }
+  }
 }
 
 }

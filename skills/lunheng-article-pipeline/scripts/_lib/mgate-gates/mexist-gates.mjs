@@ -3,13 +3,13 @@
 //   result 顺序调用：mExist1 → M-Form-10/11（仍在主脚本）→ mExist4..mExist10 → mExist2 → mExist3。
 //   每个门函数只读 ctx 共享态并往 ctx.results 推结果；模块不持有跨门可变态。
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { basename, join, dirname } from 'node:path'
 import { refsOf, dataCardIds } from '../refs.mjs'
 import { latestReport, tableCells, isSeparatorRow, walkMd, sectionRange } from '../mgate-helpers.mjs'
 
 // === M-Exist-1 文末四节双向对比（v2.5.2-dsh.5 脚本化 + 严重度评级）===
 export function mExist1(ctx) {
-  const { firstIdx, bodyProse, endnote, refRe, norm, THRESHOLDS, results } = ctx;
+  const { firstIdx, bodyProse, endnote, refRe, norm, THRESHOLDS, results, draftPath } = ctx;
 if (firstIdx === -1) {
   results.push({ gate: 'M-Exist-1 引用双向对比', pass: 'SKIP', detail: '文末缺失，M-Form-2 失败优先', severity: 'SKIP' });
 } else {
@@ -92,22 +92,66 @@ if (firstIdx === -1) {
     + `修法：改用标准编号、或改用扩展编号 [脚注-N]（须双向闭环）、或由主控申报豁免。`
     + `（P2 提示：形态黑名单有假阳性可能——行业/AI 类稿件里的「术语-数字」形态请人工确认后再改）`;
   const mExist1Hard = leaked.length + orphan2.length + nonStd.length > 0;
+  // v18.8.x 实战反哺补丁（2026.09.22 数字社交-关系重构项目）：**[先NN] 孤儿一律软处理**——
+  //   实战规律：先行者清单是「差异对照工件」而非「引用闭环目标」，其条目与文献卡 [Lxx] 大量
+  //   **同篇双列**（实测：[先01]=[L07] 邱泽奇、[先02]=[L08] 边燕杰、[先03]=[L06] 项飙——正文
+  //   均以 [Lxx] 实质引用，[先NN] 形态上仍是「文末有正文无」的孤儿）。旧逻辑把这些同篇双列
+  //   一律报 P1 → 每个项目都要 T7 人工记账「形态规范冲突」。
+  // 判据：孤儿按前缀分流——`[先NN]` 孤儿 → 恒 P2（提示同篇双列回查路径）；
+  //   `[L]/[D]/[C]` 孤儿 → 仍是硬缺失（P0/P1）。决策记录命中时在 hint 里补充出处供 T8 复核。
+  const xianOrphans = orphan2.filter((r) => /^\[先\d+\]$/.test(r));
+  const hardOrphans = orphan2.filter((r) => !/^\[先\d+\]$/.test(r));
+  const projectDirEx1 = dirname(dirname(draftPath));
+  let preservedOrphans = new Set();
+  let preservedHint = '';
+  try {
+    const dirs = [];
+    try { dirs.push(...readdirSync(projectDirEx1).filter((f) => statSync(join(projectDirEx1, f)).isDirectory())); } catch {}
+    const decisionFiles = [];
+    for (const d of [projectDirEx1, ...dirs.map((dd) => join(projectDirEx1, dd))]) {
+      try {
+        decisionFiles.push(...readdirSync(d).filter((f) => /^决策记录-Phase\d-/.test(f)).map((f) => join(d, f)));
+      } catch {}
+    }
+    const preservedIds = new Set();
+    const hitFiles = [];
+    for (const fp of decisionFiles) {
+      try {
+        const dr = readFileSync(fp, 'utf8');
+        const before = preservedIds.size;
+        for (const m of dr.matchAll(/\[先(\d+)\]/g)) preservedIds.add(`[先${m[1]}]`);
+        if (preservedIds.size > before) hitFiles.push(basename(fp));
+      } catch {}
+    }
+    if (preservedIds.size > 0) {
+      preservedOrphans = new Set([...xianOrphans].filter((r) => preservedIds.has(r)));
+      if (preservedOrphans.size > 0) {
+        preservedHint = `决策记录 ${hitFiles.join('、')} 已显式处理 ${[...preservedOrphans].join('、')}（T8 复核请回查该决策记录）`;
+      }
+    }
+  } catch {}
+  const xianNote = xianOrphans.length > 0
+    ? `${xianOrphans.length} 个 [先NN] 孤儿（${xianOrphans.join(',')}）——先行者清单为差异对照工件，多为与 [Lxx] 同篇双列（如 [先01]=[L07]），不构成硬缺失${preservedHint ? '' : '；T8 复核请确认差异点声明仍在'}`
+    : '';
   results.push({
     gate: 'M-Exist-1 引用双向对比',
-    pass: !mExist1Hard,
+    pass: !mExist1Hard || (leaked.length + hardOrphans.length) === 0,
     detail: [
       mExist1Hint,
-      `漏引 ${leaked.length} / 孤儿 ${orphan2.length}`,
+      `漏引 ${leaked.length} / 硬孤儿 ${hardOrphans.length}（[先NN] 对照孤儿 ${xianOrphans.length} 个已软处理）`,
+      preservedHint,
+      xianNote,
       nonStdNote,
       extNote,
     ].filter(Boolean).join(' ｜ '),
-    // 严重度（v18.2.6 审计修复 B-3）：**只有「漏引/孤儿」这类硬缺失才升 P0/P1**；
-    //   非标准编号（形态黑名单）单列 → P2 提示（旧版 `nonStd.length >= 3 → P0` 是一整类选题被
-    //   假阳性判 exit 2 的直接原因）。`pass` 仍为 false → 走 P2 分支 → 整体 exit 3（需 T8 复核），
-    //   留痕不消失，只是不再无条件阻断交付。
-    severity: (leaked.length + orphan2.length) > 0
-      ? ((leaked.length + orphan2.length > THRESHOLDS.exist1ClosureP0) ? 'P0' : 'P1')
-      : (nonStd.length > 0 ? 'P2' : (extUsed > 0 ? 'P2' : '通过')),
+    // 严重度（v18.2.6 审计修复 B-3 + v18.8.x 反哺补丁）：
+    //   **只有「漏引/[L][D][C] 孤儿」这类硬缺失才升 P0/P1**；
+    //   [先NN] 对照孤儿（同篇双列/决策记录处理）→ 恒 P2 软提示；
+    //   非标准编号（形态黑名单）单列 → P2 提示；
+    //   仅剩软项时 pass=true（对照孤儿不再拉 exit）——留痕走 detail，不再无条件阻断交付。
+    severity: (leaked.length + hardOrphans.length) > 0
+      ? (((leaked.length + hardOrphans.length) > THRESHOLDS.exist1ClosureP0) ? 'P0' : 'P1')
+      : ((nonStd.length > 0 || extUsed > 0 || xianOrphans.length > 0) ? 'P2' : '通过'),
   });
 }
 
@@ -131,8 +175,16 @@ try {
     results.push({ gate: 'M-Exist-4 审计条目闭环', pass: true, detail: 'N/A：尚无审计报告（未进入 Phase 4）', severity: '通过' });
   } else {
     const text = readFileSync(audit.path, 'utf8');
-    const isReject = /打回|必须修改清单|未通过/.test(text);
     const lines = text.split('\n');
+    // v18.8.x 反哺补丁（2026.09.22）：isReject 旧版扫**全文**找「打回」——复核轮（第 2 轮）报告
+    //   在叙述第 1 轮历史时必然提到「打回」（如「A 轨第 1 轮打回 → v3 修订 → 第 2 轮通过」），
+    //   被误判为「本报告结论=打回」→ 强索修订任务书 → 假 P1（实战：T7 第 2 轮通过报告仍被报
+    //   「结论为打回但缺修订任务书」）。修法：只在**结论行**（含「结论/判定/verdict」的行，
+    //   含其紧邻的加粗行）里判；无结论行时回退前 30 行。复核轮结论含「通过」即压过叙述性「打回」。
+    const conclIdx = lines.map((l, i) => (/结论|判定|verdict/i.test(l) ? i : -1)).filter((i) => i >= 0);
+    const scope4 = conclIdx.length ? conclIdx.map((i) => lines[i]) : lines.slice(0, 30);
+    const hasPass = scope4.some((l) => /复核通过|通过\s*[✅）)]|结论[：:]\s*[✅]?\s*通过|判定[：:]\s*[✅]?\s*通过/.test(l));
+    const isReject = !hasPass && scope4.some((l) => /打回|必须修改清单|未通过/.test(l));
     const hIdx = lines.findIndex((l) => /^#{2,4}\s*修订任务书/.test(l));
     const rows = [];
     let header = null;
@@ -401,6 +453,10 @@ export function mExist6(ctx) {
 //   凑不出来的数，期刊推荐可以是《期刊数据库》里根本不存在的刊名，综合匹配度可以不由公式得出。
 //   本项做三件事：① 总分 == 6 维之和（算术自洽）；② 建议词与总分区间一致；③ 期刊匹配表**可复算**
 //   （综合 = 0.5×主题 + 0.3×风格 + 0.2×归一化，容差 ±1.5）且刊名出自 `期刊数据库.md`。
+//   v18.9.0 实战反哺补丁 / 2026-09-23：在原 3 项基础上加 **④ LLM 补充行来源标注契约**——T9 报告若含 LLM 补充期刊
+//   行（`来源 = LLM 补充（不在数据库，须人工核验）`），来源列必须含此精确字符串；否则该行报 P2。
+//   实战教训：数字社交-关系重构项目 T9 输出 3 条 LLM 补充英文 SSCI 行，主控手动标注「LLM 补充（不在数据库，须人工核验）」
+//   字样，但 M-Exist-6 无机制核验 → 下次 T9 可能漏标注 → 投稿决策被「杜撰刊名」误导风险。
 // 触发条件：存在 audits/审稿报告-vN.md（T9 可选，未启用 → N/A）。
 try {
   const projDir6 = dirname(dirname(draftPath));
@@ -433,8 +489,14 @@ try {
       if (!expect.test(rt)) soft6.push(`总分 ${declaredTotal} 对应的建议词（${expect.source.replace(/[/i]/g, '')}）在报告中未出现——建议与区间可能不一致`);
     }
     // 期刊匹配表
+    // v18.8.x 反哺补丁（2026.09.22）：表头检测旧版找「第一根**包含**『综合匹配度』的表格行」——
+    //   实战 T9 报告在前文的「评分合法性自检」表里有一格写「期刊匹配表表头含『综合匹配度』」，
+    //   该**单元格提及**被误认为表头 → 真正的期刊表（靠后 170 行）扫不到 → 「期刊表 0 行」假 P1。
+    //   修法：单元格级精确匹配——先 tableCells 切列，须存在一个（去加粗/空白后）**恰为**
+    //   「综合匹配度」的单元格（提及性长短语不再命中）。
     const jLines = rt.split('\n');
-    const jHead = jLines.findIndex((l) => /^\s*\|/.test(l) && /综合匹配度/.test(l));
+    const jHead = jLines.findIndex((l) => /^\s*\|/.test(l)
+      && (() => { try { return tableCells(l).some((c) => /^[*\s]*综合匹配度[*\s]*$/.test(c)); } catch { return false; } })());
     let jRows = [];
     if (jHead !== -1) {
       for (let i = jHead + 1; i < jLines.length; i++) {
@@ -513,7 +575,14 @@ try {
       let sugEnd = jLines.length;
       for (let k = sugIdx + 1; k < jLines.length; k++) { if (/^#{2,4}\s/.test(jLines[k])) { sugEnd = k; break; } }
       const sugLines = jLines.slice(sugIdx + 1, sugEnd);
-      const sugItems = sugLines.filter((l) => /^\s*(?:\d+[.、)]|[-*]\s)/.test(l) && l.replace(/[\s\-*\d.、)]/g, '').length > 6);
+      // v18.8.x 反哺补丁（2026.09.22）：建议条目旧版只认 `1.` / `-` 列表形态——实战 T9 把
+      //   R-1..R-10 写成**结构化表格**（`| 编号 | 优先级 | 定位 | 违反规范 | 处置动作 | 论据 |`，
+      //   定位列天然含 §/行号）却被判「无有效条目」假软提示。修法：表格行同样计入条目
+      //   （首格含 R-N / P0-N / 数字编号即可），定位检查沿用同一正则。
+      const sugItems = sugLines.filter((l) =>
+        (/^\s*(?:\d+[.、)]|[-*]\s)/.test(l) && l.replace(/[\s\-*\d.、)]/g, '').length > 6)
+        || (/^\s*\|/.test(l) && /^[*\s]*(?:R?-?\d+|P[012][-\u2011]?\w+)/.test((() => { try { return tableCells(l)[0] || ''; } catch { return ''; } })()))
+      );
       if (sugItems.length === 0) soft6.push('「修改建议」段无有效条目（须按优先级逐条列）');
       else {
         const noLoc = sugItems.filter((l) => !/[§第]\s*[一二三四五六七八九十\d]+|段落|行\s*\d|章|\[(?:L|D|C)\d+\]/.test(l));
@@ -537,6 +606,16 @@ try {
       soft6.push(`审稿建议落地追踪跳过（读 drafts/修订说明-*.md 失败）：${e.message}`);
     }
     const hard6 = findings6.length > 0;
+    // v18.9.0 实战反哺补丁 / 2026-09-23：④ LLM 补充行来源标注契约（M-Exist-6.5）
+    // 扫整份审稿报告，命中疑似 LLM 补充行（行内含「LLM」「补充」「不在数据库」三个关键词之一）
+    // 但「来源」列未写明「LLM 补充（不在数据库，须人工核验）」者 → 报 P2。
+    const LLM_HINT_KEY = /LLM|补充|不在数据库|人工核验/;
+    const LLM_REQUIRED_PHRASE = /LLM\s*补充[（(]不在数据库.*人工核验|人工核验.*不在数据库.*LLM|不在数据库[，,]须人工核验/;
+    const llmHintLines = rt.split('\n').map((l, i) => ({ l, i })).filter((x) => LLM_HINT_KEY.test(x.l) && /^\s*\|/.test(x.l));
+    const llmBadLines = llmHintLines.filter((x) => !LLM_REQUIRED_PHRASE.test(x.l));
+    if (llmBadLines.length) {
+      soft6.push(`${llmBadLines.length} 行疑似 LLM 补充期刊但来源列未写明「LLM 补充（不在数据库，须人工核验）」（line ${llmBadLines.slice(0, 3).map((x) => x.i + 1).join(', ')}）——T9 期刊匹配助手要求来源标注强制（见 09-审稿-peer-reviewer.md §期刊匹配助手）`);
+    }
     results.push({
       gate: 'M-Exist-6 审稿报告与期刊匹配',
       pass: !hard6 && soft6.length === 0,

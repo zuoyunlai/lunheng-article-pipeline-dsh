@@ -772,13 +772,19 @@ try {
     const lt = readFileSync(listPath11, 'utf8');
     const ls2 = lt.split('\n');
     // 只取「## 已加载」段内的编号（「已跳过」等其它段不计入加载集，允许写编号解释为何不读）
-    const hIdx11 = ls2.findIndex((l) => /^#{2,4}\s*已加载/.test(l));
+    // v18.8.x 实战反哺补丁（2026.09.22）：原 regex `^#{2,4}\s*已加载` + sectionRange boundary `^#{2,4}\s`
+    //   在「## 已加载 + ### 一、文献卡」结构下会被 ### 一级标题截断（sectionRange 默认把 ### 当作节结束）
+    //   → loadedSeg 仅含 `## 已加载` 与 `### 一、文献卡` 之间的少量注释行 → 「已加载 0 条」误判
+    // 改进：① 接受 `## 已加载` / `### 已加载` / `#### 已加载`（`#` 1-4 hashes 都行）+ 任何后续文字（含「段」「v3」等）
+    //       ② sectionRange 用 `## `（2 hashes 加空格）作为 section 边界而非 `##{2,4}`（让 ###、#### 视为子节留在已加载段内）
+    const hIdx11 = ls2.findIndex((l) => /^#{1,4}\s*已加载/.test(l));
     let loadedSeg;
     if (hIdx11 === -1) {
       findings11.push('加载清单缺「## 已加载」段标题（机检无从定位加载集）');
       loadedSeg = lt;
     } else {
-      let e11 = sectionRange(ls2, hIdx11, /^#{2,4}\s/).end;
+      // 用 `## ` 作为 section 边界（###、#### 视为子节，留在已加载段内）
+      let e11 = sectionRange(ls2, hIdx11, /^##\s/).end;
       loadedSeg = ls2.slice(hIdx11 + 1, e11).join('\n');
     }
     // v18.2.1：**支持范围写法** `[D01]-[D08]`（本轮实测踩到）——旧实现只按单编号全量匹配，
