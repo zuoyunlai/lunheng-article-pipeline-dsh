@@ -1,12 +1,12 @@
 ---
 name: "lunheng-article-pipeline"
-version: "18.9.0"
-description: "论衡 v18.9.0：DSH 原生多 Agent 深度长文流水线（学术论文 / 商业评论 / 行业分析 / 公众号）。9 个独立角色 T1-T9 + 主控；三角验证 + M 门 + G 审计 + 修订回环 ≤2 轮 + 期刊匹配 + auto_cite 预标注 + 内嵌 11 个 /lunheng 斜杠命令。适用：≥2000 字、证据须可追溯的长文（4 个人在环节点、1-3 小时）。**不适用**：<2000 字短文与即时问答；文学创作；需数学推导或实验设计的理工科论文；营销软文；需一手数据而未投喂素材。版本增量见正文版本头（v18.9.0 实战反哺 + 版本增量）。"
+version: "18.10.0"
+description: "论衡 v18.10.0：DSH 原生多 Agent 深度长文流水线（学术论文 / 商业评论 / 行业分析 / 公众号）。9 个独立角色 T1-T9 + 主控；三角验证 + M 门 + G 审计 + 修订回环双轨（≤2 轮纠错 + 至多 +1 深化） + 期刊匹配 + auto_cite 预标注 + 内嵌 11 个 /lunheng 斜杠命令。适用：≥2000 字、证据须可追溯的长文（4 个人在环节点、1-3 小时）。**不适用**：<2000 字短文与即时问答；文学创作；需数学推导或实验设计的理工科论文；营销软文；需一手数据而未投喂素材。版本增量见正文版本头（v18.10.0 论文质量提升 12 项战略改进 + v18.9.0 实战反哺历史增量）。"
 whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 description（v18.0.5：官方目录只渲染 name + description，本字段对模型不可见，保留仅供工具链与维护者阅读）。"
 ---
 
-> 版本：v18.9.0（DSH bundle 插件）
-> **v18.9.0 增量（实战反哺，两轮交付）**：① M 门假阳性修复——M-Form-11 `###` 子段扫描 / M-Exist-1 先行孤儿软处理 + 决策记录检测 / M-Exist-4 结论行判定 / M-Exist-6 表头单元格精确匹配 + LLM 补充行契约（M-Exist-6.5）；② T6 豁免规则（trigger=false 不攻击）+ T5 字数 +20% buffer + T6/T7 职责边界表；③ T1 DOI/ISBN 双写契约 + T5 元数据泄露词表 + T7 G 项实据样板 + T4 §11 字段对齐表；④ 新增 `apply-revision-cycle.mjs` + `apply-compression-cycle.mjs` + 反哺报告模板；⑤ consistency-check 规则⑮（脚本数次级数字外泄）+ 规则⑩b 反哺报告豁免；⑥ 白名单 15→17。详见 `audits/反哺报告-v18.8.x-实战（数字社交-关系重构）.md` + `反哺报告-v18.9.0-实战（数字社交-关系重构-第二轮）.md`。
+> 版本：v18.10.0（DSH bundle 插件）
+> **v18.10.0 增量（论文质量提升 12 项战略改进）**：① M 门假阳性修复——M-Form-11 `###` 子段扫描 / M-Exist-1 先行孤儿软处理 + 决策记录检测 / M-Exist-4 结论行判定 / M-Exist-6 表头单元格精确匹配 + LLM 补充行契约（M-Exist-6.5）；② T6 豁免规则（trigger=false 不攻击）+ T5 字数 +20% buffer + T6/T7 职责边界表；③ T1 DOI/ISBN 双写契约 + T5 元数据泄露词表 + T7 G 项实据样板 + T4 §11 字段对齐表；④ 新增 `apply-revision-cycle.mjs` + `apply-compression-cycle.mjs` + 反哺报告模板；⑤ consistency-check 规则⑮（脚本数次级数字外泄）+ 规则⑩b 反哺报告豁免；⑥ 白名单 15→17。详见 `audits/反哺报告-v18.8.x-实战（数字社交-关系重构）.md` + `反哺报告-v18.9.0-实战（数字社交-关系重构-第二轮）.md`。
 > **v18.8.0 增量（P2 文档瘦身战役，**两轮交付**）**：① SKILL.md 瘦身（rank 表/guard 边界/模板计数等维护者向元信息迁出）；② 新增 `references/maintainers.md`（rank 考证/guard 缺口与部署处方/更正史/发布面事实——运行期不读）；③ `repo-hygiene-check` 新增规则 ⑩ 注解密度门（首轮阈值 16% → 二轮降至 12%；锚链/表格/标题/已聚合引言豁免；规则本身**禁止抬升**——任何后续提交超过 12% 即失败，强制回退到「先瘦身再涨」）；④ AGENTS.md 增「维护者向背景资料」指针；⑤ P2a 第二轮手动聚合 3 个 outlier（07-审计/08-终检/任务简报），阈值收紧至 12%。**待办**（v18.8.x backlog）：注解聚合剩余 6 个文件（已 ≤12% 但接近）；`tests/scripts.test.mjs` (391KB/177 用例) 拆分 + 静态门自测 → v18.8.1；P4 渐进项随日常迭代。
 > **v18.7.3 增量（P1 写盘与口径收口，审计后续）**：① normalize-trust-level 写盘接入 writeWithSafety（时间戳 .bak + 原子写）；② 审计视图信任分布改三档口径（与 M-Form-6 同源，新增「未声明」列）；③ /lunheng 命令数定案「11 个（-cite 含 3 模式）」并新增机械门 ⑳；④ 写手卡 shell 边界矛盾收口（写手估算、主控取权威值）；⑤ md2html/segment-chars/lunheng-stats 接入 cli-args 唯一实现（拼错旗标 exit 10）、lunheng-stats 装 exit-guard；⑥ pdfcheck `/Page(?!s)` 修计数虚高、pruneBackups 容错。详见 `docs/审计与修订记录/论衡插件-修订方案-v18.7.2.md` P1 段。
 > **v18.7.2 增量（P0 hotfix，全量审计后续）**：① 修 `apply-diff.mjs` 致命索引错（公共前缀 > CTX 时旧文重复注入修订稿且报 ok，已补 4 档参数化回归）；② 修 `consistency-check.mjs` 参数守卫拒 `--write`（自动修复落盘此前 100% 不可达，已补落盘+备份回归）；③ 修 lunheng-commands README 反哺报告断链。详见 `docs/审计与修订记录/论衡插件-修订方案-v18.7.2.md`。
@@ -45,9 +45,14 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 
 **论衡技能的工具边界（DSH）**：
 - ✅ **可调用**：当前会话预设提供的工具（本机 standard 预设实测含 read / write / edit / web_search / web_fetch / todo_write / subagent / list_agents / pwsh 等）——DSH 无技能级白名单，工具集由 Agent 预设决定。**调用任何工具前先确认它在当前会话工具清单里**（教训：`read_page`/`bash` 并不存在于本预设，曾被本文档误声明为可用）。
-- ✅ **随包脚本白名单（v18.9.x 复核为 17 个）**：`scripts/*.mjs` = consistency-check / m-gate-check / md2html / pdfcheck / token-cost / count-chars / segment-chars / build-evidence-bundle / final-check / normalize-trust-level / model-routing / token-budget / apply-diff / lunheng-stats / handoff-check / apply-revision-cycle / apply-compression-cycle + 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等）——**受限 shell 使用**（另：`_lib` 子目录为共享库，非入口、不单独调用），非「零 exec」；其余命令须经主人同意。
+- ✅ **随包脚本白名单（v18.10.0 复核为 22 个）**：`scripts/*.mjs` = consistency-check / m-gate-check / md2html / pdfcheck / token-cost / count-chars / segment-chars / build-evidence-bundle / final-check / normalize-trust-level / model-routing / token-budget / apply-diff / lunheng-stats / handoff-check / apply-revision-cycle / apply-compression-cycle / structure-check / methodology-check / cite-coverage-check / journal-fit / meta-synthesize + 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等）——**受限 shell 使用**（另：`_lib` 子目录为共享库，非入口、不单独调用），非「零 exec」；其余命令须经主人同意。
   > **`segment-chars.mjs`（v18.2.7 新增）**：分段字数实测（`--list` 列全部节 / `--section "3.6"` 取指定节），供主控在派发段级 diff **之前**实测目标段现况字数；口径与 `count-chars.mjs` 同源。用法详见 [`references/pipeline-readme.md`](references/pipeline-readme.md) §段级 diff 前置步。
   > **`apply-diff.mjs`（v18.2.5 新增）**：段级 diff 清单机械应用器，用法与清单格式约定见 [`references/pipeline-readme.md`](references/pipeline-readme.md) §修订轮默认段级 diff。
+  > **`structure-check.mjs`（v18.10.0 战略反哺新增 / P0-4）**：学术结构合规门（IMRaD 节齐备 + 引言漏斗结构 + 讨论四要素），详见 [`references/agents/07-审计-auditor.md`](references/agents/07-审计-auditor.md) §学术结构合规段。
+  > **`methodology-check.mjs`（v18.10.0 战略反哺新增 / P0-1）**：方法论可复现性门（方法节参数完整性 + 统计-数据匹配 + 结果-方法闭环），详见 [`references/agents/07-审计-auditor.md`](references/agents/07-审计-auditor.md) §方法论可复现性段。
+  > **`cite-coverage-check.mjs`（v18.10.0 战略反哺新增 / P1-1）**：引用实质相关性度量（强度分布 + 冗余检测 + 年代分布），详见 [`references/agents/07-审计-auditor.md`](references/agents/07-审计-auditor.md) §引用实质相关性段。
+  > **`journal-fit.mjs`（v18.10.0 战略反哺新增 / P1-2）**：期刊反向工程（desk-reject 原因对位 + 审稿周期匹配 + 投稿格式合规），详见 [`references/_shared/期刊数据库.md`](references/_shared/期刊数据库.md) §三 扩展示例。
+  > **`meta-synthesize.mjs`（v18.10.0 战略反哺新增 / P2-1）**：元分析协议生成器（PRISMA 流程 + 效应量识别 + 异质性诊断），详见 [`references/agents/04-分析-analyst.md`](references/agents/04-分析-analyst.md) §元分析协议生成触发条件。
 - ❌ **不做**：凭据访问 / 浏览器自动化 / 定时任务（除白名单脚本与验证命令外，主控默认不执行任意 shell，LLM 推理判定）。
 - 🔒 **机制文件写保护（v18.1.0 部分机械化）**：`SKILL.md` / `AGENTS.md` / `references/**` / `scripts/**` / `cordis.patch.yml` 属**机制文件**——任何角色（含主控与子代理）**不得**用 write/edit 改动；改进动议只写 `audits/反哺报告-vN.md`，由主人在 host shell apply。**改机制文件 = P0 违规，本次交付作废**。bundle 部署下由入口注册的全局 `ctx.tools.guard()` 机制否决（主人授权走 `LUNHENG_ALLOW_MECH_EDIT=1` 或插件行 config）；已知边界与部署处方见 [`references/maintainers.md`](references/maintainers.md) §二（运行期只需记住：guard 不覆盖 pwsh）。
 - 🧾 **闸门必须留机械证据**：T2.5/T7.5 与 M 门**不得只凭自述**——附脚本 exit code + 产物路径。exit：`0` 通过 / `1` P1 / `2` P0 / `3` 仅 P2·soft·SKIP（需复核，不得当通过）/ `10` 参数路径错（含异常路径，`exit-guard` 统一映射，**不得与 P1 混用**）/ `70` 内部错误。`model-routing.mjs` 用 `4`＝需人工决定；`handoff-check.mjs` 用 `20/21/22`（收报验收，见下 §⚡）；非闸门工具不共用本语义（见 `docs/troubleshooting.md §8`）。
@@ -87,7 +92,7 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 
 ## ⚡ 启动速查表
 
-- 版本：v18.9.0｜角色：T0 主控（= T8 终检执行者）＋ T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / T8 终检（主控亲执行）/ T9 审稿（默认选中，学术必选）
+- 版本：v18.10.0｜角色：T0 主控（= T8 终检执行者）＋ T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / T8 终检（主控亲执行）/ T9 审稿（默认选中，学术必选）
 - Phase：0 定题 → 1 检索(T1∥T2∥T3) → 2 分析 → 2.5 大纲(人) → 3 写作 → 3.5 洞察(人) → 3.6 批判 → 4 审计 → 4.5 审稿+G14终闸 → 5 终检(人)
 - G14 时点（**v18.2.8 删早闸，三层防御**）：**① T5 v1 自检（零 spawn）→ ② 修订轮收尾自查（零 spawn）→ ③ 终闸 4.5 与 T9 并行（唯一一次 spawn，报告 = 最终版本真源）**
 - 工具：subagent=派发（分档预设按角色选 subagent_retrieval/strong/audit）｜list_agents=查看｜todo_write=计划｜web_search/web_fetch=检索｜pwsh=命令｜edit/write=文件
