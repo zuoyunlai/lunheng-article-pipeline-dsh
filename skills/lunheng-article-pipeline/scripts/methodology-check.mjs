@@ -15,9 +15,10 @@
 //   M-Exist-11   = 统计-数据匹配度（参数/非参数 / 独立/配对 / 单尾/双尾 / 效应量与置信区间报告）
 //   M-Exist-12   = 结果-方法闭环（每个结果叙述能否回链到方法节具体步骤）
 
-import { readFileSync, existsSync, writeFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { installExitGuard, requireExistingFile } from './_lib/exit-guard.mjs';
 import { sectionBody } from './_lib/sections.mjs';
+import { writeReport } from './_lib/destructive-write.mjs';   // 报告写盘守卫（v18.12.0，全量审计 L-50）
 installExitGuard();
 
 // --- CLI 参数解析 ---
@@ -164,12 +165,15 @@ const result = {
   meta: {
     timestamp: new Date().toISOString(),
     description: '论衡方法论可复现性门 / v18.10.0 战略反哺 P0-1 / scripts 白名单 18→19',
-    notes: '本脚本为机检骨架 + 关键词扫描；阈值与判定逻辑与 m-gate-check.mjs 的 M-Form-12 / M-Exist-11 / M-Exist-12 函数同源维护',
+    notes: '本脚本为机检骨架 + 关键词扫描；M-Form-12 / M-Exist-11 / M-Exist-12 是**本脚本自有命名空间**，'
+      + '与 m-gate-check.mjs 的 M 门 22 项（M-Form 1-11 / M-Exist 1-10 / M-Integrity-1）**不共用编号**——'
+      + 'v18.12.0（全量审计 L-20）更正：旧注释写「与 m-gate-check.mjs 的 … 函数同源维护」，而该脚本内并无这三个函数，属虚假声明；'
+      + '四份学术声明模板引用的「M-Form-12 子门」亦据此更正为「T7 人工核验」',
   },
 };
 
 const output = JSON.stringify(result, null, 2);
-if (reportPath) writeFileSync(reportPath, output, 'utf8');
+if (reportPath) writeReport(reportPath, output, { protect: [file] });   // v18.12.0（L-50）：同文件 → exit 10
 else console.log(output);
 
 process.exit(exitCode);

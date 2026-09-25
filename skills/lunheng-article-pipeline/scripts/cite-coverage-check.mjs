@@ -15,9 +15,10 @@
 //   C-Redundancy  = 同论点同时引 ≥4 篇且未在文中指明差异
 //   C-Distribution = 引用年代分布健康度（近 3 年 + 5+ 年前经典 + 中间年代三层比例）
 
-import { readFileSync, existsSync, writeFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { installExitGuard, requireExistingFile } from './_lib/exit-guard.mjs';
 import { sectionBody } from './_lib/sections.mjs';
+import { writeReport } from './_lib/destructive-write.mjs';   // 报告写盘守卫（v18.12.0，全量审计 L-50）
 installExitGuard();
 
 // --- CLI 参数解析 ---
@@ -192,7 +193,7 @@ const result = {
 };
 
 const output = JSON.stringify(result, null, 2);
-if (reportPath) writeFileSync(reportPath, output, 'utf8');
+if (reportPath) writeReport(reportPath, output, { protect: [file] });   // v18.12.0（L-50）：同文件 → exit 10
 else console.log(output);
 
 process.exit(exitCode);

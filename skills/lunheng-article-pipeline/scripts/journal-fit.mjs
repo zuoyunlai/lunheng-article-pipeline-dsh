@@ -16,9 +16,10 @@
 //   J-Cycle   = 本论文主题与目标期刊审稿周期匹配度（急稿避开审稿周期 > 12 月期刊）
 //   J-Format  = 投稿格式合规预检（参考文献风格 / 字数上限 / 补充材料格式）
 
-import { readFileSync, existsSync, writeFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { installExitGuard, requireExistingFile } from './_lib/exit-guard.mjs';
 import { sectionBody } from './_lib/sections.mjs';
+import { writeReport } from './_lib/destructive-write.mjs';   // 报告写盘守卫（v18.12.0，全量审计 L-50）
 installExitGuard();
 
 // --- CLI 参数解析 ---
@@ -182,7 +183,7 @@ const result = {
 };
 
 const output = JSON.stringify(result, null, 2);
-if (reportPath) writeFileSync(reportPath, output, 'utf8');
+if (reportPath) writeReport(reportPath, output, { protect: [projectPaperPath] });   // v18.12.0（L-50）：同文件 → exit 10
 else console.log(output);
 
 process.exit(exitCode);

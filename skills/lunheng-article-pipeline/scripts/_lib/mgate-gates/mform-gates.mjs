@@ -9,22 +9,26 @@ import { join, dirname } from 'node:path'
 import { refsOf, dataCardIds } from '../refs.mjs'
 import { TRUST_COMPLIANT_RE, TRUST_LOOSE_RE } from '../trust.mjs'
 import { splitCard } from '../cards.mjs'
-import { ENDNOTE_SECTIONS, h2Headings } from '../sections.mjs'
+import { ENDNOTE_SECTIONS, ENDNOTE_ORDER, h2Headings } from '../sections.mjs'
 import { countHan } from '../han.mjs'
 import { figurePlaceholders, analyzeSvg, svgTextNumbers, figureNoOf } from '../svg.mjs'
 import { indexSection, sectionRange, CARD_SPECS, entryIds, idsByToken } from '../mgate-helpers.mjs'
 
 // v2.5.2-dsh.5 修订：白名单 5 节 + AI 使用声明（M-Form-2 / M-Form-7 一致；原主文件模块级常量随门族迁入）
-const WHITELIST = ENDNOTE_SECTIONS;
+// v18.12.0（全量审计 L-17）：白名单从「必需五节」扩为「**九节合规顺序**」——
+//   必需五节（存在性，M-Form-2）+ 可选四声明（学术四声明，仅参与成员资格/顺序）。
+//   旧版白名单 = 必需五节 → v18.10.0 起写手卡要求的「文末九节」会被判 P0（该门又是不可兜底红线）
+//   → 学术论文照规范写必失败。存在性检查仍只认必需五节（非学术稿不必写四声明）。
+const WHITELIST = ENDNOTE_ORDER;
 
 // === M-Form-2 文末 5 节存在性（v2.5.2-dsh.5 修订：与 M-Form-7 一致）===
 export function mForm2(ctx) {
   const { h2s, results } = ctx;
-const missingSections = WHITELIST.filter((s) => !h2s.some((h) => h === s || h.startsWith(s)));
+const missingSections = ENDNOTE_SECTIONS.filter((s) => !h2s.some((h) => h === s || h.startsWith(s)));
 results.push({
   gate: 'M-Form-2 文末四节存在性',
   pass: missingSections.length === 0,
-  detail: missingSections.length ? `缺失: ${missingSections.join(',')}` : '5 节齐全',
+  detail: missingSections.length ? `缺失: ${missingSections.join(',')}` : '必需 5 节齐全（四声明可选，见 M-Form-7）',
   severity: missingSections.length > 0 ? 'P0' : '通过',
 });
 
@@ -48,7 +52,7 @@ if (firstIdx !== -1 && mform7Violations.length === 0) {
   if (seq.join(',') !== sorted.join(',')) {
     const actual = seq.map((i) => WHITELIST[i]).join(' → ');
     mform7OrderViolations.push(
-      `文末五节顺序违规：实际「${actual}」；规定「${WHITELIST.join(' → ')}」`,
+      `文末节顺序违规（九节口径）：实际「${actual}」；规定「${WHITELIST.join(' → ')}」`,
     );
   }
 }

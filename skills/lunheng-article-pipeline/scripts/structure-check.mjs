@@ -17,9 +17,10 @@
 //   S-Intro-Funnel = 引言是否含「领域重要性」+「知识缺口」+「本文贡献」三要素（关键词扫描）
 //   S-Discussion-4 = Discussion 是否含「主要发现重述」+「与既有研究比较」+「机制解释」+「局限性与未来方向」四要素
 
-import { readFileSync, existsSync, writeFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { installExitGuard, requireExistingFile } from './_lib/exit-guard.mjs';
 import { sectionBody } from './_lib/sections.mjs';
+import { writeReport } from './_lib/destructive-write.mjs';   // 报告写盘守卫（v18.12.0，全量审计 L-50）
 installExitGuard();
 
 // --- CLI 参数解析 ---
@@ -152,7 +153,7 @@ const result = {
 };
 
 const output = JSON.stringify(result, null, 2);
-if (reportPath) writeFileSync(reportPath, output, 'utf8');
+if (reportPath) writeReport(reportPath, output, { protect: [file] });   // v18.12.0（L-50）：同文件 → exit 10
 else console.log(output);
 
 process.exit(exitCode);

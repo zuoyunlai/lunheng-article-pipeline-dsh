@@ -19,10 +19,11 @@
 //   ③ 末档把任何非 0/1/2/3/70 的码都渲染成「exit 10」→ 改准确（10 与非 10 分开）；
 //   ④ 导入的 `EXIT_USAGE` 旧版未使用 → 现用于渲染与判定（不再让 10 只以字面量出现）。
 import { spawnSync } from 'node:child_process';
-import { existsSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { installExitGuard, requireExistingDir, EXIT_USAGE, EXIT_INTERNAL } from './_lib/exit-guard.mjs'; // 退出码硬化（v18.0.5）
+import { writeReport } from './_lib/destructive-write.mjs';   // 报告写盘守卫（v18.12.0，全量审计 L-50）
 import { parseArgs as parseCliArgs, USAGE_CODE as CLI_USAGE_CODE } from './_lib/cli-args.mjs';          // 参数解析唯一实现（v18.2.9，审计 A7）
 installExitGuard();   // fs 类异常 → 10；其余内部错误 → 70（不再让崩溃伪装成「1 = P1 内容残留」）
 
@@ -215,7 +216,9 @@ if (wantJson) {
 const finalReportPath = reportPath || join(project, 'audits', 'final-check-v0.json');
 const reportDir = dirname(finalReportPath);   // 旧版硬编码反斜杠 → POSIX 与正斜杠 --report 都会崩（v2.5.2-dsh.13 修复）
 if (!existsSync(reportDir)) mkdirSync(reportDir, { recursive: true });
-writeFileSync(finalReportPath, JSON.stringify(report, null, 2), 'utf8');
+// v18.12.0（全量审计 L-50）：`--report` 旧版是裸 writeFileSync —— 路径敲成 final/定稿.md 即销毁交付物。
+//   现走 writeReport：与定稿同文件 → exit 10；并留时间戳 .bak。
+writeReport(finalReportPath, JSON.stringify(report, null, 2), { protect: [final] });
 if (!wantJson) console.log(`\n📄 总报告: ${finalReportPath}`);
 
 process.exit(exitCode);

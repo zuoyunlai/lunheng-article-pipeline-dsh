@@ -15,8 +15,9 @@
 //   主控不应假装能做出来；脚本输出 PRISMA 协议骨架 + 效应量识别 + 异质性诊断提示，
 //   供主控 + T4 据此触发人工元分析或外接 R / Python / Stata 工具。
 
-import { readFileSync, existsSync, writeFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { installExitGuard, requireExistingFile } from './_lib/exit-guard.mjs';
+import { writeReport } from './_lib/destructive-write.mjs';   // 报告写盘守卫（v18.12.0，全量审计 L-50）
 installExitGuard();
 
 // --- CLI 参数解析 ---
@@ -151,7 +152,7 @@ const result = {
 };
 
 const output = JSON.stringify(result, null, 2);
-if (reportPath) writeFileSync(reportPath, output, 'utf8');
+if (reportPath) writeReport(reportPath, output, { protect: [dataCardPath] });   // v18.12.0（L-50）：同文件 → exit 10
 else console.log(output);
 
 process.exit(0);

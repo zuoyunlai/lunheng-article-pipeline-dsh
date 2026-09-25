@@ -34,10 +34,10 @@
 //      最小差异法同时覆盖 替换 / 插入 / 删除 三类，且不要求 T5 用某种固定引号。
 //   ④ 剥离「修改」行尾的元注记（`（按 G14 报告 C-01）` 等），避免把注记写进正文。
 // 安全约束：old 在目标文件内**必须唯一**——多处匹配一律跳过并报告（交主控按行号人工处理）。
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { countHan } from './_lib/han.mjs';
 import { installExitGuard, requireExistingFile } from './_lib/exit-guard.mjs';
-import { sameFile, realPath, writeWithSafety } from './_lib/destructive-write.mjs';   // 破坏性写策略（v18.2.6）
+import { sameFile, realPath, writeWithSafety, writeReport } from './_lib/destructive-write.mjs';   // 破坏性写策略（v18.2.6；v18.12.0 加报告守卫）
 import { parseArgs, USAGE_CODE } from './_lib/cli-args.mjs';   // 参数解析唯一实现（v18.2.6）
 import { causalStrength, CAUSAL_RANK } from './_lib/causal.mjs';   // 因果强度守恒（v18.3.0 方案）
 installExitGuard();
@@ -274,7 +274,9 @@ const summary = {
   unparsed_items: unparsed.map((u) => ({ id: u.id, line: u.line, reason: !u.cur ? '缺「现况」行' : '缺「修改」行' })),
 };
 
-if (reportPath) writeFileSync(reportPath, JSON.stringify(summary, null, 2), 'utf8');
+// v18.12.0（全量审计 L-50）：`--report` 旧版是**裸 writeFileSync** —— 路径敲成被审正文/清单即
+//   不可回滚地销毁它（实测 exit 0、目录内无 .bak）。现统一走 writeReport：同文件 → exit 10；并留时间戳 .bak。
+writeReport(reportPath, JSON.stringify(summary, null, 2), { protect: [targetPath, listPath] });
 
 // JSON 契约字段（ok/applied/unparsed/unparsed_detail/hint）**保持原名不改**——下游与回归用例依赖它们；
 // 本批只做加法（in_place / written / backup / list_items / _detail 补齐缺失源）。

@@ -61,7 +61,11 @@ for (const file of files) {
     if (!token) { unresolved.push(`${file} [D${id}]`); continue; }   // 绝不推断
     const im = block.match(/信任级别\**[:：]\s*([^\n（）()|，,;；]*)/);
     const detail = im && im[1].trim() ? `（${im[1].trim().replace(/[🟢🟡🔴]/g, '').trim()}）` : '';
-    const nl = block.indexOf('\n');
+    // v18.12.0（全量审计 L-52 连带）：旧版 `block.indexOf('\n')` 对**行内式** block（其首字符就是 `\n`）
+    //   恒得 0 → 插入点落在条目**之前**（块外）→ 该条永不达标；且第二次运行再插一条 → 幂等性失效
+    //   （审计实测「信任级别」行数 2→3 且仍打印「1 条已规范化」）。改为 `indexOf('\n', 1)`：
+    //   跳过行内式 block 起始的那个换行，落在条目首行之后（标题式行为不变——其首行是标题行）。
+    const nl = block.indexOf('\n', 1);
     const pos = card.index + (nl === -1 ? block.length : nl);
     const inserted = `\n信任级别：${token}${detail}`;
     text = text.slice(0, pos) + inserted + text.slice(pos);

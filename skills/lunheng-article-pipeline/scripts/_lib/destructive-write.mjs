@@ -25,6 +25,7 @@
 //   writeWithSafety(out, text, { inPlace, source: target });   // 覆盖前自动 .bak（带时间戳）
 import { existsSync, statSync, realpathSync, copyFileSync, writeFileSync, renameSync, unlinkSync, readdirSync } from 'node:fs'
 import { resolve, dirname, join, basename } from 'node:path'
+import { EXIT_USAGE } from './exit-guard.mjs'   // 退出码唯一真源（v18.12.0：writeReport 的同文件拒绝用它）
 
 const WIN = process.platform === 'win32'
 
@@ -162,4 +163,36 @@ export function writeWithSafety(p, text, { inPlace = false, source = null } = {}
     throw e
   }
   return { path: p, backup, inPlace }
+}
+
+/**
+ * `--report` 报告写盘（v18.12.0 新增，依据 2026-09-25 全量审计 L-50）——**唯一实现**。
+ *
+ * 为什么需要它（审计实测事实）：
+ *   8 个脚本的 `--report` 一直是**裸 `writeFileSync`** —— 既走不到同文件守卫，也不留 `.bak`。
+ *   实测 `apply-diff a.md list.md --out b.md --report a.md` → **exit 0** 且 `a.md` 被 JSON 覆盖、
+ *   目录内无任何回滚点；`m-gate-check <定稿.md> <证据包> --report <定稿.md>` 同形。
+ *   `--report` 是主控高频参数，一次路径手滑即**不可回滚地销毁被审正文 / 定稿**——与 B-1 事故同型
+ *   （区别只在于 B-1 走的是输出参数，本族走的是报告参数）。
+ *
+ * 规则：
+ *   ① `protect` 里任一源文件与 reportPath 是同一文件 → 打印原因 + **exit 10**（参数/路径错误，
+ *      与「1 = P1 内容失败」区分；判据走 `sameFile`，已覆盖相对路径 / 大小写 / realpath 三类绕过）。
+ *   ② 通过守卫后走 `writeWithSafety(..., { inPlace: true })`：报告本就允许在原地反复重写，
+ *      但**必须留时间戳 `.bak` 回滚点**（旧版无备份）。
+ *   ③ 空 reportPath → 直接返回 null（调用方无需再判空）。
+ *
+ * 参数：`protect` = 本次运行**读过的源文件路径**数组（元素可为 null/undefined，自动跳过）。
+ */
+export function writeReport(reportPath, text, { protect = [], label = '--report' } = {}) {
+  if (!reportPath) return null
+  for (const src of protect) {
+    if (!src) continue
+    if (sameFile(reportPath, src)) {
+      console.error(`${label} 不能与本次运行的源文件是同一文件（会不可回滚地销毁它）：${realPath(reportPath)}`)
+      console.error(`→ 退出码 ${EXIT_USAGE}（参数或路径错误）：请把 ${label} 指向另一个路径（如 audits/xxx.json）`)
+      process.exit(EXIT_USAGE)
+    }
+  }
+  return writeWithSafety(reportPath, text, { inPlace: true })
 }
