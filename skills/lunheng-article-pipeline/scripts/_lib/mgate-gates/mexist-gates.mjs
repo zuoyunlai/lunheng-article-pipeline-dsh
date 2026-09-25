@@ -1179,7 +1179,7 @@ if (files.length === 0 && isDraftStageAudit) {
   const manifestPath = join(evDir, 'manifest.json');
   let manifestProblem = null;   // 硬问题（P0）
   let manifestNote = '';        // 提示（不改严重度）
-  let manifestStale = '';       // v18.12.3（L-55）：陈旧副本（源侧变动而包未重建）——同样只进 detail，不翻 severity
+  let manifestStale = '';       // v18.13.0（L-55）：陈旧副本（源侧变动而包未重建）——同样只进 detail，不翻 severity
   let manifestChecked = false;
   if (existsSync(manifestPath)) {
     try {
@@ -1213,7 +1213,7 @@ if (files.length === 0 && isDraftStageAudit) {
           }
         }
         manifestNote = `｜ ✓ 清单复算通过（${(mf.files || []).length} 个文件 sha256 一致，无空降文件）${manifestNote}`;
-        // ③ v18.12.3（全量审计 L-55 收口）：**陈旧副本检测**。
+        // ③ v18.13.0（全量审计 L-55 收口）：**陈旧副本检测**。
         //   为什么需要：`build-evidence-bundle` 是**只加不删**的复制（`copyFileSync` 一遍，从不清理目的目录），
         //   而 `m-gate-check` 的 `findCard` **优先**读证据包 —— 于是「源文件被删/改名后，包里的旧副本仍在」
         //   这种情形下，M 门核的是**那份旧副本**（审计实测：删掉 `data/数据卡.md` 后重跑，M-Form-6 /

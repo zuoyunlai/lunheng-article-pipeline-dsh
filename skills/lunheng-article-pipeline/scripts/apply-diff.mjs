@@ -85,7 +85,7 @@ if (inPlace && !overwritesTarget) {
 }
 
 // ---- 元注记剥离（防「（按 XX 报告 NN）」写进正文）----
-// v18.12.3（全量审计 L-57 收口）：**判据收窄为「括号内含 ≥2 个 ASCII（数字/字母）」**。
+// v18.13.0（全量审计 L-57 收口）：**判据收窄为「括号内含 ≥2 个 ASCII（数字/字母）」**。
 //   旧版 `[（(](?:按|参|依据|参见|详见|对应|v\d)[^）)]{0,60}[）)]$` 的意图边界是「元注记」，实际边界是
 //   「行尾任何以这些词开头、60 字以内的括号」——审计实测与本次复现（见下用例）均确认它会删掉**正文**：
 //     `文字（对应的系数）` → `文字`（尾括号被删，且 ok:true、exit 0）
@@ -155,7 +155,7 @@ const stripMd = (s) => s
   .trim();
 
 const listLines = readFileSync(listPath, 'utf8').split('\n');
-// v18.12.3（全量审计 L-59 收口）：条目头正则**改为显式前缀白名单**。
+// v18.13.0（全量审计 L-59 收口）：条目头正则**改为显式前缀白名单**。
 //   旧版 `^\s*(?:#{1,6}\s*)?\[(?:Diff\s+)?([A-Za-z]?\d+[-\w.]*)[^\]]*\]` 会把**任意**方括号编号行当条目头，
 //   于是正文里合法的引用行（本包 `[L01]`/`[D01]`/`[C01]`）也被吞掉 —— 审计实测与本次复现：
 //     `[L01] 备注：这条是正文引用` → **被当条目头**（id=L01）→ 真 diff 被吞、applied=0、exit 1。
@@ -167,7 +167,7 @@ const HEAD_RE = /^\s*(?:#{1,6}\s*)?\[(?:Diff\s+(\d+)|P([01])-(\d+)|C-(\d+))[^\]]
 const headId = (m) => (m[1] ? `Diff ${m[1]}` : m[2] ? `P${m[2]}-${m[3]}` : `C-${m[4]}`);
 const items = [];
 let cur = null;
-// v18.12.3（L-58 收口）：**记住被丢弃的非空行**。旧版 `for` 里三条 if 全不命中就 `continue` ——
+// v18.13.0（L-58 收口）：**记住被丢弃的非空行**。旧版 `for` 里三条 if 全不命中就 `continue` ——
 //   多行「现况」的**续行**被静默丢弃 → 半截替换照样报 ok:true（审计实测：正文残留旧句而 hint 说「全部已应用」）。
 //   现把「该条目正文范围内、既非定位/现况/修改、又非空」的行记进 `droppedLines`，随 unparsed 一起上报。
 const droppedLines = [];
@@ -200,7 +200,7 @@ const parsed = items.filter((it) => it.cur && it.new);
 const unparsed = items.filter((it) => !it.cur || !it.new);
 const emptyList = items.length === 0;   // v18.2.6（B-4 ③）：清单解析出 0 条——见下方两处判定的顺序说明
 
-// v18.12.3（L-59 收口配套）：**解析出 0 条但文件里明明有方括号行** → 必须点名，不得只说「未解析出任何条目」。
+// v18.13.0（L-59 收口配套）：**解析出 0 条但文件里明明有方括号行** → 必须点名，不得只说「未解析出任何条目」。
 //   旧版这种情况下主控只能靠猜（是清单空？还是格式不对？）——本轮把条目头收窄为四个清单族后，
 //   「非四族前缀（如 `[L01]`/`[1]`）」会落进这一支，故**点名到行**是必要配套。
 if (emptyList && unparsedHeads.length) {
@@ -210,7 +210,7 @@ if (emptyList && unparsedHeads.length) {
   console.error('   （v18.12.3 前，任意 `[x]` 行都被当条目头 → 正文引用会被吞掉、真 diff 静默丢失）');
 }
 
-// v18.12.3（L-58 收口）：**丢弃行必须上报**。只要条目正文里有既非「定位/现况/修改」又非空的行，
+// v18.13.0（L-58 收口）：**丢弃行必须上报**。只要条目正文里有既非「定位/现况/修改」又非空的行，
 //   就说明清单里有内容没被吃进 old/new —— 多行「现况」的续行是最常见形态，后果是**半截替换仍报 ok**。
 //   判据：有不规则行 → 计入 unparsed（走既有的 exit 1 通道），并在 stderr 逐条点名。
 if (droppedLines.length) {
@@ -292,7 +292,7 @@ const delta = afterHan - beforeHan;
 //   下游（主控/修订说明）无法区分「清单路径传错 / 格式不符」与「真的全应用了」——这是假成功。
 //   现：空清单 → ok:false、hint 明说「清单未解析出任何条目」、exit 1，且**不写盘**（写出去的那份与输入逐字
 //   相同，一旦被当成「初稿-v4」往下游流，等于把未修订的正文冒充修订版）。
-// v18.12.3（L-58）：**丢弃行让 ok 转假**——它此前完全不可见，半截替换照样 exit 0 / ok:true。
+// v18.13.0（L-58）：**丢弃行让 ok 转假**——它此前完全不可见，半截替换照样 exit 0 / ok:true。
 const ok = !emptyList && skipped.length === 0 && unparsed.length === 0 && droppedLines.length === 0;
 const hint = emptyList
   ? '清单未解析出任何条目（0 条）：请核对清单路径与格式——条目头只认 `[Diff N]` / `[P0-n]` / `[P1-n]` / `[C-n]`，且每条含「现况：」与「修改：」两行；本次**未写盘**'
@@ -345,7 +345,7 @@ const summary = {
   applied_items: applied,
   skipped_items: skipped,
   unparsed_items: unparsed.map((u) => ({ id: u.id, line: u.line, reason: !u.cur ? '缺「现况」行' : '缺「修改」行' })),
-  // v18.12.3（L-58/L-59）：把两类此前**完全不可见**的内容也写进 JSON 契约（只做加法，不动既有字段）
+  // v18.13.0（L-58/L-59）：把两类此前**完全不可见**的内容也写进 JSON 契约（只做加法，不动既有字段）
   dropped_lines: droppedLines,                      // 既非定位/现况/修改、又非空 → 未参与替换（半截替换的根因）
   dropped_count: droppedLines.length,
   unrecognized_head_lines: unparsedHeads,           // 方括号行但不是四个清单族（如正文引用 `[L01]`）
@@ -369,9 +369,9 @@ console.log(JSON.stringify({
   han_before: beforeHan, han_after: afterHan, han_delta: delta,
   skipped_detail: skipped.slice(0, 8),
   unparsed_detail: summary.unparsed_items.slice(0, 8),
-  dropped_count: droppedLines.length,                       // v18.12.3（L-58）：>0 即「替换可能半截」，ok 已随之转假
+  dropped_count: droppedLines.length,                       // v18.13.0（L-58）：>0 即「替换可能半截」，ok 已随之转假
   dropped_detail: droppedLines.slice(0, 8),
-  unrecognized_head_lines: unparsedHeads.slice(0, 8),       // v18.12.3（L-59）：方括号行但不是四个清单族
+  unrecognized_head_lines: unparsedHeads.slice(0, 8),       // v18.13.0（L-59）：方括号行但不是四个清单族
   hint,
 }, null, 2));
 

@@ -50,7 +50,7 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const nodeBin = process.execPath;
 
 // ---- ① 量测字数 ----
-// v18.12.3（L-56 同族收口）：body 口径与 `count-chars.mjs` 对齐 ——「**摘要后** ~ 文末节前」，
+// v18.13.0（L-56 同族收口）：body 口径与 `count-chars.mjs` 对齐 ——「**摘要后** ~ 文末节前」，
 //   并把汉字统计先过 `maskFences`（围栏内文字不计入正文）。旧版 `slice(0, firstEnd)`（文件开头 → 文末节前）
 //   **含题名区与摘要**，与本仓唯一验收口径不同；`apply-revision-cycle` 同源缺陷已在本版一并修正。
 const bodyOf = (text) => {

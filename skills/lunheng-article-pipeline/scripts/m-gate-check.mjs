@@ -171,7 +171,7 @@ const text = readFileSync(draftPath, 'utf8');
 //   指纹用**内容哈希 + 字节数**（不含 mtime：证据包会复制/重写文件，mtime 不可靠）。
 const draftSha256 = createHash('sha256').update(readFileSync(draftPath)).digest('hex');
 const draftBytes = readFileSync(draftPath).length;
-// v18.12.3（L-06）：被审正文的**项目相对路径**（`drafts/<name>` 或 `final/定稿.md`）——与上面两项
+// v18.13.0（L-06）：被审正文的**项目相对路径**（`drafts/<name>` 或 `final/定稿.md`）——与上面两项
 //   一起构成「这份报告审的是哪一版」的完整、可机读记录。相对路径而非绝对：报告会被复制进证据包、
 //   跨机器 review，绝对路径没有意义。解析失败（路径不在项目内）时退化为 basename，并在值里保留线索。
 const relativeBase = (() => {
@@ -392,7 +392,7 @@ const report = {
   results: wantSummary ? results.filter((r) => !r.pass && r.severity !== 'LLM 兜底') : results,  // --summary 仅保留硬失败项，省 token
   exit: exitCode,
   // 被审正文指纹（v18.0.5）：T8 裁定段据此判断「是否仍适用于本版正文」
-  // v18.12.3（L-06）：补 `draft_name` —— 主人 2026-09-25 定案「产物 `-vN` 的 N 跟审计轮次」，
+  // v18.13.0（L-06）：补 `draft_name` —— 主人 2026-09-25 定案「产物 `-vN` 的 N 跟审计轮次」，
   //   于是**正文轮次与报告轮次解耦**：不再靠「审计报告-vN 必须等于初稿-vN」表达「审的是哪一版」，
   //   改由本字段**逐字记下被审正文档名**（如 `drafts/初稿-v3.md`）+ sha256 组成可机读的审定对象。
   //   为什么两件都给：`draft_name` 供人读与路径核对，`draft_sha256` 供内容核对（防「按名字审的
