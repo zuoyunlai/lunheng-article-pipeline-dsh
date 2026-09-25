@@ -68,6 +68,15 @@
    - **独立复核来源**（如「`audits/复核报告-vN.md` 独立逐条枚举复核，结论一致」）
 2. 必须新增 **`_t8_conclusion`** 段，写明 `true_p0` / `true_p1` / 放行理由 / 已知局限
 3. **禁止**为了让 `exit` 变成 0 而改稿、改脚本或删除合法编号——**如实记账优于伪造**
+4. **写入方式（v18.12.0，全量审计 L-05 落地）**：两段**必须经 `m-gate-check.mjs --adjudicate <裁定.json>` 写入**，不得手写报告——
+   `node scripts/m-gate-check.mjs <定稿.md> <证据包> --report final/M-Gate-Report.json --adjudicate <裁定.json>`
+   裁定文件：`{"true_p0":0,"true_p1":0,"verdict":"…","llm_review":"① 逐条枚举… ② 真阳性扫描… ③ 规范冲突说明… ④ 独立复核来源…"}`
+   （`true_p0`/`true_p1` 亦接受实战写法 `true_p0_count`/`true_p1_count`）。脚本会：① 校验两段齐全（缺 → **exit 30**）；
+   ② 命中**硬 P0 红线**时**拒绝采纳**（→ exit 30，落盘机械值）；③ 裁定值 ≠ 机械值但四件套不足三项时**拒绝**（→ exit 30）；
+   ④ 通过后写 `exit`=裁定值、保留 `script_exit_raw`、置 `verdict_stale:false` + `_t8_adjudicated_at/_by`，
+   **且进程退出码 = 裁定值**（避免重演「产物说放行、退出码说 P0」）。
+   > **为什么必须走通道**：此前没有正式入口，实战项目只能自建脚本直接 `rj.exit = 0`，产出
+   > `exit=0` + `verdict_stale=true` 的**自相矛盾交付物**（脚本不知道那段裁定是否还绑定本版正文）。
 
 > ### ⛔ 硬 P0 红线（v18.11.0 F-1 反哺新增——这 4 类**不允许** LLM 兜底覆盖）
 >

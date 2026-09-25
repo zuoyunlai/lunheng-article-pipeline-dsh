@@ -73,12 +73,12 @@ if (process.argv.includes('--dump-thresholds')) {
 }
 
 const args = process.argv.slice(2);
-const MGATE_USAGE = '用法: node m-gate-check.mjs <定稿.md> <证据包目录> [--summary] [--fig-dir <dir>] [--report <path>]';
-let wantSummary, figDirArg, reportPath, positional;
+const MGATE_USAGE = '用法: node m-gate-check.mjs <定稿.md> <证据包目录> [--summary] [--fig-dir <dir>] [--report <path>] [--adjudicate <T8裁定.json>]';
+let wantSummary, figDirArg, reportPath, adjudicatePath, positional;
 try {
   const parsed = parseCliArgs(args, {
     flags: ['--summary'],
-    values: { '--fig-dir': 'final/图件', '--report': 'final/M-Gate-Report.json' },
+    values: { '--fig-dir': 'final/图件', '--report': 'final/M-Gate-Report.json', '--adjudicate': 'audits/t8-conclusion.json' },
     minPositionals: 2,
     maxPositionals: 2,
     positionalHint: '<定稿.md> <证据包目录>',
@@ -86,6 +86,7 @@ try {
   wantSummary = parsed.flags.has('--summary');
   figDirArg = parsed.opts['--fig-dir'];
   reportPath = parsed.opts['--report'];
+  adjudicatePath = parsed.opts['--adjudicate'];
   positional = parsed.positionals;
 } catch (e) {
   if (e && e.code === CLI_USAGE_CODE) { console.error(e.message); console.error(MGATE_USAGE); process.exit(10); }
@@ -371,6 +372,9 @@ const hardRedLineHits = results
   .map((r) => `${String(r.gate).split(' ')[0]}(${r.severity})`);
 const anyFail = results.some((r) => r.pass === false);
 const exitCode = p0 > 0 ? 2 : (p1 > 0 ? 1 : (anyFail || skips > 0 ? 3 : 0));
+// v18.12.0（L-05）：进程退出码默认 = 机械值；`--adjudicate` 成功写入裁定时改为**裁定值**
+//   （否则会重演「报告 exit=0 而进程 exit=2」——审计把这称作「产物说放行、退出码说 P0」）。
+let finalExit = exitCode;
 const report = {
   draft: draftPath,
   date: new Date().toISOString().slice(0, 10),
@@ -446,6 +450,73 @@ if (reportPath) {
         );
       }
     }
+    // === v18.12.0（全量审计 L-05 落地）：T8 裁定的**正式入口** `--adjudicate <json>` ===
+    // 为什么需要它：此前「重跑后重新裁定」**没有正式通道**——脚本只在正文指纹未变时才保留既有裁定，
+    //   而指纹一变就把 `exit` 打回机械值；T8 要保留裁定只能**手写**报告（实战项目为此自建
+    //   `tools/merge-m-gate-report.js`，直接 `rj.exit = 0`，并产出 `exit=0` + `verdict_stale=true`
+    //   这种自相矛盾的交付物）。本通道把它变成**脚本自己做的事**，并带上四道校验：
+    //   ① `--adjudicate` 必须与 `--report` 同用（否则无处落盘）；裁定文件缺失/非 JSON → exit 10；
+    //   ② 裁定必须给出 `true_p0` / `true_p1`（兼容实战写法 `true_p0_count` / `true_p1_count`）；
+    //   ③ **硬 P0 红线不可兜底**（L-44）：本次机械运行命中红线 → **拒绝采纳**，落盘机械值并 exit 30；
+    //   ④ **改机械值须给证伪证据**（L-03）：裁定值 ≠ 机械值时，`llm_review` 必须含「证伪四件套」的
+    //      至少三项（逐条枚举 / 真阳性扫描 / 规范冲突说明 / 独立复核来源），否则 exit 30。
+    //   落盘后：`exit` = 裁定值、`script_exit_raw` = 机械值（禁改）、`verdict_stale: false`、
+    //   `_t8_adjudicated_at/_by` 留痕 —— 且**进程退出码 = 裁定值**（避免重演「产物说放行、退出码说 P0」）。
+    if (adjudicatePath) {
+      if (!reportPath) { console.error('--adjudicate 必须与 --report 同用（裁定要写进报告）'); console.error(MGATE_USAGE); process.exit(10); }
+      let adj = null;
+      try {
+        adj = JSON.parse(readFileSync(adjudicatePath, 'utf8'));
+      } catch (e) {
+        console.error(`裁定文件读取/解析失败: ${adjudicatePath}（${e.message}）`);
+        console.error('  期望 JSON：{"true_p0":0,"true_p1":0,"verdict":"…","llm_review":"① 逐条枚举… ② 真阳性扫描… ③ 规范冲突说明… ④ 独立复核来源…"}');
+        process.exit(10);
+      }
+      const aP0 = adj.true_p0 ?? adj.true_p0_count;
+      const aP1 = adj.true_p1 ?? adj.true_p1_count;
+      if (aP0 === undefined || aP1 === undefined) {
+        console.error('裁定文件缺 `true_p0` / `true_p1`（可写 `true_p0_count` / `true_p1_count`）——无法判定裁定值');
+        process.exit(30);
+      }
+      const adjExit = Number(aP0) > 0 ? 2 : (Number(aP1) > 0 ? 1 : 0);
+      const reviewText = typeof adj.llm_review === 'string' ? adj.llm_review : JSON.stringify(adj.llm_review ?? '');
+      const FOUR = [/逐条/, /真阳性/, /规范/, /复核|独立/];
+      const fourHits = FOUR.filter((re) => re.test(reviewText)).length;
+      if (hardRedLineHits.length > 0) {
+        console.error(
+          `⛔ 拒绝裁定：本次机械运行命中**硬 P0 红线**（${hardRedLineHits.join(' / ')}）——红线项不允许 LLM 兜底`
+          + `（v18.11.0 F-1 契约，v18.12.0 L-44 实装）。已落盘机械值 exit=${report.exit}；请真修复红线项后重跑。`,
+        );
+        console.error(`→ 退出码 30（裁定被拒：裁定无效，报告已落盘机械值）`);
+        process.exit(30);
+      }
+      if (adjExit !== report.exit && fourHits < 3) {
+        console.error(
+          `⛔ 拒绝裁定：裁定值 ${adjExit} ≠ 本次机械值 ${report.exit}，但 \`llm_review\` 未含「证伪证据四件套」的至少三项`
+          + `（当前命中 ${fourHits}/4：逐条枚举 / 真阳性扫描 / 规范冲突说明 / 独立复核来源）。`
+          + `\n   —— 四件套是「把机械失败人工修正为通过」的**必填代价**（M-Gate-Algorithm §_t8_llm_review）；`
+          + `机械值本就是 ${report.exit} 时无需裁定。已落盘机械值。`,
+        );
+        console.error(`→ 退出码 30（裁定被拒：裁定段不完整，报告已落盘机械值）`);
+        process.exit(30);
+      }
+      out = {
+        ...report,
+        script_exit_raw: report.exit,             // 机械原值（禁改）
+        exit: adjExit,                            // T8 裁定值
+        _t8_conclusion: {
+          true_p0: Number(aP0), true_p1: Number(aP1),
+          ...(adj.verdict !== undefined ? { verdict: adj.verdict } : {}),
+          ...(adj.note !== undefined ? { note: adj.note } : {}),
+        },
+        _t8_llm_review: adj.llm_review ?? '',
+        _t8_adjudicated_at: new Date().toISOString().slice(0, 10),
+        _t8_adjudicated_by: 'T8（主控亲执行；经 --adjudicate 正式通道写入）',
+        verdict_stale: false,
+      };
+      finalExit = adjExit;
+      console.error(`✅ 已写入 T8 裁定：exit=${adjExit}（script_exit_raw=${report.exit}，证伪四件套 ${fourHits}/4，正文指纹 ${String(draftSha256).slice(0, 12)}…）`);
+    }
     // v18.12.0（全量审计 L-50）：`--report` 旧版是裸 writeFileSync —— 路径敲成被审正文即销毁它。
     //   现走 writeReport：与 draftPath 同文件 → exit 10；并留时间戳 .bak（旧版无回滚点）。
     writeReport(reportPath, JSON.stringify(out, null, 2), { protect: [draftPath] });
@@ -458,4 +529,4 @@ if (reportPath) {
     process.exit(70);
   }
 }
-process.exit(exitCode);
+process.exit(finalExit);
