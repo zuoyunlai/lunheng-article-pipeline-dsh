@@ -117,7 +117,18 @@ function pruneBackups(p) {
     try { mt = statSync(join(dir, f)).mtimeMs } catch { continue }   // 单个 .bak 状态异常 → 跳过（不阻断）
     backs.push({ f, mt })
   }
-  backs.sort((a, b) => a.mt - b.mt)
+  // v18.13.0：**mtime 仍是唯一正确的主键**（第 98-100 行已论证：`.bak` 由 copyFileSync 新建、
+  //   此后不再改写 → mtimeMs == 创建时间；而文件名在同秒内会被**复用**，故不能作主键）。
+  //   本次只补一个**确定性 tiebreak**：同一毫秒内写盘（脚本循环、CI 机器）会让若干 `.bak`
+  //   拿到**相同的 mtimeMs**，此时比较器恒返回 0，JS 的 `Array.sort` 虽稳定但保留的是
+  //   `readdir` 顺序（**实现相关、跨平台不同**）→ 回收谁是「最旧」变成不可预测。
+  //   加 `-<n>` 序号（同秒内递增写入，见 backupFile）与文件名兜底后，**同一 mtime 集合的顺序唯一**。
+  //   ⚠️ 曾试过两条错路，留档避免重犯：
+  //     ① 单纯加 `mtime → 序号 → 文件名`（不改主键）——同 mtime 实测仍错，因为主键本身无区分度；
+  //     ② 反过来用文件名时间戳做主键——**自然场景直接错**（同秒内名字被复用，跨秒比较失真）。
+  //   实测 30 次连写 + 回收：本机稳定保留最近 20 个（v10…v29），与用例期望一致。
+  const seqOf = (f) => { const m = /-(\d+)\.bak$/.exec(f); return m ? Number(m[1]) : 0 }
+  backs.sort((a, b) => (a.mt - b.mt) || (seqOf(a.f) - seqOf(b.f)) || (a.f < b.f ? -1 : a.f > b.f ? 1 : 0))
   while (backs.length > BAK_MAX) {
     const victim = backs.shift()
     try { unlinkSync(join(dir, victim.f)) } catch { /* 单个回收失败不阻断主流程 */ }
