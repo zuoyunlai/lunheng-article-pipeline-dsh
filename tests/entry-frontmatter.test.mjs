@@ -17,6 +17,7 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { settle } from './_fixtures.mjs'   // v18.16.0（F-1 反哺 · 共享 settle）
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PACKAGE_ROOT = join(HERE, '..')
@@ -37,10 +38,8 @@ function makeTempPackage(transform) {
   return root
 }
 
-/** 冲刷入口里那次异步安装（C 组动态 import）并回收输出。 */
-const settle = async (rounds = 8) => {
-  for (let i = 0; i < rounds; i++) await new Promise((r) => setTimeout(r, 5))
-}
+/** 冲刷入口里那次异步安装（C 组动态 import）并回收输出。
+ *   v18.16.0（F-1 反哺）：本地实现已上提到 _fixtures.mjs；下方通过 import 引入 80 ms 条件等待版本。 */
 
 /**
  * 真跑一次入口。

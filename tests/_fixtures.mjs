@@ -34,6 +34,11 @@ export const run = (args, opts = {}) => {
   const errPath = join(d, 'stderr.txt')
   const outFd = openSync(outPath, 'w')
   const errFd = openSync(errPath, 'w')
+  // v18.16.0（F-2 反哺）：默认 120 s 子进程超时（`opts.timeout = 0` = 不限时）；
+  //   死循环或等 stdin 的脚本会在上限内被 SIGKILL，并把 `error.code === 'ETIMEDOUT'`
+  //   暴露在返回契约上 —— 让「脚本失败」与「环境把脚本拖死」可被区分。
+  const timeout = opts.timeout !== undefined ? opts.timeout : 120000
+  const killSignal = opts.killSignal || 'SIGKILL'
   let r
   try {
     r = spawnSync(process.execPath, args, {
@@ -41,6 +46,7 @@ export const run = (args, opts = {}) => {
       cwd: opts.cwd || ROOT,
       stdio: ['ignore', outFd, errFd], // ← 关键：文件描述符，不是 'pipe'（受限沙箱禁命名管道）
       ...(opts.env ? { env: opts.env } : {}),
+      ...(timeout > 0 ? { timeout, killSignal } : {}),
     })
   } finally {
     closeSync(outFd)
@@ -59,6 +65,10 @@ export const run = (args, opts = {}) => {
     stdout,
     stderr,
     error: r.error ? (r.error.code || r.error.message) : undefined,
+    // v18.16.0（F-2 反哺 · 收尾）：暴露超时信号；调用方可据此区分「子进程被父进程超时杀掉」
+    //   与「子进程自己退出非 0」。`r.signal === 'SIGKILL' && r.status === null` 是 Node spawnSync
+    //   在 timeout 触发时的典型表现。
+    timedOut: r.error?.code === 'ETIMEDOUT' || (r.signal === killSignal && r.status === null && timeout > 0),
   }
 }
 export const parseJson = (r) => JSON.parse(r.stdout.slice(r.stdout.indexOf('{')))
@@ -145,3 +155,51 @@ export const CARD = (name, ids) => `# ${name}\n\n## 📇 索引段\n\n`
 
 // 便捷写入：`writeDraft(fin, body)` 等高频组合（保持与手写 writeFileSync 完全一致的落盘形态）
 export const writeFixture = (path, content) => { writeFileSync(path, content) }
+
+// v18.16.0（F-1 反哺 · 条件等待上提）：原 `settle = async (rounds = 8) => { for ... setTimeout(5) }`
+//   在三份测试（entry / guard-config / entry-frontmatter）里逐字复制，固定 40 ms 预算——CI 上 4 matrix
+//   leg 并发跑时 guard 装入随机落在 21~80 ms，固定等待成 flaky 真源。现改为「轮询条件 + 总预算」
+//   的 waitFor，并提供同义 settle 形态（默认让出 N 个 microtask）保持旧调用兼容。
+/**
+ * 条件等待：等到 `pred()` 返回真或超时（默认 2000 ms）。返回 true 表示等到；false 表示超时。
+ * 测试用法：`await waitFor(() => captured.toolsDisposed === 1)` 或 `assert(await waitFor(...))`。
+ */
+export const waitFor = async (pred, { timeoutMs = 2000, intervalMs = 10 } = {}) => {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    try { if (pred()) return true } catch { /* pred 内部异常视为未达条件 */ }
+    await new Promise((r) => setTimeout(r, intervalMs))
+  }
+  return false
+}
+
+/**
+ * 兼容旧调用：`await settle()` = 让出 5 个 microtask（≈5 ms）。原写法固定 8×5=40 ms，CI 偶发不够；
+ *   现默认改为条件等待 —— 但因应用完成信号尚未在 lib/index.js 暴露（v18.16.0 F-1 留 half-修），
+ *   暂以 80 ms 总预算（CI 80.6 ms 实测上界之下）作过渡；后续轮再接入 ctx.effect 的"安装完成"信号。
+ */
+export const settle = async ({ ms = 80 } = {}) => {
+  await new Promise((r) => setTimeout(r, ms))
+}
+
+// v18.16.0（S-3 反哺 · 共享夹具上提）：m-gate-check M-Exist-7 §6 成本指标用例的
+// 「除 §6 外的其余交付说明小节」标准内容。原先在 tests/scripts.test.mjs 各 test 块内联 13 次（部分完全相同、部分略有变体）。
+// 上提后：① 改动 §6 测试输入时不会牵连别的章节字符串；② 新增用例不再需要复制这 11 节。
+// 字段顺序与原「母本」一致：1/2/3/4/5/7/8/9/10/11/12（缺 §6 —— 由调用方注入）。
+export const DELIVERY_NOTE_OTHER_SECTIONS = [
+  '## 1. 路径\n\n- 定稿',
+  '## 2. 图件清单\n\n- 图1',
+  '## 3. 遗留风险\n\n- 无',
+  '## 4. 人工核验项\n\n- 无',
+  '## 5. 数据溯源 check-list\n\n- 无',
+  '## 7. 建议 merge 的反哺清单\n\n- 无',
+  '## 8. AI 使用披露\n\n- AI',
+  '## 9. 证据包指纹\n\n- sha256：[哈希校验待主人回填]',
+  '## 10. 投稿就绪检查表\n\n- 推荐',
+  '## 11. 主人决策记录\n\n- Phase 0 通过｜Phase 2.5 通过｜Phase 3.5 通过｜Phase 5 通过',
+  '## 12. 终检结论\n\n- 通过',
+]
+
+/** 拼一份「§6 + 其余小节」的交付说明（用于 m-gate-check M-Exist-7 §6 成本指标用例） */
+export const buildDeliveryNoteWithSec6 = (sec6Body) =>
+  '# 交付说明\n\n## 6. 成本指标\n\n' + sec6Body + '\n\n' + DELIVERY_NOTE_OTHER_SECTIONS.join('\n\n') + '\n'

@@ -15,7 +15,7 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { PIPE_SPAWN_BLOCKED, skipWhen } from './_fixtures.mjs'
+import { PIPE_SPAWN_BLOCKED, skipWhen, settle } from './_fixtures.mjs'   // v18.16.0（F-1 反哺 · 共享 settle）
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PACKAGE_ROOT = join(HERE, '..')
@@ -58,9 +58,7 @@ function makeCtx({ tools = false, commands = false } = {}) {
 
 /** 等入口里那次异步安装（动态 import + 注册）落定。
  *  入口把安装包在 `ctx.effect()` 的异步 IIFE 里，测试要等到微任务队列被冲刷（导入缓存命中时极快）。 */
-const settle = async (rounds = 8) => {
-  for (let i = 0; i < rounds; i++) await new Promise((r) => setTimeout(r, 5))
-}
+// v18.16.0（F-1 反哺）：本地 40 ms 固定实现已上提到 _fixtures.mjs；此处直接用 import 来的版本。
 
 test('入口契约：name / inject / apply 形态符合 DSH 插件约定', async () => {
   const mod = await import(pathToFileURL(ENTRY).href)

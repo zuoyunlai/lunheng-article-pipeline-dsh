@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 // 论衡字数统计脚本（v2.5.2-dsh.5 新增，v2.5.2-dsh.7 加 --summary，v18.2.3 修 --summary body 终点）
-// 用法：node count-chars.mjs <文件.md> [--full | --summary]
+// 用法：node count-chars.mjs <文件.md> [--full | --summary | --warn-threshold <N>]
+//   --full    = 统计全文纯汉字（含题名/摘要/文末五节）；默认只统计正文区（## 摘要 之后、## 参考文献 之前）
+//   --summary = 关键节点分段字数 + 全文配比（T7/T8 一眼可见结构，省 LLM 读全文）
+//               ⚠️ 其 `body.hanChars` **与默认口径同源**（v18.2.3 修：此前误用含「关键词」的列表求终点 → 只剩摘要正文，差 21 倍）
+//   --warn-threshold <N> = 字数软警告阈值；不参与 `hanChars` 口径与退出码语义，
+//                          仅当实际字数 > N 时在 JSON 输出里加 `warnOvershoot: true`（v18.16.0 S-2 反哺实装）
 //   --full    = 统计全文纯汉字（含题名/摘要/文末五节）；默认只统计正文区（## 摘要 之后、## 参考文献 之前）
 //   --summary = 关键节点分段字数 + 全文配比（T7/T8 一眼可见结构，省 LLM 读全文）
 //               ⚠️ 其 `body.hanChars` **与默认口径同源**（v18.2.3 修：此前误用含「关键词」的列表求终点 → 只剩摘要正文，差 21 倍）
@@ -23,13 +28,42 @@ import { ENDNOTE_SECTIONS, bodyStartAfterAbstract, firstEndnoteIndex, sectionBod
 import { installExitGuard, requireExistingFile } from './_lib/exit-guard.mjs'; // 退出码硬化（v18.0.5）
 installExitGuard();   // 传目录/权限错 → exit 10（旧版未捕获 EISDIR → exit 1 = 被读成「P1 内容失败」）
 
-const [, , file, flag] = process.argv;
-if (!file) { console.error('用法: node count-chars.mjs <文件.md> [--full | --summary]'); process.exit(10); } // v18.0.2：参数/路径错统一 10
+// v18.16.0（S-2 反哺）：argv 解析从 4 token 扩到 ≤5 token，允许 `--warn-threshold <N>` 双 token。
+const argvTokens = process.argv.slice(2);
+if (argvTokens.length === 0) {
+  console.error('用法: node count-chars.mjs <文件.md> [--full | --summary | --warn-threshold <N>]');
+  process.exit(10);
+}
+const file = argvTokens[0];
+let flag = argvTokens[1];
+let warnThreshold = null;
+// `--warn-threshold` 双 token 形态；值必须为正整数（缺值或非法 → 10）
+if (flag === '--warn-threshold') {
+  const v = argvTokens[2];
+  if (!v || v.startsWith('-')) {
+    console.error('--warn-threshold 缺少值（必须紧跟一个正整数）');
+    console.error('用法: node count-chars.mjs <文件.md> [--full | --summary | --warn-threshold <N>]');
+    process.exit(10);
+  }
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) {
+    console.error(`--warn-threshold 须为正整数，得到 "${v}"`);
+    process.exit(10);
+  }
+  warnThreshold = n;
+  flag = undefined;  // 不与 --full/--summary 同用
+} else if (argvTokens.length > 2) {
+  // 非 --warn-threshold 形态下，多余 token 一律拒绝（与 handoff-check 同源「带值旗标缺值守卫」）
+  console.error(`多余参数: ${argvTokens.slice(1).join(' ')}`);
+  console.error('用法: node count-chars.mjs <文件.md> [--full | --summary | --warn-threshold <N>]');
+  process.exit(10);
+}
+if (!file) { console.error('用法: node count-chars.mjs <文件.md> [--full | --summary | --warn-threshold <N>]'); process.exit(10); } // v18.0.2：参数/路径错统一 10
 if (!existsSync(file)) { console.error(`文件不存在: ${file}`); process.exit(10); } // v18.0.2：同上
 requireExistingFile(file, '待统计文件');   // v18.0.5：必须是文件（目录 → 10，不再等到 readFileSync 炸）
 // 未知 flag（如 `--ful` 拼错）静默降级会走错口径 —— v18.0.5 改为显式拒绝（第三方审计 P3）
 if (flag !== undefined && !['--full', '--summary'].includes(flag)) {
-  console.error(`未知参数: ${flag}\n用法: node count-chars.mjs <文件.md> [--full | --summary]`);
+  console.error(`未知参数: ${flag}\n用法: node count-chars.mjs <文件.md> [--full | --summary | --warn-threshold <N>]`);
   process.exit(10);
 }
 
@@ -156,10 +190,22 @@ if (flag !== '--full') {
 }
 
 const count = countHan(target);   // v18.0.3：走 _lib/han.mjs 真源（旧版在此内联 match）
-console.log(JSON.stringify({
+const out = {
   file,
   scope: flag === '--full' ? 'full(全文纯汉字)' : 'body(正文区纯汉字: 摘要后~文末节前)',
   hanChars: count,
   ...degradedFields,
-}, null, 2));
+};
+// v18.16.0（S-2 反哺）：仅当 `--warn-threshold <N>` 被传入且字数超阈值时附加警告字段。
+//   不影响退出码（仍 0），不参与 M 门判定；供主控与审计视图按需消费。
+if (warnThreshold !== null) {
+  out.warnThreshold = warnThreshold;
+  if (count > warnThreshold) {
+    out.warnOvershoot = true;
+    out.warnDetail = `字数 ${count} > 阈值 ${warnThreshold}（差 ${count - warnThreshold}）`;
+  } else {
+    out.warnOvershoot = false;
+  }
+}
+console.log(JSON.stringify(out, null, 2));
 process.exit(0);

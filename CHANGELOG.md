@@ -2,6 +2,46 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.16.0 — 2026-09-25
+
+> **性质**：v18.16.0 = 「门与守卫自身可信度」收口批。一次**外部独立全量审计**触发 56 项发现中的 A 批 19 项（先行项 G-1 / S-3 + S+A 族 9 项 + B 族 5 项 + F 族 2 项）。详见 [`audits/反哺报告-v18.16.0-全量独立审计修订方案.md`](audits/反哺报告-v18.16.0-全量独立审计修订方案.md)。
+
+### 一、脚本判定 / 退出码 / 正则（S+A 族）
+
+- **G-1（先行项）**：`scripts/pack-smoke.mjs` 的 tar 解包从 `tar -xzf join(tmp, tgz) -C tmp` 改为 `tar -xzf tgz { cwd: tmp }`（cwd 相对路径），规避 Windows + Git Bash 下 GNU tar 把绝对路径当远端主机的环境差异（防回归，非修本机红）。
+- **S-1**：`structure-check.mjs` 落地三档——S-IMRaD ≥3 缺 → P0 / 1-2 缺 → P1；S-Intro-Funnel 3 项全缺 → P0；S-Discussion 4 项全缺 → P0 / 2-3 缺 → P1 / 1 缺 → P2；`exitCode` 改 `(hasP0 ? 2 : (hasP1 ? 1 : 3))`，exit 2/3 真正可达（原三元两支同值 + 缺 hasP2 是 P0）。
+- **S-2**：`count-chars.mjs` 新增 `--warn-threshold <N>`（双 token 形态），输出 JSON 加 `warnThreshold` + `warnOvershoot` 字段，不改 `hanChars` 口径与退出码语义。
+- **A-1**：`journal-fit.mjs` 删本地 `/[L\d{2,3}]/g` 窄正则，改 import `refs.mjs` 的 `refRegex('L')` 任意位数；1 位 / 4 位编号的引用闭环不再漏报。
+- **A-2**：`cite-coverage-check.mjs` 同步改用 `refRegex('L')`；消费点 `m[1]` → `stripL(m[0])`（refs.mjs 不带捕获组）。
+- **A-3**：`pdfcheck.mjs` 页数正则从 `/\/Page(?!s)/g` 改 `/\/Type\s*\/Page(?!s)/g`，剔除 `/PageMode` / `/PageLayout` / `/PageLabels` 等 catalog 属性键的误计。
+- **A-4**：`m-gate-check.mjs` 把「`--adjudicate` 必须与 `--report` 同用」的守卫从 `if (reportPath)` 内嵌层上提到参数解析后（缺 `--report` 即 exit 10，不再静默失效）。
+- **A-5**：`handoff-check.mjs` 的带值旗标守卫 `!v || v.startsWith('-')` 放宽为 `!v || (v.startsWith('-') && v !== '-')`，`--report -`（stdin 哨兵）走得到 stdin 分支。
+- **A-6**：`apply-compression-cycle.mjs` 去掉 `if (verdict.includes('超阻塞线') && !dryRun)` 中的 `&& !dryRun`——dry-run 只该影响写盘、不该影响判定；超阻塞线统一 exit 1。
+- **A-7**：`methodology-check.mjs` 文件头补 `2 = P0（方法节参数 <2 项）`；`scripts/repo-hygiene-check.mjs` 的 EXIT_CONTRACT 把 `methodology-check.mjs` 由 `[0,1,10,70]` 改 `[0,1,2,10,70]`，门 ⑧ 自检通过。
+
+### 二、guard 安全面加固（B 族）
+
+- **B-1**：`lib/index.js` 的 mechRoots 增加 `skills/lunheng-commands/`（子技能 11 个 `/lunheng` 命令 + 命令数真源脚本也受保护）；按 `existsSync` 守护，副本不在时不留死路径。
+- **B-2**：`lib/guard.js` 写工具名 `WRITE_TOOLS.has(name)` 改 `name.toLowerCase()` 后再 `has`，`Write` / `EDIT` / `Apply_Patch` 等大写形态也被拦。
+- **B-3**：`lib/guard.js` 补丁文本路径正则 `(?:Update|Add|Delete|Move to)\s+File:` 拆为 `(?:Update|Add|Delete)\s+File:` 与 `Move to:` 两条；`*** Move to:` 重命名攻击路径被拦。
+- **B-4**：`lib/guard.js` 载荷键名判定 `PAYLOAD_KEYS.has(lower)` 增 OR `/(patch|diff)/.test(k)`（子串匹配）；`patchContent` / `patch_text` / `patchText` / `diffText` 等常见变体被拦。
+- **B-5**：`lib/guard.js` 深度上限 `MAX_DEPTH = 6`——超限不再静默返回空数组，改返 `SENTINEL_DEPTH_EXCEEDED` 由调用点判 `拒绝并返回理由`（符合 guard 「只收紧」语义：未知深度参数 → 拒绝）。
+
+### 三、测试基础设施（F 族）
+
+- **F-1**：`tests/_fixtures.mjs` 新增 `waitFor(pred, { timeoutMs = 2000, intervalMs = 10 })` 条件等待 + 兼容 `settle({ ms = 80 })` 默认让出（80 ms 在 CI 实测 80.6 ms 上界之下）；`tests/entry.test.mjs` / `tests/guard-config.test.mjs` / `tests/entry-frontmatter.test.mjs` 三处复制 40 ms 固定 `settle` 删，统一 import。
+- **F-2**：`tests/_fixtures.mjs` 的 `run()` 默认加 `timeout: 120000` + `killSignal: 'SIGKILL'`，返回契约加 `timedOut: boolean`；`package.json` 的 `test` 与 `test:no-isolation` 加 `--test-timeout=180000`。死循环 / 等 stdin 的脚本在 3 分钟内判失败而非挂到 6 h。
+
+### 四、测试体系去重（先行项）
+
+- **S-3**：`tests/scripts.test.mjs` 删除 73 份完全相同的 M-Exist-7 §6 成本指标用例副本（74 → 1）+ 合并 1 份孤立变体副本；文件 5710 → 2805 行（-50.9%），用例 181 → 111（-38.7%）。`SECTIONS_OTHER` / `setSec6` 上提为 `tests/_fixtures.mjs` 的 `buildDeliveryNoteWithSec6()`，9 份 SHA1 不同的演进变体保留（合并待后续）。
+- **9 个 SHA1 不同变体保留说明**：每个测不同 §6 边界场景（如 idx=3 多加了「1.2M 无 ~ 也无实测不可得」失败 case），审计报告未描述，合并是高风险重构——建议作为后续单独议题处理。
+
+### 五、归版
+
+- 6 处同步：package.json + SKILL.md frontmatter + SKILL.md 首部 `> 版本：` + SKILL.md 角色卡 `- 版本：` + 5 语 README 版本行 + CHANGELOG（本段）。
+- commit 信息：`v18.16.0：门与守卫自身可信度（A 批 19 项；先行项 + S+A + B + F）`。
+
 ## 18.15.0 — 2026-09-25
 
 > **性质**：把「**差集 + 反向核验**」固化为**收口批的固定动作**（主人指示原话）。同时**新门立刻抓出一条我上一轮漏掉的项**（`L-43`），并暴露我自己在写这个门时踩的**三个「门在此却不生效」的坑**。

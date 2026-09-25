@@ -313,7 +313,7 @@ const EXIT_CONTRACT = {
   'journal-fit.mjs': [0, 1, 3, 10, 70],            // 1 = P1 命中 / 3 = 仅 P2（期刊不在库等）
   'lunheng-stats.mjs': [0, 10, 70],
   'meta-synthesize.mjs': [0, 3, 10, 70],           // 3 = 仅 P2 软提示（表内曾误登 1，静态解析无此字面量）
-  'methodology-check.mjs': [0, 1, 10, 70],
+  'methodology-check.mjs': [0, 1, 2, 10, 70],   // v18.16.0（A-7 反哺）：补 2 = P0（方法节参数 <2 项）
   'segment-chars.mjs': [0, 10, 70],
   'structure-check.mjs': [0, 1, 10, 70],
 }

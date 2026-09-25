@@ -6,8 +6,9 @@
 //
 // 退出码（与 M 门语义同源）：
 //   0  = 三项检查全过
-//   1  = P1 问题（IMRaD 节缺 / 漏斗结构缺 / 讨论要素缺）
-//   3  = 仅 P2 软提示（如启发式词命中过多）
+//   1  = P1 问题（IMRaD 节缺 1-2 / 漏斗结构缺 1-2 / 讨论要素缺 2-3）
+//   2  = P0 问题（IMRaD 节缺 ≥3 / 漏斗结构 3 项全缺 / 讨论要素 4 项全缺）
+//   3  = 仅 P2 软提示（如讨论要素缺 1 项）
 //   10 = 参数或路径错误（与 M 门 10 同语义）
 //   70 = 内部错误
 //
@@ -78,7 +79,9 @@ for (const sec of imradList) {
   else imradMissing.push(sec);
 }
 const sImradPass = imradMissing.length === 0;
-const sImradSeverity = imradMissing.length >= 2 ? 'P1' : imradMissing.length === 1 ? 'P1' : 'PASS';
+// v18.16.0（S-1 反哺 · 三档落地）：≥3 缺 → P0、1-2 缺 → P1、0 缺 → PASS。
+//   原三元两支同值 `>=2 ? 'P1' : ===1 ? 'P1' : 'PASS'` 把 ≥3 与 1 同判 P1，掩盖最严重缺失。
+const sImradSeverity = imradMissing.length >= 3 ? 'P0' : imradMissing.length > 0 ? 'P1' : 'PASS';
 
 // --- S-Intro-Funnel 检查 ---
 // 引言漏斗：领域重要性 → 知识缺口 → 本文贡献
@@ -99,7 +102,8 @@ if (!introHasImportance) introMissing.push('领域重要性');
 if (!introHasGap) introMissing.push('知识缺口');
 if (!introHasContribution) introMissing.push('本文贡献');
 const sIntroFunnelPass = introMissing.length === 0;
-const sIntroFunnelSeverity = introMissing.length === 0 ? 'PASS' : 'P1';
+// v18.16.0（S-1 反哺 · 三档落地）：3 项全缺 → P0（漏斗完全失败）、1-2 缺 → P1。
+const sIntroFunnelSeverity = introMissing.length === 3 ? 'P0' : introMissing.length > 0 ? 'P1' : 'PASS';
 
 // --- S-Discussion-4 检查 ---
 // Discussion 四要素：主要发现重述 + 与既有研究比较 + 机制解释 + 局限性与未来方向
@@ -119,13 +123,20 @@ if (!discHasComparison) discMissing.push('与既有研究比较');
 if (!discHasMechanism) discMissing.push('机制解释');
 if (!discHasLimitation) discMissing.push('局限性与未来方向');
 const sDiscussionPass = discMissing.length === 0;
-const sDiscussionSeverity = discMissing.length === 0 ? 'PASS' : 'P1';
+// v18.16.0（S-1 反哺 · 三档落地）：4 项全缺 → P0、2-3 缺 → P1、1 缺 → P2、0 缺 → PASS。
+const sDiscussionSeverity = discMissing.length === 4 ? 'P0'
+  : discMissing.length >= 2 ? 'P1'
+  : discMissing.length === 1 ? 'P2'
+  : 'PASS';
 
 // --- 汇总与退出 ---
 const allPass = sImradPass && sIntroFunnelPass && sDiscussionPass;
 const allSeverities = [sImradSeverity, sIntroFunnelSeverity, sDiscussionSeverity];
+const hasP0 = allSeverities.includes('P0');
 const hasP1 = allSeverities.includes('P1');
-const exitCode = allPass ? 0 : (hasP1 ? 1 : 3);
+// v18.16.0（S-1 反哺 · exit 2/3 可达）：原写法 `(hasP1 ? 1 : 3)` 把 P0 误判 P1、且 P2 走 3 也掩盖了差异；
+//   现按 P0>P1>P2 优先级选最高严重度对应的 exit。
+const exitCode = allPass ? 0 : (hasP0 ? 2 : (hasP1 ? 1 : 3));
 
 const result = {
   file,

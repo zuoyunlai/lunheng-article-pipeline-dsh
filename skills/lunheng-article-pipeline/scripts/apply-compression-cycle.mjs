@@ -136,5 +136,8 @@ const result = {
     : '✓ 无需修订',
 };
 console.log(JSON.stringify(result, null, 2));
-if (verdict.includes('超阻塞线') && !dryRun) process.exit(1);
+// v18.16.0（A-6 反哺）：原 `&& !dryRun` 让 dry-run 模式即便判定超阻塞线也 exit 0，
+//   违反「dry-run 只影响写盘、不影响判定」约定（T7/T8 据 exit 决定是否触发 T5 修订）。
+//   现去掉 `!dryRun` —— 无论是否 dry-run，超阻塞线统一 exit 1。
+if (verdict.includes('超阻塞线')) process.exit(1);
 process.exit(0);

@@ -20,6 +20,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { installExitGuard, requireExistingFile } from './_lib/exit-guard.mjs';
 import { sectionBody } from './_lib/sections.mjs';
 import { writeReport } from './_lib/destructive-write.mjs';   // 报告写盘守卫（v18.12.0，全量审计 L-50）
+import { refRegex } from './_lib/refs.mjs';                   // v18.16.0（A-1 反哺）：共用 refRegex，避免本地窄正则漏检 1 位/4 位编号
 installExitGuard();
 
 // --- CLI 参数解析 ---
@@ -144,9 +145,11 @@ if (projectWordCount !== null) {
   else if (projectWordCount < 3000) formatChecks.push({ item: '字数下限', severity: 'P2', detail: `字数 ${projectWordCount} < 3000 下限` });
   // 2. 参考文献风格（检测正文 [Lxx] 是否齐全）
   const text = readFileSync(projectPaperPath, 'utf8');
-  const inTextRefs = new Set((text.match(/\[L\d{2,3}\]/g) || []).map((m) => m));
+  // v18.16.0（A-1 反哺）：原 `[L\d{2,3}]` 漏 1 位 / ≥4 位编号；改用 refs.mjs 共享 refRegex 任意位数。
+  const lRegex = refRegex('L');
+  const inTextRefs = new Set((text.match(lRegex) || []).map((m) => m));
   const referencesBody = sectionBody(text, '参考文献') || '';
-  const refSectionRefs = new Set((referencesBody.match(/\[L\d{2,3}\]/g) || []).map((m) => m));
+  const refSectionRefs = new Set((referencesBody.match(lRegex) || []).map((m) => m));
   const orphans = [...inTextRefs].filter((r) => !refSectionRefs.has(r));
   if (orphans.length > 0) formatChecks.push({ item: '参考文献双向闭环', severity: 'P1', detail: `${orphans.length} 条正文引用未在参考文献节列出` });
   // 3. AI 使用声明

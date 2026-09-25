@@ -16,6 +16,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { settle } from './_fixtures.mjs'   // v18.16.0（F-1 反哺 · 共享 settle）
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PACKAGE_ROOT = join(HERE, '..')
@@ -24,10 +25,8 @@ const SKILL_DIR = join(PACKAGE_ROOT, 'skills', 'lunheng-article-pipeline')
 const SKILL_MD = join(SKILL_DIR, 'SKILL.md')
 const LIB_INDEX = join(PACKAGE_ROOT, 'lib', 'index.js')
 
-/** 冲刷入口里那次异步安装（C 组动态 import）并回收输出。 */
-const settle = async (rounds = 8) => {
-  for (let i = 0; i < rounds; i++) await new Promise((r) => setTimeout(r, 5))
-}
+/** 冲刷入口里那次异步安装（C 组动态 import）并回收输出。
+ *   v18.16.0（F-1 反哺）：本地实现已上提到 _fixtures.mjs（条件等待 + 80 ms 过渡预算），此处仅留注释。 */
 
 /**
  * 真跑一次入口，回收 guard / 注册项 / 日志。

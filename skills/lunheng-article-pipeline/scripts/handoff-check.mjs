@@ -124,8 +124,10 @@ const args = process.argv.slice(2)
 const opt = { project: null, role: null, report: null, reportFile: null, summary: false, level: 'basic', requireGates: false, help: false }
 const needValue = (name, i) => {
   const v = args[i + 1]
-  if (!v || v.startsWith('-')) {
-    console.error(`${name} 缺少值（${name} 后必须紧跟一个值）\n${HELP}`)
+  // v18.16.0（A-5 反哺）：原 `!v || v.startsWith('-')` 把单字符 `-`（stdin 哨兵）也拒了 → `--report -` 走不到 stdin 分支。
+  //   现仅当值以 `-` 开头**且不是单独的 `-`** 时才报缺值。
+  if (!v || (v.startsWith('-') && v !== '-')) {
+    console.error(`${name} 缺少值（${name} 后必须紧跟一个值，` + (name === '--report' ? '用 `-` 表示从 stdin 读取' : '') + `）\n${HELP}`)
     process.exit(10)
   }
   return v

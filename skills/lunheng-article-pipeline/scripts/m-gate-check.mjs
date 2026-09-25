@@ -106,6 +106,14 @@ if (!existsSync(evDir)) {
   console.error(`证据包目录不存在: ${evDir} —— 请先收集证据包再跑 M 门预检`);
   process.exit(10);   // v18.0.2 修：同上
 }
+// v18.16.0（A-4 反哺 · 守卫上提）：原 `--adjudicate` 必须与 `--report` 同用的判定嵌在 `if (reportPath)`
+//   块（:478）内 → 缺 `--report` 时该守卫永不执行，T8 裁定通道在错配时**静默失效**。
+//   现提前到参数解析后立即判；与 `if (existsSync(...))` 系列守卫同层。
+if (adjudicatePath && !reportPath) {
+  console.error('--adjudicate 必须与 --report 同用（裁定要写进报告）');
+  console.error(MGATE_USAGE);
+  process.exit(10);
+}
 // v18.0.5 修（第三方审计 P1-1）：旧的 `existsSync` 只判「存在」——传目录/传错类型的路径会走到
 //   `readFileSync` 才炸（EISDIR/ENOTDIR），未捕获异常 = exit 1 = 被读成「P1 内容失败」。现在前置判类型。
 requireExistingFile(draftPath, '定稿');

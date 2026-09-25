@@ -62,8 +62,10 @@ try {
   if (!tgz) { console.error('npm pack 未产出 .tgz'); process.exit(10) }
   console.log(`  · 产物：${tgz}`)
 
-  // ② 解包（tar 在 ubuntu/macos/windows10+ 均可用）
-  const untar = sh('tar', ['-xzf', join(tmp, tgz), '-C', tmp])
+  // ② 解包（tar 在 ubuntu/macos/windows10+ 均可用；v18.16.0 起改用 cwd 相对路径，
+  //   规避 Windows + Git Bash 下 GNU tar 把绝对路径 C:\... 当成远端主机而报
+  //   `Cannot connect to C: resolve failed` 的环境差异 —— 与原行为等价）
+  const untar = sh('tar', ['-xzf', tgz], { cwd: tmp })
   if (untar.status !== 0) {
     console.error(`tar 解包失败（exit ${untar.status}）：${(untar.stderr || '').trim().slice(0, 300)}`)
     console.error('→ 退出码 10（环境问题：tar 不可用）')

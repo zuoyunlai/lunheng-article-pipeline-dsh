@@ -23,10 +23,11 @@ const buf = readFileSync(pdfPath);
 const latin = buf.toString('latin1');
 
 const counts = {
-  // v18.7.3（P1-6，全量审计）：`/\/Page/g` 同时匹配页树节点 `/Pages` → Page 计数 ≈2 倍虚高、
-  //   `>=5` 阈值随之失真。改负向断言 `/\/Page(?!s)/g` 只数真实页对象；阈值同步按「页数 = Page 对象数」
-  //   口径校准（旧口径下 5 ≈ 实际 2-3 页，新口径 5 = 真实 5 页，判定更严且语义诚实）。
-  Page: (latin.match(/\/Page(?!s)/g) || []).length,
+  // v18.16.0（A-3 反哺）：原 `/\/Page(?!s)/g` 仍会误匹配 `/PageMode`、`/PageLayout`、`/PageLabels` 等
+  //   catalog 字典里的属性键（这些键的词法是 `/Page` 后跟非 `s` 字符，负向断言无法区分）。
+  //   按 PDF spec：真实页对象必须声明 `/Type /Page`，故改为同时要求 `/Type` 前缀（与下方
+  //   decompressedPageObjects 同源口径）。
+  Page: (latin.match(/\/Type\s*\/Page(?!s)/g) || []).length,
   Font: (latin.match(/\/Font(?!s)/g) || []).length,
   ToUnicode: (latin.match(/ToUnicode/g) || []).length,
   CIDFont: (latin.match(/CIDFont/g) || []).length,

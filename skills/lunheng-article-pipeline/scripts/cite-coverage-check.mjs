@@ -19,6 +19,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { installExitGuard, requireExistingFile } from './_lib/exit-guard.mjs';
 import { sectionBody, firstEndnoteIndex } from './_lib/sections.mjs';
 import { writeReport } from './_lib/destructive-write.mjs';   // 报告写盘守卫（v18.12.0，全量审计 L-50）
+import { refRegex } from './_lib/refs.mjs';                   // v18.16.0（A-2 反哺）：任意位数 L 编号，与 m-gate-check 同源
 installExitGuard();
 
 // --- CLI 参数解析 ---
@@ -69,7 +70,9 @@ const text = readFileSync(file, 'utf8');
 //   - 中（2 次）：支撑型引用
 //   - 弱（1 次）：辅助型引用
 //   - 装饰性（仅出现在参考文献节无正文引用）：幽灵引用
-const L_REGEX = /\[L(\d{2,3})\]/g;
+// v18.16.0（A-2 反哺）：原 `[L\d{2,3}]` 漏 1 位 / ≥4 位编号（与 journal-fit 同源），
+//   改用 refs.mjs 共享 refRegex，与 m-gate-check 同源、行为一致。
+const L_REGEX = refRegex('L');
 // v18.12.0（全量审计 L-63）：**扫描面必须是正文区**。旧版 `L_IN_TEXT` / `L_COUNT` 都扫整篇，而参考文献节里
 //   的条目行本身含 `[Lxx]` → 每条引用都被「自己」计一次 → `decorative` **恒为空集**、`decorativeRatio`
 //   恒 0（**幽灵引用检查永远不触发**，07 卡的「装饰性 >20% → P1」机械不可达），且强度分档整体上移一档
@@ -77,17 +80,23 @@ const L_REGEX = /\[L(\d{2,3})\]/g;
 const bodyEndIdx = (() => { const i = firstEndnoteIndex(text); return i === -1 ? text.length : i; })();
 const bodyText = text.slice(0, bodyEndIdx);
 const L_IN_TEXT = new Set();
-for (const m of bodyText.matchAll(L_REGEX)) L_IN_TEXT.add(m[1]);
+// v18.16.0（A-2 反哺 · 收尾）：refs.mjs 的 refRegex 不带捕获组（`m[1]` 是 undefined），
+//   旧消费点用 `m[1]` 取序号 → 现状下每条引用都变成 `"Lundefined"`。现从 `m[0]`（完整匹配）剥前缀/后缀。
+const stripL = (s) => s.replace(/^\[L/, '').replace(/\]$/, '');
+for (const m of bodyText.matchAll(L_REGEX)) L_IN_TEXT.add(stripL(m[0]));
 const referencesBody = sectionBody(text, '参考文献') || '';
 const refsInList = new Set();
-const refsListRegex = /\[L(\d{2,3})\]/g;
-for (const m of referencesBody.matchAll(refsListRegex)) refsInList.add(m[1]);
+const refsListRegex = refRegex('L');  // v18.16.0（A-2 反哺）：与 L_REGEX 同步
+// v18.16.0（A-2 反哺 · 收尾）：refs.mjs 的 refRegex 不带捕获组（`m[1]` 是 undefined），
+//   旧消费点用 `m[1]` 取序号 → 现状下每条引用都变成 `"Lundefined"`。现从 `m[0]`（完整匹配）剥前缀/后缀。
+for (const m of referencesBody.matchAll(refsListRegex)) refsInList.add(stripL(m[0]));
 // 装饰性 = 仅在文末列表，未在正文出现
 const decorative = [...refsInList].filter((r) => !L_IN_TEXT.has(r));
 // 在正文出现 1 次 = 弱；2 次 = 中；≥3 次 = 强
 const L_COUNT = {};
 for (const m of bodyText.matchAll(L_REGEX)) {
-  L_COUNT[m[1]] = (L_COUNT[m[1]] || 0) + 1;
+  const id = stripL(m[0]);
+  L_COUNT[id] = (L_COUNT[id] || 0) + 1;
 }
 const strength = { 强: [], 中: [], 弱: [], 装饰性: decorative };
 for (const [lid, count] of Object.entries(L_COUNT)) {
