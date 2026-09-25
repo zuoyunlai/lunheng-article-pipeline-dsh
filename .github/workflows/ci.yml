@@ -104,7 +104,7 @@ jobs:
   #   正是 DSH 官方「手动挂载测不到 Loader 层」的事故模式。
   # verify 的 --dsh 默认「从 PATH 找 dsh」，故先 npm 全局装 @deepseek-ai/dsh（compat pin 要求 ≥0.1.5-rc.1）；
   # verify 内部每条 dsh 命令都带 env: DSH_HOME=mkdtemp 隔离，不依赖全局 DSH_HOME（本机已实测 verify 全绿）。
-  # ⚠️ v18.12.0（收口补丁）：pin 由 0.1.5-rc.2 抬到 **0.1.7-rc.2** —— 旧 pin 下本 job **每次必红**，
+  # ⚠️ v18.12.1（收口补丁）：pin 由 0.1.5-rc.2 抬到 **0.1.7-rc.2** —— 旧 pin 下本 job **每次必红**，
   #   根因是上游 `dsh-app-boot` 在 `patchReload: "live"`（`dsh plugin add` 生成的默认值）且无 HMR 时抛错，
   #   与本包代码无关（`pack / install / dump-config` 三个前置子步全过）。详见步骤内注释与
   #   `skills/lunheng-article-pipeline/references/maintainers.md` §五（含本机复现步骤与三条处方）。
@@ -118,7 +118,7 @@ jobs:
           node-version: '24'
           package-manager-cache: false # v5 默认反转为 true；本仓无 lockfile 且不 pnpm install
       - name: 装 dsh（verify 的 --dsh 默认从 PATH 找）
-        # v18.12.0（收口补丁）：0.1.5-rc.2 → **0.1.7-rc.2**。原因（用 `npm pack` 逐版核对过 app-boot）：
+        # v18.12.1（收口补丁）：0.1.5-rc.2 → **0.1.7-rc.2**。原因（用 `npm pack` 逐版核对过 app-boot）：
         #   0.1.5-rc.2 与 rc.3 的 `dsh-app-boot` 仍在 `patchReload === "live"` 时调 `watchUserPatches()`，
         #   而该函数拿不到 `ctx.get('hmr')` 就抛 `requires the Cordis HMR service` → **headless 冒烟必红**
         #   （该 profile manifest 由 `dsh plugin add` 写成 `patchReload: "live"`，非本包可控；本机已复现）。
