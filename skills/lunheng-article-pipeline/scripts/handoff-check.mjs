@@ -23,6 +23,7 @@
 // 只读：不联网、不写盘、不 spawn 子进程。stdout 只有 JSON（--summary 时 artifacts 只留失败项）。
 import { readFileSync, existsSync, statSync } from 'node:fs'
 import { join, basename } from 'node:path'
+import { createHash } from 'node:crypto'   // v18.12.2（L-06）：A4c 复算最新正文 sha256，与 M 门审定对象比对
 import { installExitGuard, requireExistingDir } from './_lib/exit-guard.mjs'
 import { CONTRACTS } from './_lib/cc-rules/content-rules.mjs'
 import { CARD_SPECS, latestReport, indexSection, entryIds, idsByToken } from './_lib/mgate-helpers.mjs'
@@ -30,13 +31,16 @@ import { CARD_SPECS, latestReport, indexSection, entryIds, idsByToken } from './
 installExitGuard()   // 必须在任何 readFileSync 之前（fs 异常 → 10，其余 → 70）
 
 const HELP = [
-  '用法：node scripts/handoff-check.mjs --project <项目目录> --role <Tn> [--report <文本> | --report-file <路径>] [--summary] [--level basic|strict]',
+  '用法：node scripts/handoff-check.mjs --project <项目目录> --role <Tn> [--report <文本> | --report-file <路径>] [--summary] [--level basic|strict] [--require-gates]',
   '  --project   项目目录（如 run/<项目名>）',
   '  --role      被验收角色（T1..T9 / G14；必填，禁止从 agents-log 猜）',
   '  --report    回报原文（给了才做回报侧 B 组校验；- 表示从 stdin 读）',
   '  --report-file 回报文件路径（与 --report 二选一，--report 优先）',
   '  --summary   只回聚合 + 硬失败项（省 token；hard/soft 永不省略）',
   '  --level     basic（默认，A1/A2/B1）/ strict（全量 A1-A6 + B1-B5）',
+  '  --require-gates  加验**人在环四门**（阶段确认-Phase0/2.5/3.5/5.md 四份齐备 + §6 主人回复段五项字段已回填）。',
+  '                   主人在 2026-09-25 定案「四门必须」→ 主控在 **Phase 5 交付前**调用本旗标做机械校验；',
+  '                   不加此旗标则不判四门（向后兼容 T1-T4/T6/T9 等中期角色的收报，那时后几门本就还没开）。',
   '退出码：0 合格 / 20 产物缺失或 0 字节 / 21 结构·版本·成对·回报段不合 / 22 仅软提示 / 10 参数路径错 / 70 内部错误',
 ].join('\n')
 
@@ -54,8 +58,15 @@ const CARD_TO_ROLE = {
 }
 // 修订轮才有的产物（缺失判软提示 22，不判 20）
 const CONDITIONAL = new Set(['修订说明', '复核报告'])
-// 版本号独立于正文轮次的报告（反哺报告 vN = 第 N 次反哺，非正文轮次——不参与 A4 版本对齐）
-const VERSION_INDEPENDENT = new Set(['反哺报告'])
+// 版本号独立于**正文轮次**的报告族（其 `N` 另有定义，不参与 A4 与正文对齐）
+//   · v18.12.2（L-06，主人 2026-09-25 定案）：`审计报告` 的 N = **T7 审计轮次**，`复核报告` 的 N = 同一轮
+//     —— 与 `初稿-vN` 的正文轮次**刻意解耦**。旧版把两者硬对齐（`报告版本 vN ≠ 被审正文 vN（禁 v{N-1}）`），
+//     与主人定案冲突，且与实测账本不符：22 个真实项目里 `审计报告-vN` 的 N **无一例外等于该项目的审计轮次**
+//     （`共锁` 审计 4 份而初稿只到 v4 且缺 v3；`guannian-yu-linian` 审计 1 份而初稿 3 份）——
+//     旧口径在这两种形态上都会误报。
+//   · 「审的是哪一版正文」不再靠**编号**表达，改由**可机读的审定对象**表达：M 门报告的
+//     `verdict_scope.draft_name` + `draft_sha256`（A4c 校验）+ 审计报告头部 `被审正文：` 声明。
+const VERSION_INDEPENDENT = new Set(['反哺报告', '审计报告', '复核报告'])
 // 非磁盘文件产物（§11 写手版精简段是分析大纲的一节，不是文件）
 const NON_FILE = new Set(['写手版精简段'])
 const VALID_ROLES = new Set(['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'G14'])
@@ -110,7 +121,7 @@ function cardEntries(text) {
 //   undefined，**下一个旗标会被当成它的值**（实测 `handoff-check --report --summary` → `opt.report="--summary"`
 //   且 `--summary` 被吃掉 → 产物侧整段静默跳过，exit 0）。现与 `_lib/cli-args.mjs` 同口径：缺值 → exit 10。
 const args = process.argv.slice(2)
-const opt = { project: null, role: null, report: null, reportFile: null, summary: false, level: 'basic', help: false }
+const opt = { project: null, role: null, report: null, reportFile: null, summary: false, level: 'basic', requireGates: false, help: false }
 const needValue = (name, i) => {
   const v = args[i + 1]
   if (!v || v.startsWith('-')) {
@@ -127,6 +138,7 @@ for (let i = 0; i < args.length; i++) {
   else if (a === '--report') opt.report = needValue('--report', i++)
   else if (a === '--report-file') opt.reportFile = needValue('--report-file', i++)
   else if (a === '--summary') opt.summary = true
+  else if (a === '--require-gates') opt.requireGates = true
   else if (a === '--level') opt.level = needValue('--level', i++)
   else { console.error(`未知参数: ${a}\n${HELP}`); process.exit(10) }
 }
@@ -195,9 +207,78 @@ for (const artifact of required) {
     if (h === 0) addHard('A3', artifact, `非卡片产物无任何二级标题（结构可疑）: ${art.path}`, 21)
   }
 
-  // A4 版本对齐（strict；仅版本化报告类；反哺报告等独立版本线豁免）
+  // A4 版本对齐（strict；仅版本化报告类；正文轮次无关的报告族豁免——见 VERSION_INDEPENDENT）
   if (art.versioned && art.version != null && latestDraft && art.version !== latestDraft.n && !VERSION_INDEPENDENT.has(artifact)) {
     addHard('A4', artifact, `报告版本 v${art.version} ≠ 被审正文 v${latestDraft.n}（禁 v{N-1}）`, 21)
+  }
+}
+
+// ── A4b 审计↔复核**同轮配对**（strict；v18.12.2 L-06）────────────────────────────
+// 判据：`audits/审计报告-vN.md` 与 `audits/复核报告-vM.md` 必须 **N === M**。
+//   为什么需要它：把审计报告的 N 重新定义为「审计轮次」之后，「报告 ↔ 报告」的配对不能再靠正文编号
+//   隐式保证（旧口径下审计-v3 必有初稿-v3 作锚）。同轮配对是**审计轮次**这条时间线的自洽条件：
+//   第 N 轮审计与它的复核是同一次审计动作的两半，错轮即「复核了上一轮」或「审计了没复核的稿」。
+//   时点：只有被审角色是 T7（或收全项目时显式要求）才判——T1-T6/T9 收报时复核报告本就还没产出。
+if (strict && role === 'T7') {
+  const audit = artifacts.find((a) => a.name === '审计报告')
+  const review = artifacts.find((a) => a.name === '复核报告')
+  if (audit && review && audit.exists && review.exists && audit.version != null && review.version != null) {
+    if (audit.version !== review.version) {
+      addHard('A4b', 'T7 审计↔复核', `审计报告 v${audit.version} 与复核报告 v${review.version} **不同轮**——复核必须与它复核的那一轮审计同号（N = 审计轮次）`, 21)
+    }
+  }
+}
+
+// ── A4c 审定对象校验（strict；v18.12.2 L-06）───────────────────────────────────
+// 判据（两条，**一硬一软，刻意分级**）：
+//   ① 硬：**仅当 M 门报告自报的被审正文（`verdict_scope.draft_name`）就是最新正文**时，才要求 sha256 一致。
+//      否则该报告审的是**别的合法对象**——最典型是 `final/定稿.md`（T8 终检阶段审的是定稿，不是草稿，
+//      实测 `筛选竞赛的均衡` 的 M-Gate-Report 审 `final/定稿.md` 而 `drafts/` 最新是初稿-v4）。此时**放行**。
+//      只在「自报对象 == 最新正文」这一条上做内容断言，才不会把「审的是定稿」误判成「改稿后没重跑」。
+//   ② 软（22 类）：审计报告头部应写 `被审正文：drafts/初稿-vN.md`（或 `final/定稿.md`），且该文件须在盘。
+//      为什么是软而不是硬：2026-09-25 实测 **22/22 个既有项目的审计报告都没有这个字段**（该字段本轮才定案），
+//      判硬会让全部已交付项目一次性变红——按本仓「不对历史形态过度收紧」的既有原则（见 M-Exist-5 的 L-10
+//      同类选择），先做可见性；新报告按 07 卡的写法即天然满足，规则生效后逐轮收紧。
+if (strict && role === 'T7') {
+  const audit = artifacts.find((a) => a.name === '审计报告')
+  if (audit && audit.exists && latestDraft) {
+    // ① 硬：自报审定对象 == 最新正文 → 必须同 sha256
+    //    报告位置与 M-Exist-5 的 repPath5 **同口径**（四处布局：final/ 现行、audits/ 旧、带版本后缀更旧）
+    const mgate = [
+      join(project, 'final', 'M-Gate-Report.json'),
+      join(project, 'audits', 'M-Gate-Report.json'),
+      join(project, 'final', '证据包', 'M-Gate-Report.json'),
+    ].find((p) => existsSync(p))
+    if (mgate) {
+      let rj = null
+      try { rj = JSON.parse(readFileSync(mgate, 'utf8')) } catch { addSoft('A4c', 'M-Gate-Report.json', `无法解析，未核审定对象：${mgate}`) }
+      const sha = rj?.verdict_scope?.draft_sha256
+      const claimed = String(rj?.verdict_scope?.draft_name || '')
+      const claimedIsLatestDraft = claimed.endsWith(basename(latestDraft.path))
+      if (typeof sha === 'string' && sha.length === 64 && claimedIsLatestDraft && latestDraft.path) {
+        try {
+          const cur = createHash('sha256').update(readFileSync(latestDraft.path)).digest('hex')
+          if (cur !== sha) {
+            addHard('A4c', 'M-Gate-Report 审定对象',
+              `报告自报审的是 \`${claimed}\`（sha256 ${sha.slice(0, 12)}…），但该文件现为 ${cur.slice(0, 12)}…`
+              + '——改稿后未重跑 M 门，旧裁定不再适用，请重跑 M 门并重写 T8 裁定段', 21)
+          }
+        } catch { /* 读不到当前正文：交由 A1/A2 报 */ }
+      }
+    }
+    // ② 软：头部「被审正文：」声明
+    let txt = ''
+    try { txt = readFileSync(audit.path, 'utf8') } catch { /* 上面 A3 已报不可读 */ }
+    const decl = txt.match(/被审正文\s*[：:]\s*`?([^\s`|，。]+\.md)/)
+    if (!decl) {
+      addSoft('A4c', '审计报告', '头部未写「被审正文：`drafts/初稿-vN.md`」——N 跟审计轮次后，审定对象只能靠此声明 + M 门 `verdict_scope` 表达（v18.12.2 L-06）')
+    } else {
+      const rel = decl[1].replaceAll('\\', '/')
+      const cand = [join(project, rel), join(project, 'drafts', rel), join(project, 'final', rel)]
+      if (!cand.some((p) => existsSync(p))) {
+        addSoft('A4c', '审计报告', `「被审正文：${decl[1]}」指向的文件不在盘（声明与实际不符）`)
+      }
+    }
   }
 }
 
@@ -271,8 +352,65 @@ if (reportText != null) {
   }
 }
 
+// ── A7 人在环四门（**仅在 `--require-gates` 时判**；v18.12.2 L-08）────────────────────
+// 主人 2026-09-25 定案：「L-08 人在环四门**必须**」——四个节点（Phase 0 / 2.5 / 3.5 / 5）**全部必需**，
+//   不留「可省任一门」的口子。本项是该定案在机械层的落点。
+//
+// 判据（两段，都要过）：
+//   ① **四份齐备**：`阶段确认-Phase0.md` / `-Phase2.5.md` / `-Phase3.5.md` / `-Phase5.md` 四份都在
+//      项目根且非 0 字节 —— 缺一份 → 硬（exit 20，与「产物缺失」同码：补救动作都是**补开那一门**）。
+//   ② **§6 已回填**：每份的 `### 6. 主人回复…` 段须含五个固定字段（主人原话 / 回复时间 / 提问方式 /
+//      主控落盘结论 / 轮次计数），且**不得残留 `<…>` 占位符** —— 这是「决策真的留痕」与「只落了一份空模板」
+//      的分界。字段清单真源 = `references/templates/主人确认-template.md` §6（此处按**字段名**匹配，不抄行文）。
+//      不合 → 硬（exit 21，与「结构不合」同码：补救动作都是**回填**）。
+//
+// 为什么默认不判、只由 `--require-gates` 触发（**有意选择，非疏漏**）：
+//   T1-T4/T6/T9 这些中期角色收报时，Phase 3.5/5 两门**本就还没开**——无条件判会把「时点没到」误报成违规
+//   （与 M-Exist-2 的「drafts 阶段证据包为空判 N/A」同一条原则）。故把**时点**交给调用方：
+//   **主控在 Phase 5 交付前调用 `--require-gates`**；这也让本项成为「交付前一次性验收」而非每轮开销。
+if (opt.requireGates) {
+  const GATE_DOCS = [
+    ['阶段确认-Phase0.md', 'Phase 0 定题'],
+    ['阶段确认-Phase2.5.md', 'Phase 2.5 大纲确认'],
+    ['阶段确认-Phase3.5.md', 'Phase 3.5 洞察补充'],
+    ['阶段确认-Phase5.md', 'Phase 5 终稿交付'],
+  ]
+  const GATE_FIELDS = ['主人原话', '回复时间', '提问方式', '主控落盘结论', '轮次计数']
+  const missingDocs = []
+  for (const [f, label] of GATE_DOCS) {
+    const p = join(project, f)
+    if (!existsSync(p)) { missingDocs.push(`${f}（${label}）`); continue }
+    let bytes = null
+    try { bytes = statSync(p).size } catch { /* 下面统一报 */ }
+    if (bytes === 0) { missingDocs.push(`${f}（${label}，0 字节）`); continue }
+    let t = ''
+    try { t = readFileSync(p, 'utf8') } catch { addHard('A7', f, `四门确认单不可读（${label}）`, 21); continue }
+    const secStart = t.search(/^###\s*6\.\s*主人回复/m)
+    if (secStart === -1) {
+      addHard('A7', f, `缺「### 6. 主人回复」段（${label}）——主人的决策没有落盘留痕（模板 §6 必填）`, 21)
+      continue
+    }
+    const after = t.slice(secStart)
+    const nextSec = after.slice(1).search(/^###\s*7\./m)
+    const sec = nextSec === -1 ? after : after.slice(0, nextSec + 1)
+    const missFields = GATE_FIELDS.filter((k) => !new RegExp(`\\*\\*${k}\\*\\*`).test(sec))
+    if (missFields.length) {
+      addHard('A7', f, `§6 回填不全（${label}）：缺字段 ${missFields.join(' / ')}（固定五项，缺一即未留痕）`, 21)
+    }
+    if (/<[^>\n]{2,40}>/.test(sec.replace(/`[^`]*`/g, ''))) {
+      addHard('A7', f, `§6 仍含 \`<…>\` 占位符（${label}）——确认单像是**空模板直接落盘**，须回填主人真实回复`, 21)
+    }
+    if (/TBD|待回填/.test(sec)) {
+      addSoft('A7', f, `§6 含「TBD / 待回填」字样（${label}）——请确认是主人真这么答，还是没回填`)
+    }
+  }
+  if (missingDocs.length) {
+    addHard('A7', '人在环四门', `四门确认单不全：缺 ${missingDocs.join(' / ')}——主人 2026-09-25 定案「四门必须」，交付前四份都要在盘`, 20)
+  }
+}
+
 // ── 出口 ─────────────────────────────────────────────────────────────────
-const total = required.length + (reportText != null ? 1 : 0) + (strict && role === 'T7' ? 1 : 0)
+const total = required.length + (reportText != null ? 1 : 0) + (strict && role === 'T7' ? 1 : 0) + (opt.requireGates ? 1 : 0)
 const pass = total - hard.length - soft.length
 let exit = 0
 if (hard.some((h) => h.exitClass === 20)) exit = 20

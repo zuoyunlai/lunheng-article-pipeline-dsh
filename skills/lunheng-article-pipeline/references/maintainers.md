@@ -1,6 +1,6 @@
 # 维护者手册（maintainers.md）
 
-> 版本：v18.12.1｜**读者**：维护者/主人。**本文件不进任何运行期读清单**（角色/主控不读）；它承接 v18.8.0 文档瘦身从 SKILL.md 迁出的维护者向元信息（rank 考证 / guard 缺口 / 更正史）。改本文件不受「同一事实多处漂移」约束——运行期事实仍以 SKILL.md 为唯一真源，此处是背景与考证。
+> 版本：v18.12.2｜**读者**：维护者/主人。**本文件不进任何运行期读清单**（角色/主控不读）；它承接 v18.8.0 文档瘦身从 SKILL.md 迁出的维护者向元信息（rank 考证 / guard 缺口 / 更正史）。改本文件不受「同一事实多处漂移」约束——运行期事实仍以 SKILL.md 为唯一真源，此处是背景与考证。
 
 ## 一、技能来源 rank 考证（v18.0.0 对齐官方；v18.0.5 修两处官方事实）
 
@@ -42,7 +42,26 @@
 - **`latest` dist-tag 不会自动前移**（`NPM_TOKEN` 已删；`--tag dsh` 只动 `dsh`）→ 每次发版后手工跑一次：
   `npm dist-tag add lunheng-article-pipeline@<新版本> latest`（`dsh` 由 publish 工作流维护）。v18.12.0 发版后已执行，两个 tag 均指向 18.12.0。
 
-## 五、CI `loader-smoke` 的上游缺陷（**v18.12.0 已修**，记录成因防复发）
+## 五、仓库级资源与技能体的边界（**L-25 定案**，v18.12.2）
+
+> **主人 2026-09-25 定案**：「`docs/`、`examples/` 如果作为独立插件不影响用户使用，**可以不进技能目录**」。
+> 即**保持现状**（它们是仓库级资料，不随包），但**运行期文档不得把它们当「运行期读物」引用**——bundle 部署下技能体只有 `skills/lunheng-article-pipeline/**`，`docs/` 与 `examples/` **不在盘**（本机镜像实测两目录均不存在）。
+
+**判据（改文档时照此办）**：运行期角色（T1-T9 / T0）读到的每一处引用，要么指向**技能目录内**的文件，要么**显式标注「仓库级 / 不随包」并同时给出运行期可用的那一条判据**——不许只给一个部署下取不到的路径。
+
+**已知仓库级资源清单**（引用时必须带「仓库级 / 不随包」字样）：
+
+| 仓库级路径 | 是什么 | 运行期替代 |
+|---|---|---|
+| `docs/token-optimization-plan.md` | token 量级实测分布表 | 「量级判断非承诺」——主控只报量级，不报承诺值 |
+| `examples/preset/`（`preset.yml` + `README.md`） | 分档预设安装配方 | `LUNHENG_TIERING=on` 决定三档工具是否装载；派发时按角色选工具 |
+| `docs/troubleshooting.md` §8 | 退出码语义表 | 各脚本**头注释**（真源）+ `repo-hygiene-check` 的 `EXIT_CONTRACT` |
+| `docs/introduction.md` 等用户文档 | 人类入口 | 无需运行期替代（角色不读） |
+| 根 `scripts/`（`repo-hygiene-check` / `plugin-surface-check` / `link-check` / `pack-smoke`） | 仓库门 | 运行期不调用；改动后由维护者跑 |
+
+> ⚠️ 反面参照：**官方文档路径**（`docs/subsystems/*.md`、`docs/cookbook/*.md`、`references/official-docs/**`）**不属于本表**——属主是 `dsh-plugin-guide` 技能与 DSH 官方仓库，已由 `link-check` 的 `CROSS_SKILL_*` 前缀白名单登记，引用时写属主前缀即可。
+
+## 六、CI `loader-smoke` 的上游缺陷（**v18.12.1 已修**，记录成因防复发）
 
 - **现状**：`ci.yml` 的 `loader-smoke` **全绿**。此前**每次必红**（`publish.yml` 的 `gates` 不含它，故不影响发布，但仓面 CI 徽章一直红）。
 - **成因（三步都验过）**：① 该 job 走的官方 `dsh-plugin-guide verify` 的 `pack / install / dump-config` **全过**，只倒在自己的 `headless-smoke`；② 错误是 `dsh: user patch-layer watching requires the Cordis HMR service`（栈顶 `dsh-app-boot/lib/index.js:1112`）——是 **DSH 启动失败**，与本包代码无关；③ 根因：`dsh plugin … add` 生成的 profile manifest 写 `"dsh": { "profile": { "patchReload": "live" } }`（`DEFAULT_PROFILE_PATCH_RELOAD = "live"`，注释「Custom profiles retain the historical live patch-file behavior」），而 `profile-boot` 在 `patchReload === "live"` 时调 `watchUserPatches()`，该函数拿不到 `ctx.get('hmr')` 就抛错 → headless 必红。本机用 `dsh plugin --profile smoke add @deepseek-ai/dsh-base` 复现了同一 manifest 形态。

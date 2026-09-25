@@ -23,7 +23,7 @@
 // 严重度评级（v2.5.2-dsh.5 引入）：gate fail 时按 P0/P1/P2 分级；单子项失败子项数 ≤2 → P2 可放行
 import { readFileSync, readdirSync, statSync, existsSync, mkdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { join, dirname } from 'node:path';
+import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { refsOf, dataCardIds } from './_lib/refs.mjs';                 // 引用编号口径真源
 import { countHan } from './_lib/han.mjs';                              // 汉字口径真源（v18.3.0 方案：M-Form-8 裸断言段）
@@ -171,6 +171,14 @@ const text = readFileSync(draftPath, 'utf8');
 //   指纹用**内容哈希 + 字节数**（不含 mtime：证据包会复制/重写文件，mtime 不可靠）。
 const draftSha256 = createHash('sha256').update(readFileSync(draftPath)).digest('hex');
 const draftBytes = readFileSync(draftPath).length;
+// v18.12.2（L-06）：被审正文的**项目相对路径**（`drafts/<name>` 或 `final/定稿.md`）——与上面两项
+//   一起构成「这份报告审的是哪一版」的完整、可机读记录。相对路径而非绝对：报告会被复制进证据包、
+//   跨机器 review，绝对路径没有意义。解析失败（路径不在项目内）时退化为 basename，并在值里保留线索。
+const relativeBase = (() => {
+  const norm = draftPath.replaceAll('\\', '/');
+  const m = norm.match(/(?:^|\/)(drafts\/[^/]+|final\/定稿\.md)$/);
+  return m ? m[1] : basename(draftPath);
+})();
 const results = [];
 
 // v18.2.9（第三方审计 B3）：阈值集中为单一对象——旧版 20+ 处魔法数字散落全文，
@@ -384,7 +392,12 @@ const report = {
   results: wantSummary ? results.filter((r) => !r.pass && r.severity !== 'LLM 兜底') : results,  // --summary 仅保留硬失败项，省 token
   exit: exitCode,
   // 被审正文指纹（v18.0.5）：T8 裁定段据此判断「是否仍适用于本版正文」
-  verdict_scope: { draft_sha256: draftSha256, draft_bytes: draftBytes },
+  // v18.12.2（L-06）：补 `draft_name` —— 主人 2026-09-25 定案「产物 `-vN` 的 N 跟审计轮次」，
+  //   于是**正文轮次与报告轮次解耦**：不再靠「审计报告-vN 必须等于初稿-vN」表达「审的是哪一版」，
+  //   改由本字段**逐字记下被审正文档名**（如 `drafts/初稿-v3.md`）+ sha256 组成可机读的审定对象。
+  //   为什么两件都给：`draft_name` 供人读与路径核对，`draft_sha256` 供内容核对（防「按名字审的
+  //   其实是改过的稿」）。`handoff-check` 的 A4c 与未来的一致性规则都读这两个字段。
+  verdict_scope: { draft_name: relativeBase, draft_sha256: draftSha256, draft_bytes: draftBytes },
 };
 console.log(JSON.stringify(report, null, 2));
 if (reportPath) {

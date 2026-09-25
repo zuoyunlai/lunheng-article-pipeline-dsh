@@ -61,11 +61,107 @@ test('V2② T7 缺反哺报告 → exit 20（A1 成对缺失）', () => {
   rmSync(d, { recursive: true, force: true })
 })
 
-test('V2③ strict：报告版本 ≠ 被审正文 → exit 21（A4 禁 v{N-1}）', () => {
+// v18.12.2（L-06，主人定案「N 跟审计轮次」）：本条**语义已翻转**——旧版这里断言「审计报告 v1 配初稿 v2 → exit 21」，
+//   而新口径下 `审计报告-vN` 的 N = **T7 审计轮次**，与初稿的正文轮次**刻意解耦**（实测 22 个真实项目里
+//   `审计报告-vN` 的 N 无一例外等于该项目的审计轮次，而它与初稿 N 的对应并不稳定：共锁审计 4 份而初稿缺 v3、
+//   guannian 审计 1 份而初稿 3 份）。故本条改为**正向**断言：不再误报；并把「别拿上一版交差」交给 A4c 的指纹断言。
+test('L-06 语义翻转：审计报告 v1 + 初稿 v2 → **不再**误报 A4（N 跟审计轮次）', () => {
   const d = makeProject({ 'drafts/初稿-v2.md': '# 初稿 v2\n## 摘要\n正文。\n' })
   const r = run([SCRIPT, '--project', d, '--role', 'T7', '--level', 'strict'])
+  const j = parseJson(r)
+  assert.ok(!j.hard.some((h) => h.check === 'A4'), 'A4 不得再因「报告版本≠初稿版本」报硬失败：' + JSON.stringify(j.hard))
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('L-06 A4b：审计 v2 与复核 v1 不同轮 → exit 21（同轮配对是硬要求）', () => {
+  const d = makeProject({
+    'audits/审计报告-v2.md': '# 审计报告\n被审正文：`drafts/初稿-v1.md`\n## 结论\n通过。\n',
+    'audits/复核报告-v1.md': '# 复核报告\n## 逐条判定\n| 编号 | 判定 |\n|---|---|\n| P0-1 | 已关闭 |\n',
+  })
+  const r = run([SCRIPT, '--project', d, '--role', 'T7', '--level', 'strict'])
   assert.equal(r.code, 21, r.out.slice(0, 300))
-  assert.ok(parseJson(r).hard.some((h) => h.check === 'A4'))
+  const h = parseJson(r).hard.find((x) => x.check === 'A4b')
+  assert.ok(h, '应报 A4b 不同轮：' + r.out.slice(0, 400))
+  assert.match(h.detail, /不同轮/)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('L-06 A4b 对照：审计 v2 与复核 v2 同轮 → 不报 A4b', () => {
+  const d = makeProject({
+    'audits/审计报告-v2.md': '# 审计报告\n被审正文：`drafts/初稿-v1.md`\n## 结论\n通过。\n',
+    'audits/复核报告-v2.md': '# 复核报告\n## 逐条判定\n| 编号 | 判定 |\n|---|---|\n| P0-1 | 已关闭 |\n',
+  })
+  const j = parseJson(run([SCRIPT, '--project', d, '--role', 'T7', '--level', 'strict']))
+  assert.ok(!j.hard.some((x) => x.check === 'A4b'), '同轮不得报 A4b：' + JSON.stringify(j.hard))
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('L-06 A4c 软：审计报告缺「被审正文」声明 → 软提示（不判硬，22 个既有项目都缺该字段）', () => {
+  const d = makeProject()
+  const j = parseJson(run([SCRIPT, '--project', d, '--role', 'T7', '--level', 'strict']))
+  const s = j.soft.find((x) => x.check === 'A4c')
+  assert.ok(s, '应给 A4c 软提示：' + JSON.stringify(j.soft))
+  assert.match(s.detail, /被审正文/)
+  assert.ok(!j.hard.some((x) => x.check === 'A4c'), 'A4c 缺声明不得判硬')
+  rmSync(d, { recursive: true, force: true })
+})
+
+// ── L-08 人在环四门（--require-gates）─────────────────────────────────────────
+const GATE_6 = '### 6. 主人回复（必填）\n\n'
+  + '- **主人原话**：同意\n- **回复时间**：2026-09-25\n- **提问方式**：ask_user_question\n'
+  + '- **主控落盘结论**：通过，进入下一阶段\n- **轮次计数**：首轮\n'
+const FOUR_GATES = () => ({
+  '阶段确认-Phase0.md': `# 确认单\n\n${GATE_6}`,
+  '阶段确认-Phase2.5.md': `# 确认单\n\n${GATE_6}`,
+  '阶段确认-Phase3.5.md': `# 确认单\n\n${GATE_6}`,
+  '阶段确认-Phase5.md': `# 确认单\n\n${GATE_6}`,
+})
+
+test('L-08：不加 --require-gates → 不判四门（向后兼容中期角色收报）', () => {
+  const d = makeProject()
+  const j = parseJson(run([SCRIPT, '--project', d, '--role', 'T8']))
+  assert.ok(!j.hard.some((x) => x.check === 'A7'), '默认不得判四门：' + JSON.stringify(j.hard))
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('L-08：--require-gates 且四门齐备 + §6 已回填 → 无 A7 硬项', () => {
+  const d = makeProject(FOUR_GATES())
+  const j = parseJson(run([SCRIPT, '--project', d, '--role', 'T8', '--require-gates']))
+  assert.ok(!j.hard.some((x) => x.check === 'A7'), '四门齐备不得报 A7：' + JSON.stringify(j.hard))
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('L-08：缺门 → exit 20 且点名缺哪几份', () => {
+  const g = FOUR_GATES(); delete g['阶段确认-Phase3.5.md']; delete g['阶段确认-Phase5.md']
+  const d = makeProject(g)
+  const r = run([SCRIPT, '--project', d, '--role', 'T8', '--require-gates'])
+  assert.equal(r.code, 20, r.out.slice(0, 300))
+  const h = parseJson(r).hard.find((x) => x.check === 'A7' && x.subject === '人在环四门')
+  assert.ok(h, '应报四门不全：' + r.out.slice(0, 400))
+  assert.match(h.detail, /Phase3\.5/)
+  assert.match(h.detail, /Phase5/)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('L-08：§6 未回填（空模板 + 占位符）→ exit 21 且点名缺字段', () => {
+  const g = FOUR_GATES()
+  g['阶段确认-Phase2.5.md'] = '# 确认单\n\n### 6. 主人回复\n\n- **主人原话**：<待回填>\n'
+  const d = makeProject(g)
+  const r = run([SCRIPT, '--project', d, '--role', 'T8', '--require-gates'])
+  assert.equal(r.code, 21, r.out.slice(0, 300))
+  const hs = parseJson(r).hard.filter((x) => x.check === 'A7' && x.subject === '阶段确认-Phase2.5.md')
+  assert.ok(hs.some((x) => /回填不全/.test(x.detail)), '应点名字段缺失：' + JSON.stringify(hs))
+  assert.ok(hs.some((x) => /占位符/.test(x.detail)), '应报占位符残留：' + JSON.stringify(hs))
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('L-08：缺 §6 段整段 → exit 21', () => {
+  const g = FOUR_GATES()
+  g['阶段确认-Phase0.md'] = '# 确认单\n\n### 5. 主人决策\n\n- [x] 同意\n'
+  const d = makeProject(g)
+  const r = run([SCRIPT, '--project', d, '--role', 'T8', '--require-gates'])
+  assert.equal(r.code, 21, r.out.slice(0, 300))
+  assert.ok(parseJson(r).hard.some((x) => x.check === 'A7' && /缺「### 6\. 主人回复」段/.test(x.detail)))
   rmSync(d, { recursive: true, force: true })
 })
 

@@ -2,6 +2,52 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.12.2 — 2026-09-25
+
+> **性质**：**三条主人定案的落地**（L-08 / L-06 / L-25）。18.12.1 发布后主人对三项「留给主人决策」的条目逐条拍了板，本版把它们从「审计发现」变成**规范 + 机械门**。
+>
+> **动工前先量了真实账本**（本仓的既有纪律：别凭印象定规则）——22 个真实项目的 `audits/`+`drafts/` 版本号、9 个项目的四门确认单、6 处 `docs/`/`examples/` 引用，全部先实测再定口径。下面每条都写明「实测事实 → 定案 → 落点」。
+
+### 一、L-08 人在环四门「必须」（主人：「四门必须」）
+
+- **实测事实**：9 个项目有 `阶段确认-*.md`，其中**只有 4 个四门齐全**（`ai-cad-cam-impact` / `ai-content-farm-retractions` / `bigdata-ai-sociology` / `共锁`）；`guannian-yu-linian` 只有 2 份、`数字社交-关系重构` 只有 2 份。旧规范只写「未留痕 = 该门不算完成，交付说明如实标注」——**是允许性表述，不是门**。
+- **定案（主人 2026-09-25）**：四门（Phase 0 / 2.5 / 3.5 / 5）**全部必需、不设可省任一门**；轻量档只减角色、不减门。
+- **落点**：`handoff-check.mjs` 新增 **`--require-gates`**，主控在 **Phase 5 交付前**调用：
+  - **A7① 四份齐备且非空** → 缺一份 **exit 20**（与「产物缺失」同码：补救动作都是补开那一门）；
+  - **A7② 每份 `### 6. 主人回复` 段五固定字段**（主人原话 / 回复时间 / 提问方式 / 主控落盘结论 / 轮次计数）已回填、且**无 `<…>` 占位符** → 不合 **exit 21**（与「结构不合」同码：补救动作都是回填）。
+- **为什么由旗标触发而非默认判**（有意选择）：T1-T4/T6/T9 等中期角色收报时，Phase 3.5/5 两门**本就还没开**，无条件判会把「时点没到」误报成违规——同 M-Exist-2「drafts 阶段证据包为空判 N/A」的原则。故时点交给调用方。
+- **对照（同一套判据跑真实项目）**：`共锁`（四门齐备且 §6 已回填）→ **无 A7 硬项**；`筛选竞赛的均衡`（只有 2 门）→ **exit 20 并点名缺 `Phase3.5` / `Phase5`**。
+
+### 二、L-06 产物 `-vN` 的 N 跟审计轮次（主人：「N 跟审计轮次」）
+
+- **实测事实**（22 个项目）：`审计报告-vN` 的 N **无一例外等于该项目的审计轮次**，而它与 `初稿-vN` 的对应关系**并不稳定**——`共锁` 审计 4 份而初稿只到 v4（**缺 v3**）、`guannian-yu-linian` 审计 1 份而初稿 3 份、`ai-cad-cam-impact` 审计 v3 而初稿 v5。而旧口径「报告版本必须 == 被审正文版本」是 `handoff-check` 的 **A4 硬卡**——在这三种形态上都会误报。
+- **定案**：`audits/审计报告-vN.md` 的 N = **T7 审计轮次**；`audits/复核报告-vN.md` 的 N = 同一轮。语义真源新增 [`deliverables.md` §产物 `-vN` 的 N 跟谁走](skills/lunheng-article-pipeline/references/deliverables.md)（七类版本化产物的 N 语义表——**唯一真源**，其余文档只写指针）。
+- **「审的是哪一版」改由两个载体表达**（N 与正文解耦后，这是必须补上的信息）：
+  1. **人工载体**：审计报告头部写 `被审正文:` + 被审正文档名（07 卡 + 派发话术已加此要求）；
+  2. **机读载体**：M 门报告 `verdict_scope` 新增 **`draft_name`**（项目相对路径，如 `drafts/初稿-v4.md`），与既有 `draft_sha256`/`draft_bytes` 合成完整的审定对象。
+- **机械落点**（`handoff-check --level strict --role T7`）：
+  - **A4** 删去「审计/复核报告 ÷ 正文版本对齐」；**A4b（硬）** 审计-vN ↔ 复核-vN **同轮配对**；
+  - **A4c（硬）** 当 M 门报告**自报**审的就是最新正文时，其 `draft_sha256` 必须等于最新正文现算值 → 不等即「改稿后没重跑 M 门」；
+  - **A4c（软）** 审计报告缺 `被审正文:` 声明 → 提示补齐（**刻意不判硬**：实测 22/22 个既有项目都缺该字段，判硬会让全部已交付项目一次性变红；新报告按新写法即天然满足）。
+- **一处自查修正（记下来防复发）**：A4c 首版把「M 门报告的 sha ≠ 最新初稿 sha」一律判硬——在真实项目 `筛选竞赛的均衡` 上**误报**了：那份报告审的是 **`final/定稿.md`**（T8 终检对象），而 `drafts/` 最新是 `初稿-v4`。修法：**只在「自报对象 == 最新正文」这一条上做指纹断言**，审定稿时放行。判据收窄后同一项目复测 → 只剩一条软提示。
+
+### 三、L-25 `docs/`、`examples/` 不进技能目录（主人：「如果作为独立插件不影响用户使用，可以不进技能目录」）
+
+- **实测事实**：bundle 部署的技能体只有 `skills/lunheng-article-pipeline/**`，`docs/` 与 `examples/` **不在盘**（本机镜像实测两目录均不存在）。而技能体里有 **6 处**把它们当运行期读物引用：`SKILL.md`（`examples/preset/`）、`pipeline-readme.md`（同）、`00-主控-扩展职责.md` + `进展-主人版-template.md` + `主人确认-template.md`（`docs/token-optimization-plan.md`）、`规范-机械门对照表.md`（`docs/troubleshooting.md §8`）。
+- **定案**：**保持现状**（不进技能目录），但**运行期文档不得把仓库级路径当运行期读物**——引用时须显式标注「**仓库级 / 不随包**」**并同时给出运行期可用的那一条判据**。6 处按此改写（如 `docs/token-optimization-plan.md` → 标注不随包 + 保留「量级判断非承诺」这条运行期判据；`examples/preset/` → 标注不随包 + 保留 `LUNHENG_TIERING=on` 这条运载开关）。
+- **清单登记**：`references/maintainers.md` 新增 **§五 仓库级资源与技能体的边界**——已知仓库级资源清单（路径 / 是什么 / 运行期替代）+ 判据；并注明**官方文档路径不属于该表**（属主是 `dsh-plugin-guide`，已由 `link-check` 的 `CROSS_SKILL_*` 白名单登记）。
+- **机械化程度（如实）**：`link-check` 能抓「引用了部署下取不到的路径」（会把未归类断链报出来，本轮就当场抓到我写的一处伪路径），但**不校验「是否标注了仓库级」**——该标注目前靠人工与本表维持，已如实登记在对照表。
+
+### 四、验收
+
+| 门 | 结果 |
+|---|---|
+| `node --test "tests/**/*.test.mjs"` | **309 pass / 0 fail**（18.12.1 基线 301，本版 +8：L-06 四条 + L-08 五条，其中一条为语义翻转的旧用例改写） |
+| `consistency-check` / `repo-hygiene-check` / `plugin-surface-check`（STRICT_WARN=1） / `pack-smoke` / `link-check` | 全部 exit 0 |
+| 真实项目对照 | `共锁` 四门齐备 → 无 A7 硬项；`筛选竞赛` 缺 2 门 → 20 并点名；两项目 A4 均无误报 |
+
+**词预算**：SKILL.md 靠瘦身守住 37 KB（未抬棘轮）；主控卡靠瘦身守住 55 KB；`pipeline-readme` / `deliverables` / `规范-机械门对照表` 三处**先瘦身后抬升**（92→94 KB、18→21 KB、28→30 KB），理由逐条写入棘轮备注。
+
 ## 18.12.1 — 2026-09-25
 
 > **性质**：**18.12.0 的收口补丁**。18.12.0 发布后第三方复核指出「三处未闭环 + 一处 CI 长期红」，本版把它们做完、把 CI 改到绿，并把剩余两条**属流程取舍、须主人拍板**的项写清代价。
@@ -33,7 +79,7 @@
 - **现象**：该 job **每个版本周期必红**，已持续四个周期；`publish.yml` 的 `gates` 不含它，故不影响发布，但**仓面 CI 徽章一直红**。
 - **成因（三步都验过）**：① 它走的官方 `dsh-plugin-guide verify` 的 `pack / install / dump-config` **全过**，只倒在自己的 `headless-smoke`；② 错误是 `dsh: user patch-layer watching requires the Cordis HMR service`（栈顶 `dsh-app-boot/lib/index.js:1112`）——是 **DSH 启动失败**，与本包代码无关；③ 根因：`dsh plugin … add` 生成的 profile manifest 写 `"dsh": { "profile": { "patchReload": "live" } }`（`DEFAULT_PROFILE_PATCH_RELOAD = "live"`），而 `profile-boot` 在该值为 `live` 时调 `watchUserPatches()`，拿不到 `ctx.get('hmr')` 就抛错。**本机用 `dsh plugin --profile smoke add @deepseek-ai/dsh-base` 复现了同一 manifest 形态。**
 - **修法**：`ci.yml` 的 dsh pin 由 `0.1.5-rc.2` → **`0.1.7-rc.2`**。逐版核对 `@deepseek-ai/dsh-app-boot`：0.1.5-rc.2 与 rc.3 **都仍有**该默认值与那条守卫；**0.1.7-rc.2 里两者都已不存在**，并内置 `headless` profile（`bundles: ["@deepseek-ai/dsh-base","@deepseek-ai/dsh-headless"]` + `headless-runner`）。改后 **CI 全绿**（11/11 job）。
-- **另两条处方**（未采用，登记在 `maintainers.md` §五）：profile 生成侧把 `patchReload` 设 `"startup"`；上游把该分支改为降级而非抛错。
+- **另两条处方**（未采用，登记在 `maintainers.md` §六）：profile 生成侧把 `patchReload` 设 `"startup"`；上游把该分支改为降级而非抛错。
 - **判据级教训**：**CI 里任何一个 job 长期必红，本身就是缺陷**——要么修到绿，要么删掉并在文档写明「为什么不跑这一层」。把红当常态，会让真正的红失去信息量。
 
 ### 五、仍留给主人的两条（属流程取舍，非机械判据）
