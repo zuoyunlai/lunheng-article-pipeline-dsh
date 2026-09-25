@@ -223,12 +223,17 @@ test('L-09：M-Gate-Report 形状规则——`-v<数字>` 仅限 audits/，中�
       writeFileSync(join(R, rel), content)
       const r = run([join(repo, 'skills', 'lunheng-article-pipeline', 'scripts', 'consistency-check.mjs')], { cwd: d })
       const all = `${r.stdout}${r.stderr}`
-      const hit = all.includes('M-Gate-Report 文件名形状非法') || all.includes('版本化副本挂在 final/ 下')
+      // ⚠️ 断言的是**本规则自己的输出**，不是退出码 —— `full: true` 会把整个真源克隆进夹具，
+      //    真源里任何无关的红（如某个文档的字数棘轮、某条待登记项）都会顺带把 exit 变成 1，
+      //    那种情况下断言 exit 就会「测到别的规则」。规则的判据 = **它自己没有报**，
+      //    故正向要求「输出里不含本规则的报错」，负向要求「输出里含本规则的报错」。
+      //    （仍保留 exit 的粗断言，但只作为「不该崩」的底线。）
+      const reported = all.includes('M-Gate-Report 文件名形状非法') || all.includes('版本化副本挂在 final/ 下')
+      assert.ok(r.code === 0 || r.code === 1, `夹具仓应正常结束，实得 ${r.code}`)
       if (want === 0) {
-        assert.equal(r.code, 0, `${why} —— 期望 exit 0，实得 ${r.code}\n${all.slice(-400)}`)
+        assert.ok(!reported, `${why} —— 本规则不该报，却报了：\n${all.slice(-400)}`)
       } else {
-        assert.equal(r.code, 1, `${why} —— 期望 exit 1，实得 ${r.code}\n${all.slice(-400)}`)
-        assert.ok(hit, `${why} —— exit 1 但不是本规则报的（夹具基线问题）\n${all.slice(-400)}`)
+        assert.ok(reported, `${why} —— 本规则应报却没有：\n${all.slice(-400)}`)
       }
     } finally { rmSync(d, { recursive: true, force: true }) }
   }
