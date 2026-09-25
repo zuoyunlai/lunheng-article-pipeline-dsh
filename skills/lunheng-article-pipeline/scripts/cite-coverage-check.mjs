@@ -17,7 +17,7 @@
 
 import { readFileSync, existsSync } from 'node:fs';
 import { installExitGuard, requireExistingFile } from './_lib/exit-guard.mjs';
-import { sectionBody } from './_lib/sections.mjs';
+import { sectionBody, firstEndnoteIndex } from './_lib/sections.mjs';
 import { writeReport } from './_lib/destructive-write.mjs';   // 报告写盘守卫（v18.12.0，全量审计 L-50）
 installExitGuard();
 
@@ -70,8 +70,14 @@ const text = readFileSync(file, 'utf8');
 //   - 弱（1 次）：辅助型引用
 //   - 装饰性（仅出现在参考文献节无正文引用）：幽灵引用
 const L_REGEX = /\[L(\d{2,3})\]/g;
+// v18.12.0（全量审计 L-63）：**扫描面必须是正文区**。旧版 `L_IN_TEXT` / `L_COUNT` 都扫整篇，而参考文献节里
+//   的条目行本身含 `[Lxx]` → 每条引用都被「自己」计一次 → `decorative` **恒为空集**、`decorativeRatio`
+//   恒 0（**幽灵引用检查永远不触发**，07 卡的「装饰性 >20% → P1」机械不可达），且强度分档整体上移一档
+//   （正文只引 1 次的被算成 2 次 = 中）。现用 `firstEndnoteIndex` 切出正文区（与 count-chars / m-gate-check 同源）。
+const bodyEndIdx = (() => { const i = firstEndnoteIndex(text); return i === -1 ? text.length : i; })();
+const bodyText = text.slice(0, bodyEndIdx);
 const L_IN_TEXT = new Set();
-for (const m of text.matchAll(L_REGEX)) L_IN_TEXT.add(m[1]);
+for (const m of bodyText.matchAll(L_REGEX)) L_IN_TEXT.add(m[1]);
 const referencesBody = sectionBody(text, '参考文献') || '';
 const refsInList = new Set();
 const refsListRegex = /\[L(\d{2,3})\]/g;
@@ -80,7 +86,7 @@ for (const m of referencesBody.matchAll(refsListRegex)) refsInList.add(m[1]);
 const decorative = [...refsInList].filter((r) => !L_IN_TEXT.has(r));
 // 在正文出现 1 次 = 弱；2 次 = 中；≥3 次 = 强
 const L_COUNT = {};
-for (const m of text.matchAll(L_REGEX)) {
+for (const m of bodyText.matchAll(L_REGEX)) {
   L_COUNT[m[1]] = (L_COUNT[m[1]] || 0) + 1;
 }
 const strength = { 强: [], 中: [], 弱: [], 装饰性: decorative };
@@ -90,7 +96,12 @@ for (const [lid, count] of Object.entries(L_COUNT)) {
   else strength['弱'].push({ id: `L${lid}`, count });
 }
 const totalRefs = L_IN_TEXT.size;
-const decorativeRatio = totalRefs > 0 ? decorative.length / refsInList.size : 0;
+// v18.12.0（全量审计 L-63 续）：**装饰性比率的分母是「文末清单条数」，不是「正文引用条数」**。
+//   旧版 `totalRefs = L_IN_TEXT.size` 且 `decorativeRatio = totalRefs > 0 ? decorative.length / refsInList.size : 0`
+//   —— 当正文**一条 [Lxx] 都没有**（纯幽灵稿：清单列了 5 条、正文零引用）时 `totalRefs === 0` → 比率被短路成 `0`
+//   → `cStrengthPass = true` → 「装饰性 >20% → P1」在这类**最该报警**的稿子上恰好静默通过。
+//   现分母固定为清单条数（清单为空才是真正无引用可言，此时比率记 0）。
+const decorativeRatio = refsInList.size > 0 ? decorative.length / refsInList.size : 0;
 const weakRatio = totalRefs > 0 ? strength['弱'].length / totalRefs : 0;
 // 装饰性 >20% → P1（说明文献卡未经筛选）；弱（仅 1 次）>50% → P2 软提示
 const cStrengthPass = decorativeRatio <= 0.20 && weakRatio <= 0.50;

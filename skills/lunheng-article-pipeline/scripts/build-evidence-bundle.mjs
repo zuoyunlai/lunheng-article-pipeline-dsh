@@ -28,7 +28,7 @@
 //   的骨架目录」调用本脚本并断言 exit 0（第 290/310/529 行附近）；按上述 ② 这类骨架必然 exit 10。夹具属测试所有者，
 //   本批未改（授权范围外），需同步给骨架补一个源文件（如 01-任务简报.md 或 final/证据包/数据卡.md）。
 import { readdirSync, copyFileSync, existsSync, mkdirSync, statSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, basename, relative } from 'node:path';
+import { join, basename, relative, resolve } from 'node:path';
 import { countHan } from './_lib/han.mjs';                        // 汉字口径真源
 import { refCardPairRegex, refRegexFirst, refsOf } from './_lib/refs.mjs';   // 引用编号口径真源
 import { TRUST_COMPLIANT_RE } from './_lib/trust.mjs';            // 信任级别口径真源
@@ -97,6 +97,19 @@ requireExistingDir(project, '项目目录');   // v18.0.5：项目必须是目�
 //   为什么必须排在所有 mkdir 之前：旧版报错前已经往参数目录里建了 `final/证据包/` 与 `audits/`——传仓库路径即污染仓库。
 const PROJECT_MARKERS = [['01-任务简报.md', 'Phase 0 的任务简报'], ['final', 'final/（定稿/证据包/图件）'], ['drafts', 'drafts/（初稿与修订说明）']];
 const hitMarkers = PROJECT_MARKERS.filter(([rel]) => existsSync(join(project, rel)));
+// v18.12.0（全量审计 L-13）：**项目目录名合法性**（零新调用——本脚本自 Phase 2 起就会跑）。
+//   为什么要这条：`SKILL.md` 规定项目名须匹配 `[\w\-一-鿿]{1,32}`（禁路径分隔 / `..` / 绝对路径），
+//   但那条规则**只在提示词层面**、无任何脚本校验。实测本机 `run/` 下已出现一个**乱码空目录**
+//   `绛涢€夌珵璧涚殑鍧囪　`（= `筛选竞赛的均衡` 被按 GBK 误码创建），与正常目录并存且无人发现。
+//   判据只查**目录基名**（不查绝对路径——否则中文盘符/用户名会误报），命中即 exit 10 并给出可操作提示。
+const projBase = basename(resolve(project));
+if (!/^[\w\-一-鿿]{1,32}$/u.test(projBase)) {
+  console.error(`项目目录名不合规：${projBase}`);
+  console.error('→ 退出码 10（参数或路径错误）：项目名须匹配 /^[\\w\\-一-鿿]{1,32}$/（禁路径分隔符、`..`、空格与不可见字符）');
+  console.error('   · 若目录名是**乱码**（如 `绛涢€夌珵璧涚殑鍧囪　`），说明创建时编码错误——请用正确名字重建目录');
+  console.error('   · 规则出处：SKILL.md §执行前安全须知（本脚本是它的机械落点，v18.12.0 起）');
+  process.exit(10);
+}
 if (hitMarkers.length === 0) {
   console.error(`项目形态校验未通过：${project} 不像论衡项目目录（以下标记一个都没有：${PROJECT_MARKERS.map(([rel]) => rel).join(' / ')}）`);
   console.error('→ 退出码 10（参数或路径错误）：请把路径指向 run/<项目名> 的**项目目录**，例如');

@@ -9,12 +9,13 @@
 //   ⑤ 刷新一致性门（consistency-check.mjs）+ 证据包（build-evidence-bundle.mjs）+ 审计视图
 //   ⑥ 输出压缩决策 JSON + 残留风险清单
 // 退出码：0 = 阻塞线内通过 / 1 = 仍超阻塞线需 T5 修订轮 / 10 = 参数路径错 / 70 = 内部错误
-import { readFileSync, writeFileSync, existsSync, readdirSync, copyFileSync } from 'node:fs';
+// v18.12.0 L-66：删除 `writeFileSync` / `copyFileSync`——两者从未在本文件被调用（纯冗余导入）。
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { basename, join, dirname } from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { installExitGuard, requireExistingDir } from './_lib/exit-guard.mjs';
+import { installExitGuard, requireExistingDir, describeSpawn } from './_lib/exit-guard.mjs';
 import { parseArgs } from './_lib/cli-args.mjs';
 import { countHan } from './_lib/han.mjs';
 import { firstEndnoteIndex } from './_lib/sections.mjs';
@@ -86,13 +87,24 @@ for (const f of readdirSync(finalDir).filter((x) => x.endsWith('.md'))) {
 let ccResult = null;
 let bundleResult = null;
 if (!dryRun) {
-  // 真源仓库根（向上两级定位 skills/lunheng-article-pipeline/）
-  const repoRoot = join(scriptDir, '..', '..');
-  const cc = spawnSync(nodeBin, [join(repoRoot, 'skills/lunheng-article-pipeline', 'scripts', 'consistency-check.mjs')], { encoding: 'utf8' });
-  ccResult = { status: cc.status, tail: (cc.stdout || '').split('\n').slice(-3).join(' ') };
-  const projArg = basename(projRoot) === 'lunheng-article-pipeline-dsh' ? join(projRoot, 'run', basename(projRoot)) : basename(projRoot);
-  const bb = spawnSync(nodeBin, [join(repoRoot, 'skills/lunheng-article-pipeline', 'scripts', 'build-evidence-bundle.mjs'), basename(projRoot), '--summary'], { encoding: 'utf8' });
-  bundleResult = { status: bb.status, tail: (bb.stdout || '').split('\n').slice(-3).join(' ') };
+  // 项目参数**原样透传**用户传入的 `<run/项目名>`（与 apply-revision-cycle.mjs 同源）；旧版把
+  //   `basename(projRoot)` 传给下游 —— 那只是目录名（丢了 `run/` 前缀），下游按「相对 cwd
+  //   的项目路径」解析即落空。
+  const projArg = positionals[0];
+  // 技能目录 = 脚本目录的上一级（`<skill>/scripts/` → `<skill>/`）。v18.12.0 L-61 修正：旧版此处
+  //   写 `join(repoRoot, 'skills/lunheng-article-pipeline', 'scripts', …)`，**引用了本文件从未定义的
+  //   变量** `repoRoot` → 非 dry-run 必然 ReferenceError → exit-guard 归为内部错误 exit 70 →
+  //   决策 JSON 里一致性门与证据包恒为 `exit null`（收尾阶段主控据此误判门未跑）。
+  const skillRoot = join(scriptDir, '..');
+  const cc = spawnSync(nodeBin, [join(skillRoot, 'scripts', 'consistency-check.mjs')], { encoding: 'utf8' });
+  ccResult = { status: describeSpawn(cc), tail: (cc.stdout || '').split('\n').slice(-3).join(' ') };
+  if (!flags.has('--skip-bundle')) {
+    // v18.12.0 L-66：`--skip-bundle` 此前只在 `parseArgs` 白名单里挂着、**从未被读取**——声明了却
+    //   无效果的开关（主控以为跳过、实际照跑）。现与 apply-revision-cycle.mjs 同义：跳过**证据包**
+    //   刷新；一致性门仍刷新（只读，不写项目产物）。
+    const bb = spawnSync(nodeBin, [join(scriptDir, 'build-evidence-bundle.mjs'), projArg, '--summary'], { encoding: 'utf8' });
+    bundleResult = { status: describeSpawn(bb), tail: (bb.stdout || '').split('\n').slice(-3).join(' ') };
+  }
 }
 
 // ---- ⑥ 输出压缩决策 JSON ----
@@ -103,8 +115,8 @@ const result = {
   target, g5, verdict,
   flowHits,
   sha256: shaMap,
-  consistencyCheck: ccResult ? `exit ${ccResult.status}` : (dryRun ? 'dry-run' : 'skipped'),
-  bundle: bundleResult ? `exit ${bundleResult.status}` : (dryRun ? 'dry-run' : 'skipped'),
+  consistencyCheck: ccResult ? ccResult.status : (dryRun ? 'dry-run' : 'skipped'),
+  bundle: bundleResult ? bundleResult.status : (dryRun ? 'dry-run' : (flags.has('--skip-bundle') ? 'skipped(--skip-bundle)' : 'skipped')),
   recommendation: verdict.includes('超阻塞线')
     ? `需进入 v(${Number(basename(targetPath).match(/\d+/)?.[0] || '3') + 1}) 修订轮；压缩目标 ${verdict.includes('+') ? verdict.split('+')[1].split(' ')[0] : '?'} 字（按 maxRounds=${maxRounds} 轮内）`
     : verdict.includes('低于阻塞线')

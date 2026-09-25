@@ -9,12 +9,16 @@
 //   ⑤ 内部流程词残留快扫（Phase N.N / 承重 / 一处两用 / 修订说明 等——M-Form-4/5 的前哨，只报数不判死）
 //   ⑥ 刷新证据包 + 审计视图（委托 build-evidence-bundle.mjs <项目> --summary；--skip-bundle 跳过）
 //   ⑦ 生成 drafts/修订说明-vN.md 骨架（已存在则不覆盖；字数表预填实测值，决策内容留占位给主控）
-// 退出码：0 = 循环完成（含 diff 部分跳过时的提示）/ 1 = diff 清单解析 0 条或 apply-diff 失败 / 10 = 参数路径错 / 70 = 内部错误
+// 退出码：0 = 循环完成 / 1 = diff 清单解析 0 条或 apply-diff 失败（**含「部分跳过」**——v18.12.0 L-60 如实修正：
+//   旧注释写「0 = 循环完成（含 diff 部分跳过时的提示）」，而实现在 apply-diff 返回 1（**部分跳过时它正是 1**）
+//   时直接 `exit 1` → 主控会读成「diff 失败」，尽管**产物已经落盘**）
+//   / 10 = 参数路径错 / **70 = 内部错误**（脚本缺陷；v18.12.0 L-66 起另含「apply-diff 子进程未正常
+//   结算」——`status === null` 即被信号杀死或根本没起来，旧版按 `exit 1` 报出，与「1 = P1 内容失败」撞码）
 import { readFileSync, writeFileSync, existsSync, copyFileSync, readdirSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { installExitGuard, requireExistingDir } from './_lib/exit-guard.mjs';
+import { installExitGuard, requireExistingDir, describeSpawn } from './_lib/exit-guard.mjs';
 import { parseArgs } from './_lib/cli-args.mjs';
 import { countHan } from './_lib/han.mjs';
 import { firstEndnoteIndex } from './_lib/sections.mjs';
@@ -84,6 +88,15 @@ if (diffList) {
   } else {
     const r = spawnSync(nodeBin, [join(scriptDir, 'apply-diff.mjs'), nextPath, diffList, '--in-place'], { encoding: 'utf8' });
     diffResult = { status: r.status, stdout: (r.stdout || '').slice(0, 400), stderr: (r.stderr || '').slice(0, 400) };
+    // v18.12.0 L-66：`status === null`（被信号杀死 / 子进程没起来）**不是内容判定**——旧版一律
+    //   `exit 1`，而 1 在 M 门语义里是「P1 内容失败」，主控会据此误触发 T5 修订轮（同族事故：
+    //   v18.0.5 引入 exit-guard 正是为消灭这类撞码）。故先分流到 70（EX_SOFTWARE）。
+    if (r.status === null) {
+      const how = describeSpawn(r);
+      console.error(`apply-diff 未正常结算（${how}）：${diffResult.stderr || diffResult.stdout}`);
+      console.error('→ 退出码 70（内部错误，非内容判定）；请重跑，若复现请回报 issue');
+      process.exit(70);
+    }
     if (r.status !== 0) {
       console.error(`apply-diff 失败（exit ${r.status}）：${diffResult.stderr || diffResult.stdout}`);
       process.exit(1);
@@ -103,7 +116,7 @@ const flowHits = FLOW_WORDS.map((w) => {
 let bundleResult = null;
 if (!flags.has('--skip-bundle') && !dryRun) {
   const r = spawnSync(nodeBin, [join(scriptDir, 'build-evidence-bundle.mjs'), projArg, '--summary'], { encoding: 'utf8' });
-  bundleResult = { status: r.status, tail: (r.stdout || '').split('\n').slice(-3).join(' ') };
+  bundleResult = { status: describeSpawn(r), tail: (r.stdout || '').split('\n').slice(-3).join(' ') };
 }
 
 // ---- ⑦ 修订说明骨架 ----
@@ -147,6 +160,6 @@ console.log(JSON.stringify({
   target, g5, g5Verdict,
   flowHits,
   diff: diffResult ? (diffResult.skipped ? 'dry-run' : `exit ${diffResult.status}`) : null,
-  bundle: bundleResult ? `exit ${bundleResult.status}` : (dryRun ? 'dry-run' : 'skipped'),
+  bundle: bundleResult ? bundleResult.status : (dryRun ? 'dry-run' : (flags.has('--skip-bundle') ? 'skipped(--skip-bundle)' : 'skipped')),
   revNote,
 }, null, 2));

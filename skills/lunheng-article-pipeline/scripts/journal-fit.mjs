@@ -77,16 +77,25 @@ let projectWordCount = null;
 let projectPaperPath = null;
 if (projectPath) {
   projectPaperPath = `${projectPath}/final/定稿.md`;
-  if (existsSync(projectPaperPath)) {
-    requireExistingFile(projectPaperPath, '论文定稿');
-    const text = readFileSync(projectPaperPath, 'utf8');
-    const abstractStart = sectionBody(text, '摘要') || '';
-    const referenceStart = sectionBody(text, '参考文献') || null;
-    const bodyEnd = referenceStart === null ? text.length : text.indexOf('## 参考文献');
-    const bodyText = text.slice(text.indexOf('## 摘要'), bodyEnd);
-    const hanMatches = bodyText.match(/[\u4e00-\u9fff]/g) || [];
-    projectWordCount = hanMatches.length;
+  // v18.12.0（全量审计 L-64）：**路径敲错必须响亮失败**。旧实现在 `existsSync` 为假时静默跳过**全部**
+  //   项目级检查（J-Format 段整体消失、`checks: []`）并 exit 0 —— 结论比正确传参**更宽松**，
+  //   用户以为「已按项目核过」。现：给了 --project 却找不到定稿 → exit 10（参数/路径错）。
+  if (!existsSync(projectPaperPath)) {
+    console.error(`--project 指向的项目缺少 final/定稿.md：${projectPaperPath}`);
+    console.error('  · 若尚未到 Phase 5：**不要**传 --project（只做期刊侧匹配）；');
+    console.error('  · 若路径敲错：这是参数错，不是「项目无检查项」。');
+    process.exit(10);
   }
+  // v18.12.0（L-64）：到这里 `projectPaperPath` 必然存在（上面已 exit 10）——旧版此处的
+  //   `if (existsSync(...))` 已成为恒真分支，留着会让读者以为「仍可能跳过」。
+  requireExistingFile(projectPaperPath, '论文定稿');
+  const text = readFileSync(projectPaperPath, 'utf8');
+  const abstractStart = sectionBody(text, '摘要') || '';
+  const referenceStart = sectionBody(text, '参考文献') || null;
+  const bodyEnd = referenceStart === null ? text.length : text.indexOf('## 参考文献');
+  const bodyText = text.slice(text.indexOf('## 摘要'), bodyEnd);
+  const hanMatches = bodyText.match(/[\u4e00-\u9fff]/g) || [];
+  projectWordCount = hanMatches.length;
 }
 
 // === J-Reason: 常见 desk-reject 原因对位 ===

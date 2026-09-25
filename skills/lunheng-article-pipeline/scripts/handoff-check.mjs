@@ -232,8 +232,18 @@ if (reportText != null) {
   const SECTION_NAMES = ['做了什么', '产物在哪', '怎么验证', '已知问题', '下一步', '状态机更新']
   const sectionsFound = []
   const sectionsMissing = []
+  // v18.12.0（全量审计 L-65）：判据由 `norm.includes(段名)` 改为**结构判据**。
+  //   旧判据只看「这六个词出现过没有」——实测单行散文
+  //   「本次检索已结束。产物在哪我还没整理，怎么验证暂缺，已知问题未记录，下一步待定，状态机更新稍后补」
+  //   把首句补上「做了什么」即六词齐全 → **exit 0 放行**（而它什么都没交代）；
+  //   反过来「六要素成段但产物名不全」却被判 exit 21。即该组与「是否成段」无关，与「词出现与否」有关。
+  //   现要求：段名须以**段首形态**出现（行首 `**段名**：` / `段名：` / `### 段名` / 表格首列 `| 段名 |`）。
+  const SEG_RE = (s) => new RegExp(
+    '(?:^|\\n)\\s*(?:#{2,6}\\s*|\\|\\s*|[-*]\\s+)?\\*{0,2}' + s + '\\*{0,2}\\s*(?:\\*{0,2}\\s*[:：]|\\s*\\||\\s*$)', 'm',
+  )
   for (const s of SECTION_NAMES) {
-    if (norm.includes(s)) sectionsFound.push(s); else sectionsMissing.push(s)
+    if (SEG_RE(s).test(norm)) sectionsFound.push(s)
+    else sectionsMissing.push(s)
   }
   const aiDisclosed = /AI 使用|披露/.test(norm)
   const pathMismatch = []

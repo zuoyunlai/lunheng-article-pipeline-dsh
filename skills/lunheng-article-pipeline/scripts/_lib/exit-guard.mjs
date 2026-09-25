@@ -41,6 +41,23 @@ export function installExitGuard() {
   process.on('unhandledRejection', (reason) => classify(reason instanceof Error ? reason : new Error(String(reason)), 'unhandledRejection'))
 }
 
+/** 把 `spawnSync` 的结果格式化成**不会说谎**的一行口径（v18.12.0 L-66）。
+ *
+ *  背景：编排脚本（apply-revision-cycle / apply-compression-cycle）把子脚本的 `status` 拼成
+ *  `` `exit ${status}` `` 写进决策 JSON。而 `spawnSync.status` 在**被信号杀死**或 **spawn 本身失败**
+ *  时是 `null` —— 于是决策 JSON 里出现字面量 `exit null`：它既不是「未跑」，也不是任何已登记退出码，
+ *  主控既无法据此判内容，也看不出「子进程根本没起来」。本函数把它收敛为可判读的三种形态：
+ *    `exit 0` / `exit 10` …  —— 正常结算
+ *    `signal SIGTERM`        —— 被信号终止（含超时杀、Ctrl-C）
+ *    `spawn-failed`          —— 未产生子进程（ENOENT 等，error 字段有值而 status 为 null）
+ *  只做格式化，不改判定逻辑；调用方仍拿到原始对象。 */
+export function describeSpawn(result) {
+  if (!result) return 'spawn-failed'
+  if (typeof result.status === 'number') return `exit ${result.status}`
+  if (result.signal) return `signal ${result.signal}`
+  return 'spawn-failed'
+}
+
 /** 路径必须是**已存在的文件**（目录/软链到目录都算错），否则 exit 10。返回规范化后的路径。 */
 export function requireExistingFile(p, label = '文件') {
   if (!existsSync(p)) {
