@@ -1,6 +1,6 @@
 # COI 利益冲突声明模板
 
-> 版本：v18.11.0（DSH bundle 插件 / 学术伦理声明 P0-5 新增）
+> 版本：v18.12.0（DSH bundle 插件 / 学术伦理声明 P0-5 新增）
 > 用途：学术论文投稿必附的利益冲突声明（Conflict of Interest Disclosure）。
 > 生成规则：分两档——**无利益冲突**（直接填第 1 节）/ **存在利益冲突**（填第 1 节 + 第 2 节清单）；<方括号> 处按实填实。
 > 引用：ICMJE Recommendations for the Conduct, Reporting, Editing, and Publication of Scholarly Work in Medical Journals（最新版，http://www.icmje.org/recommendations/）
