@@ -15,13 +15,14 @@
 //   / 10 = 参数路径错 / **70 = 内部错误**（脚本缺陷；v18.12.0 L-66 起另含「apply-diff 子进程未正常
 //   结算」——`status === null` 即被信号杀死或根本没起来，旧版按 `exit 1` 报出，与「1 = P1 内容失败」撞码）
 import { readFileSync, writeFileSync, existsSync, copyFileSync, readdirSync } from 'node:fs';
-import { join, dirname, basename } from 'node:path';
+import { join, dirname, basename, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { installExitGuard, requireExistingDir, describeSpawn } from './_lib/exit-guard.mjs';
 import { parseArgs } from './_lib/cli-args.mjs';
 import { countHan } from './_lib/han.mjs';
-import { firstEndnoteIndex } from './_lib/sections.mjs';
+import { parseTargetChars } from './_lib/target-chars.mjs';   // v18.12.3：目标字数解析唯一实现
+import { firstEndnoteIndex, maskFences, bodyStartAfterAbstract } from './_lib/sections.mjs';   // v18.12.3 L-56：正文区口径与 count-chars 同源
 
 installExitGuard();
 
@@ -48,7 +49,10 @@ const projRoot = requireExistingDir(projArg, '项目目录');
 const prevPath = join(projRoot, 'drafts', `初稿-v${nTarget - 1}.md`);
 const nextPath = join(projRoot, 'drafts', `初稿-v${nTarget}.md`);
 if (!existsSync(prevPath)) usageExit(`上一版草稿不存在：${prevPath}（修订循环要求 v${nTarget - 1} 先落盘）`);
-const diffList = opts['--diff-list'] ? join(process.cwd(), opts['--diff-list']) : '';
+// v18.12.3 修：`join(cwd, v)` 对**绝对路径**是错的（`C:\repo` + `C:\tmp\x.md` → `C:\repo\C:\tmp\x.md`），
+//   `resolve` 才正确。`--diff-list` 是派发话术里的高频参数，主控写绝对路径并不罕见
+//   （本仓 B12 回归用例匿名暴露；此前只实测过相对路径）。
+const diffList = opts['--diff-list'] ? resolve(process.cwd(), opts['--diff-list']) : '';
 if (diffList && !existsSync(diffList)) usageExit(`--diff-list 文件不存在：${diffList}`);
 const dryRun = flags.has('--dry-run');
 
@@ -59,26 +63,24 @@ const nodeBin = process.execPath;
 const baselineCopied = !existsSync(nextPath);
 if (baselineCopied && !dryRun) copyFileSync(prevPath, nextPath);
 
-// ---- ②/④ 测量（同一口径：body = 摘要后~文末节前）----
+// ---- ② 前置测量（**仅用于「改前」对照**）----
+// v18.12.3（全量审计 L-56 收口）：本函数此前同时被当作 **post**（改后）用，而它在 `③ 应用 diff` **之前**执行
+//   → 「脚本实测」四个字报的是**改前**的字数。审计实测：v2 实际 300 汉字而脚本报 754，并把 754 写进
+//   `修订说明-vN.md` 的「字数实值（脚本实测）」表 → 该表从此不可信（而它正是唯一验收口径的载体）。
+//   另：旧实现 `slice(0, firstEnd)`（= 文件开头 → 文末节前）**含题名区与摘要**，与唯一验收口径
+//   「摘要后 ~ 文末节前」不同，注释却写「同一口径」。现两者一起修正：
+//     · 口径 = `bodyStartAfterAbstract` → `firstEndnoteIndex`（与 count-chars.mjs 同源）；
+//     · 汉字统计先过 `maskFences`（围栏内文字不计入正文——与 count-chars 的围栏感知一致）；
+//     · **改后的值在 diff 应用之后重算**（见下方 `post = measure(...)`）。
 const measure = (p) => {
   const text = readFileSync(p, 'utf8');
-  const firstEnd = firstEndnoteIndex(text);
-  const body = firstEnd >= 0 ? text.slice(0, firstEnd) : text;
-  return { body: countHan(body), full: countHan(text) };
+  const masked = maskFences(text);
+  const from = bodyStartAfterAbstract(text).index;
+  const i = firstEndnoteIndex(text, from);
+  const to = i === -1 ? text.length : i;
+  return { body: countHan(masked.slice(from, to)), full: countHan(text) };
 };
 const pre = measure(prevPath);
-const post = measure(existsSync(nextPath) ? nextPath : prevPath);
-
-// ---- 目标字数 + G5 阻塞线（01-任务简报.md §目标篇幅）----
-let target = null;
-const briefCandidates = [join(projRoot, '01-任务简报.md')].filter(existsSync);
-if (briefCandidates.length) {
-  const bt = readFileSync(briefCandidates[0], 'utf8');
-  const m = bt.match(/(?:目标篇幅|篇幅)[^\n]*?(\d{4,5})/);
-  if (m) target = Number(m[1]);
-}
-const g5 = target ? { floor: Math.round(target * 0.9), ceil: Math.round(target * 1.05) } : null;
-const g5Verdict = g5 ? (post.body > g5.ceil ? `超阻塞线 +${post.body - g5.ceil} 字（P0，须压缩）` : (post.body < g5.floor ? `低于阻塞线 ${g5.floor - post.body} 字（P0，须扩写）` : '✓ 阻塞线内')) : '（未解析到目标字数，跳过 G5 判定）';
 
 // ---- ③ 应用 diff 清单 ----
 let diffResult = null;
@@ -103,6 +105,24 @@ if (diffList) {
     }
   }
 }
+
+// ---- ④ 后置测量 + G5 阻塞线（**必须在 ③ 应用 diff 之后**；v18.12.3 L-56）----
+const post = measure(existsSync(nextPath) ? nextPath : prevPath);
+// v18.12.3：目标字数解析改走 `_lib/target-chars.mjs` 唯一实现。旧行为内联 `\d{4,5}` →
+//   `目标篇幅：300 字`（3 位）/ `12,000 字`（千分位）/ `1.2 万 字`（数量级单位）**全部解析不出**
+//   → `g5 = null` → **G5 阻塞线整段判定被静默跳过、脚本仍 exit 0**，主控会以为「G5 已核过」。
+//   现在解析不到就**说出原因**（stderr 可见），不再让闸门无声失效。
+const briefPath = [join(projRoot, '01-任务简报.md')].find(existsSync);
+const tParse = briefPath
+  ? parseTargetChars(readFileSync(briefPath, 'utf8'))
+  : { value: null, raw: null, reason: '未找到 01-任务简报.md（无法判定目标篇幅）' };
+const target = tParse.value;
+if (target === null) {
+  console.error(`⚠️ 目标字数未解析到 → **G5 阻塞线判定跳过**（这是「未核」，不是「已核」）：${tParse.reason}`);
+  if (tParse.raw) console.error(`   · 简报里读到的是：「${tParse.raw}」——请核对 §目标篇幅 的写法（支持 3–5 位、千分位逗号、万/千/k 单位）`);
+}
+const g5 = target ? { floor: Math.round(target * 0.9), ceil: Math.round(target * 1.05) } : null;
+const g5Verdict = g5 ? (post.body > g5.ceil ? `超阻塞线 +${post.body - g5.ceil} 字（P0，须压缩）` : (post.body < g5.floor ? `低于阻塞线 ${g5.floor - post.body} 字（P0，须扩写）` : '✓ 阻塞线内')) : '（未解析到目标字数，跳过 G5 判定）';
 
 // ---- ⑤ 内部流程词快扫（M-Form-4/5 前哨）----
 const FLOW_WORDS = ['Phase\\s*\\d(\\.\\d)?', '承重', '一处两用', '素材加载清单', '修订说明', '初稿-v\\d', '审计环节', '批判报告'];

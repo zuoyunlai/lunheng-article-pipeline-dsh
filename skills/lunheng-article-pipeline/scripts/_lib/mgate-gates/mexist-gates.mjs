@@ -1179,6 +1179,7 @@ if (files.length === 0 && isDraftStageAudit) {
   const manifestPath = join(evDir, 'manifest.json');
   let manifestProblem = null;   // 硬问题（P0）
   let manifestNote = '';        // 提示（不改严重度）
+  let manifestStale = '';       // v18.12.3（L-55）：陈旧副本（源侧变动而包未重建）——同样只进 detail，不翻 severity
   let manifestChecked = false;
   if (existsSync(manifestPath)) {
     try {
@@ -1212,6 +1213,37 @@ if (files.length === 0 && isDraftStageAudit) {
           }
         }
         manifestNote = `｜ ✓ 清单复算通过（${(mf.files || []).length} 个文件 sha256 一致，无空降文件）${manifestNote}`;
+        // ③ v18.12.3（全量审计 L-55 收口）：**陈旧副本检测**。
+        //   为什么需要：`build-evidence-bundle` 是**只加不删**的复制（`copyFileSync` 一遍，从不清理目的目录），
+        //   而 `m-gate-check` 的 `findCard` **优先**读证据包 —— 于是「源文件被删/改名后，包里的旧副本仍在」
+        //   这种情形下，M 门核的是**那份旧副本**（审计实测：删掉 `data/数据卡.md` 后重跑，M-Form-6 /
+        //   M-Exist-3 / M-Integrity-1 仍全部通过）。② 只覆盖了「被审正文自清单生成后变更」，
+        //   没有覆盖「**素材源**此后新增/删除」。
+        //   判据：清单里由**构建时记下的缺失源**（`missingSrcs`）与**此刻实际缺失的源**比对——不一致即说明
+        //   源侧变动而包未重建（此前缺失的源现在有了 → 包缺它；此前有的源现在没了 → 包里的那份是孤儿副本）。
+        //   严重度 P2（**有意选择**）：包新不新属「时点」问题，而本项不是每次构建都能对齐（源文件随时可能被
+        //   后续阶段补上）；按本仓「产物尚未到期不判死」的既有原则，先做**可见**，再由主控按需重跑。
+        //   触发条件刻意收窄：只比 `missingSrcs` 的集合差，不比对 mtime（证据包会被复制/重写，mtime 不可靠）。
+        try {
+          const proj = dirname(dirname(evDir));
+          const srcSpecs = [
+            ...(Array.isArray(mf.missingSrcs) ? mf.missingSrcs : []).map((s) => s),
+            'literature/文献卡.md', 'data/数据卡.md', 'cases/案例卡.md', 'final/图件',
+          ];
+          const nowMissing = new Set();
+          for (const s of srcSpecs) {
+            if (/图件$/.test(s)) continue;              // 目录型源单独处理（图件目录可能为空）
+            if (!existsSync(join(proj, s))) nowMissing.add(s);
+          }
+          const staleBack = [...(mf.missingSrcs || [])].filter((s) => !nowMissing.has(s) && existsSync(join(proj, s)));
+          const staleFwd = [...nowMissing].filter((s) => !(mf.missingSrcs || []).includes(s));
+          if (staleBack.length || staleFwd.length) {
+            manifestStale =
+              (staleBack.length ? `构建时缺失、现已存在：${staleBack.slice(0, 3).join(', ')}（包内没有它们的内容）` : '')
+              + (staleBack.length && staleFwd.length ? '；' : '')
+              + (staleFwd.length ? `构建时存在、现已缺失：${staleFwd.slice(0, 3).join(', ')}（包内那份是**孤儿副本**，M 门可能核到它）` : '');
+          }
+        } catch { /* 陈旧检测是附加项，失败不影响清单复算结论 */ }
       }
     } catch (e) {
       manifestProblem = `清单无法解析（${e.message}）——请重跑 build-evidence-bundle.mjs 重生成`;
@@ -1227,7 +1259,8 @@ if (files.length === 0 && isDraftStageAudit) {
       `${files.length} 个 .md 文件` +
       (empty.length ? `，空文件: ${empty.map(relOf).join(',')}` : '，无空文件') +
       (layoutAnomaly ? ` ｜ 布局异常（P1）：${layoutAnomaly}` : '') +
-      (manifestProblem ? ` ｜ 清单复算失败（P0）：${manifestProblem}` : manifestNote),
+      (manifestProblem ? ` ｜ 清单复算失败（P0）：${manifestProblem}` : manifestNote) +
+      (manifestStale ? ` ｜ ⚠️ 证据包可能陈旧（P2，请重跑 build-evidence-bundle.mjs）：${manifestStale}` : ''),
     severity: (files.length === 0 || empty.length > 0 || manifestProblem) ? 'P0' : (layoutAnomaly ? 'P1' : '通过'),
   });
 }

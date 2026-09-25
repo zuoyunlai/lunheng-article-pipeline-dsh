@@ -33,6 +33,10 @@
 //   ㉑ 五语 README 结构镜像（切换器行 + 表格行数 + ## 标题数，五份必须一致）
 //   ㉒ 按需查节锚点存在性（SKILL.md 启动清单里 `文件#锚点` 指向的锚点必须真实存在——「按需查节」的机械可定位性）
 //   ㉓ 阈值总表自洽（M-Gate-Algorithm.md 阈值总表 == m-gate-check.mjs THRESHOLDS，防阈值双维护漂移）
+//   ㉔ Phase 序列自洽（v18.12.3 落地审计 L-07：pipeline-readme **流水线全景**里出现的 Phase 编号
+//      ⊆ `SKILL.md` §⚡ 启动速查表的 `- Phase：` 序列——该序列是主控排 `todo_write` 的唯一真源，
+//      而流水线全景是各 Phase 的详述真源；两者不交叉比对时，新阶段会悄悄只存在于其中一侧，
+//      主控的计划里就没有那一步——L-07 的 `Phase 1.5`/`Phase 4.2` 正是这样「消失」了整轮修订回环）
 // 退出码 0 = 通过；1 = 有漂移（列在 stderr）
 // (重写用法：node scripts/consistency-check.mjs [--fix]
 //   --fix：自动修复可逆的简单漂移（P2 级，如「（检查）」占位符替换）
@@ -413,6 +417,38 @@ for (const f of files) {
     errors.push(`[P1 M-Gate-Report 文件名/标识漂移（应为 M-Gate-Report.json）] ${rel}`);
   }
 
+  // ②c M-Gate-Report 文件的**形状规则**（v18.12.3 落地审计 L-09）——
+  //   为什么 ②b 不够：它只拦 `-v2.2.4` / `-v2.2.12` **两个字面量**，而实测真实项目 final/ 下的变体是
+  //   `-final.json` / `-rev.json` / `-verify.json` / `-full.json` / `-v18.2.2b.json`（**任一都绕过 ②b**），
+  //   后果是交付目录里并存 `exit=0` 与 `exit=1` 两份 M 门报告、事后审计看到互相矛盾的结论。
+  //   本规则改为**形状白名单**：文件名只允许 {`M-Gate-Report.json`, `M-Gate-Report-v<数字>.json`}。
+  //   · 版本化形态（`-v<数字>`）**不得挂在 `final/` 下**——`final/` 是全项目**唯一**的送达口径
+  //     （`m-gate-check.mjs --report` 的默认值与 `build-evidence-bundle.mjs` 的读取路径都写死这一份），
+  //     历史轮次报告的正确位置是 `audits/`。
+  //     ⚠️ 判据 = **被引用路径的前缀**，不是「写这句话的文件在哪」——首版按后者写，结果把
+  //     `references/**` 里合法写「见 `audits/M-Gate-Report-v3.json`」的文档判成 P1（假阳性）。
+  //     裸文件名（无目录前缀）**不判**：文档里无法确定其位置，臆断即假阳性。
+  //   · 中间态命名（`-rev` / `-verify` / `-final` / `-full` / 带字母的 `-v18.2.2b`）**任何前缀都 P1**。
+  //   反引号/引号/`*` 通配（`M-Gate-Report*.json`）与裸标识（`M-Gate-Report` 后不跟文件后缀）不算文件名。
+  if (!isArchive(f)) {
+    const reShape = /M-Gate-Report(?:-[\w.]+)?\.json/g;
+    for (const m of text.matchAll(reShape)) {
+      const name = m[0];
+      if (name === 'M-Gate-Report.json') continue;                       // 唯一口径，放行
+      // 取同行内、紧邻其前的目录前缀（`final/` / `audits/` / `…/final/` …）
+      const lineStart = text.lastIndexOf('\n', m.index) + 1;
+      const pre = text.slice(lineStart, m.index);
+      const dir = (/([A-Za-z0-9_.\-]+[\\/])+$/.exec(pre) || [])[0] || '';
+      if (/^M-Gate-Report-v\d+\.json$/.test(name)) {                     // 合法版本形态
+        if (/(^|[\\/])final[\\/]$/.test(dir)) {
+          errors.push(`[P1 M-Gate-Report 版本化副本挂在 final/ 下（final/ 唯一口径 = M-Gate-Report.json；历史轮次请放 audits/）] ${rel}: ${name}`);
+        }
+        continue;
+      }
+      errors.push(`[P1 M-Gate-Report 文件名形状非法（只允许 M-Gate-Report.json，或 audits/ 下的 M-Gate-Report-v<数字>.json；中间态请移入 final/.work/）] ${rel}: ${name}`);
+    }
+  }
+
   // ③a 悬空引用：旧名「版本一致性检查-v2.3.0.md」残留（独立性重构后该旧机制已删除，发现即清理）
   if (text.includes('版本一致性检查-v2.3.0.md')) {
     errors.push(`[P0-1a 悬空引用「版本一致性检查-v2.3.0.md」] ${rel}`);
@@ -513,6 +549,49 @@ runDocsVersionRules(ctx);
 runContentRules(ctx);
 runMgateDocRules(ctx);
 runRepoSurfaceRules(ctx);
+
+// ── ㉔ Phase 序列自洽（v18.12.3 落地审计 L-07）────────────────────────────────────────────────
+// 真源分工：`SKILL.md §⚡ 启动速查表` 的 `- Phase：` 行 = 主控排 `todo_write` 的**唯一 Phase 真源**；
+//   `references/pipeline-readme.md` 的**流水线全景**代码块 = 各 Phase 的**详述真源**（触发条件、产物、角色）。
+// 为什么必须机械对账：L-07 实测 `Phase 1.5`（会真 spawn T1 的阶段）与 `Phase 4.2`（整轮修订回环）
+//   只写在详述真源里、不在速查序列里 → 主控的计划里没有修订回环，真实项目被迫临时造
+//   「Phase 4 修订」这种命名（`筛选竞赛/status.md:21`）。这是「同一事实两处维护」的必然漂移。
+// 比对口径：只取**流水线全景代码块**内的 `Phase <编号>`（排除 `Gate T2.5` / `闸门 T7.5` 这类闸门行，
+//   它们按设计不进 Phase 序列）；速查序列侧的编号直接从 `- Phase：` 行抽 `数字(点数字)?`。
+(() => {
+  const skillPath = join(ROOT, 'SKILL.md');
+  const readmePath = join(ROOT, 'references', 'pipeline-readme.md');
+  if (!existsSync(skillPath) || !existsSync(readmePath)) return;   // 夹具仓可能只放其一 → 不臆断
+  const skillText = readFileSync(skillPath, 'utf8');
+  const seqLine = skillText.split('\n').find((l) => /^-\s*Phase：/.test(l.trim()));
+  if (!seqLine) {
+    errors.push('[P1 Phase 序列真源缺失] SKILL.md §⚡ 启动速查表里找不到 `- Phase：` 行（规则 ㉔ 无从对账）');
+    return;
+  }
+  const seq = new Set([...seqLine.matchAll(/(\d+(?:\.\d+)?)\s*[^\d.]/g)].map((m) => m[1]));
+  const readmeText = readFileSync(readmePath, 'utf8');
+  const at = readmeText.indexOf('## 流水线全景');
+  // ⚠️ 起点要**跳过紧跟标题的 `<a id="…">` 锚点行**（本文件在标题与围栏之间插了它），
+  //    否则正则的第一个字符就失配 → 报「代码块缺失」的假 P1（首版即踩此坑）。
+  const block = /```[a-z]*\r?\n([\s\S]*?)```/.exec(readmeText.slice(at + '## 流水线全景'.length));
+  if (block === null) {
+    errors.push('[P1 流水线全景代码块缺失] references/pipeline-readme.md §流水线全景 未找到围栏块（规则 ㉔ 无从对账）');
+    return;
+  }
+  const seen = new Set();
+  for (const line of block[1].split('\n')) {
+    const m = /^Phase\s+(\d+(?:\.\d+)?)\s+\S/.exec(line.trim());
+    if (m) seen.add(m[1]);
+  }
+  const orphan = [...seen].filter((n) => !seq.has(n)).sort((a, b) => a - b);
+  if (orphan.length) {
+    errors.push(
+      `[P1 Phase 序列自洽] references/pipeline-readme.md 流水线全景里的 Phase ${orphan.join(' / ')} ` +
+      `不在 SKILL.md §⚡ 启动速查表的 \`- Phase：\` 序列内（该序列是主控排 todo_write 的唯一真源；` +
+      `新阶段只写详述真源 = 主控计划里没有这一步——审计 L-07 的成因）`,
+    );
+  }
+})();
 
 if (errors.length) {
   console.error(`一致性自检未通过，共 ${errors.length} 处：`);

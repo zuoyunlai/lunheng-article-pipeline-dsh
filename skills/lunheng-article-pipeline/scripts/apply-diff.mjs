@@ -27,7 +27,8 @@
 //   实测 8863）。本脚本把「机械应用 + 汉字 delta 实测」两件事交给代码，主控只做核对与仲裁。
 //
 // 解析策略（best-effort，容错多形态）：
-//   ① 条目分隔：行首 `[Diff …]` / `[P0-n …]` / `[P1-n …]` / `[C-n]` 等**方括号编号行**；
+//   ① 条目分隔：行首 `[Diff N]` / `[P0-n]` / `[P1-n]` / `[C-n]` 四族（v18.12.3 L-59 收窄：此行**只认这四族**，
+//      旧版「任意 `[x]` 行」会把正文引用 `[L01]`/`[D01]` 当条目头 → 真 diff 静默丢失）；
 //   ② 每条取「现况」行与「修改」（或「增补」）行——允许 `- **现况**：` / `  现况：` 等多种前缀；
 //   ③ old/new 抽取用**最小差异法**（最长公共前缀 + 最长公共后缀），而非只取引号内内容——
 //      后者对「引号内相同、差异在引号外」的条目（如给括号内补一个编号）会抽空。
@@ -84,7 +85,19 @@ if (inPlace && !overwritesTarget) {
 }
 
 // ---- 元注记剥离（防「（按 XX 报告 NN）」写进正文）----
-const META_TAIL = /\s*[（(](?:按|参|依据|参见|详见|对应|v\d)[^）)]{0,60}[）)]\s*$/u;
+// v18.12.3（全量审计 L-57 收口）：**判据收窄为「括号内含 ≥2 个 ASCII（数字/字母）」**。
+//   旧版 `[（(](?:按|参|依据|参见|详见|对应|v\d)[^）)]{0,60}[）)]$` 的意图边界是「元注记」，实际边界是
+//   「行尾任何以这些词开头、60 字以内的括号」——审计实测与本次复现（见下用例）均确认它会删掉**正文**：
+//     `文字（对应的系数）` → `文字`（尾括号被删，且 ok:true、exit 0）
+//     `结论（依据上述分析）` → `结论`
+//     `新段落第一句（详见第三节）` → `新段落第一句`
+//   三条都是**静默数据丢失**：替换后的正文少了一段，而工具报「全部条目已机械应用」。
+//   新判据：**元注记的特征是括号里带报告/角色/轮次标识**（`G14 报告 C-01` / `M-Form-5` / `v2` / `§3`），
+//   这些一律含 ≥2 个 ASCII 字符（数字或拉丁字母）；而正文括号（`对应的系数` / `详见第三节` / `依据上述分析`）
+//   是**纯汉字**。故以「≥2 个 ASCII」为界，并保留 `strippedMeta` 留痕（剥离了什么可事后核对）。
+//   边界（如实）：若正文括号里恰好含两个以上拉丁字符（如 `（见 appendix 表）`），仍会被剥——但那种写法在
+//   本包的中文稿里极少，且**留痕可见**；宁可漏剥（留痕少一条），不要静默多剥（丢正文）。
+const META_TAIL = /\s*[（(](?=[^）)]*[0-9A-Za-z][^）)]*[0-9A-Za-z])[^）)]{2,60}[）)]\s*$/u;
 // v18.2.9（第三方审计 B11）：记录被剥离的注记，防「（依据上述分析）」类正文括号被静默改写后无迹可查
 const strippedMeta = [];
 const stripMeta = (s) => {
@@ -142,28 +155,70 @@ const stripMd = (s) => s
   .trim();
 
 const listLines = readFileSync(listPath, 'utf8').split('\n');
-const HEAD_RE = /^\s*(?:#{1,6}\s*)?\[(?:Diff\s+)?([A-Za-z]?\d+[-\w.]*)[^\]]*\]/;
+// v18.12.3（全量审计 L-59 收口）：条目头正则**改为显式前缀白名单**。
+//   旧版 `^\s*(?:#{1,6}\s*)?\[(?:Diff\s+)?([A-Za-z]?\d+[-\w.]*)[^\]]*\]` 会把**任意**方括号编号行当条目头，
+//   于是正文里合法的引用行（本包 `[L01]`/`[D01]`/`[C01]`）也被吞掉 —— 审计实测与本次复现：
+//     `[L01] 备注：这条是正文引用` → **被当条目头**（id=L01）→ 真 diff 被吞、applied=0、exit 1。
+//   本包 T7/T5 的清单里出现被引用的编号并不罕见（反哺项常引 `[D01]`），故这是**现实**风险。
+//   新判据：只认 4 个清单族 —— `[Diff N]` / `[P0-n]` / `[P1-n]` / `[C-n]`；其余方括号行一律不作条目头。
+//   ⚠️ 副作用（已在头注释同步）：旧版「任意 `[1]`/`[2]` 纯数字行」也算条目头，现**不再算**——见下方
+//   `unparsedHeads` 提示（有方括号行但 0 条解析时点名，避免又变成静默）。
+const HEAD_RE = /^\s*(?:#{1,6}\s*)?\[(?:Diff\s+(\d+)|P([01])-(\d+)|C-(\d+))[^\]]*\]/;
+const headId = (m) => (m[1] ? `Diff ${m[1]}` : m[2] ? `P${m[2]}-${m[3]}` : `C-${m[4]}`);
 const items = [];
 let cur = null;
+// v18.12.3（L-58 收口）：**记住被丢弃的非空行**。旧版 `for` 里三条 if 全不命中就 `continue` ——
+//   多行「现况」的**续行**被静默丢弃 → 半截替换照样报 ok:true（审计实测：正文残留旧句而 hint 说「全部已应用」）。
+//   现把「该条目正文范围内、既非定位/现况/修改、又非空」的行记进 `droppedLines`，随 unparsed 一起上报。
+const droppedLines = [];
+const unparsedHeads = [];
 for (let n = 0; n < listLines.length; n++) {
   const line = listLines[n];
   const m = HEAD_RE.exec(line);
   if (m) {
     if (cur) items.push(cur);
-    cur = { id: m[1], line: n + 1, cur: null, new: null, loc: '', rawLoc: '' };
+    cur = { id: headId(m), line: n + 1, cur: null, new: null, loc: '', rawLoc: '', dropped: [] };
     continue;
   }
+  // 方括号开头但**不属于四个清单族**的行：只在 `cur` 之外时收集，供「0 条解析」时点名
+  if (!cur && /^\s*(?:#{1,6}\s*)?\[[^\]]+\]/.test(line)) unparsedHeads.push({ line: n + 1, text: line.trim().slice(0, 60) });
   if (!cur) continue;
   if (/^\s*(?:[-*]\s*)?(?:\*\*)?定位(?:\*\*)?\s*[:：]/u.test(line)) { cur.loc = stripMd(line); cur.rawLoc = line.trim(); continue; }
   // 「现况」可能写成 `- **现况**：` / `  现况：` / `现况：「…」`
   if (/^\s*(?:[-*]\s*)?(?:\*\*)?现况(?:\*\*)?\s*[:：]/u.test(line)) { cur.cur = stripMd(line); continue; }
   if (/^\s*(?:[-*]\s*)?(?:\*\*)?(?:修改|增补|改为)(?:\*\*)?\s*[:：]/u.test(line)) { cur.new = stripMd(line); continue; }
+  // 其余非空、非注释行 → 丢弃并留痕（缩进续行、忘了写标签的行都落这里）
+  const t = line.trim();
+  if (t && !/^<!--/.test(t) && !/^[-*_]{3,}$/.test(t)) {
+    cur.dropped.push(n + 1);
+    droppedLines.push({ id: cur.id, line: n + 1, text: t.slice(0, 60) });
+  }
 }
 if (cur) items.push(cur);
 
 const parsed = items.filter((it) => it.cur && it.new);
 const unparsed = items.filter((it) => !it.cur || !it.new);
 const emptyList = items.length === 0;   // v18.2.6（B-4 ③）：清单解析出 0 条——见下方两处判定的顺序说明
+
+// v18.12.3（L-59 收口配套）：**解析出 0 条但文件里明明有方括号行** → 必须点名，不得只说「未解析出任何条目」。
+//   旧版这种情况下主控只能靠猜（是清单空？还是格式不对？）——本轮把条目头收窄为四个清单族后，
+//   「非四族前缀（如 `[L01]`/`[1]`）」会落进这一支，故**点名到行**是必要配套。
+if (emptyList && unparsedHeads.length) {
+  console.error(`⚠️ 清单里找到 ${unparsedHeads.length} 个方括号行，但**都不是**可识别的条目头（只认 [Diff N] / [P0-n] / [P1-n] / [C-n]）：`);
+  for (const h of unparsedHeads.slice(0, 5)) console.error(`   · 第 ${h.line} 行: ${h.text}`);
+  console.error('   → 若是清单格式写错，请改成上述四种前缀之一；若这些行本就是**正文引用**（`[L01]`/`[D01]`），它们不该出现在清单里。');
+  console.error('   （v18.12.3 前，任意 `[x]` 行都被当条目头 → 正文引用会被吞掉、真 diff 静默丢失）');
+}
+
+// v18.12.3（L-58 收口）：**丢弃行必须上报**。只要条目正文里有既非「定位/现况/修改」又非空的行，
+//   就说明清单里有内容没被吃进 old/new —— 多行「现况」的续行是最常见形态，后果是**半截替换仍报 ok**。
+//   判据：有不规则行 → 计入 unparsed（走既有的 exit 1 通道），并在 stderr 逐条点名。
+if (droppedLines.length) {
+  console.error(`⚠️ 清单里有 ${droppedLines.length} 行**既不是定位/现况/修改、也不为空**，未参与替换：`);
+  for (const d of droppedLines.slice(0, 5)) console.error(`   · [${d.id}] 第 ${d.line} 行: ${d.text}`);
+  console.error('   → 最常见原因是**多行「现况」的续行**（旧版会静默丢弃 → 半截替换仍报 ok）。');
+  console.error('   → 处置：把该条目的「现况」写成一行，或把续行显式并入前一行后重跑。');
+}
 
 // ---- 写盘目标策略（v18.2.6，B-4）：默认原地覆盖已取消 ----
 //   顺序刻意如此：**「清单解析出 0 条」先报**（清单路径/格式坏了是更根本的错误；审计实测的复现命令
@@ -237,12 +292,15 @@ const delta = afterHan - beforeHan;
 //   下游（主控/修订说明）无法区分「清单路径传错 / 格式不符」与「真的全应用了」——这是假成功。
 //   现：空清单 → ok:false、hint 明说「清单未解析出任何条目」、exit 1，且**不写盘**（写出去的那份与输入逐字
 //   相同，一旦被当成「初稿-v4」往下游流，等于把未修订的正文冒充修订版）。
-const ok = !emptyList && skipped.length === 0 && unparsed.length === 0;
+// v18.12.3（L-58）：**丢弃行让 ok 转假**——它此前完全不可见，半截替换照样 exit 0 / ok:true。
+const ok = !emptyList && skipped.length === 0 && unparsed.length === 0 && droppedLines.length === 0;
 const hint = emptyList
-  ? '清单未解析出任何条目（0 条）：请核对清单路径与格式——条目须为行首方括号编号行（如 [Diff 1] / [P0-1] / [C1]），且每条含「现况：」与「修改：」两行；本次**未写盘**'
-  : skipped.length || unparsed.length
+  ? '清单未解析出任何条目（0 条）：请核对清单路径与格式——条目头只认 `[Diff N]` / `[P0-n]` / `[P1-n]` / `[C-n]`，且每条含「现况：」与「修改：」两行；本次**未写盘**'
+  : (skipped.length || unparsed.length)
     ? '存在跳过/未解析条目：请用 --report 看全量明细，按 `loc` 行号人工处理剩余条目'
-    : '全部条目已机械应用；delta 为脚本实测（可直接写入修订说明，替代清单自报的估算值）';
+    : droppedLines.length
+      ? `存在**未参与替换的清单行**（${droppedLines.length} 行，多为多行「现况」的续行）——替换可能是半截的，请按 stderr 点名逐条修清单后重跑`
+      : '全部条目已机械应用；delta 为脚本实测（可直接写入修订说明，替代清单自报的估算值）';
 
 // 写盘统一走 _lib/destructive-write.mjs：原地覆盖（已由 --in-place 显式声明）或 --out 已存在 → 先落带时间戳 .bak。
 // v18.12.0（全量审计 L-69）：**「无实际改动」不得写出下一版**。旧版只要清单有条目（哪怕**全部被跳过**、
@@ -287,6 +345,10 @@ const summary = {
   applied_items: applied,
   skipped_items: skipped,
   unparsed_items: unparsed.map((u) => ({ id: u.id, line: u.line, reason: !u.cur ? '缺「现况」行' : '缺「修改」行' })),
+  // v18.12.3（L-58/L-59）：把两类此前**完全不可见**的内容也写进 JSON 契约（只做加法，不动既有字段）
+  dropped_lines: droppedLines,                      // 既非定位/现况/修改、又非空 → 未参与替换（半截替换的根因）
+  dropped_count: droppedLines.length,
+  unrecognized_head_lines: unparsedHeads,           // 方括号行但不是四个清单族（如正文引用 `[L01]`）
 };
 
 // v18.12.0（全量审计 L-50）：`--report` 旧版是**裸 writeFileSync** —— 路径敲成被审正文/清单即
@@ -307,6 +369,9 @@ console.log(JSON.stringify({
   han_before: beforeHan, han_after: afterHan, han_delta: delta,
   skipped_detail: skipped.slice(0, 8),
   unparsed_detail: summary.unparsed_items.slice(0, 8),
+  dropped_count: droppedLines.length,                       // v18.12.3（L-58）：>0 即「替换可能半截」，ok 已随之转假
+  dropped_detail: droppedLines.slice(0, 8),
+  unrecognized_head_lines: unparsedHeads.slice(0, 8),       // v18.12.3（L-59）：方括号行但不是四个清单族
   hint,
 }, null, 2));
 

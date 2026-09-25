@@ -2,7 +2,7 @@
 
 > 🌐 **English** (this file) ｜ [中文](README.zh.md) ｜ [Español](README.es.md) ｜ [Português](README.pt.md) ｜ [हिन्दी](README.hi.md)
 
-> 版本：v18.12.2（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.12.3（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > A DeepSeek Harness (DSH) bundle that registers one on-demand agent skill. The skill turns long-form production — academic papers, industry analysis, business commentary, and long-form articles — into a **9-role pipeline with a human in the loop**.
 
@@ -48,6 +48,7 @@ Rule of thumb: ask whether the evidence is already **published**. If yes, Lunhen
 ```text
 Phase 0  Topic        Confirm topic, length, citation format; external-service consent
 Phase 1  Retrieval    T1 literature ∥ T2 data ∥ T3 cases (true parallel, independent)
+Phase 1.5 Gap fill Targeted T1 re-retrieval (optional; key [Dxx] recheck + gap arguments, Permanent Gap tags)
 Gate T2.5             Data entries ≥ brief requirement; trust levels complete
 Phase 2  Analysis     T4 analyst → analysis outline
 Phase 2.5 Outline     Human review (in the loop)
@@ -109,7 +110,7 @@ The patch layer does two things: it **inserts one row for this package** (`- id:
 Releases are **tag-only**; a local `npm publish` is forbidden (it would bypass the CI gates and OIDC provenance, and a published npm version can never be overwritten).
 
 ```sh
-git tag v18.12.2 && git push origin v18.12.2   # push one tag at a time (GitHub: >3 tags in one push triggers no workflow)
+git tag v18.12.3 && git push origin v18.12.3   # push one tag at a time (GitHub: >3 tags in one push triggers no workflow)
 # publish.yml then runs gate 1 consistency → gate 2 packaging surface → gate 3 hygiene → gate 4 pack smoke → script tests
 #   → tag/version equality → idempotency guard → OIDC publish --provenance --tag dsh → post-publish audit
 ```

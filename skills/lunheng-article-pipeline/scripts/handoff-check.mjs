@@ -23,7 +23,7 @@
 // 只读：不联网、不写盘、不 spawn 子进程。stdout 只有 JSON（--summary 时 artifacts 只留失败项）。
 import { readFileSync, existsSync, statSync } from 'node:fs'
 import { join, basename } from 'node:path'
-import { createHash } from 'node:crypto'   // v18.12.2（L-06）：A4c 复算最新正文 sha256，与 M 门审定对象比对
+import { createHash } from 'node:crypto'   // v18.12.3（L-06）：A4c 复算最新正文 sha256，与 M 门审定对象比对
 import { installExitGuard, requireExistingDir } from './_lib/exit-guard.mjs'
 import { CONTRACTS } from './_lib/cc-rules/content-rules.mjs'
 import { CARD_SPECS, latestReport, indexSection, entryIds, idsByToken } from './_lib/mgate-helpers.mjs'
@@ -59,7 +59,7 @@ const CARD_TO_ROLE = {
 // 修订轮才有的产物（缺失判软提示 22，不判 20）
 const CONDITIONAL = new Set(['修订说明', '复核报告'])
 // 版本号独立于**正文轮次**的报告族（其 `N` 另有定义，不参与 A4 与正文对齐）
-//   · v18.12.2（L-06，主人 2026-09-25 定案）：`审计报告` 的 N = **T7 审计轮次**，`复核报告` 的 N = 同一轮
+//   · v18.12.3（L-06，主人 2026-09-25 定案）：`审计报告` 的 N = **T7 审计轮次**，`复核报告` 的 N = 同一轮
 //     —— 与 `初稿-vN` 的正文轮次**刻意解耦**。旧版把两者硬对齐（`报告版本 vN ≠ 被审正文 vN（禁 v{N-1}）`），
 //     与主人定案冲突，且与实测账本不符：22 个真实项目里 `审计报告-vN` 的 N **无一例外等于该项目的审计轮次**
 //     （`共锁` 审计 4 份而初稿只到 v4 且缺 v3；`guannian-yu-linian` 审计 1 份而初稿 3 份）——

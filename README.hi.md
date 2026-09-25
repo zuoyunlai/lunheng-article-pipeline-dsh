@@ -1,6 +1,6 @@
 # लुन्हेंग (lunheng-article-pipeline) — बहु-एजेंट दीर्घ-लेख पाइपलाइन
 
-> 版本：v18.12.2（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.12.3（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > 🌐 [English](README.md) ｜ [中文](README.zh.md) ｜ [Español](README.es.md) ｜ [Português](README.pt.md) ｜ **हिन्दी**（यह फ़ाइल）
 
@@ -48,6 +48,7 @@
 ```text
 चरण 0  विषय          विषय, लंबाई, उद्धरण-प्रारूप तय; बाह्य सेवाओं की सहमति
 चरण 1  खोज           T1 साहित्य ∥ T2 आँकड़े ∥ T3 प्रकरण (वास्तविक समानांतर, स्वतंत्र)
+चरण 1.5 पूर्ति    T1 दिशित पुनर्खोज (वैकल्पिक; मुख्य [Dxx] पुनर्जाँच + अंतराल तर्क, Permanent Gap अंकन)
 द्वार T2.5            आँकड़ा प्रविष्टियाँ ≥ ब्रीफ़ की माँग; विश्वास स्तर पूर्ण
 चरण 2  विश्लेषण       T4 विश्लेषक → विश्लेषण रूपरेखा
 चरण 2.5 रूपरेखा       मानव समीक्षा (चक्र में)
@@ -109,7 +110,7 @@ patch परत दो काम करती है: **इस पैकेज �
 संस्करण **केवल tag से** प्रकाशित होते हैं; स्थानीय `npm publish` वर्जित है (यह CI द्वारों और OIDC provenance को दरकिनार करता है, और npm संस्करण कभी अधिलेखित नहीं हो सकता)।
 
 ```sh
-git tag v18.12.2 && git push origin v18.12.2   # एक बार में एक ही tag (GitHub: >3 tag एक push में कोई workflow नहीं चलाता)
+git tag v18.12.3 && git push origin v18.12.3   # एक बार में एक ही tag (GitHub: >3 tag एक push में कोई workflow नहीं चलाता)
 # publish.yml क्रम: द्वार 1 सुसंगति → द्वार 2 पैकेजिंग → द्वार 3 स्वच्छता → द्वार 4 पैकेज स्मोक → स्क्रिप्ट परीक्षण
 #   → tag/संस्करण समानता → idempotency गार्ड → OIDC publish --provenance --tag dsh → प्रकाशन-पश्चात लेखा-परीक्षा
 ```

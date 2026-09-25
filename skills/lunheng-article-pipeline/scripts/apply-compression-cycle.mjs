@@ -18,7 +18,8 @@ import { spawnSync } from 'node:child_process';
 import { installExitGuard, requireExistingDir, describeSpawn } from './_lib/exit-guard.mjs';
 import { parseArgs } from './_lib/cli-args.mjs';
 import { countHan } from './_lib/han.mjs';
-import { firstEndnoteIndex } from './_lib/sections.mjs';
+import { parseTargetChars } from './_lib/target-chars.mjs';   // v18.12.3：目标字数解析唯一实现（3-5 位 / 千分位 / 万·千·k）
+import { firstEndnoteIndex, maskFences, bodyStartAfterAbstract } from './_lib/sections.mjs';   // v18.12.3 L-56 同族：正文区口径与 count-chars 同源
 
 installExitGuard();
 
@@ -49,30 +50,41 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const nodeBin = process.execPath;
 
 // ---- ① 量测字数 ----
+// v18.12.3（L-56 同族收口）：body 口径与 `count-chars.mjs` 对齐 ——「**摘要后** ~ 文末节前」，
+//   并把汉字统计先过 `maskFences`（围栏内文字不计入正文）。旧版 `slice(0, firstEnd)`（文件开头 → 文末节前）
+//   **含题名区与摘要**，与本仓唯一验收口径不同；`apply-revision-cycle` 同源缺陷已在本版一并修正。
+const bodyOf = (text) => {
+  const from = bodyStartAfterAbstract(text).index;
+  const i = firstEndnoteIndex(text, from);
+  return maskFences(text).slice(from, i === -1 ? text.length : i);
+};
 const measure = (p) => {
   const text = readFileSync(p, 'utf8');
-  const firstEnd = firstEndnoteIndex(text);
-  const body = firstEnd >= 0 ? text.slice(0, firstEnd) : text;
-  return { body: countHan(body), full: countHan(text) };
+  return { body: countHan(bodyOf(text)), full: countHan(text) };
 };
 const m = measure(targetPath);
 
 // ---- ② 目标字数 + G5 阻塞线 ----
-let target = null;
+// v18.12.3：解析改走 `_lib/target-chars.mjs` 唯一实现（旧内联 `\d{4,5}` 在 `300 字` / `12,000 字` /
+//   `1.2 万 字` 上全返回 null → `g5 = null` → **G5 判定被静默跳过**）。解析不到必须说出来。
 const briefPath = join(projRoot, '01-任务简报.md');
-if (existsSync(briefPath)) {
-  const bt = readFileSync(briefPath, 'utf8');
-  const tm = bt.match(/(?:目标篇幅|篇幅)[^\n]*?(\d{4,5})/);
-  if (tm) target = Number(tm[1]);
+const tParse = existsSync(briefPath)
+  ? parseTargetChars(readFileSync(briefPath, 'utf8'))
+  : { value: null, raw: null, reason: '未找到 01-任务简报.md' };
+const target = tParse.value;
+if (target === null) {
+  console.error(`⚠️ 目标字数未解析到 → **G5 阻塞线判定跳过**（这是「未核」，不是「已核」）：${tParse.reason}`);
+  if (tParse.raw) console.error(`   · 简报里读到的是：「${tParse.raw}」——请核对 §目标篇幅 的写法（支持 3–5 位、千分位逗号、万/千/k 单位）`);
 }
 const g5 = target ? { floor: Math.round(target * 0.9), ceil: Math.round(target * 1.05) } : null;
 const verdict = g5 ? (m.body > g5.ceil ? `超阻塞线 +${m.body - g5.ceil} 字` : (m.body < g5.floor ? `低于阻塞线 ${g5.floor - m.body} 字` : '✓ 阻塞线内')) : '（未解析到目标字数）';
 
 // ---- ③ 残留风险清单（哪些内容可能需要压缩）----
+// v18.12.3：正文区口径改走上面同一个 `bodyOf`（旧版在这里又写了一遍 `slice(0, firstEnd)`——
+//   同一文件两处口径，正是「同族缺陷复发」的典型形态）。
 const INTERNAL_TERMS = ['承重', '一处两用', '素材加载清单', '初稿', '草稿', '修订说明', '审计环节', '流水线', '批判报告'];
 const text = readFileSync(targetPath, 'utf8');
-const firstEnd = firstEndnoteIndex(text);
-const body = firstEnd >= 0 ? text.slice(0, firstEnd) : text;
+const body = bodyOf(text);
 const flowHits = INTERNAL_TERMS.map((w) => ({ word: w, count: (body.match(new RegExp(w, 'g')) || []).length })).filter((x) => x.count > 0);
 
 // ---- ④ sha256 校验（所有 final/ 文件）----

@@ -1,6 +1,6 @@
 # Lunheng (lunheng-article-pipeline) — pipeline multiagente para textos largos
 
-> 版本：v18.12.2（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.12.3（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > 🌐 [English](README.md) ｜ [中文](README.zh.md) ｜ **Español**（este archivo）｜ [Português](README.pt.md) ｜ [हिन्दी](README.hi.md)
 
@@ -48,6 +48,7 @@ Regla práctica: pregunte si la evidencia ya está **publicada**. Si lo está, L
 ```text
 Fase 0  Tema          Confirmar tema, extensión, formato de citas; consentimiento de servicios externos
 Fase 1  Búsqueda      T1 bibliografía ∥ T2 datos ∥ T3 casos (paralelo real e independiente)
+Fase 1.5 Relleno   T1 nueva búsqueda dirigida (opcional; reverificación de [Dxx] + argumentos de vacío, etiquetas Permanent Gap)
 Puerta T2.5           Entradas de datos ≥ requisito del brief; niveles de confianza completos
 Fase 2  Análisis      T4 analista → esquema de análisis
 Fase 2.5 Esquema      Revisión humana (en el circuito)
@@ -109,7 +110,7 @@ La capa patch hace dos cosas: **inserta una fila para este paquete** (`- id: lun
 Las versiones se publican **solo por tag**; `npm publish` local está prohibido (evita las puertas de CI y la procedencia OIDC, y una versión npm nunca se puede sobrescribir).
 
 ```sh
-git tag v18.12.2 && git push origin v18.12.2   # un tag por push (GitHub: >3 tags en un push no dispara workflow)
+git tag v18.12.3 && git push origin v18.12.3   # un tag por push (GitHub: >3 tags en un push no dispara workflow)
 # publish.yml ejecuta: puerta 1 consistencia → puerta 2 empaquetado → puerta 3 higiene → puerta 4 humo del paquete → tests
 #   → tag/versión iguales → guarda de idempotencia → OIDC publish --provenance --tag dsh → auditoría posterior
 ```
