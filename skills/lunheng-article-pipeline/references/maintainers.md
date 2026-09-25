@@ -42,9 +42,10 @@
 - **`latest` dist-tag 不会自动前移**（`NPM_TOKEN` 已删；`--tag dsh` 只动 `dsh`）→ 每次发版后手工跑一次：
   `npm dist-tag add lunheng-article-pipeline@<新版本> latest`（`dsh` 由 publish 工作流维护）。v18.12.0 发版后已执行，两个 tag 均指向 18.12.0。
 
-## 五、CI 已知红项：`loader-smoke`（上游缺陷，非本包）
+## 五、CI `loader-smoke` 的上游缺陷（**v18.12.0 已修**，记录成因防复发）
 
-- **现象**：`ci.yml` 的 `loader-smoke` 每次必红；`publish.yml` 的 `gates` **不含**它，故**不影响发布**，但**仓面 CI 徽章是红的**。
-- **判据（三步都验过）**：① 该 job 走的官方 `dsh-plugin-guide verify` 的 `pack / install / dump-config` **全过**，只倒在自己的 `headless-smoke`；② 错误是 `dsh: user patch-layer watching requires the Cordis HMR service`（栈顶 `dsh-app-boot/lib/index.js:1112`）——是 **DSH 启动失败**，与本包代码无关；③ 根因：`dsh plugin … add` 生成的 profile manifest 写 `"dsh": { "profile": { "patchReload": "live" } }`（`DEFAULT_PROFILE_PATCH_RELOAD = "live"`，注释「Custom profiles retain the historical live patch-file behavior」），而 `profile-boot` 在 `patchReload === "live"` 时调 `watchUserPatches()`，该函数拿不到 `ctx.get('hmr')` 就抛错 → headless 必红。本机用 `dsh plugin --profile smoke add @deepseek-ai/dsh-base` 复现了同一 manifest 形态。
-- **处方（择一，均须先在 CI 上验证）**：① profile manifest 的 `dsh.profile.patchReload` 设 **`"startup"`**；② 上游把「`patchReload === "live"` 且无 HMR」改为降级而非抛错；③ bump `ci.yml` 里 pin 的 dsh 版本（**尚未验证**新版本是否已修——本机只装了 0.1.5-rc.2）。
-- **为什么本包不改 CI**：三条处方都是**未经验证**的改动，而 `loader-smoke` 不在发布门里；把一条红换成一条「改完不知道对不对」更容易掩盖真问题。**登记在此 + 在 CHANGELOG 如实声明**，由主人决定是否投入。
+- **现状**：`ci.yml` 的 `loader-smoke` **全绿**。此前**每次必红**（`publish.yml` 的 `gates` 不含它，故不影响发布，但仓面 CI 徽章一直红）。
+- **成因（三步都验过）**：① 该 job 走的官方 `dsh-plugin-guide verify` 的 `pack / install / dump-config` **全过**，只倒在自己的 `headless-smoke`；② 错误是 `dsh: user patch-layer watching requires the Cordis HMR service`（栈顶 `dsh-app-boot/lib/index.js:1112`）——是 **DSH 启动失败**，与本包代码无关；③ 根因：`dsh plugin … add` 生成的 profile manifest 写 `"dsh": { "profile": { "patchReload": "live" } }`（`DEFAULT_PROFILE_PATCH_RELOAD = "live"`，注释「Custom profiles retain the historical live patch-file behavior」），而 `profile-boot` 在 `patchReload === "live"` 时调 `watchUserPatches()`，该函数拿不到 `ctx.get('hmr')` 就抛错 → headless 必红。本机用 `dsh plugin --profile smoke add @deepseek-ai/dsh-base` 复现了同一 manifest 形态。
+- **修法（v18.12.0 采取的是 ③）**：把 `ci.yml` 里 pin 的 dsh 由 **0.1.5-rc.2 → 0.1.7-rc.2**。**逐版核对过 `@deepseek-ai/dsh-app-boot`**：0.1.5-rc.2 与 rc.3 都仍有 `DEFAULT_PROFILE_PATCH_RELOAD = "live"` 与那条 HMR 守卫；**0.1.7-rc.2 里两者都已不存在**，且内置 `headless` profile（`bundles: ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-headless"]` + `headless-runner`）。改后 CI 全绿（`loader-smoke in 50s ✓`）。
+- **另两条处方（未采用，留给上游）**：① profile manifest 的 `dsh.profile.patchReload` 设 `"startup"`（需改 profile 生成侧，本包够不到）；② 上游把「`patchReload === "live"` 且无 HMR」改为降级而非抛错。
+- **教训（判据级）**：本 job 红了**四个版本周期**而无人修，原因是「它在发布门之外」+「报错栈指向 dsh 自己」→ 容易被读成「环境问题，与我无关」。可行判据：**CI 里任何一个 job 长期必红，本身就是缺陷**——要么修到绿，要么删掉并在文档写明「为什么不跑这一层」；把红当常态会让真正的红失去信息量。

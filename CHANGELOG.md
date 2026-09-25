@@ -68,12 +68,13 @@
 
 ### 七、刻意不改并登记的代价（如实）
 
-- **CI `loader-smoke` 红，且已确认是上游缺陷**（本版**不改 CI**）。证据链（全部可复现）：
+- **CI `loader-smoke` 红：已修**（本版**动了 CI**——原本打算只登记，但在逐版核对上游后找到了可验证的修法，故改到绿）。证据链与修法（全部可复现）：
   1. `ci.yml` 的 `loader-smoke` 跑官方 `pnpm dlx dsh-plugin-guide@0.3.16 verify .`；它的三个前置子步 **`pack ✓ / install ✓ / dump-config ✓` 全过**，只倒在自己的 `headless-smoke` 上；
   2. 报错是 `Error: dsh: user patch-layer watching requires the Cordis HMR service`（栈顶 `dsh-app-boot/lib/index.js:1112`）——即 **DSH 自己的 headless 启动失败**，与本包代码无关；
   3. 根因（读 `dsh-app-boot/lib/*.js` 确认）：`dsh plugin … add` 生成的 profile manifest 带 `"dsh": { "profile": { "patchReload": "live" } }`（`DEFAULT_PROFILE_PATCH_RELOAD = "live"`，注释「Custom profiles retain the historical live patch-file behavior」），而 `profile-boot` 在 `patchReload === "live"` 时调用 `watchUserPatches()`，该函数在拿不到 `ctx.get('hmr')` 时直接抛错 → headless 环境必红。**已在本机用 `dsh plugin --profile smoke add @deepseek-ai/dsh-base` 复现同一 manifest 形态**（`"patchReload": "live"`）。
-  4. 处方（给上游或 CI）：把该 profile 的 `dsh.profile.patchReload` 设为 **`"startup"`**，或在 `patchReload === "live"` 且无 HMR 时降级而非抛错。CI 侧亦可改 pin 到更新版 dsh（本机只装了 0.1.5-rc.2，**未验证**新版本是否已修——故本版**不做未经验证的改动**）。
-  > 影响面：`loader-smoke` **不在 `publish.yml` 的 `gates` 里**，故它红不影响发布；但**仓面 CI 徽章是红的**，这一事实已登记进 `references/maintainers.md`（维护者向），并在本版交付里如实声明——而不是把红说成绿。
+  4. **修法**：`ci.yml` 的 dsh pin 由 `0.1.5-rc.2` → **`0.1.7-rc.2`**。逐版核对 `@deepseek-ai/dsh-app-boot`：0.1.5-rc.2 与 rc.3 **都仍有**该默认值与那条 HMR 守卫；**0.1.7-rc.2 里两者都已不存在**，并内置 `headless` profile（`bundles: ["@deepseek-ai/dsh-base","@deepseek-ai/dsh-headless"]` + `headless-runner`）。改后 **CI 全绿**（`loader-smoke in 50s ✓`，共 11 个 job 全过）。
+  5. 另两条处方（未采用，留给上游）：profile 生成侧把 `patchReload` 设 `"startup"`；上游把该分支改为降级而非抛错。三者都登记进 `references/maintainers.md` §五。
+  > **判据级教训**：本 job 红了**四个版本周期**而无人修——因为「它在发布门之外」+「报错栈指向 dsh 自己」，容易被读成「环境问题，与我无关」。可行的判据是：**CI 里任何一个 job 长期必红，本身就是缺陷**——要么修到绿，要么删掉并在文档写明「为什么不跑这一层」。
 - **`md2html` 退出码已收口**（`2` → `40`）：无遗留。
 - **仍留给主人决策的两条**（审计报告 §5 第四梯队明确建议「先定义清晰，再决定是加强检查还是放开豁免」——本轮**未擅自定案**）：
   - **L-08 人在环四门留痕**：最近两个项目各只有 2/4 门留痕，而「未留痕」当前是被允许的（只写进交付说明 §11）。做成硬门需要先决定「Phase 0/2.5/3.5/5 四门是否全部必需」——这是**流程取舍**，不是机械判据问题。
