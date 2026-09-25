@@ -31,8 +31,20 @@ import { installExitGuard } from './_lib/exit-guard.mjs';   // 退出码硬化�
 installExitGuard();   // 传目录等 fs 类异常 → 10（旧版未捕获 EISDIR → exit 1 = 与「有未决条目」撞义）
 
 const rawArgs = process.argv.slice(2);
+// v18.12.0（全量审计 L-62）：**未知旗标此前被静默丢弃** —— 旧实现 `rawArgs.includes('--write')` +
+//   `filter(a => !a.startsWith('--'))`，于是 `--wrtie`（拼错）既不被识别也不报错 → 脚本按 dry-run 跑完
+//   并 **exit 0**，用户以为已落盘（正是本模块头注释记载的 B-4 同族事故）。本脚本是**唯一改写素材卡的
+//   持有者**，静默降级代价最高，故严判。
+const KNOWN_FLAGS = ['--write'];
+for (const a of rawArgs) {
+  if (a.startsWith('-') && !KNOWN_FLAGS.includes(a)) {
+    console.error(`未知参数: ${a}（本脚本只认 ${KNOWN_FLAGS.join(' / ')}；注：拼错的旗标不会被视为「不写盘」以外的行为）`);
+    console.error('用法: node normalize-trust-level.mjs <数据卡.md> ... [--write]（默认 dry-run，不落盘）');
+    process.exit(10);
+  }
+}
 const write = rawArgs.includes('--write');
-const files = rawArgs.filter((a) => !a.startsWith('--'));
+const files = rawArgs.filter((a) => !a.startsWith('-'));
 if (files.length === 0) {
   console.error('用法: node normalize-trust-level.mjs <数据卡.md> ... [--write]（默认 dry-run，不落盘）');
   process.exit(10); // v18.0.2：参数错统一 10（下方「有未决条目」仍为 1，属本脚本自有语义）

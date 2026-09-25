@@ -31,7 +31,12 @@ let reportPath = null;
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
   if (a === '--humanities') humanities = true;
-  else if (a === '--report') { reportPath = argv[++i]; }
+  else if (a === '--report') {
+    // v18.12.0（全量审计 L-62）：缺值守卫（旧版静默不落盘却 exit 0）
+    const v = argv[++i];
+    if (!v || v.startsWith('--')) { console.error(`--report 缺少值（示例：--report audits/structure.json）\n用法: node structure-check.mjs <文件.md> [--humanities] [--report <path>]`); process.exit(10); }
+    reportPath = v;
+  }
   else if (a.startsWith('--')) {
     console.error(`未知参数: ${a}\n用法: node structure-check.mjs <文件.md> [--humanities] [--report <path>]`);
     process.exit(10);

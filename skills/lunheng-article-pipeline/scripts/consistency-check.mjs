@@ -38,10 +38,11 @@
 //   --fix：自动修复可逆的简单漂移（P2 级，如「（检查）」占位符替换）
 const fixMode = process.argv.includes('--fix');
 
-import { readFileSync, readdirSync, statSync, existsSync, writeFileSync, copyFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { installExitGuard } from './_lib/exit-guard.mjs';
+import { writeWithSafety } from './_lib/destructive-write.mjs';   // v18.12.0（L-66）：--fix 落盘走原子写 + 时间戳 .bak
 import { runScriptRules } from './_lib/cc-rules/script-rules.mjs';
 import { runDocsVersionRules } from './_lib/cc-rules/docs-version-rules.mjs';
 import { runContentRules } from './_lib/cc-rules/content-rules.mjs';
@@ -56,8 +57,18 @@ installExitGuard();
 for (const a of process.argv.slice(2)) {
   if (a !== '--fix' && a !== '--write') {
     console.error(`未知参数: ${a}\n用法: node scripts/consistency-check.mjs [--fix] [--write]`);
-    process.exit(1);
+    // v18.12.0（全量审计 L-62）：**参数错改 10**。旧版给 1 —— 而本仓 1 的语义是「存在 P1 内容失败」
+    //   （闸门脚本）／「有未决条目」（normalize-trust-level）；`consistency-check` 的 1 同时用于
+    //   「文档漂移」。于是「旗标拼错」与「文档真漂移」撞在同一个码上，主控无法区分该改命令还是改文档。
+    //   AGENTS.md 已明令「参数或路径错误一律 10」，此处收口。
+    process.exit(10);
   }
+}
+// v18.12.0（全量审计 L-66）：`--write` **单独给出**此前被白名单接受却**静默空转**（只读模式跑完 exit 0，
+//   用户以为已修复）。二者必须成对，否则报参数错。
+if (process.argv.includes('--write') && !process.argv.includes('--fix')) {
+  console.error('--write 必须与 --fix 同用（--write 单独给出不会落盘）\n用法: node scripts/consistency-check.mjs --fix --write');
+  process.exit(10);
 }
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -292,7 +303,9 @@ function checkGateCounts(text, rel) {
 //   ① 旧版未导入 writeFileSync → 一执行即 ReferenceError（宣传的「一键修复」100% 不可用）；
 //   ② 修复范围必须与检查器的**豁免集一致**：检查侧对 SKILL.md / glossary.md 的「（检查）」放行
 //      （元文档说明），修复侧若照写就会改写合法内容 —— 因此此处显式跳过同一豁免集；
-//   ③ 默认 dry-run：只打印将改动的位置与条数；`--fix --write` 才落盘，且落盘前写 `.bak-fix` 备份。
+//   ③ 默认 dry-run：只打印将改动的位置与条数；`--fix --write` 才落盘，
+//      落盘走 `_lib/destructive-write.mjs` 的 `writeWithSafety`（**时间戳 `.bak` + 原子写 + BAK_MAX 回收**）
+//      ——v18.12.0（L-66）前的固定名 `.bak-fix` 会在连跑两次时抹掉上一次的回滚点。
 const FIX_EXEMPT = [/SKILL\.md$/, /glossary\.md$/];
 if (fixMode) {
   const applyFix = process.argv.includes('--write');
@@ -306,9 +319,15 @@ if (fixMode) {
     if (hits === 0) continue;
     fixFiles++; fixHits += hits;
     if (applyFix) {
-      copyFileSync(f, f + '.bak-fix');
-      writeFileSync(f, text.replaceAll('（检查）', '（按主控 phase 0 协议）'), 'utf8');
-      console.log(`  ✓ 已修复 ${rel}（${hits} 处，备份 ${rel}.bak-fix）`);
+      // v18.12.0（全量审计 L-66）：旧实现 `copyFileSync(f, f + '.bak-fix') + writeFileSync(f, …)` 有三缺陷：
+      //   ① **固定名 `.bak-fix`** —— 连跑两次时，第一次的原始版本被第二次备份**同名覆盖**，回滚点丢失
+      //      （`_lib/destructive-write.mjs` 头注释明文批判过这一形态）；
+      //   ② **非原子写** —— 进程中途被杀会留下半写文件；
+      //   ③ 无 `.bak` 上限回收。
+      //   现统一走 `writeWithSafety(…, { inPlace: true })`：时间戳 `.bak`（同秒加序号，一轮内多次写不丢回滚点）
+      //   + temp→rename 原子写 + BAK_MAX 回收。
+      const r = writeWithSafety(f, text.replaceAll('（检查）', '（按主控 phase 0 协议）'), { inPlace: true });
+      console.log(`  ✓ 已修复 ${rel}（${hits} 处；回滚点 ${r.backup ? relative(ROOT, r.backup).replaceAll('\\', '/') : '（原文件新建，无备份可做）'}）`);
     } else {
       console.log(`  · 将修复 ${rel}（${hits} 处）`);
     }

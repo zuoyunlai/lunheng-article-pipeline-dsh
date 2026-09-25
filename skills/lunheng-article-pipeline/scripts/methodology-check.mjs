@@ -27,7 +27,12 @@ let file = null;
 let reportPath = null;
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
-  if (a === '--report') { reportPath = argv[++i]; }
+  if (a === '--report') {
+    // v18.12.0（全量审计 L-62）：缺值守卫（旧版静默不落盘却 exit 0）
+    const v = argv[++i];
+    if (!v || v.startsWith('--')) { console.error(`--report 缺少值（示例：--report audits/methodology.json）\n用法: node methodology-check.mjs <文件.md> [--report <path>]`); process.exit(10); }
+    reportPath = v;
+  }
   else if (a.startsWith('--')) {
     console.error(`未知参数: ${a}\n用法: node methodology-check.mjs <文件.md> [--report <path>]`);
     process.exit(10);

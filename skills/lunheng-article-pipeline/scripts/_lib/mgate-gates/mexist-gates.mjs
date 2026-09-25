@@ -895,7 +895,15 @@ try {
   } else {
     const at9 = readFileSync(latest9.path, 'utf8');
     const G_MAIN = ['G0', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9', 'G10', 'G11', 'G12', 'G13', 'G14'];
+    // v18.12.0（全量审计 L-28）：**G15 此前既不在主项也不在子项 → 完全没有门在管**，而
+    //   `audit-checklist-quickref.md`（本项自称的真源）在 v18.8.0 已新增「G15 引用匹配度」，
+    //   且 `SKILL.md:186`/`AGENTS.md`/`glossary.md:128` 仍写「G0-G14（15 项）」——四处三口径。
+    //   处置（**有意选择，非疏漏**）：G15 是**模式相关**项（仅在任务简报启用「§引用数量与质量控制」时适用），
+    //   而本门看不到任务简报 → 把「未写 G15」判成 P1/P2 会对**未启用该模式**的报告造成假阳性
+    //   （回归实测：三份原有夹具即刻被判失败）。故：**未写 → 记 note9（可见、不改 pass）**；
+    //   **写了 → 与主项同口径校验结论与实据**（下方 G15 单独跑一遍）。
     const G_SUB9 = ['G0.5', 'G2.5', 'G4-2'];
+    const G_OPT9 = ['G15'];
     // 结论词（v17.0.0 补 ✓/✗：端到端测试发现审计报告惯用「**通过** ✓」与「✓（论据）」，旧表漏 ✓ 导致 G1 误判无结论）
     const VERDICT9 = /通过|不通过|合规|违规|达标|未达标|PASS|FAIL|⚠|✅|❌|✓|✗|N\/A|部分|已核|未核|无问题|有问题/;
     const at9Lines = at9.split('\n');
@@ -934,7 +942,29 @@ try {
     if (absent9.length) findings9.push(`G 项未覆盖 ${absent9.length} 个：${absent9.join(',')}（quickref 要求逐条执行、缺一不可）`);
     if (noVerdict9.length) soft9.push(`${noVerdict9.join(',')} 有提及但邻域无结论词（须写 通过/不通过/N/A + 证据）`);
     if (noEvidence9.length) soft9.push(`${noEvidence9.join(',')} 的结论无实据（须给素材编号 / 文件路径 / § / 带量词的数字，不能只写「通过」）`);
-    if (absentSub9.length) soft9.push(`子项未覆盖：${absentSub9.join(',')}`);
+    if (absentSub9.length) soft9.push(`子项未覆盖：${absentSub9.join(',')}（G0.5/G2.5/G4-2 为通用子项，缺一即记）`);
+    // G15（**模式相关**项）：未写 → note9（可见、不改 pass）；写了 → 与主项同口径校验结论与实据。
+    //   为什么不把「未写」计入软提示：本门看不到任务简报，无法判断「§引用数量与质量控制」是否启用 →
+    //   一律记软提示会对未启用该模式的报告造成**假阳性**（回归实测：三份原有夹具即刻被判失败）。
+    const note9 = [];
+    for (const id of G_OPT9) {
+      const escO = id.replace(/[.-]/g, (c) => `\\${c}`);
+      const reO = new RegExp(`(?<![A-Za-z0-9])${escO}(?![0-9.])`);
+      const hitsO = [];
+      at9Lines.forEach((l, i) => { if (reO.test(l)) hitsO.push(i); });
+      if (hitsO.length === 0) {
+        note9.push(`${id}（引用匹配度，v18.8.0 新增）未写——任务简报启用「§引用数量与质量控制」时应写；未启用则该缺席属正常`);
+        continue;
+      }
+      let vOk = false, eOk = false;
+      for (const i of hitsO) {
+        const win = at9Lines.slice(i, i + 3).join('\n').replace(new RegExp(escO, 'g'), '');
+        if (VERDICT9.test(win)) vOk = true;
+        if (EVID9.test(win)) eOk = true;
+      }
+      if (!vOk) soft9.push(`${id} 有提及但邻域无结论词（须写 通过/不通过/N/A + 证据）`);
+      else if (!eOk) soft9.push(`${id} 的结论无实据（须给素材编号 / 文件路径 / § / 带量词的数字）`);
+    }
     const hard9 = findings9.length > 0;
     results.push({
       gate: 'M-Exist-9 审计报告 G 项覆盖',
@@ -943,6 +973,7 @@ try {
         `${latest9.name}｜G0-G14 实到 ${G_MAIN.length - absent9.length}/15${noEvidence9.length ? `（${noEvidence9.length} 项结论无实据）` : ''}`,
         hard9 ? `硬问题：${findings9[0]}` : (noEvidence9.length ? '十五项已覆盖且各有结论，部分结论缺实据' : '十五项全覆盖、各有结论与实据'),
         soft9.length ? `软提示：${soft9.slice(0, 2).join('；')}` : '',
+        note9.length ? `备注：${note9.slice(0, 1).join('；')}` : '',
       ].filter(Boolean).join(' ｜ '),
       severity: hard9 ? (absent9.length > 3 ? 'P0' : 'P1') : (soft9.length ? 'P2' : '通过'),
     });

@@ -10,6 +10,14 @@ installExitGuard();
 
 const pdfPath = process.argv[2];
 if (!pdfPath) { console.error('用法: node pdfcheck.mjs <pdf>'); process.exit(10); }
+// v18.12.0（全量审计 L-62）：**多余参数此前被静默忽略**（`pdfcheck a.pdf b.pdf --xyz` 全被丢掉）。
+//   本脚本只接受 1 个位置参数，多余的与任何旗标一律报参数错（与全库「参数/路径错 = 10」同口径）。
+const extra = process.argv.slice(3).filter((a) => a !== '');
+if (extra.length) {
+  console.error(`多余的参数: ${extra.join(' ')}（本脚本只接受 1 个位置参数：<pdf>）`);
+  console.error('用法: node pdfcheck.mjs <pdf>');
+  process.exit(10);
+}
 requireExistingFile(pdfPath, 'PDF 文件');   // 不存在/是目录/无权限 → 10
 const buf = readFileSync(pdfPath);
 const latin = buf.toString('latin1');

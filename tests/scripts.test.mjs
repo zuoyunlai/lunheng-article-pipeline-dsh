@@ -928,21 +928,28 @@ test('v18.7.2 P0-2：consistency-check 参数契约——--write 可达、--fix 
   const cc = join(repoLayout, 'skills', 'lunheng-article-pipeline', 'scripts', 'consistency-check.mjs')
   const victim = join(repoLayout, 'skills', 'lunheng-article-pipeline', 'references', 'fixture-fix-target.md')
   writeFileSync(victim, '# fixture\n\n示例（检查）一处。\n')
-  // ① --write 单独出现不再被守卫拒绝（旧行为：stderr「未知参数」+ exit 1 且不执行任何检查）
-  //    注：tmp 副本存在内容性发现时 exit 1 属正常（内容判定），与守卫拒绝（打印「未知参数」）区分。
+  // ① v18.12.0（全量审计 L-66）：**`--write` 单独出现现在必须 exit 10**（旧行为：被白名单放行但
+  //    **静默空转** —— 只读模式跑完 exit 0，用户以为已修复）。守卫语义从「拒绝该旗标」升级为
+  //    「要求与 `--fix` 成对」，故断言随之更新。
   const rW = run([cc, '--write'])
-  assert.ok(!/未知参数/.test(rW.out), '不得再报未知参数：' + rW.out)
-  assert.ok(rW.out.length > 0 || rW.code === 0, '脚本应正常执行（守卫放行）：' + rW.out)
-  // ② --fix --write 真落盘 + .bak-fix 备份存在
+  assert.ok(!/未知参数/.test(rW.out), '不得报「未知参数」（--write 本身是合法旗标）：' + rW.out)
+  assert.equal(rW.code, 10, '`--write` 单独给出应 exit 10（缺 --fix）：' + rW.out)
+  assert.match(rW.out, /必须与 --fix 同用/)
+  // ② `--fix --write` 真落盘 + **时间戳 `.bak`** 备份存在
+  //    v18.12.0（L-66）：旧实现的**固定名 `.bak-fix`** 连跑两次会抹掉上一次的回滚点（destructive-write
+  //    头注释明文批判的形态），且是非原子写；现统一走 `writeWithSafety`（时间戳 .bak + temp→rename）。
   const rFW = run([cc, '--fix', '--write'])
   assert.match(rFW.out, /--fix --write 完成/, '应打印完成文案：' + rFW.out)
   const after = readFileSync(victim, 'utf8')
   assert.ok(!after.includes('（检查）'), '落盘后不得残留（检查）：' + after)
   assert.ok(after.includes('（按主控 phase 0 协议）'), '落盘后应为替换文本：' + after)
-  assert.ok(existsSync(victim + '.bak-fix'), '落盘前必须写 .bak-fix 备份')
-  assert.match(readFileSync(victim + '.bak-fix', 'utf8'), /（检查）/, '备份内容应为修复前原文')
+  const baks = readdirSync(join(repoLayout, 'skills', 'lunheng-article-pipeline', 'references'))
+    .filter((f) => f.startsWith('fixture-fix-target.md.') && f.endsWith('.bak'))
+  assert.ok(baks.length >= 1, '落盘前必须留时间戳 .bak 回滚点（v18.12.0 起不再用固定名 .bak-fix）')
+  assert.match(readFileSync(join(repoLayout, 'skills', 'lunheng-article-pipeline', 'references', baks[0]), 'utf8'), /（检查）/, '备份内容应为修复前原文')
   // ③ --nope 仍被拒（守住 v18.0.5 初衷不回退）
-  assert.equal(run([cc, '--nope']).code, 1, '未知参数仍应 exit 1')
+  //    v18.12.0（L-62）：**参数错改 10**（旧版 1 与「文档真漂移」撞码，主控无法区分改命令还是改文档）
+  assert.equal(run([cc, '--nope']).code, 10, '未知参数应 exit 10（参数/路径错，与内容漂移的 1 区分）')
   rmSync(d, { recursive: true, force: true })
 })
 

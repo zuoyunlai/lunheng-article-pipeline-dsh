@@ -26,7 +26,10 @@ export function mForm2(ctx) {
   const { h2s, results } = ctx;
 const missingSections = ENDNOTE_SECTIONS.filter((s) => !h2s.some((h) => h === s || h.startsWith(s)));
 results.push({
-  gate: 'M-Form-2 文末四节存在性',
+  // v18.12.0（全量审计 L-28）：标签由「文末四节」改为「文末必需五节」——旧标签与实现不符（实现查 5 节，
+  //   自 v2.5.2-dsh.5 起），而该标签是 M-Exist-5「模板行名逐字一致」与 `闸门记录-template.md` 的**逐字真源**，
+  //   改一处必须同步另一处（已同步）。注意：**存在性只认必需五节**，学术四声明为可选（见 M-Form-7 九节口径）。
+  gate: 'M-Form-2 文末必需五节存在性',
   pass: missingSections.length === 0,
   detail: missingSections.length ? `缺失: ${missingSections.join(',')}` : '必需 5 节齐全（四声明可选，见 M-Form-7）',
   severity: missingSections.length > 0 ? 'P0' : '通过',

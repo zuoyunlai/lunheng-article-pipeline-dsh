@@ -29,8 +29,17 @@ let projectPath = null;
 let reportPath = null;
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
-  if (a === '--project') { projectPath = argv[++i]; }
-  else if (a === '--report') { reportPath = argv[++i]; }
+  if (a === '--project') {
+    // v18.12.0（全量审计 L-62）：缺值守卫（缺值 → projectPath 为 undefined → 所有项目级检查静默关闭）
+    const v = argv[++i];
+    if (!v || v.startsWith('--')) { console.error(`--project 缺少值（示例：--project run/甲醛白菜事件）\n用法: node journal-fit.mjs <期刊名> [--project <run/项目名>] [--report <path>]`); process.exit(10); }
+    projectPath = v;
+  }
+  else if (a === '--report') {
+    const v = argv[++i];
+    if (!v || v.startsWith('--')) { console.error(`--report 缺少值（示例：--report audits/journal-fit.json）\n用法: node journal-fit.mjs <期刊名> [--project <run/项目名>] [--report <path>]`); process.exit(10); }
+    reportPath = v;
+  }
   else if (a.startsWith('--')) {
     console.error(`未知参数: ${a}\n用法: node journal-fit.mjs <期刊名> [--project <run/项目名>] [--report <path>]`);
     process.exit(10);

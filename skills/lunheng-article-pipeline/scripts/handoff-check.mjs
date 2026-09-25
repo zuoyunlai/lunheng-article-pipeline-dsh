@@ -106,17 +106,28 @@ function cardEntries(text) {
 }
 
 // ── 参数解析 ───────────────────────────────────────────────────────────────
+// v18.12.0（全量审计 L-62）：**带值旗标缺值守卫**。旧版 5 个带值旗标一律 `args[++i]` —— 缺值时变
+//   undefined，**下一个旗标会被当成它的值**（实测 `handoff-check --report --summary` → `opt.report="--summary"`
+//   且 `--summary` 被吃掉 → 产物侧整段静默跳过，exit 0）。现与 `_lib/cli-args.mjs` 同口径：缺值 → exit 10。
 const args = process.argv.slice(2)
 const opt = { project: null, role: null, report: null, reportFile: null, summary: false, level: 'basic', help: false }
+const needValue = (name, i) => {
+  const v = args[i + 1]
+  if (!v || v.startsWith('-')) {
+    console.error(`${name} 缺少值（${name} 后必须紧跟一个值）\n${HELP}`)
+    process.exit(10)
+  }
+  return v
+}
 for (let i = 0; i < args.length; i++) {
   const a = args[i]
   if (a === '-h' || a === '--help') opt.help = true
-  else if (a === '--project') opt.project = args[++i]
-  else if (a === '--role') opt.role = args[++i]
-  else if (a === '--report') opt.report = args[++i]
-  else if (a === '--report-file') opt.reportFile = args[++i]
+  else if (a === '--project') opt.project = needValue('--project', i++)
+  else if (a === '--role') opt.role = needValue('--role', i++)
+  else if (a === '--report') opt.report = needValue('--report', i++)
+  else if (a === '--report-file') opt.reportFile = needValue('--report-file', i++)
   else if (a === '--summary') opt.summary = true
-  else if (a === '--level') opt.level = args[++i]
+  else if (a === '--level') opt.level = needValue('--level', i++)
   else { console.error(`未知参数: ${a}\n${HELP}`); process.exit(10) }
 }
 if (opt.help) { console.log(HELP); process.exit(0) }

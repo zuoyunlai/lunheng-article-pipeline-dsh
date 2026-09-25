@@ -27,7 +27,14 @@ let file = null;
 let reportPath = null;
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
-  if (a === '--report') { reportPath = argv[++i]; }
+  if (a === '--report') {
+    // v18.12.0（全量审计 L-62）：**带值旗标缺值**此前静默 —— `--report` 是最后一个 token 时
+    //   `reportPath` 变 undefined → 末尾 `if (reportPath)` 直接跳过 → **不落盘却 exit 0**
+    //   （用户以为报告已生成）。现与 `_lib/cli-args.mjs` 同口径：缺值 → exit 10。
+    const v = argv[++i];
+    if (!v || v.startsWith('--')) { console.error(`--report 缺少值（示例：--report audits/cite-coverage.json）\n用法: node cite-coverage-check.mjs <文件.md> [--report <path>]`); process.exit(10); }
+    reportPath = v;
+  }
   else if (a.startsWith('--')) {
     console.error(`未知参数: ${a}\n用法: node cite-coverage-check.mjs <文件.md> [--report <path>]`);
     process.exit(10);

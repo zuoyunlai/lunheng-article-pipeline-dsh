@@ -27,8 +27,16 @@ let trigger = 10;
 let reportPath = null;
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
-  if (a === '--trigger') { trigger = parseInt(argv[++i], 10); if (Number.isNaN(trigger)) { console.error('--trigger 须为整数'); process.exit(10); } }
-  else if (a === '--report') { reportPath = argv[++i]; }
+  if (a === '--trigger') {
+    const v = argv[++i];
+    // v18.12.0（全量审计 L-62）：缺值守卫（旧版缺值 → parseInt(undefined) → NaN 检查兜住；但缺值本身应报参数错）
+    if (!v || v.startsWith('--')) { console.error(`--trigger 缺少值（示例：--trigger 10）\n用法: node meta-synthesize.mjs <run/项目名> [--trigger N] [--report <path>]`); process.exit(10); }
+    trigger = parseInt(v, 10); if (Number.isNaN(trigger)) { console.error('--trigger 须为整数'); process.exit(10); } }
+  else if (a === '--report') {
+    const v = argv[++i];
+    if (!v || v.startsWith('--')) { console.error(`--report 缺少值（示例：--report audits/meta-synthesis.json）\n用法: node meta-synthesize.mjs <run/项目名> [--trigger N] [--report <path>]`); process.exit(10); }
+    reportPath = v;
+  }
   else if (a.startsWith('--')) {
     console.error(`未知参数: ${a}\n用法: node meta-synthesize.mjs <run/项目名> [--trigger N] [--report <path>]`);
     process.exit(10);
