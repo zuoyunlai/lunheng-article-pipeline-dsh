@@ -62,12 +62,29 @@ for (const a of process.argv.slice(2)) {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..'); // 技能根（两种布局下均正确）
-// REPO_ROOT 探测（v18.0.0 修复）：本包有两种部署布局，旧实现**硬编码「向上两级」**，
-//   在「技能即包根」布局下会指向错误目录（实测：本机 `.dsh/skills/<name>/` 部署时，
-//   REPO_ROOT 解析成 `~/.dsh`，读 `~/.dsh/package.json` → ENOENT 而整个脚本不可用）。
+// REPO_ROOT 探测（v18.0.0 修复；v18.12.0 收紧，全量审计 L-53）：
 //   ① 仓库布局：`<repo>/package.json` + `<repo>/skills/lunheng-article-pipeline/`（向上两级）
 //   ② 技能即包根：`<skillRoot>/package.json`（本机部署；REPO_ROOT = ROOT）
-const REPO_ROOT = existsSync(join(ROOT, 'package.json')) ? ROOT : join(ROOT, '..', '..');
+//   **v18.12.0（L-53）为什么必须收紧**：旧实现只判「候选目录下有没有 package.json」。在**部署镜像**
+//   `…/.dsh/skills/lunheng-article-pipeline` 里运行时，`ROOT` 下无 package.json（镜像不含它），于是
+//   `REPO_ROOT = ROOT/../.. = …/.dsh` —— 而 `…/.dsh/package.json` **恰好存在**（是另一个包/残留），
+//   后果有二：① 规则⑨ 的「镜像 ↔ 真源」两路径**归一后完全相同**（自比）→ **恒真假绿**；
+//   ② 版本真源被换成那个 package.json（实测为 v18.10.0）→ 镜像内自检一次报出 171 处假红。
+//   现判据改为「候选目录必须真的**是论衡仓库/包根**」——即含 `skills/lunheng-article-pipeline/SKILL.md`
+//   （技能即包根布局亦满足：`<skillRoot>/skills/…` 不存在 → 由第二个候选 `ROOT` 兜底）。
+//   两个候选都不命中 → **报 P0 并 exit 10**（不静默退到一个错误的根）。
+const looksLikeLunhengRoot = (p) =>
+  existsSync(join(p, 'package.json')) && existsSync(join(p, 'skills', 'lunheng-article-pipeline', 'SKILL.md'));
+const REPO_ROOT = [ROOT, join(ROOT, '..', '..')].find(looksLikeLunhengRoot) ?? null;
+if (!REPO_ROOT) {
+  console.error(
+    `[P0 布局探测失败] 未能从 ${ROOT} 定位论衡仓库根（两个候选都不含 package.json + skills/lunheng-article-pipeline/SKILL.md）。\n` +
+    `  · 若在**部署镜像**（.dsh/skills/…）内运行：本门需要真源仓库才能做镜像↔真源对账，请到真源仓库跑。\n` +
+    `  · 若在「技能即包根」布局：该目录须同时含 package.json 与 skills/lunheng-article-pipeline/。\n` +
+    `  → 退出码 10（参数或路径错误）。**不要**把这次失败当成「文档漂移」。`,
+  );
+  process.exit(10);
+}
 
 // ① 版本真源 = package.json；版本头行任意 semver（v2.5.2-dsh.3 修订：不再硬编码 v2.5.2，防 bump 后失效）
 // **版本号形态真源（v17.0.0 起迁移为纯 semver：迭代号进 major，如 17.0.0 / 18.0.0 / 修补 17.0.1）**：

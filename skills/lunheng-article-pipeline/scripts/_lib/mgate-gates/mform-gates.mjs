@@ -333,8 +333,17 @@ if (dataCard) {
   let mform6Pass, mform6Detail, mform6Severity;
   if (trustLevelMiss.length === 0 && trustLevelDescOnly.length === 0) {
     mform6Pass = true;
-    mform6Detail = `${uniqueDataIds.length} 条数据卡均标独立信任级别段`;
-    mform6Severity = '通过';
+    // v18.12.0（全量审计 L-35）**空集真空通过**：`uniqueDataIds` 为空时上面两个数组必然为空 →
+    //   「数据卡 0 条」与「每条都标了」输出同一个 pass。审计实测空壳稿即走此路径通过。
+    //   现：无可核对对象时如实陈述为「未核」，并把严重度降为 P2（不改 pass——空卡本身由
+    //   M-Exist-3 / M-Integrity-1 承担，此处只保证读到的不是一句假的「全部达标」）。
+    if (uniqueDataIds.length === 0) {
+      mform6Detail = '**未核**（数据卡 0 条条目 → 信任级别无可核对对象；空卡情形见 M-Exist-3 / M-Integrity-1）';
+      mform6Severity = 'P2';
+    } else {
+      mform6Detail = `${uniqueDataIds.length} 条数据卡均标独立信任级别段`;
+      mform6Severity = '通过';
+    }
   } else if (trustLevelMiss.length > 0) {
     mform6Pass = false;
     mform6Detail = `独立段缺失: ${trustLevelMiss.slice(0, 5).join(',')}${trustLevelDescOnly.length ? `; 描述字段仅有: ${trustLevelDescOnly.slice(0, 3).join(',')}` : ''}`;
@@ -373,9 +382,17 @@ try {
   //   `## Abstract` / `## Keywords` 段被当作正文段查 [Lxx]，恒报「段缺[Lxx]」（v1 反哺报告问题 2）。
   //   实测：本项目 v4 的 `## Keywords` 段被判 P0（T8 只能靠加 [Lxx] hack 绕过——那本身是违规改写）。
   const FRONT_BACK = ['摘要', '关键词', '引言', '结语', '结论', '展望',
-    'Abstract', 'Keywords', 'Keyword', 'Acknowledg', 'References', 'Bibliography'];
+    'Abstract', 'Keywords', 'Keyword', 'Acknowledg', 'References', 'Bibliography',
+    // v18.12.0（2026-09-25 全量审计·脚本线 S-13）——**学术论文常见附属节**：附录/致谢/注释/缩略语
+    //   天然不引 [Lxx]（它们是方法性附属材料），旧白名单不含 → 只要 >100 汉字即恒判 P0。
+    //   审计实测：`## 附录 A：原始数据表`（表格 + 说明）→ M-Form-8 P0、总 exit=2。
+    '附录', '致谢', '注释', '缩略语', 'Appendix', 'Acknowledgement', 'Acknowledgments', 'Abbreviations', 'Notes'];
   const sections = body.split(/^##\s+/m).filter((s) => s.trim().length > 0);
-  for (const sec of sections.slice(0, THRESHOLDS.mform8MaxSections)) {
+  // v18.12.0（全量审计 L-46）：**去掉 20 段扫描上限**。旧版 `sections.slice(0, THRESHOLDS.mform8MaxSections)`
+  //   只扫前 20 段，第 21 段起**静默不扫**，而 detail 写「20 段：0 段缺 L」——读者会读成「全文都检了」。
+  //   本包定位是 ≥2000 字深度长文（实测项目正文到 16,000+ 汉字），二级节数超 20 是常态。
+  //   纯正则扫描无性能理由保留上限；改为全量扫，并在 detail 如实标出段数。
+  for (const sec of sections) {
     if (sec.length < THRESHOLDS.mform8MinSecLen) continue;
     const secTitle = sec.split('\n')[0].trim();
     const titleNorm = secTitle.replace(/^[0-9一二三四五六七八九十]+\s*[、.．:：\s]+/u, '').replace(/[：:].*$/u, '').trim();

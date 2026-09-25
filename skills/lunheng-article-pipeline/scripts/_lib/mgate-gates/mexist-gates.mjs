@@ -480,6 +480,21 @@ try {
             soft5.push(`${gateId}「${item}」实据引用的路径不存在：${p}（**不是**「无需核对」——请补真实产物路径或修正）`);
           }
         }
+        // ③ v18.12.0（L-47）**正文指纹互锁**：实据里写了 sha256 的，必须与报告记录的正文指纹一致。
+        //   为什么需要：报告的 `verdict_scope.draft_sha256` 是**脚本自己**写的（它总能与时点自洽），
+        //   所以「跑出 exit=0 → 再改稿 → 不再重跑」会留下「指纹自洽 + script_exit_raw=0」的报告。
+        //   把指纹**同时钉在闸门记录**（脚本改不到的人工产物）里，伪造就得改两处且互相锁定。
+        //   仅在两侧都有值时判（不强制要求写指纹，避免对既有形态过度收紧）。
+        const mSha = ev.match(/sha256[^\da-f]{0,6}([0-9a-f]{12,64})/i);
+        const recSha = rj5?.verdict_scope?.draft_sha256;
+        if (mSha && typeof recSha === 'string' && recSha.length >= 12) {
+          if (recSha.slice(0, 12).toLowerCase() !== mSha[1].slice(0, 12).toLowerCase()) {
+            findings5.push(
+              `${gateId}「${item}」实据里的 sha256=${mSha[1].slice(0, 12)}… 与 M-Gate-Report.json 的正文指纹 `
+              + `${recSha.slice(0, 12)}… **不一致**——改稿后未重跑 M 门？（指纹互锁：两处必须指向同一版正文）`,
+            );
+          }
+        }
       }
     }
     // v18.12.0（L-10）：v18.6.0 规定两道闸门记录须写交接门 `handoff-check` 的 exit（20/21/22）。
@@ -1100,11 +1115,18 @@ if (dataCard) {
   const cardD = new Set(dataCardIds(dataCard));   // v18.0.3：改用 _lib/refs.mjs 真源（旧版在此处重写正则）
   const missing = [...intextD].filter((d) => !cardD.has(d));
   const mExist3Sev = missing.length > THRESHOLDS.exist3P0 ? 'P0' : (missing.length > THRESHOLDS.exist3P1 ? 'P1' : (missing.length > 0 ? 'P2' : '通过'));
+  // v18.12.0（全量审计 L-35）**空集真空通过**：`missing` 是集合差——**数据卡 0 条**时它必然为空，
+  //   于是「0 条数据卡」与「全部对得上」都输出同一个 `pass=true`。审计实测：正文零 `[Dxx]` +
+  //   数据卡 0 条的空壳稿，本门报「全部 [Dxx] 在数据卡有对应」= 通过。
+  //   现：**无可核对对象**时显式记 degraded（不判失败，但不得读成「核过了」）。
+  const vacuous3 = cardD.size === 0;
   results.push({
     gate: 'M-Exist-3 引用闭环',
     pass: missing.length === 0,
-    detail: missing.length ? `正文引 [Dxx] ${missing.length} 条在数据卡中无对应条目` : '全部 [Dxx] 在数据卡有对应',
-    severity: mExist3Sev,
+    detail: vacuous3
+      ? `**未核**（数据卡 0 条条目 → 引用闭环无可核对对象${intextD.size ? `；但正文引了 ${intextD.size} 条 [Dxx]` : ''}）`
+      : (missing.length ? `正文引 [Dxx] ${missing.length} 条在数据卡中无对应条目` : `全部 [Dxx] 在数据卡有对应（卡内 ${cardD.size} 条）`),
+    severity: vacuous3 ? (intextD.size ? mExist3Sev : 'P2') : mExist3Sev,
   });
 } else {
   results.push({

@@ -3,6 +3,7 @@
 //   注入验证用例 + 真源仓库自跑兜底）。共享态（errors / 派生源 / 版本真源等）由主脚本构建 ctx 传入。
 import { readFileSync, readdirSync, statSync, existsSync, writeFileSync, copyFileSync, openSync, readSync, closeSync } from 'node:fs'
 import { join, relative, dirname } from 'node:path'
+import { pathKey } from '../destructive-write.mjs'   // v18.12.0（L-53）：镜像自比护栏的路径归一真源
 
 // ⑧ cordis.patch.yml + examples/ 版本引用（v2.5.2-dsh.5 审计新增：防安装文档指向未发布版本）
 export function runRepoSurfaceRules(ctx) {
@@ -42,6 +43,17 @@ if (existsSync(exDir)) {
 //   现改为：**全树逐文件内容比对**（Buffer.equals，不用 size 作代理），并补「镜像多出文件」检查。
 //   代价：84 个小文件各读两次（合计 <1 MB），运行时开销可忽略。
 const dshSkillDir = join(REPO_ROOT, '..', '.dsh', 'skills', 'lunheng-article-pipeline');
+// v18.12.0（全量审计 L-53）：**镜像自比护栏**。在部署镜像内运行时，旧版 `REPO_ROOT` 会解析成
+//   `…/.dsh`，于是 `dshSkillDir` 与 `ROOT` **是同一个目录** → 下面整段「真源 ↔ 镜像」对账变成
+//   「自己跟自己比」→ **恒真、永远 0 处漂移**（假绿），而镜像恰恰是运行时真正被加载的那一份。
+//   `REPO_ROOT` 侧已收紧（须含 skills/lunheng-article-pipeline/SKILL.md），此处再加一道独立护栏：
+//   两者同目录即报 P0，不依赖上游修得对不对。
+if (existsSync(dshSkillDir) && pathKey(dshSkillDir) === pathKey(ROOT)) {
+  errors.push(
+    '[P0 镜像自比] 真源 ROOT 与 `.dsh` 镜像指向同一目录 —— 规则⑨「真源 ↔ 镜像」对账退化为自比（恒真/假绿）。'
+    + '请到**真源仓库**（含 `skills/lunheng-article-pipeline/SKILL.md`）运行本门；镜像内运行无对账价值。',
+  );
+}
 const allFilesOf = (dir, base = dir, acc = []) => {
   for (const e of readdirSync(dir, { withFileTypes: true })) {
     const p = join(dir, e.name);

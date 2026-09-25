@@ -117,7 +117,7 @@ Phase 3 写作        T5 写手 → 初稿（AI 去味 10 项 + 反方论证）
 Phase 3.5 洞察补充   主人补充一线经验（人在环）→ 写手 v2 融入
 Phase 3.6 批判      T6 批判伙伴 → 批判报告 C1-C7（轻量档可跳）
 Phase 4 审计        T7 审计员 → 审计报告（G0-G14）
-Phase 4 审计打回    写手交修订说明 + 修订稿（A 轨审计打回 ≤2 轮，独立写手执行；B 轨主控触发轮不限额，双轨制见 QUICKSTART）
+Phase 4 审计打回    写手交修订说明 + 修订稿（A 轨审计打回 ≤2 轮，独立写手执行；B 轨主控触发轮**至多 +1 深化轮**，双轨制见 QUICKSTART）
 Phase 4.5 审稿      T9 同行评审（可选，默认选中，学术论文必选）→ 审稿报告 + 期刊匹配 Top 3；G14 中文 AI 痕迹闸终闸（与 T9 并行，唯一一次 spawn）
 [🔒 T7.5 完整性门]   审计报告最新版 + P0/P1 清单 + M 门全 exit 0 + 隔离
 Phase 4.5 配图      （与审稿同段并行；默认关闭）程序化生成数据图表；封面 DSH 降级 SVG/投喂
@@ -150,7 +150,7 @@ lunheng-article-pipeline/                    # npm 包（DSH bundle）
         │   ├── 07-审计-auditor.md
         │   ├── 08-终检-finalizer.md          # T8 终检（独立角色，主控 T0 亲执行，v2.5.2-dsh.7 新增独立卡）
         │   └── 09-审稿-peer-reviewer.md      # T9 同行评审（可选默认选中，学术必选）
-        ├── templates/                       # 7 类模板 × (full + lite) + 图表-SVG 模板
+        ├── templates/                       # 6 对模板 × (full + lite) + 单文件模板（清单以 ls 为准）
         ├── _shared/                         # M 门 / F 模式 / 期刊匹配等共享机制
         │   ├── M-Gate-Algorithm.md          # M 门算法（M-Form 11 / M-Exist 10 / M-Integrity 2）
         │   ├── M-Gate-Algorithm-appendix.md # M 门附录

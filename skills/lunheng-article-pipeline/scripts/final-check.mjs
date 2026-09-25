@@ -4,10 +4,15 @@
 //   --no-summary : 跳过 build-evidence-bundle --summary 步骤
 //   --json       : 静默子脚本输出，只输出终检 JSON 总报告（机器可读）
 //   --report PATH: 同时把总报告写入 PATH（默认 audits/final-check-v0.json）
-// 等价于依次执行：
-//   1. scripts/count-chars.mjs <项目>/final/定稿.md --full
-//   2. scripts/m-gate-check.mjs   <项目>/final/定稿.md <项目>/final/证据包
-//   3. scripts/build-evidence-bundle.mjs <项目> --summary    (默认开；--no-summary 关)
+// 等价于依次执行（**顺序不可交换**，见下）：
+//   1. scripts/count-chars.mjs <项目>/final/定稿.md
+//   2. scripts/build-evidence-bundle.mjs <项目> --summary    (默认开；--no-summary 关)
+//   3. scripts/m-gate-check.mjs   <项目>/final/定稿.md <项目>/final/证据包
+//   ⚠️ **证据包刷新必须排在 M 门之前**（v17.0.0 顺序修复，端到端测试反哺）：旧顺序是
+//      count-chars → m-gate-check → build-evidence-bundle，于是 M 门读到的是**上一次**收集的
+//      证据包副本——实测文献卡在项目里已更新到 4 条而副本还是 2 条 → M-Form-10 误报
+//      「头部 2 条 ≠ 正文 1 条」（假 P0）。**v18.12.0（全量审计 L-30）**：本注释块此前写的正是
+//      那个**已被修掉的旧顺序**，维护者照它「修正」实现即会重演该假 P0——故此处改成与实现一致的顺序。
 // 节省主控 T8 三次手动调用 + 上下文切换，节省 5-8 分钟 / 项目。
 // v2.5.2-dsh.7 增强：解析 m-gate-check 的 JSON 输出与 count-chars 的 JSON 输出，汇总到 final-check.json，T8 终检可一次拿全报告不用 re-read 三个脚本输出
 // v18.2.6 审计修复（P1-9）：
