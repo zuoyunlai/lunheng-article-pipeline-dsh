@@ -222,4 +222,66 @@ for (const f of active) {
   }
 }
 
+// ㉗ 全库锚点覆盖（v18.12.0 新增，全量审计 L-24）：
+//   为什么必须加：旧规则㉒ 只核 `SKILL.md` **启动清单里**的 `文件#锚点` —— 于是
+//   `pipeline-readme.md` 的目录段**34 条里 27 条悬空**（12 条锚点脱靶 + 15 条指向正文已删标题）
+//   长期无人发现；另有 6 条跨文件锚点错（锚点截断 / 错字 `v23T7` / 中文化标题被写成阿拉伯数字）。
+//   判据：全库 `*.md` 里每一条形如 `](路径.md#锚点)` 或 `](#锚点)` 的链接，
+//     ① 目标文件必须存在；② 锚点必须命中目标文件的「标题 slug 集」或**显式 `<a id="…">`**。
+//   slug 口径（与 GitHub 实测校准一致）：小写 → 去 emoji 与标点 → 每个空格转一个 `-`（**不折叠、不裁剪**）。
+//   历史归档目录整体豁免（`docs/审计与修订记录|验证记录`、`audits/反哺报告-*`、`archive/`）。
+const anchorSlugsOf = (text) => {
+  const slugs = new Set();
+  // GitHub 实测口径（本机两个真实仓库交叉验证：`## ☁️ Installation` ↔ `#-installation`；
+  //   `## Usage & Billing` ↔ `#usage--billing`）：
+  //   ① 小写；② **只保留** 字母 / 数字 / 组合符 / 空格 / `-` / `_`（其余一律删，含 `.` `→` `（）—，`);
+  //   ③ **每个空格转一个 `-`**（不折叠、不裁剪 —— 故 emoji 标题会得到**前导** `-`，
+  //      被删标点两侧的两个空格会得到 `--`）。
+  const slugify = (s) => String(s).toLowerCase()
+    .replace(/[^\p{L}\p{N}\p{M} _-]/gu, '')
+    .replace(/ /g, '-');
+  for (const m of text.matchAll(/^#{1,6}\s+(.+?)\s*$/gm)) slugs.add(slugify(m[1]));
+  for (const m of text.matchAll(/<a\s+id="([^"]+)"/g)) slugs.add(m[1]);
+  return slugs;
+};
+{
+  const HIST = /^(?:docs\/(?:审计与修订记录|验证记录)\/|audits\/反哺报告-|archive\/)/;
+  const mdFiles = [];
+  const walkMd = (dir) => {
+    let entries = [];
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      if (e.name === '.git' || e.name === 'node_modules') continue;
+      const p = join(dir, e.name);
+      if (e.isDirectory()) walkMd(p);
+      else if (e.name.endsWith('.md')) mdFiles.push(p);
+    }
+  };
+  walkMd(ROOT);
+  const slugCache = new Map();
+  const slugsFor = (abs) => {
+    if (!slugCache.has(abs)) slugCache.set(abs, existsSync(abs) ? anchorSlugsOf(readFileSync(abs, 'utf8')) : null);
+    return slugCache.get(abs);
+  };
+  for (const f of mdFiles) {
+    const rel = relative(ROOT, f).replaceAll('\\', '/');
+    if (HIST.test(rel)) continue;
+    readFileSync(f, 'utf8').split('\n').forEach((l, i) => {
+      if (/旧版|历史|当时|曾经|教训|漂移|更正|修复|不再|示例|形如/.test(l)) return;   // 清仓注解与「写法示例」可引用旧锚
+      for (const m of l.matchAll(/\]\(([^)\s]+\.md)?#([^)\s]+)\)/g)) {
+        const anchor = m[2];
+        const targetAbs = m[1] ? join(dirname(f), m[1]) : f;
+        const targetRel = m[1] ? relative(ROOT, targetAbs).replaceAll('\\', '/') : rel;
+        if (HIST.test(targetRel)) continue;
+        const slugs = slugsFor(targetAbs);
+        if (slugs === null) {
+          errors.push(`[P1 锚点悬空] ${rel}:${i + 1} 链接目标文件不存在：${m[1]}`);
+        } else if (!slugs.has(anchor)) {
+          errors.push(`[P1 锚点悬空] ${rel}:${i + 1} → ${targetRel}#${anchor}（目标文件无此标题 slug；改标题后请同步所有引用）`);
+        }
+      }
+    });
+  }
+}
+
 }

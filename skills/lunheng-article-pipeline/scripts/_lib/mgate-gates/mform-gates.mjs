@@ -762,12 +762,66 @@ try {
     //   正解：索引段条目须按规定格式写方括号（`| [L01] | 作者 | …`，见 `_shared/机检硬格式.md` 条 3）；
     //   表格写成 `| L01 |`（无方括号）**本就是不合规**，脚本报缺条是**正确行为**，不得为迁就单篇放宽。
     const idxIds = new Set([...indexBlock.matchAll(/\[([LDC])(\d+)\]/g)].map((m) => m[1] + m[2]));
-    const bodyIds = new Set([...entryIds(cardText)].map((id) => id.slice(1, -1)));   // `[L01]` → `L01`（本段口径无方括号）
+    // v18.12.0（全量审计 L-52 同族 / L-45 配套）：`bodyIds` 旧版只认 `### [Dxx]` **标题式**条目
+    //   （`ENTRY_ID_RE = /^#{2,4}\s*\[([LDC])(\d+)\]/gm`），而三卡模板规定的条目是**行首式**
+    //   `[D01] 数值 | 机构 | 年份 | URL` → 一张完全照模板写的卡会让 `bodyIds` 为空 →
+    //   索引里每个编号都被判「在正文无对应条目」（**索引悬空**，假阳性，逐条刷屏）。
+    //   现补：把 **索引段之外**的行首式条目也计入 `bodyIds`（排除索引段是为了不让索引行自己被当成条目
+    //   —— 那正是 `_lib/cards.mjs` v2.5.2-dsh.17 修过的同型坑）。
+    // === 索引段区域 vs 条目区（v18.12.0，L-45 配套；两条口径必须一起成立）===
+    // 背景：模板形态的卡里，索引段之后**没有新标题**（行首式条目直接跟在后面），所以「哪里是索引、
+    //   哪里是条目」只能按**行的形状**反推。已实测两种真形态：
+    //     · 表格索引：`| [D01] | 主题 | 论点1 |`（后接条目无标题）
+    //     · 无围栏的 ｜ 行索引：`[L01] Coleman 1988 ｜ 社会资本 ｜ 论点1`（后接 `## 正文分组`）
+    //   规则：索引区 = 从 `## 📇 索引段` 起，**连续的**（空行 / 围栏块内行 / 表格行 / 表分隔行 /
+    //   `[Dxx] … ｜ …` 行）；遇到第一个「既非索引行也非空行」的内容即结束，其后全部计入条目区。
+    const idxHead = lines.findIndex((l) => /^##\s*📇\s*索引段/.test(l));
+    let inFence = false;
+    let idxEnd = lines.length;
+    if (idxHead !== -1) {
+      let j = idxHead + 1;
+      for (; j < lines.length; j++) {
+        const l = lines[j];
+        if (/^\s*(?:```|~~~)/.test(l)) { inFence = !inFence; continue; }
+        if (inFence) continue;
+        if (/^\s*$/.test(l)) continue;
+        if (/^\s*#/.test(l)) break;                     // 标题 → 索引段结束、条目区开始
+        if (/^\s*\|/.test(l)) continue;                 // 表格行 / 表分隔行（索引的另一种形态）
+        if (/^\[[LDC]\d+\]/.test(l.trim())) {
+          // 行首 `[Dxx]`：**是索引行还是条目行？**取「其后 4 行内是否出现『信任级别』」为判据 ——
+          //   条目块必带信任级别行（模板要求），索引行必不带（一行一编号）。
+          //   这条判据同时覆盖两种真形态：模板索引（表格/｜）之后的**行首式条目**（条目 → 结束索引段），
+          //   以及索引里**格式不完整**的悬空行（如 `[L99] 悬空`，无 ｜ → 仍算索引行）。
+          //   ⚠️ 已知代价（如实）：条目**自己漏写信任级别**时，该行会被误算作索引行 → 可能多报一条
+          //   「索引缺条」；但那种稿件本就该被 M-Form-6 判缺失，属「两个门同时报同一根因」，不产生假绿。
+          if (/信任级别/.test(lines.slice(j, j + 5).join('\n'))) break;
+          continue;
+        }
+        break;
+      }
+      idxEnd = j;
+    }
+    const entryLines = lines.slice(idxEnd);
+    const bodyIds = new Set([...entryIds(cardText)].map((id) => id.slice(1, -1)));   // 标题式 `### [Dxx]`
+    for (const m of entryLines.join('\n').matchAll(/^\[([LDC])(\d+)\]/gm)) bodyIds.add(m[1] + m[2]);   // 行首式（模板形态）
     const missing = [...bodyIds].filter((x) => !idxIds.has(x));       // 索引缺条 → 下游漏卡（硬）
     const extra = [...idxIds].filter((x) => !bodyIds.has(x));         // 索引悬空（软）
+    // v18.12.0（全量审计 L-45）：判据由**字数阈值**改为**结构判据**。
+    //   旧式「去掉编号与分隔符后剩余 < 6 字」与模板规定的形态错配：三卡模板要求的是
+    //   `| 编号 | 主题 | 支撑论点 |` 三列（或围栏内 `[D01] 甲 ｜ 主题 ｜ 论点1` 三段），
+    //   当一条素材只支撑 1 个论点、主题又是中文短词（「综述」「规模数据」）时，
+    //   **完全合规的行也会命中** → 系统性假阳性 → `exit=3`（而 exit 3 又「不得当通过」）
+    //   → 审计实测「合规稿必然拿不到 exit 0」，与 T8 的「22 项全 exit 0」口径构造上不可兼得。
+    //   现改判「三列/三段是否齐备」——与 `_shared/机检硬格式.md` 的模板形态同源，不再用字符数。
     const thin = indexBlock.split('\n').filter((l) => {
       if (!/\[([LDC])\d+\]/.test(l)) return false;
-      return l.replace(/\[([LDC])\d+\]/, '').replace(/[｜|\s\-—–:：·]/g, '').length < 6;  // 编号后信息量不足
+      // 只判**索引行**：表格行（`| … |`）或模板围栏形态（`[D01] 甲 ｜ 主题 ｜ 论点1`）。
+      //   v18.12.0：`indexSection` 返回的是「索引段标题 → 下一个标题」的**整段**，而条目行
+      //   `[L01] 作者. 题名[J]. 刊, 2024.` 也在其中（行首式条目不是标题、不会结束该段）——
+      //   旧版按字符数判，恰好在短条目上误报；改结构判据后若不排除条目行，则**每一条条目都会被判 thin**。
+      if (!/^\s*\|/.test(l) && !l.includes('｜')) return false;
+      const parts = l.trim().split(/[|｜]/).map((s) => s.trim()).filter((s) => s.length > 0);
+      return parts.length < 3;   // 须齐「编号 + 主题 + 支撑论点」
     });
     if (missing.length) findings.push(`${name}: 索引段缺 ${missing.length} 条（${missing.slice(0, 5).join(',')}）→ 下游按索引定位会漏卡`);
     if (extra.length) softFindings.push(`${name}: 索引段有 ${extra.length} 个编号在正文无对应条目（${extra.slice(0, 5).join(',')}）`);

@@ -16,7 +16,7 @@
 
 ## 触发条件（v2.1.1，回应 外部审计 #89% finding）
 
-> **角色职责定义见** [`glossary.md § T4 分析`](../glossary.md#t4---分析analyst)
+> **角色职责定义见** [`glossary.md § T4 分析`](../glossary.md#t4---分析analystv230-改-t3t4)
 
 ### 谁可以 spawn 我
 - ✅ **仅限**：T0 主控

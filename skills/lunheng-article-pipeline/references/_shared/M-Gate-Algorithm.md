@@ -118,7 +118,7 @@
 - **Python 风格** → 伪代码，描述算法逻辑（主控 LLM 推理执行）
 - **Bash 风格** → 验证示例，供人类主人在 host shell 手动执行（非 agent 执行）
 
-**工具能力边界**：详见 [glossary.md 第五章](../glossary.md#五工具能力边界v2212-前置声明)
+**工具能力边界**：详见 [glossary.md 第五章](../glossary.md#五工具能力边界dshv252-dsh0-前置声明)
 
 ---
 
@@ -1188,8 +1188,8 @@ return (all_pass, fail_reasons)
 以下 4 段（输出格式 / 论衡哲学化 / 教训沉淀 / 历史版本）已抽出到独立文档，按需加载：
 
 - **M-Gate-Report 输出格式（JSON schema，v18.2.6 按实现重建）**：[`references/_shared/M-Gate-Algorithm-appendix.md`](M-Gate-Algorithm-appendix.md)
-- **论衡哲学化**（4 版本合并）：[`references/_shared/M-Gate-Algorithm-appendix.md §2`](M-Gate-Algorithm-appendix.md#2-论衡哲学化4-版本合并)
-- **教训沉淀（v2.2.0 ~ v2.2.4）**：[`references/_shared/M-Gate-Algorithm-appendix.md §3`](M-Gate-Algorithm-appendix.md#3-教训沉淀v220--v224-全部)
+- **论衡哲学化**（4 版本合并）：[`references/_shared/M-Gate-Algorithm-appendix.md §2`](M-Gate-Algorithm-appendix.md#二论衡哲学化4-版本合并完整推演见-git-log)
+- **教训沉淀（v2.2.0 ~ v2.2.4）**：[`references/_shared/M-Gate-Algorithm-appendix.md §3`](M-Gate-Algorithm-appendix.md#三教训沉淀)
 - **历史版本归档（v2.2.8 Phase D-1）**：**主流程只读本完整版**；历史版本演进见 git log。
 
 > **拆分理由（v2.5.2；v18.2.6 按实测更正）**：把「输出格式 / 哲学化 / 教训沉淀 / 历史版本」四段抽出到 `M-Gate-Algorithm-appendix.md`（按需加载），主文件从此只保留「M 门规则 + 触发条件 + 伪代码」。**行数不写死**——旧版此处写「主文件从 780 行降至 635 行（-19%）」，实测早已不是该值（当前以 `wc -l` 为准）；行数与体积属「会腐烂的事实」，**引用前先实测**。
