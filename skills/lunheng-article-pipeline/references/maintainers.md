@@ -39,3 +39,12 @@
 - npm 包不含 `.github/`、`tests/`、`scripts/`（仓库级）、`CHANGELOG.md`、`CONTRIBUTING.md`——由 `package.json` files 白名单 + `repo-hygiene-check` 规则⑥ 负清单 + `pack-smoke` mustNotShip **双重机械保证**（非自觉）。
 - npm 强制包含根目录 `README*` 与 `LICENSE`（从 files 删掉、加 .npmignore 均无效，已实测）——五语 README 一定在包内，不是缺陷。
 - 发布 = 推 tag，由 `.github/workflows/publish.yml`（OIDC Trusted Publishing + `--provenance`）完成。
+- **`latest` dist-tag 不会自动前移**（`NPM_TOKEN` 已删；`--tag dsh` 只动 `dsh`）→ 每次发版后手工跑一次：
+  `npm dist-tag add lunheng-article-pipeline@<新版本> latest`（`dsh` 由 publish 工作流维护）。v18.12.0 发版后已执行，两个 tag 均指向 18.12.0。
+
+## 五、CI 已知红项：`loader-smoke`（上游缺陷，非本包）
+
+- **现象**：`ci.yml` 的 `loader-smoke` 每次必红；`publish.yml` 的 `gates` **不含**它，故**不影响发布**，但**仓面 CI 徽章是红的**。
+- **判据（三步都验过）**：① 该 job 走的官方 `dsh-plugin-guide verify` 的 `pack / install / dump-config` **全过**，只倒在自己的 `headless-smoke`；② 错误是 `dsh: user patch-layer watching requires the Cordis HMR service`（栈顶 `dsh-app-boot/lib/index.js:1112`）——是 **DSH 启动失败**，与本包代码无关；③ 根因：`dsh plugin … add` 生成的 profile manifest 写 `"dsh": { "profile": { "patchReload": "live" } }`（`DEFAULT_PROFILE_PATCH_RELOAD = "live"`，注释「Custom profiles retain the historical live patch-file behavior」），而 `profile-boot` 在 `patchReload === "live"` 时调 `watchUserPatches()`，该函数拿不到 `ctx.get('hmr')` 就抛错 → headless 必红。本机用 `dsh plugin --profile smoke add @deepseek-ai/dsh-base` 复现了同一 manifest 形态。
+- **处方（择一，均须先在 CI 上验证）**：① profile manifest 的 `dsh.profile.patchReload` 设 **`"startup"`**；② 上游把「`patchReload === "live"` 且无 HMR」改为降级而非抛错；③ bump `ci.yml` 里 pin 的 dsh 版本（**尚未验证**新版本是否已修——本机只装了 0.1.5-rc.2）。
+- **为什么本包不改 CI**：三条处方都是**未经验证**的改动，而 `loader-smoke` 不在发布门里；把一条红换成一条「改完不知道对不对」更容易掩盖真问题。**登记在此 + 在 CHANGELOG 如实声明**，由主人决定是否投入。

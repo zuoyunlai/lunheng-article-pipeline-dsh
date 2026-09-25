@@ -1398,15 +1398,18 @@ test('m-gate-check M-Exist-7：§6 成本指标必须含 `~NN[MKB]` 或「实测
   rmSync(d, { recursive: true, force: true })
 })
 
-test('md2html：结构不合格的 SVG 必须 exit 2 且不产出 HTML（旧版原样嵌入 exit 0）', () => {
+test('md2html：结构不合格的 SVG 必须 exit 40 且不产出 HTML（旧版原样嵌入 exit 0）', () => {
   const d = tmp()
   const proj = mkProj(d)
   writeFileSync(join(proj, 'final', '图件', '图1_趋势.svg'), '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 500"><rect x="1" <text>坏')
   writeFileSync(join(proj, 'final', '图件', '图2_占比.svg'), mkSvg('ok'))
   const out = join(proj, 'final', 'out.html')
   const r = run([join(SCRIPTS, 'md2html.mjs'), join(proj, 'final', '定稿.md'), out, '--fig-dir', join(proj, 'final', '图件')])
-  assert.equal(r.code, 2, '坏 SVG 应拒绝导出')
+  // v18.12.0（L-72c）：2 → **40**。旧值 2 与 M 门「2 = 存在 P0 失败」撞义——把「缺/坏图件」读成
+  //   「定稿有 P0」，补救动作完全不同（补图件 vs 改正文）。本仓对这类撞码的既有处置就是给独立码。
+  assert.equal(r.code, 40, '坏 SVG 应拒绝导出（exit 40，不是 M 门的 2）')
   assert.match(r.out, /结构不合格|未闭合|未正确嵌套/)
+  assert.match(r.out, /不是.*M 门|不要改正文/, '报错须显式提醒「别按 M 门 2=P0 读」')
   assert.ok(!existsSync(out), '拒绝时不得留下半成品 HTML')
   rmSync(d, { recursive: true, force: true })
 })
@@ -2906,6 +2909,11 @@ test('m-gate-check M-Exist-5：闸门记录表（漏项 / 自述当实据 / ✗ 
   const build = (gate, evTxt = 'final/证据包/数据卡.md', res = '✓', why = '') =>
     `# 闸门记录 ${gate}\n\n| 检查项 | 实据（路径 / exit code） | 结论 | 失败原因 |\n|---|---|---|---|\n`
     + itemsOf(gate).map((i) => `| ${i} | ${evTxt} | ${res} | ${why} |`).join('\n') + '\n'
+    // v18.12.0（L-33）：T7.5 记录另须留**三个战略门脚本**的 exit（模板里没有这一行，它是 M-Exist-5 的
+    //   独立判据）——真实项目本该手写此行，故合规夹具也补上；缺它的负向用例见 mexist5-binding.test.mjs。
+    + (gate === 'T7.5'
+      ? '| 战略门预检（structure/methodology/cite-coverage） | structure-check exit 0 / methodology-check exit 0 / cite-coverage exit 0 | ✓ |  |\n'
+      : '')
   const item = () => {
     const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])
     return parseJson(r).results.find((x) => x.gate.startsWith('M-Exist-5'))
@@ -3347,7 +3355,9 @@ test('m-gate-check v18.2.1：承重墙锚点收紧 + 需找数据点容忍冒号
   writeFileSync(join(proj, 'audits', '闸门记录-T2.5.md'),
     `# 记录\n\n| 检查项 | 实据 | 结论 | 失败原因 |\n|---|---|---|---|\n${rows(['数据卡文件存在', '数据条目数（双格式并集去重）', '任务简报数据需求总数', '数据条目数 ≥ 需求总数', '信任级别完整性（M-Form-6）', '信任级别一致性（M-Exist-3）', '数据卡头部声明 vs 实际计数', '证据包哈希占位符（可选验证）'])}\n`)
   writeFileSync(join(proj, 'audits', '闸门记录-T7.5.md'),
-    `# 记录\n\n| 检查项 | 实据 | 结论 | 失败原因 |\n|---|---|---|---|\n${rows(['审计报告最新版存在', 'P0/P1 清单已列', 'M 门全部 exit 0', '证据包指纹占位符', '信任级别一致性（M-Exist-3）', '论文交付物 vs 报告独立隔离', '修订轮由独立写手执行'])}\n`)
+    `# 记录\n\n| 检查项 | 实据 | 结论 | 失败原因 |\n|---|---|---|---|\n${rows(['审计报告最新版存在', 'P0/P1 清单已列', 'M 门全部 exit 0', '证据包指纹占位符', '信任级别一致性（M-Exist-3）', '论文交付物 vs 报告独立隔离', '修订轮由独立写手执行'])}\n`
+    // v18.12.0（L-33）：T7.5 另须留三个战略门脚本的 exit（模板无此行，是该门的独立判据）
+    + '| 战略门预检 | structure-check exit 0 / methodology-check exit 0 / cite-coverage exit 0 | ✓ |  |\n')
   const item = (prefix) => {
     const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), join(proj, 'final', '证据包')])
     return parseJson(r).results.find((x) => x.gate.startsWith(prefix))

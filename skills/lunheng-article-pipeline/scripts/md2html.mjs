@@ -3,10 +3,20 @@
 //   node md2html.mjs <定稿.md> <输出.html> [--fig-dir <final/图件>] [<单个 SVG 文件>] [--strict]
 //   · --fig-dir <dir>：**按图号配图**（`图N_标题.svg` / `图N-标题.svg` / `图N.svg`）——多图文章的推荐用法
 //   · 位置参数 <svgFile>：单图模式，**同一份 SVG 会嵌入每一个 [图N]**（向后兼容；多图请用 --fig-dir，会显式告警）
-//   · --strict：任何告警（消毒剥离 / 外部引用 / **图位缺图** / 行内图位 / 单图复用）都视为失败（exit 2）
+//   · --strict：任何告警（消毒剥离 / 外部引用 / **图位缺图** / 行内图位 / 单图复用）都视为失败（**exit 40**）
 //     —— 缺图于 v18.2.6 审计修复（追加项 1）纳入告警通道：旧版缺图不计告警，`--strict` 仍 exit 0，
 //     与 M 门 M-Form-9「缺图 = P0/P1」自相矛盾（同一条事实两个口径）。
-//   · 结构不合格的 SVG（未闭合 / 无 <svg> 根 / 无 viewBox 且无宽高 / 含 DTD·ENTITY）→ **exit 2 拒绝导出**
+//   · 结构不合格的 SVG（未闭合 / 无 <svg> 根 / 无 viewBox 且无宽高 / 含 DTD·ENTITY）→ **exit 40 拒绝导出**
+//
+// 退出码（v18.12.0 收口）：
+//   0  = 导出成功（无 --strict 时告警只打印、不改码）
+//   40 = **导出被拒 / --strict 校验失败**（内容判定，与 M 门 1/2/3 刻意分离）
+//   10 = 参数或路径错（含同文件守卫、未知参数、BOM/换行等输入卫生问题），70 = 内部错误（见 _lib/exit-guard.mjs）
+//   ⚠️ **为什么必须是 40 而不是 2**（v18.12.0 全量审计 L-72c 修正）：本脚本此前用 `exit 2`，而 2 在
+//      本仓 M 门语义里是「**存在 P0 失败**」。一次全量审计的第三方复核会把「`md2html --strict` 因缺图
+//      退出」读成「定稿有 P0」——两件事的补救动作完全不同（前者补图件、后者改正文）。本包对这类撞码的
+//      既有处置就是**给独立码**（`handoff-check` 用 20/21/22、`model-routing` 用 4、`--adjudicate` 拒绝用 30），
+//      40 是同一族里下一个空位；撞码代价已在 `docs/troubleshooting.md` §8 显式登记过一轮，不应再留第二处
 // v2.5.2-dsh.16 修订（第三方 SVG 链路审计）：
 //   ① 旧版只接受一个 SVG，且把同一份图嵌进每个 [图N] → 多图文章导出 PDF 会得到 N 张一样的图（静默错误）；
 //   ② 旧版只认**独占一行**的 [图N：…]，写在段落里的图位被当纯文本输出，既不替换也不报错；
@@ -114,10 +124,11 @@ if (figDir) {
   if (!a.ok) structural.push(`${basename(svgFile)}: ${a.problems.join('；')}`);
 }
 if (structural.length) {
-  console.error('SVG 结构不合格，拒绝导出（exit 2）：');
+  console.error('SVG 结构不合格，拒绝导出（exit 40）：');
   for (const s of structural) console.error('  - ' + s);
   console.error('  → 修好图件后重跑；结构判定口径见 scripts/_lib/svg.mjs（良构/根元素/viewBox/DTD）');
-  process.exit(2);
+  console.error('  → 退出码 40 = 导出被拒（内容判定），**不是** M 门的「2 = P0」——请补/修图件，不要改正文');
+  process.exit(40);
 }
 
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -270,8 +281,9 @@ if (missing > 0) {
 }
 for (const w of warnings) console.error(`⚠️ ${w}`);
 if (strict && warnings.length) {
-  console.error(`--strict：存在 ${warnings.length} 条告警 → exit 2`);
-  process.exit(2);
+  console.error(`--strict：存在 ${warnings.length} 条告警 → exit 40`);
+  console.error('  → 40 = 导出被拒（内容判定）：按上面逐条告警补齐图件 / 去掉外部引用后重跑；**不是** M 门的「2 = P0」');
+  process.exit(40);
 }
 
 const page = `<!DOCTYPE html>

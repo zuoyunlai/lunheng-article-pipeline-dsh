@@ -35,6 +35,8 @@ import { TRUST_COMPLIANT_RE } from './_lib/trust.mjs';            // 信任级�
 import { figurePlaceholders, figureNoOf } from './_lib/svg.mjs';  // 图位/图号口径真源（v2.5.2-dsh.16）
 import { installExitGuard, requireExistingFile, requireExistingDir } from './_lib/exit-guard.mjs'; // 退出码硬化（v18.0.5）
 import { parseArgs, USAGE_CODE } from './_lib/cli-args.mjs';   // 参数解析唯一实现（v18.2.6，与 apply-diff 共用）
+import { createHash } from 'node:crypto';                       // v18.12.0（L-15）：证据包清单逐文件 sha256
+import { writeWithSafety } from './_lib/destructive-write.mjs';  // v18.12.0（L-15）：清单写盘走原子写 + 时间戳 .bak
 installExitGuard();   // fs 类异常 → 10（旧版传目录给 --source 会未捕获 EISDIR → exit 1）
 
 // v18.2.6 审计修复（追加项 2 / P2，UTF-8 BOM）：pwsh `Set-Content -Encoding UTF8` **默认写 BOM**（Windows 上常见输入），
@@ -236,6 +238,60 @@ if (copied === 0 && missing > 0) {
   console.error(`  （已按需创建 ${destDir} —— 可能为空目录；本脚本不删已建目录）`);
   console.error('→ 退出码 10（参数或路径错误）：请核对路径确实指向 run/<项目名> 后重跑；不要拿这份 exit 10 当「证据包已刷新」');
   process.exit(10);
+}
+
+// ===== 证据包清单（v18.12.0，全量审计 L-15）=====
+// 为什么需要它（审计实测事实）：证据包此前是**内容全公开的目录**——任何人都能往 `final/证据包/` 丢一份
+// 文件（或覆盖其中一份），而**没有任何门会注意到**：M-Exist-2 只数「有几个 .md、有没有 0 字节」，
+// M-Exist-7 的「证据包指纹」只核「占位符出现了没有」。于是「T8 拿到的证据包」与「T8 以为的证据包」
+// 可以不是同一份，且事后无从分辨。
+// 清单的作用是把「这一包是哪些字节」变成**可复算的断言**：本脚本产出时逐文件记 sha256 + 字节数，
+// M-Exist-2 复核时重算比对 → 被替换/截断/塞入的文件会以 P0 暴露，并在 detail 里点名。
+// ⚠️ 精度边界（如实）：本清单**不设防「同时改文件与改清单」**（能写目录的人也能写这段 JSON）——
+//   它防的是**静默**：任何不一致都会留下可见痕迹，且与 M 门的正文指纹互锁（L-47）叠加后，
+//   伪造需要同时改动三处互相矛盾的地方。它不是签名的替代品。
+const MANIFEST_NAME = 'manifest.json';
+{
+  const entries = [];
+  const addDir = (relBase) => {
+    const dir = relBase ? join(destDir, relBase) : destDir;
+    if (!existsSync(dir)) return;
+    for (const f of readdirSync(dir).sort()) {
+      if (f === MANIFEST_NAME) continue;
+      const full = join(dir, f);
+      let st;
+      try { st = statSync(full) } catch { continue }
+      if (st.isDirectory()) { addDir(relBase ? `${relBase}/${f}` : f); continue }
+      entries.push({
+        path: relBase ? `${relBase}/${f}` : f,
+        bytes: st.size,
+        sha256: createHash('sha256').update(readFileSync(full)).digest('hex'),
+      });
+    }
+  };
+  addDir('');
+  // 被审正文（定稿优先，回退 drafts 最高版）——供 M-Exist-2 判定「这份包是不是配这一版正文生成的」
+  const auditTarget = existsSync(join(project, 'final', '定稿.md'))
+    ? 'final/定稿.md'
+    : (() => {
+        const hit = latestVersioned('drafts', '初稿');
+        return hit ? `drafts/${hit.name}` : null;
+      })();
+  const manifest = {
+    schema: 'lunheng-evidence-bundle/1',
+    generatedAt: new Date().toISOString(),
+    project: basename(resolve(project)),
+    auditTarget,
+    auditTargetSha256: auditTarget && existsSync(join(project, auditTarget))
+      ? createHash('sha256').update(readFileSync(join(project, auditTarget))).digest('hex')
+      : null,
+    copied,
+    missing,
+    missingSrcs,
+    files: entries,
+  };
+  writeWithSafety(join(destDir, MANIFEST_NAME), JSON.stringify(manifest, null, 2) + '\n', { inPlace: true });
+  console.log(`✓ 证据包清单 -> ${join('证据包', MANIFEST_NAME)}（${entries.length} 个文件记 sha256；M-Exist-2 据此复算）`);
 }
 
 console.log(`\n证据包生成完成: 复制 ${copied} 个文件, 跳过 ${missing} 个缺失源.`);

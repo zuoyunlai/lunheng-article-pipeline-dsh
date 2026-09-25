@@ -58,6 +58,10 @@ const m5 = (dir, draft, ev) => {
 }
 
 // 模板 T7.5 段的全 7 项（缺项即 P0 —— L-54 修好的「模板为真源，逐项都要有行」）
+// v18.12.0（L-33）：另加一行**战略门留痕**——本批起 M-Exist-5 要求 T7.5 记录给出
+//   `structure-check` / `methodology-check` / `cite-coverage` 三者的 exit（缺 → P1/P2）。
+//   这一行不是模板项，而是该门的**独立判据**（见 mexist-gates.mjs 的 STRATEGY_GATES）。
+const STRATEGY_ROW = { item: '战略门预检（T7 必跑三件）', ev: 'structure-check exit 0 / methodology-check exit 0 / cite-coverage exit 0', res: '✓' }
 const FULL_T75 = (extra = []) => [
   { item: '审计报告最新版存在', ev: 'audits/审计报告-v1.md', res: '✓' },
   { item: 'P0/P1 清单已列', ev: 'audits/审计报告-v1.md §修订任务书', res: '✓' },
@@ -66,8 +70,54 @@ const FULL_T75 = (extra = []) => [
   { item: '引用闭环（M-Exist-3：[Dxx] 正文 ↔ 数据卡条目）', ev: 'm-gate-check.mjs → M-Exist-3 通过', res: '✓' },
   { item: '论文交付物 vs 报告独立隔离', ev: 'final/定稿.md 无交接报告混入', res: '✓' },
   { item: '修订轮由独立写手执行', ev: 'audits/审计报告-v1.md 记录 T5 子代理', res: '✓' },
+  STRATEGY_ROW,
   ...extra,
 ]
+
+// v18.12.0（L-33）回归：三个战略门脚本的留痕判据（零留痕 P1 / 部分 P2 / 无 exit P2）
+//   注意：这几条用 `report.exit = 0`（默认夹具的 2 会额外触发两条 M 门对账 P0，把 severity 抬到 P0——
+//   那两条是别的判据，会掩盖本判据的档位）。故本组断言看**判据文本**与计数，severity 另按需看。
+test('L-33：T7.5 记录零留痕三个战略门脚本 → 判「完全未提」（P1 档）', () => {
+  const rows = FULL_T75().filter((r) => r.item !== STRATEGY_ROW.item)
+  const { dir, draft, ev } = mkProject({ t75Rows: rows, report: { script_exit_raw: 0, exit: 0 } })
+  try {
+    const { it } = m5(dir, draft, ev)
+    assert.equal(it.pass, false, '零留痕不得判通过')
+    assert.match(String(it.detail), /完全未提/, 'detail 须点名「完全未提」')
+    assert.match(String(it.detail), /战略门留痕 0\/3/, 'detail 须给出 0/3 计数')
+    assert.equal(it.severity, 'P1', '唯一硬问题时应正好是 P1：' + JSON.stringify(it))
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('L-33：只提 1/3 个战略门脚本 → P2 软提示并点名缺谁', () => {
+  const rows = FULL_T75().map((r) => (r.item === STRATEGY_ROW.item ? { ...r, ev: 'structure-check exit 0' } : r))
+  const { dir, draft, ev } = mkProject({ t75Rows: rows, report: { script_exit_raw: 0, exit: 0 } })
+  try {
+    const { it } = m5(dir, draft, ev)
+    assert.match(String(it.detail), /战略门留痕 1\/3/)
+    assert.match(String(it.detail), /methodology-check/, '须点名缺哪两个')
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('L-33：提了三个但不给 exit → P2（名字出现不算留痕，须紧跟 exit N）', () => {
+  const rows = FULL_T75().map((r) => (r.item === STRATEGY_ROW.item
+    ? { ...r, ev: 'structure-check / methodology-check / cite-coverage 已跑' } : r))
+  const { dir, draft, ev } = mkProject({ t75Rows: rows, report: { script_exit_raw: 0, exit: 0 } })
+  try {
+    const { it } = m5(dir, draft, ev)
+    assert.equal(it.pass, false, '缺 exit 不得判通过')
+    assert.match(String(it.detail), /未给 exit/)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('L-33 对照：三个齐全且各带 exit → 不再报（3/3）', () => {
+  const { dir, draft, ev } = mkProject({ t75Rows: FULL_T75(), report: { script_exit_raw: 0, exit: 0 } })
+  try {
+    const { it } = m5(dir, draft, ev)
+    assert.match(String(it.detail), /战略门留痕 3\/3/)
+    assert.doesNotMatch(String(it.detail), /完全未提|未给 exit|只提到/)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
 
 test('L-54：T7.5 记录缺模板要求的检查项 → 必须报（旧版因模板解析被 break 中断而空转通过）', () => {
   const { dir, draft, ev } = mkProject({ t75Rows: [{ item: '自造项', ev: 'exit 0', res: '✓' }] })

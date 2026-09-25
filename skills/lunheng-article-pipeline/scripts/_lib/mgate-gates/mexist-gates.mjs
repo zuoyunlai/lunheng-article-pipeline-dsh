@@ -4,6 +4,7 @@
 //   每个门函数只读 ctx 共享态并往 ctx.results 推结果；模块不持有跨门可变态。
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs'
 import { basename, join, dirname } from 'node:path'
+import { createHash } from 'node:crypto'   // v18.12.0（L-15）：M-Exist-2 复算证据包清单的 sha256
 import { refsOf, dataCardIds } from '../refs.mjs'
 import { latestReport, tableCells, isSeparatorRow, walkMd, sectionRange } from '../mgate-helpers.mjs'
 
@@ -309,6 +310,9 @@ try {
     const noteBits5 = [];      // v18.12.0：**纯信息**备注（不参与 pass 判定）——如「已按 T8 裁定放行」
     let handoffSeen5 = false;  // v18.12.0（L-10）：两份记录里是否写过交接门 handoff-check 的 exit
     let recordsFound5 = 0;     // v18.12.0：实际解析到的闸门记录份数（缺文件已在循环内单独报，不再叠加）
+    let blob5 = '';            // v18.12.0（L-33）：两份记录的**全文拼接**（判「战略门脚本有没有留痕」要跨表跨段看）
+    let blobT75_5 = '';        // v18.12.0（L-33）：**仅 T7.5 那份**的全文（战略门是 T7 的必跑项，T2.5 不该被判）
+    let strategySeen5 = null;  // v18.12.0（L-33）：T7.5 记录里给了 exit 的战略门脚本数（null = 未走到该判定）
     for (const gateId of ['T2.5', 'T7.5']) {
       const fp = join(auditsDir5, `闸门记录-${gateId}.md`);
       if (!existsSync(fp)) {
@@ -316,6 +320,8 @@ try {
         continue;
       }
       const ls5 = readFileSync(fp, 'utf8').split('\n');
+      blob5 += `\n# 闸门记录-${gateId}.md\n` + ls5.join('\n');   // v18.12.0（L-33）：全文拼接，供跨表判定用
+      if (gateId === 'T7.5') blobT75_5 = ls5.join('\n');
       const hIdx5 = ls5.findIndex((l) => /^\s*\|/.test(l) && /检查项/.test(l));
       if (hIdx5 === -1) { findings5.push(`闸门记录-${gateId}.md 缺「检查项」表格（表头须含 检查项 / 实据 / 结论）`); continue; }
       const header5 = tableCells(ls5[hIdx5]);
@@ -506,6 +512,42 @@ try {
     if (recordsFound5 > 0 && !handoffSeen5) {
       noteBits5.push('两份闸门记录均未写交接门 handoff-check 的 exit（v18.6.0 规定必写：`handoff-check --role Tn → exit 0/20/21/22`）——本条为信息性提示，未计入 pass');
     }
+    // v18.12.0（全量审计 L-33）：**T7 的三个战略门脚本「真跑过」的机械留痕**。
+    //   为什么单独加一条：`structure-check` / `methodology-check` / `cite-coverage` 是本包**三条反伪造线**
+    //   （编造章节结构 / 空方法段 / 幽灵引用），`pipeline-readme.md` 与 07 卡都写「T7 必跑」——但**没有任何
+    //   门核验它们真跑过**：记录里写不写、写什么值，机检一律不看。于是「必跑」在机械层等于不存在。
+    //   落地口径（**有意选择，非疏漏**）：只在 **T7.5** 记录上判，且只判「三个名字里提到了几个」——
+    //     ① 三个全未提 → **P1**（写在规范里的必跑项没有任何留痕）；
+    //     ② 提了但不足三个 → **P2**（部分留痕）；
+    //     ③ 提了就要求每个都紧跟一个 exit 数字（与 handoff 那条同口径；缺 exit 的名字不计入「提到」）。
+    //   为什么不做成「必须存在某个专用段落」：记录形态由主人与各项目自定，收得太紧会对既有形态过度收紧；
+    //   本条的锋芒是「必跑项不许零留痕」，而且**点名到脚本**（哪一条没跑一眼可见）。
+    //   ⚠️ 作用域：本块在 `for (gateId of ['T2.5','T7.5'])` **之外**（与该循环同级的收尾段），
+    //     故**不得引用 `gateId`**——用循环里存下的 `blobT75_5` 判「T7.5 那份记录里有没有」。
+    if (blobT75_5) {
+      const STRATEGY_GATES = [
+        ['structure-check', /structure-check/i],
+        ['methodology-check', /methodology-check/i],
+        ['cite-coverage', /cite-coverage/i],
+      ];
+      const miss3 = STRATEGY_GATES.filter(([, re]) => !re.test(blobT75_5)).map(([nm]) => nm);
+      const noExit = STRATEGY_GATES
+        .filter(([, re]) => re.test(blobT75_5))
+        .filter(([, re]) => !new RegExp(`${re.source}[^\\n]{0,80}?exit\\s*[=:：]?\\s*\\d+`, 'i').test(blobT75_5))
+        .map(([nm]) => nm);
+      strategySeen5 = STRATEGY_GATES.length - miss3.length;
+      if (miss3.length === STRATEGY_GATES.length) {
+        findings5.push(
+          'T7.5 记录**完全未提** T7 的三个战略门脚本（structure-check / methodology-check / cite-coverage）——'
+          + '`pipeline-readme.md` 与 07-审计卡均写明「T7 必跑」，本项是它们在机械层唯一的留痕要求（v18.12.0 L-33）',
+        );
+      } else if (miss3.length) {
+        soft5.push(`T7.5 记录只提到 ${strategySeen5}/3 个战略门脚本，缺：${miss3.join(' / ')}`);
+      }
+      if (noExit.length) {
+        soft5.push(`T7.5 记录提到战略门脚本但未给 exit：${noExit.join(' / ')}（写法示例：\`structure-check exit 1 / methodology-check exit 0 / cite-coverage exit 0\`）`);
+      }
+    }
     if (!existsSync(tplPath5)) soft5.push('未找到 references/templates/闸门记录-template.md（检查项清单降级为仅结构校验）');
     const hard5 = findings5.length > 0;
     results.push({
@@ -516,6 +558,7 @@ try {
         hard5 ? `硬问题：${findings5.slice(0, 3).join('；')}` : '闸门记录齐备且实据为机械证据',
         soft5.length ? `软提示：${soft5.slice(0, 2).join('；')}` : '',
         noteBits5.length ? `备注：${noteBits5.slice(0, 2).join('；')}` : '',
+        strategySeen5 !== null ? `战略门留痕 ${strategySeen5}/3` : '',
       ].filter(Boolean).join(' ｜ '),
       severity: hard5 ? (contradict5 || findings5.length > 3 ? 'P0' : 'P1') : (soft5.length ? 'P2' : '通过'),
     });
@@ -1123,14 +1166,69 @@ if (files.length === 0 && isDraftStageAudit) {
     severity: '通过',
   });
 } else {
+  // v18.12.0（全量审计 L-15）：**清单复算**——证据包此前是「内容全公开的目录」，任何人可往里丢文件或
+  //   覆盖其中一份，而没有任何门会注意到（本项旧判据只数「几个 .md / 有没有 0 字节」，「证据包指纹」
+  //   那条只核「占位符出现了没有」）。`build-evidence-bundle.mjs` 现在产出 `manifest.json`（逐文件
+  //   sha256 + 字节数 + 被审正文指纹），此处复算比对：
+  //     ① 清单在、且每个登记文件的现算 sha256/字节数一致；
+  //     ② 目录里**没有未登记的 .md**（空降产物）；
+  //     ③ 被审正文指纹与清单记录一致（顺带把 L-47 的正文互锁扩到证据包这一侧）。
+  //   **精度边界（如实）**：本清单不设防「同时改文件与改清单」——它防的是**静默**（任何不一致都留可见
+  //   痕迹）。清单缺失不判死（degraded，P2）：既有项目在 v18.12.0 之前生成的包没有清单，报死会制造
+  //   一批假 P0；但会**显式提示刷新**，且 detail 写明「未核」而不是「已核过」。
+  const manifestPath = join(evDir, 'manifest.json');
+  let manifestProblem = null;   // 硬问题（P0）
+  let manifestNote = '';        // 提示（不改严重度）
+  let manifestChecked = false;
+  if (existsSync(manifestPath)) {
+    try {
+      const mf = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      const drifted = [];
+      const absent = [];
+      for (const e of (mf.files || [])) {
+        const full = join(evDir, e.path);
+        if (!existsSync(full)) { absent.push(e.path); continue }
+        const buf = readFileSync(full);
+        const sha = createHash('sha256').update(buf).digest('hex');
+        if (sha !== e.sha256 || buf.length !== e.bytes) drifted.push(`${e.path}（登记 ${e.bytes}B/${String(e.sha256).slice(0, 8)} → 实为 ${buf.length}B/${sha.slice(0, 8)}）`);
+      }
+      const registered = new Set((mf.files || []).map((e) => e.path));
+      const extra = files
+        .map((f) => f.slice(evDir.length + 1).replaceAll('\\', '/'))
+        .filter((r) => !registered.has(r));
+      if (absent.length || drifted.length || extra.length) {
+        manifestChecked = true;
+        manifestProblem =
+          (absent.length ? `登记的文件已不在包里: ${absent.slice(0, 4).join(', ')}${absent.length > 4 ? `（…共 ${absent.length} 个）` : ''}；` : '') +
+          (drifted.length ? `内容与清单不符: ${drifted.slice(0, 3).join('；')}${drifted.length > 3 ? `（…共 ${drifted.length} 个）` : ''}；` : '') +
+          (extra.length ? `包内出现**未登记**的文件: ${extra.slice(0, 4).join(', ')}${extra.length > 4 ? `（…共 ${extra.length} 个）` : ''}` : '');
+      } else {
+        manifestChecked = true;
+        // ② 被审正文指纹（配这一版正文生成的包吗）
+        if (mf.auditTarget && mf.auditTargetSha256 && existsSync(join(dirname(dirname(evDir)), mf.auditTarget))) {
+          const cur = createHash('sha256').update(readFileSync(join(dirname(dirname(evDir)), mf.auditTarget))).digest('hex');
+          if (cur !== mf.auditTargetSha256) {
+            manifestNote = `｜ ⚠️ 被审正文 \`${mf.auditTarget}\` 自清单生成后已变更（指纹不符）——本包是**旧版正文**的证据，请重跑 build-evidence-bundle.mjs`;
+          }
+        }
+        manifestNote = `｜ ✓ 清单复算通过（${(mf.files || []).length} 个文件 sha256 一致，无空降文件）${manifestNote}`;
+      }
+    } catch (e) {
+      manifestProblem = `清单无法解析（${e.message}）——请重跑 build-evidence-bundle.mjs 重生成`;
+      manifestChecked = true;
+    }
+  } else {
+    manifestNote = '｜ ⚠️ 无 manifest.json（v18.12.0 前生成的包）——**本包内容未核**，请重跑 build-evidence-bundle.mjs 补清单';
+  }
   results.push({
     gate: 'M-Exist-2 证据包完整性',
-    pass: files.length > 0 && empty.length === 0 && !layoutAnomaly,
+    pass: files.length > 0 && empty.length === 0 && !layoutAnomaly && !manifestProblem,
     detail:
       `${files.length} 个 .md 文件` +
       (empty.length ? `，空文件: ${empty.map(relOf).join(',')}` : '，无空文件') +
-      (layoutAnomaly ? ` ｜ 布局异常（P1）：${layoutAnomaly}` : ''),
-    severity: (files.length === 0 || empty.length > 0) ? 'P0' : (layoutAnomaly ? 'P1' : '通过'),
+      (layoutAnomaly ? ` ｜ 布局异常（P1）：${layoutAnomaly}` : '') +
+      (manifestProblem ? ` ｜ 清单复算失败（P0）：${manifestProblem}` : manifestNote),
+    severity: (files.length === 0 || empty.length > 0 || manifestProblem) ? 'P0' : (layoutAnomaly ? 'P1' : '通过'),
   });
 }
 

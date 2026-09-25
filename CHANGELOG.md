@@ -56,7 +56,29 @@
 - **L-64 / L-65 fail-open 与弱判据**：`journal-fit --project` 敲错路径时**静默跳过全部项目级检查并 exit 0**（结论比正确传参更宽松）→ exit 10；`handoff-check` B 组六要素由「词出现过没有」改为**结构判据**（段首形态）——旧判据下一行散文「产物在哪我还没整理，怎么验证暂缺……」也能 exit 0 放行。
 - **L-72 `svg.mjs` 补 `<style>`**：`<style>@import url(外部)</style>` 此前**零告警**通过 sanitize（与本包「外部资源引用必须告警」的口径相悖）→ 剥离 + 告警，同步禁止清单。
 
-### 六、刻意不改并登记的代价（如实）
+### 六、收口补丁（发布后闭环，同日）
+
+> 发布后第三方复核指出三处「尚未闭环」，逐条落地或如实登记：
+
+- **L-72c `md2html` 退出码 2 → 40**：`--strict` 校验失败 / SVG 结构不合格此前用 `exit 2`，而 `2` 在本仓 M 门语义里是「存在 P0 失败」——复核者会把「因**缺图件**拒绝导出」读成「定稿有 P0」，两者补救动作完全不同（补图件 vs 改正文）。现改用独立码 **`40`**（同族：交接门 20/21/22、model-routing 4、裁定被拒 30），并在 `docs/troubleshooting.md` §8 新增**命名空间配额**段：非 M 门语义一律另给码、不得复用 0-3/10/70，下次新增从这里往后取。
+- **L-33 T7 三个战略门脚本的留痕判据（此前「已在对照表登记为待补门」→ 本批落地）**：`structure-check` / `methodology-check` / `cite-coverage` 是三条反伪造线，规范写「T7 必跑」而机械层**零核验**。现由 M-Exist-5 判：T7.5 记录完全未提三者 → **P1**；提了不足三个 → **P2**；提到却未紧跟 `exit N` → **P2**；detail 固定输出「战略门留痕 N/3」。
+- **L-15 证据包清单（此前「证据包可被管道外产物增补」）**：证据包是内容全公开的目录——被替换/截断/塞入文件时**无声通过**（M-Exist-2 只数几个 `.md`，「证据包指纹」只核占位符存在）。现 `build-evidence-bundle.mjs` 产出 `final/证据包/manifest.json`（逐文件 sha256 + 字节数 + 被审正文指纹），M-Exist-2 复算：内容不符 / 文件缺失 / **空降未登记文件** → **P0** 并点名；无清单 → P2 提示「本包内容未核」（不判死，避免对 v18.12.0 之前生成的包制造假 P0）。**边界已在对照表如实登记**：不设防「同时改文件与改清单」，它防的是**静默**。
+- **`latest` dist-tag 手工前移**：`npm publish --tag dsh` 只动 `dsh`，`latest` 因 `NPM_TOKEN` 已删而从不自动前移（`CONTRIBUTING.md` §升级流程 6 已有此警告）。发布后两个 tag 都指向 18.12.0。
+- **CI `loader-smoke` 红：** 已定位为**上游缺陷**、非本包问题，故本版不改 CI——证据与处方见下节「如实声明」。
+
+### 七、刻意不改并登记的代价（如实）
+
+- **CI `loader-smoke` 红，且已确认是上游缺陷**（本版**不改 CI**）。证据链（全部可复现）：
+  1. `ci.yml` 的 `loader-smoke` 跑官方 `pnpm dlx dsh-plugin-guide@0.3.16 verify .`；它的三个前置子步 **`pack ✓ / install ✓ / dump-config ✓` 全过**，只倒在自己的 `headless-smoke` 上；
+  2. 报错是 `Error: dsh: user patch-layer watching requires the Cordis HMR service`（栈顶 `dsh-app-boot/lib/index.js:1112`）——即 **DSH 自己的 headless 启动失败**，与本包代码无关；
+  3. 根因（读 `dsh-app-boot/lib/*.js` 确认）：`dsh plugin … add` 生成的 profile manifest 带 `"dsh": { "profile": { "patchReload": "live" } }`（`DEFAULT_PROFILE_PATCH_RELOAD = "live"`，注释「Custom profiles retain the historical live patch-file behavior」），而 `profile-boot` 在 `patchReload === "live"` 时调用 `watchUserPatches()`，该函数在拿不到 `ctx.get('hmr')` 时直接抛错 → headless 环境必红。**已在本机用 `dsh plugin --profile smoke add @deepseek-ai/dsh-base` 复现同一 manifest 形态**（`"patchReload": "live"`）。
+  4. 处方（给上游或 CI）：把该 profile 的 `dsh.profile.patchReload` 设为 **`"startup"`**，或在 `patchReload === "live"` 且无 HMR 时降级而非抛错。CI 侧亦可改 pin 到更新版 dsh（本机只装了 0.1.5-rc.2，**未验证**新版本是否已修——故本版**不做未经验证的改动**）。
+  > 影响面：`loader-smoke` **不在 `publish.yml` 的 `gates` 里**，故它红不影响发布；但**仓面 CI 徽章是红的**，这一事实已登记进 `references/maintainers.md`（维护者向），并在本版交付里如实声明——而不是把红说成绿。
+- **`md2html` 退出码已收口**（`2` → `40`）：无遗留。
+- **仍留给主人决策的两条**（审计报告 §5 第四梯队明确建议「先定义清晰，再决定是加强检查还是放开豁免」——本轮**未擅自定案**）：
+  - **L-08 人在环四门留痕**：最近两个项目各只有 2/4 门留痕，而「未留痕」当前是被允许的（只写进交付说明 §11）。做成硬门需要先决定「Phase 0/2.5/3.5/5 四门是否全部必需」——这是**流程取舍**，不是机械判据问题。
+  - **L-06 产物 `-vN` 语义**：真实项目里「审计报告-vN 的 N 跟谁走」两套用法并存（跟初稿版本 vs 跟审计轮次）。`handoff-check` 已按「跟被审正文版本」判（A4 硬项），但**规范层没写死**；要么把现有口径写进 `deliverables.md`，要么放开。
+- **L-25（`docs/` 与 `examples/` 不在技能目录内，却被 6 处当运行期读物引用）**：属**包布局**取舍——把 `docs/` 移进技能目录会把它带进 `npm pack` 的发布面（与「发布面裁剪」门冲突），保持现状则那 6 处引用只在仓库布局下有效。两条路都有代价，需主人拍板（本轮**未改**，已在审计报告 §5 第四梯队登记）。
 
 - **`md2html` 仍用 exit 2 表示 `--strict` 校验失败**（2 在 M 门语义里是「P0 失败」）。它与 `m-gate-check` **从不同批调用**，当前不构成现实撞码；改码牵动多处文档与调用方，收益 < 成本。代价写进 `docs/troubleshooting.md` §8 的「不共用本语义的工具」表：**调用方必须按该脚本自己的头注释读码**；若将来有脚本把两者串起来判，须先把它改成独立码。
 - **`L-33`（三个战略门脚本「真跑过」的机检）仍未机械化**：已登记为待补门，补门需新增一致性规则或 M 门子项并牵动阈值表生成，宜独立提交。

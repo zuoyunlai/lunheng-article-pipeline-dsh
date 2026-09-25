@@ -679,7 +679,7 @@ ls -l final/图件/                     # 图件清单（应与正文 [图N] 一
 node skills/lunheng-article-pipeline/scripts/m-gate-check.mjs final/定稿.md final/证据包 --summary
 ```
 
-**实战背景**：本项落地时同步做了三件事——① `md2html.mjs` 支持 `--fig-dir` 按图号配图（旧版把同一份 SVG 嵌进每个 `[图N]`，多图文章导出 PDF 会得到 N 张相同的图，**静默错误**）；② 行内图位改为容错内联并告警；③ 坏 SVG 由「原样嵌入 exit 0」改为 **exit 2 拒绝导出**。三项均在 `CHANGELOG.md` 有端到端演练记录。
+**实战背景**：本项落地时同步做了三件事——① `md2html.mjs` 支持 `--fig-dir` 按图号配图（旧版把同一份 SVG 嵌进每个 `[图N]`，多图文章导出 PDF 会得到 N 张相同的图，**静默错误**）；② 行内图位改为容错内联并告警；③ 坏 SVG 由「原样嵌入 exit 0」改为 **拒绝导出**（v18.12.0 起 `exit 40`；此前用 `exit 2`，与 M 门「2 = P0」撞义，已改）。三项均在 `CHANGELOG.md` 有端到端演练记录。
 
 ---
 
