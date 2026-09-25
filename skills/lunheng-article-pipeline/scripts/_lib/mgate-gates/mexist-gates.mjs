@@ -282,12 +282,19 @@ try {
       const tl = readFileSync(tplPath5, 'utf8').split('\n');
       let cur5 = null;
       let inTable5 = false;
+      // v18.12.0（全量审计 L-54）：`tableDone5` = **本节**表格已结束。
+      //   旧版在「表格之外的行」上写 `break` → 该 break 退出的是**整个模板扫描循环**，
+      //   而 `闸门记录-template.md` 的 T2.5 表后紧跟空行 → 循环在 T2.5 表末就 break，
+      //   **T7.5 段永不解析**（实测 tplItems['T7.5'] = 0 项）→ T7.5 的「模板逐项都要有行」
+      //   在空列表上空转通过：把闸门记录写成一行自造项也能拿到 pass。
+      //   现改为「按节」语义：非表格行只结束**本节**的收集，不影响后续节。
+      let tableDone5 = false;
       for (const l of tl) {
         const h = l.match(/^#{2,4}\s*(T2\.5|T7\.5)\b/);
-        if (h) { cur5 = h[1]; inTable5 = false; continue; }
-        if (/^#{2,4}\s/.test(l)) { cur5 = null; inTable5 = false; continue; }   // 进入下一节 → 停止收集
-        if (!cur5) continue;
-        if (!/^\s*\|/.test(l)) { if (inTable5) break; continue; }               // 表格结束后不再收集
+        if (h) { cur5 = h[1]; inTable5 = false; tableDone5 = false; continue; }
+        if (/^#{2,4}\s/.test(l)) { cur5 = null; inTable5 = false; tableDone5 = false; continue; }   // 进入下一节 → 停止收集
+        if (!cur5 || tableDone5) continue;
+        if (!/^\s*\|/.test(l)) { if (inTable5) tableDone5 = true; continue; }   // 本表结束 → 本节不再收集
         inTable5 = true;
         const c = tableCells(l);
         if (!c.length || isSeparatorRow(c)) continue;
@@ -299,6 +306,9 @@ try {
     const soft5 = [];
     const detailBits = [];
     let contradict5 = false;   // 闸门结论 ↔ M 门报告自相矛盾 = 单独定为 P0（不随条数降级）
+    const noteBits5 = [];      // v18.12.0：**纯信息**备注（不参与 pass 判定）——如「已按 T8 裁定放行」
+    let handoffSeen5 = false;  // v18.12.0（L-10）：两份记录里是否写过交接门 handoff-check 的 exit
+    let recordsFound5 = 0;     // v18.12.0：实际解析到的闸门记录份数（缺文件已在循环内单独报，不再叠加）
     for (const gateId of ['T2.5', 'T7.5']) {
       const fp = join(auditsDir5, `闸门记录-${gateId}.md`);
       if (!existsSync(fp)) {
@@ -313,6 +323,7 @@ try {
       const iItem = ci5(/检查项/), iEv = ci5(/实据|证据|依据/), iRes = ci5(/结论|判定/), iWhy = ci5(/失败原因|原因|备注/);
       if (iEv === -1 || iRes === -1) { findings5.push(`闸门记录-${gateId}.md 表头须含「实据」「结论」列（现有：${header5.join(' / ')}）`); continue; }
       const rows5 = [];
+      recordsFound5++;
       for (let i = hIdx5 + 1; i < ls5.length; i++) {
         const l = ls5[i];
         if (/^#{2,4}\s/.test(l)) break;
@@ -385,47 +396,100 @@ try {
       if (rows5.length === 0) findings5.push(`闸门记录-${gateId}.md 表格无有效行`);
       detailBits.push(`${gateId} ${rows5.length} 行（✓ ${resPass}）`);
       // T7.5 ↔ M-Gate-Report.json 对账（自相矛盾即 P0）
-      if (gateId === 'T7.5' && rows5.length > 0 && resPass === rows5.length) {
-        const repPath5 = [join(dirname(draftPath), 'M-Gate-Report.json'), join(projDir5, 'final', 'M-Gate-Report.json')].find((p) => existsSync(p));
-        if (repPath5) {
-          try {
-            const rj = JSON.parse(readFileSync(repPath5, 'utf8'));
-            // v18.0.0 修复（自引用循环）：脚本报告的 `exit` 是**脚本机械值**，会随每次重跑变化；
-            //   而 T7.5 闸门记录是**人工/主控当场写**的结论。若直接比对「闸门全 ✓ vs exit ≠ 0」，
-            //   会遇到两重问题：① 脚本重跑（含 final-check 串联）会覆写报告，把 T8 裁定段冲掉；
-            //   ② 判定依赖上一次跑分 → 形成「跑分低→判 P0→闸门不过→再跑分……」的自引用循环。
-            // 现规则：**优先采信 T8 裁定段**（`_t8_conclusion`）——存在且 `true_p0 === 0` / `true_p1 === 0`
-            //   时，闸门与报告视为一致（放行）；仅在无 T8 裁定段时才回退比对脚本 exit。
-            // v18.0.5 加（第三方审计 P0-1）：T8 裁定**只在绑定同一版正文时**才算数——报告带
-            //   `verdict_stale === true`（正文指纹与裁定时不符）时，回退比对 `script_exit_raw`，
-            //   避免「旧裁定永久放行」使本分支永不可达。
-            const t8 = rj._t8_conclusion;
-            const t8Clean = t8 && Number(t8.true_p0) === 0 && Number(t8.true_p1) === 0 && rj.verdict_stale !== true;
-            const mechanicalExit = typeof rj.script_exit_raw === 'number' ? rj.script_exit_raw : rj.exit;
-            if (t8Clean) {
-              soft5.push(
-                `闸门 ↔ 报告对账：已按 T8 裁定段放行（true_p0=0 / true_p1=0；脚本 script_exit_raw=${rj.script_exit_raw ?? rj.exit}）`,
-              );
-            } else if (t8 && rj.verdict_stale === true) {
+      // === v18.12.0（全量审计 L-02 / L-03 / L-22 / L-10）：闸门行 ↔ 真实产物 **绑定对账** ===
+      // 旧版三条空洞（本次审计实测，均在本机三个已交付项目上复现）：
+      //   ① 整段对账被 `resPass === rows5.length`（**全行皆 ✓**）守卫 —— 写一行 ✗ 或 N/A 即整段跳过，
+      //      而模板本身允许 ✗ / N/A 两种结论词 → 最需要它的三个项目**全部绕过**；
+      //   ② 实据列只做**语法匹配**（`/[\\/]|exit \d|…/`）：15 行全填伪造值 `exit 0` 也判「实据为机械证据」；
+      //   ③ 结论词只查「是否在固定集合内」，**不与实据对账** —— 用 `exit=2` 的实据标 ✓ 照样过。
+      // 现按**行**绑定（不再有「全 ✓」前置）：结论为 ✓ 的行，其实据必须能在真实产物上核实。
+      // v18.12.0：M 门报告的位置**兼容三种布局**——`final/M-Gate-Report.json`（现行真源）、
+      //   `audits/M-Gate-Report.json`（旧路径）、`audits/M-Gate-Report-v*.json`（更旧）。只认现行路径
+      //   会对旧布局项目造成假 P1「结论无产物可核」。
+      const repPath5 = [
+        join(dirname(draftPath), 'M-Gate-Report.json'),
+        join(projDir5, 'final', 'M-Gate-Report.json'),
+        join(projDir5, 'audits', 'M-Gate-Report.json'),
+        latestReport(auditsDir5, 'M-Gate-Report'),
+      ].find((p) => p && existsSync(p));
+      let rj5 = null;
+      if (repPath5) {
+        try {
+          rj5 = JSON.parse(readFileSync(repPath5, 'utf8'));
+        } catch (e) {
+          // v18.2.6 审计修复 P1-7：旧 `catch {}` 让解析失败**静默丢弃对账**（读过却没核到）。
+          soft5.push(`M-Gate-Report.json 无法解析，未做闸门↔报告对账（**不是**「无需对账」）：${e.message}`);
+        }
+      }
+      // 有效裁定值：T8 裁定段干净（且非过期、无红线命中）→ 0；否则用脚本机械值。
+      //   字段名兼容 `true_p0` / `true_p0_count`（L-04）；红线项命中则裁定无效（L-44）。
+      const mechExit5 = rj5 ? (typeof rj5.script_exit_raw === 'number' ? rj5.script_exit_raw : rj5.exit) : null;
+      const t8b = rj5 && rj5._t8_conclusion;
+      const t8Clean5 = !!t8b
+        && Number(t8b.true_p0 ?? t8b.true_p0_count) === 0
+        && Number(t8b.true_p1 ?? t8b.true_p1_count) === 0
+        && rj5.verdict_stale !== true
+        && !(Array.isArray(rj5.hard_red_line_hits) && rj5.hard_red_line_hits.length > 0);
+      const effectiveExit5 = rj5 ? (t8Clean5 ? 0 : mechExit5) : null;
+      for (const r of rows5) {
+        const item = (r[iItem] || '').trim();
+        const ev = (r[iEv] || '').replace(/<[^>]*>/g, '').trim();
+        const res = (r[iRes] || '').trim();
+        if (!item || !/^(✓|✅|通过)$/.test(res)) continue;      // 只核「结论 ✓」的行（✗ 行另有「必写原因」检查）
+        if (/handoff|交接门/i.test(item) || /handoff-check/i.test(ev)) {
+          if (!/exit\s*[=:：]?\s*(0|20|21|22)\b/i.test(ev)) {
+            findings5.push(`${gateId}「${item}」涉及交接门 handoff-check，但实据未给出 exit（须为 0/20/21/22 之一，模板 v18.6.0 规定必写）`);
+          } else handoffSeen5 = true;
+        }
+        if (/M\s*门/.test(item)) {
+          // ① 实据里的 `exit N` 必须等于报告的机械值（防「写个像证据的字符串」）
+          const mExit = ev.match(/exit\s*[=:：]?\s*(\d+)/i);
+          if (!repPath5) {
+            findings5.push(`${gateId}「${item}」判 ✓，但未找到 final/M-Gate-Report.json——结论无产物可核（实据绑定失败）`);
+          } else if (rj5) {
+            if (mExit && Number(mExit[1]) !== mechExit5) {
               contradict5 = true;
-              findings5.push(
-                `闸门记录-T7.5 全判 ✓，但 M-Gate-Report.json 的 T8 裁定段**已过期**（verdict_stale=true：${rj.verdict_stale_reason || '正文指纹不符'}）且本次机械值 script_exit_raw = ${mechanicalExit}——须 T8 就**本版正文**重新裁定（P0）`,
-              );
-            } else if (typeof rj.exit === 'number' && rj.exit !== 0) {
-              contradict5 = true;
-              findings5.push(
-                `闸门记录-T7.5 全判 ✓，但 M-Gate-Report.json 的 exit = ${rj.exit}（非 0）且**无 T8 裁定段**——闸门结论与 M 门报告自相矛盾（P0）`,
-              );
+              findings5.push(`${gateId}「${item}」实据写 exit=${mExit[1]}，而 M-Gate-Report.json 的机械值 script_exit_raw=${mechExit5}——实据与产物不符（P0）`);
             }
-          } catch (e) {
-            // v18.2.6 审计修复 P1-7：旧 `catch {}` 让「既有 M-Gate-Report.json 解析失败」**静默丢弃
-            //   T8 裁定段的对账**——而该报告里 `_t8_conclusion` 的保留逻辑正是为这条对账而写
-            //   （解析失败 = 读过却没核到，闸门会照显「闸门记录全判 ✓」而无任何提示）。
-            //   现按既有做法记 soft5 并给出原因（**不是**「无需对账」）。
-            soft5.push(`M-Gate-Report.json 无法解析，未做闸门↔报告对账（**不是**「无需对账」）：${e.message}`);
+            if (effectiveExit5 !== 0) {
+              contradict5 = true;
+              findings5.push(
+                `${gateId}「${item}」判 ✓，但 M 门**有效裁定值** = ${effectiveExit5}`
+                + `（script_exit_raw=${mechExit5}${rj5.verdict_stale === true ? '，且 T8 裁定已过期 verdict_stale=true' : ''}`
+                + `${Array.isArray(rj5.hard_red_line_hits) && rj5.hard_red_line_hits.length ? `，且命中硬红线 ${rj5.hard_red_line_hits.join('/')}` : ''}`
+                + `）——闸门结论与 M 门报告自相矛盾（P0）`,
+              );
+            } else if (t8Clean5 && mechExit5 !== 0) {
+              // 仅在「机械值非 0、但 T8 就本版正文做了干净裁定」时提示——机械值本就是 0 的常规情形
+              // **不加任何提示**（否则合规项目会因一条无信息量的软提示变成 pass=false → exit 3）。
+              // 走 noteBits5（**不进 soft5**）：这是纯信息（「已按裁定放行」），不该把一次合法裁定
+              // 变成新的 exit≠0（旧版把它 push 进 soft5 → 任何被裁定的项目都到不了 exit 0）。
+              noteBits5.push(`已按 T8 裁定段放行（script_exit_raw=${mechExit5}；正文指纹一致且无红线命中）`);
+            }
+          }
+        }
+        // ② 实据里引用的**产物路径**必须真实存在（只核「该阶段必然已存在」的目录；`final/定稿.md`
+        //    等 Phase 5 产物在 T7.5 时可能尚未生成，故不核 final/ 根下、也不核 references/ / scripts/）
+        const PATH_WHITELIST = /^(?:[A-Za-z]:\/|\/|(?:audits|drafts|analysis|literature|data|cases)\/|final\/(?:证据包|图件)\/)/;
+        const cited = [...new Set((ev.match(/[A-Za-z]:[\\/][^\s，。；;）)】]+|[\w][\w./\\-]*\.(?:md|json|svg|txt|html)/g) || [])
+          .map((p) => p.replace(/\\/g, '/'))
+          .filter((p) => PATH_WHITELIST.test(p)))];
+        for (const p of cited) {
+          const abs = /^[A-Za-z]:\//.test(p) || p.startsWith('/') ? p : join(projDir5, p);
+          if (!existsSync(abs)) {
+            soft5.push(`${gateId}「${item}」实据引用的路径不存在：${p}（**不是**「无需核对」——请补真实产物路径或修正）`);
           }
         }
       }
+    }
+    // v18.12.0（L-10）：v18.6.0 规定两道闸门记录须写交接门 `handoff-check` 的 exit（20/21/22）。
+    //   审计实测：20 个真实项目里只有 1 个真跑过，而机检**从不检查**这一条（规则写着「不写 = 判 P1」）。
+    //   落地口径（**有意选择，非疏漏**）：① 行内**提到** handoff 却未给 exit → 硬问题（上面已按行判，精确）；
+    //   ② 两份记录**都没提** handoff → 记 **noteBits**（可见、但不改 pass）。理由：把②做成 P1/P2 会让
+    //   所有既有形态（含十数个历史项目的记录）一律非通过，属「对历史形态过度收紧」——「不写就红」的
+    //   代价应由主人权衡后再定；此处先保证**看得见**。详见修订记录 §未做项。
+    if (recordsFound5 > 0 && !handoffSeen5) {
+      noteBits5.push('两份闸门记录均未写交接门 handoff-check 的 exit（v18.6.0 规定必写：`handoff-check --role Tn → exit 0/20/21/22`）——本条为信息性提示，未计入 pass');
     }
     if (!existsSync(tplPath5)) soft5.push('未找到 references/templates/闸门记录-template.md（检查项清单降级为仅结构校验）');
     const hard5 = findings5.length > 0;
@@ -436,6 +500,7 @@ try {
         detailBits.join(' / ') || '两表单均缺失',
         hard5 ? `硬问题：${findings5.slice(0, 3).join('；')}` : '闸门记录齐备且实据为机械证据',
         soft5.length ? `软提示：${soft5.slice(0, 2).join('；')}` : '',
+        noteBits5.length ? `备注：${noteBits5.slice(0, 2).join('；')}` : '',
       ].filter(Boolean).join(' ｜ '),
       severity: hard5 ? (contradict5 || findings5.length > 3 ? 'P0' : 'P1') : (soft5.length ? 'P2' : '通过'),
     });
@@ -888,7 +953,15 @@ try {
   const outline10 = [join(projDir10, 'analysis', '分析大纲.md'), join(evDir, '分析大纲.md')]
     .find((p) => existsSync(p)) || null;
   if (!outline10) {
-    results.push({ gate: 'M-Exist-10 大纲 §11 精简段', pass: true, detail: 'N/A：未找到分析大纲（尚未进入 Phase 2）', severity: '通过' });
+    // v18.12.0（全量审计 L-23）：N/A 不得读成「通过」。旧文案「尚未进入 Phase 2」在**轻量档主动省 T4**
+    //   的场景下是误导（该档位永远走不到 Phase 2 的大纲产出），且与 M-Form-8 的静默跳过叠加后，
+    //   移动一个文件即可关掉两道门。现按「未检（degraded）」如实陈述，并指向连带规则。
+    results.push({
+      gate: 'M-Exist-10 大纲 §11 精简段',
+      pass: true,
+      detail: 'N/A 且**未检**：未找到 analysis/分析大纲.md（若为轻量档主动省 T4，须按 SKILL.md 连带规则：主控代产最小 §11 精简段，或在 status.md + final/局限性.md 显式记豁免）',
+      severity: 'P2',
+    });
   } else {
     const ol10 = readFileSync(outline10, 'utf8').split('\n');
     // v18.6.2 反哺（假 P0 修复）：旧版 findIndex 返回**首个**匹配，若大纲任何 ## 标题含「精简段/写手版」

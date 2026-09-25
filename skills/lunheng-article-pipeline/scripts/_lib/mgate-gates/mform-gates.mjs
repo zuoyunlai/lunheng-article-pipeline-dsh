@@ -405,11 +405,19 @@ try {
   // **同一证据被 ≥3 个论点标为承重墙 = 超载**（教训：善行实战祁东案一个案例承重四个论点，
   // 被击穿则整链塌）。此前该规则只有 T6 的专项批判 + T7 的 LLM 复核，**没有任何机械计数**。
   // 判定方式与格式无关：清单区内每个论点最多贡献一次 top1 标注，故同一编号出现 ≥3 次即 ≥3 个论点。
-  const wall8 = { checked: false, rows: 0, overload: [], ghost: [], claims: 0, notes: [], headRow: '' };
+  const wall8 = { checked: false, degraded: false, rows: 0, overload: [], ghost: [], claims: 0, notes: [], headRow: '' };
   try {
     const projDir8 = dirname(dirname(draftPath));
     const outlinePath8 = [join(projDir8, 'analysis', '分析大纲.md'), join(evDir, '分析大纲.md')]
       .find((p) => existsSync(p));
+    // v18.12.0（全量审计 L-23）：**找不到大纲 ≠ 无需检查**。旧版整块跳过 → `wall8.checked` 保持 false →
+    //   detail 里的 `wallBit` 为空串 → 「承重墙超载」这道门**静默消失**，读者从 detail 看不出它根本没跑
+    //   （实测：把 `analysis/分析大纲.md` 改名后，M-Form-8 报「3 段：0 段缺 L，0 段覆盖 <2 类」通过，
+    //   总 exit=0；同一动作还让 M-Exist-10 退成 N/A 通过 —— 移动一个文件即关掉两道门）。
+    //   现显式留痕：`degraded8 = true` 并让 detail 无条件带出「承重墙未检」。
+    //   注意：这里**不改 pass**（避免对「本就没有大纲的档位/夹具」造成大面积假 exit≠0，
+    //   轻量档省 T4 的连带规则见 `SKILL.md` §边界与轻量化建议），但**可见性**必须成立。
+    if (!outlinePath8) wall8.degraded = true;
     if (outlinePath8) {
       const ol = readFileSync(outlinePath8, 'utf8').split('\n');
       // **锚点必须是「结构信号」**（v17.0.0 修复，端到端测试反哺）：
@@ -551,7 +559,9 @@ try {
   const wallHeadBit = wall8.checked && wall8.headRow
     ? `（清单锚点表头：${wall8.headRow.slice(0, 46)}${wall8.headRow.length > 46 ? '…' : ''}）`
     : '';
-  const wallBit = wall8.checked
+  const wallBit = wall8.degraded
+    ? '承重墙**未检**（未找到 analysis/分析大纲.md 或证据包副本 → 超载/幽灵两项均未执行，**不是**「通过」）'
+    : wall8.checked
     ? (wall8.overload.length
       ? `承重墙超载：${wall8.overload.join(',')}（同一证据被 ≥3 论点承重 → 降级为辅助证据或补检索）`
       : (wall8.rows > 0 ? `承重墙 ${wall8.rows} 条标注、无超载` : (wall8.notes[0] || '承重墙清单为空'))) + wallHeadBit

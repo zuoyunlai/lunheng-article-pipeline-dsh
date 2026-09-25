@@ -360,7 +360,15 @@ const p2 = hard.filter((r) => r.severity === 'P2').length;
 //     2. M-Form-7 文末白名单顺序错误（顺序颠倒或缺失）
 //     3. M-Exist-1 漏引 > 0（正文有但文末无）
 //     4. M-Integrity-1 T2.5 数据条目数 < 需求总数（数据完整性）
-//   实装：以下硬 P0 红线检查在 `exit` 判定时强制重审（不依赖 _t8_llm_review）。
+//   实装（v18.12.0，全量审计 L-44）：以下硬 P0 红线在 `exit` 判定与**落盘**时强制重审。
+//     ⚠️ 本块此前**只有注释、没有实现**（审计实测：声明「强制重审」，而紧随其后的 `exitCode` 表达式里
+//     一行红线判定都没有）→ 四条最关键的缺陷仍可被一纸 `_t8_conclusion` 放行。
+//     现落到两处：① 本处收集 `hard_red_line_hits` 写进报告；② 落盘时**拒绝采纳**既有 T8 裁定值
+//     （见下方 `if (sameDraft && redLineHits.length === 0)`），M-Exist-5 侧另以该字段拒绝放行。
+const HARD_RED_LINE_RE = /M-Form-2|M-Form-7|M-Exist-1|M-Integrity-1/;
+const hardRedLineHits = results
+  .filter((r) => r.pass === false && HARD_RED_LINE_RE.test(String(r.gate || '')))
+  .map((r) => `${String(r.gate).split(' ')[0]}(${r.severity})`);
 const anyFail = results.some((r) => r.pass === false);
 const exitCode = p0 > 0 ? 2 : (p1 > 0 ? 1 : (anyFail || skips > 0 ? 3 : 0));
 const report = {
@@ -368,6 +376,7 @@ const report = {
   date: new Date().toISOString().slice(0, 10),
   total: results.length,
   pass, p0, p1, p2, soft, skips,
+  hard_red_line_hits: hardRedLineHits,   // v18.12.0（L-44）：非空 ⇒ 不接受 T8 LLM 兜底（T8/门侧共同强制）
   results: wantSummary ? results.filter((r) => !r.pass && r.severity !== 'LLM 兜底') : results,  // --summary 仅保留硬失败项，省 token
   exit: exitCode,
   // 被审正文指纹（v18.0.5）：T8 裁定段据此判断「是否仍适用于本版正文」
@@ -395,10 +404,22 @@ if (reportPath) {
           out = { ...report, ...keep, script_exit_raw: report.exit };
           const prevSha = prev.verdict_scope?.draft_sha256;
           const sameDraft = typeof prevSha === 'string' && prevSha === draftSha256;
-          if (sameDraft) {
+          if (sameDraft && hardRedLineHits.length === 0) {
             if (typeof prev.exit === 'number') out.exit = prev.exit; // 保留 T8 裁定值（正文未变，裁定仍有效）
             out.verdict_stale = false;
             console.error(`· 已保留既有 T8 裁定段（exit=${out.exit}，本次脚本值 script_exit_raw=${report.exit}；正文指纹一致）`);
+          } else if (sameDraft) {
+            // v18.12.0（L-44）：指纹一致但**本次机械运行命中硬 P0 红线** → 红线不可被 LLM 兜底。
+            //   旧版在此直接采纳 prev.exit，等于让红线随裁定一起被冲掉（审计实测：删掉 `## 案例来源`
+            //   的稿子机械 exit=2，写一段 `_t8_conclusion` 后落盘报告即变成 exit=0）。
+            out.verdict_stale = true;
+            out.verdict_stale_reason =
+              `本次机械运行命中硬 P0 红线（${hardRedLineHits.join(' / ')}）——红线项不允许 T8 LLM 兜底，`
+              + `落盘 exit 改用机械值 ${report.exit}；请真修复红线项后重跑`;
+            console.error(
+              `⛔ 硬 P0 红线命中（${hardRedLineHits.join(' / ')}）——拒绝采纳既有 T8 裁定值，落盘 exit=${report.exit}；`
+              + `红线 4 类不可 LLM 兜底（v18.11.0 F-1 契约，v18.12.0 L-44 实装）`,
+            );
           } else {
             // 正文已变（或旧报告无指纹）→ 旧裁定不再适用于本版正文：保留裁定原文供追溯，但落盘用**机械值**
             out.verdict_stale = true;

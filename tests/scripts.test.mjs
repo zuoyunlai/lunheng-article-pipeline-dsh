@@ -2901,6 +2901,9 @@ test('m-gate-check M-Exist-5：闸门记录表（漏项 / 自述当实据 / ✗ 
     return parseJson(r).results.find((x) => x.gate.startsWith('M-Exist-5'))
   }
   // ① 两表单齐备 + 实据为路径 → 通过
+  //   v18.12.0（审计 L-03/L-22）：T7.5 的「M 门全部 exit 0」行现在要求 **M 门报告真实存在**
+  //   （闸门留机械证据 = exit code + 产物路径），故合规夹具必须带一份 exit 0 的报告。
+  writeFileSync(join(fin, 'M-Gate-Report.json'), JSON.stringify({ script_exit_raw: 0, exit: 0, total: 22 }, null, 2))
   writeFileSync(join(aud, '闸门记录-T2.5.md'), build('T2.5'))
   writeFileSync(join(aud, '闸门记录-T7.5.md'), build('T7.5'))
   let it = item()
