@@ -44,7 +44,7 @@ try {
 } catch (e) {
   if (e && e.code === CLI_USAGE_CODE) {
     console.error(`${e.message}\n用法: node scripts/model-routing.mjs [--dsh-home <path>] [--json] [--no-probe] [--prefer-remote]`);
-    process.exit(1);
+    process.exit(10);   // v18.12.0（L-67 同族收口）：用法错 → 10（旧版 1 与 M 门「P1 内容失败」撞义）
   }
   throw e;
 }
@@ -53,7 +53,7 @@ const settingsPath = join(DSH_HOME, 'settings.yaml');
 if (!existsSync(settingsPath)) {
   console.error(`读不到 settings.yaml：${settingsPath}`);
   console.error('用 --dsh-home <path> 指定 DSH_HOME；若你只用 DSH 内置通道（模型目录不在 settings.yaml），请手工指定模型——本脚本不猜。');
-  process.exit(1);
+  process.exit(10);   // v18.12.0（L-67 同族收口）：配置/路径错 → 10
 }
 
 // ── 零依赖 YAML 扫描：provider → { models[], baseURL, displayName, local } + agent-default-model ──
@@ -106,7 +106,7 @@ const parse = (text) => {
 const { providers, defaultModel } = parse(readFileSync(settingsPath, 'utf8'));
 if (providers.size === 0) {
   console.error(`settings.yaml 未解析到任何 provider 目录：${settingsPath}`);
-  process.exit(1);
+  process.exit(10);   // v18.12.0（L-67 同族收口）：配置错 → 10
 }
 
 // ── 本地 provider 可达性探测（默认开启；仅回环地址，零外发）──

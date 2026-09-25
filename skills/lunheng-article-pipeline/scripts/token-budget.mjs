@@ -11,7 +11,12 @@
 //   node token-budget.mjs --project <项目> --roles        # 两者都跑
 //   node token-budget.mjs --roles --dsh-home <path>       # 指定 DSH_HOME
 //   node token-budget.mjs --project <项目> --json         # 机器可读
-// 退出码：0 成功｜1 用法/未知参数｜10 项目路径不存在（v18.2.9：旧版用 2，与 M 门「2 = P0 致命」撞义——主控统一按 0/1/2/3/10/70 读码会误判；对齐全仓「10 = 参数或路径错误」）
+// 退出码（v18.12.0，L-67 收口）：
+//   0  = 成功
+//   10 = **参数 / 路径错**（未知参数、缺值、多余位置参数、未给任何模式、`--project` 路径不存在）
+//        ——与全仓「10 = 参数或路径错误」一致；旧版把用法错记为 1，会被主控按 M 门语义读成
+//        「**P1 内容失败**」并误触发 T5 修订轮（这正是 exit-guard 要消灭的撞码，本文件当时漏改）。
+//   70 = 内部错误（EX_SOFTWARE，见 _lib/exit-guard.mjs）
 //
 // ⚠️ token 口径（**估算区间，非计费值**）：
 //   汉字 ≈ 0.6~1.0 token/字（BPE 对中文的常见区间）；ASCII ≈ 1 token / 4 字符。
@@ -33,11 +38,13 @@ if (args.includes('-h') || args.includes('--help')) {
 --dsh-home <path>  指定 DSH_HOME（默认 $DSH_HOME 或 ~/.dsh）
 --json             输出 JSON（机器可读）
 -h, --help         本帮助
-退出码：0 成功｜1 用法/未知参数｜10 项目路径不存在（v18.2.9 起与全仓 10=路径错 对齐）
+退出码：0 成功｜10 参数或路径错（用法错 / 未知参数 / 缺值 / 项目路径不存在；v18.12.0 起用法错由 1 改 10）｜70 内部错误
 ⚠️ token 为**估算区间**（汉字 0.6~1.0 token/字，ASCII 1/4 字符）；真实值见 --roles 读的 tokenUsage。`);
   process.exit(0);
 }
-// v18.2.9（第三方审计 A7）：参数解析迁移到 `_lib/cli-args.mjs` 唯一实现（本脚本用法错 = exit 1，保持自有契约）
+// v18.2.9（第三方审计 A7）：参数解析迁移到 `_lib/cli-args.mjs` 唯一实现
+// v18.12.0（L-67）：用法错由 exit 1 改 exit 10——1 是 M 门的「P1 内容失败」，用法错被读成内容失败
+//   会让主控误触发 T5 修订轮（同族事故见 v18.0.5 exit-guard 的引入说明）。
 let wantJson, projArg, wantRoles, dshHome;
 try {
   const parsed = parseCliArgs(args, {
@@ -52,13 +59,13 @@ try {
 } catch (e) {
   if (e && e.code === CLI_USAGE_CODE) {
     console.error(`${e.message}\n用法: node token-budget.mjs [--project <run/项目>] [--roles] [--json] [--dsh-home <path>]`);
-    process.exit(1);
+    process.exit(10);
   }
   throw e;
 }
 if (!projArg && !wantRoles) {
   console.error('需至少给一个模式：--project <run/项目> 或 --roles\n用法: node token-budget.mjs [--project <run/项目>] [--roles] [--json]');
-  process.exit(1);
+  process.exit(10);
 }
 if (projArg && !existsSync(projArg)) {
   console.error(`项目路径不存在: ${projArg}`);

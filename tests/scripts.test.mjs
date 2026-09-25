@@ -978,9 +978,12 @@ test('token-cost --top N：按 cacheRead 降序给出排名（旧版只有头注
   // 向后兼容：不传 --top 时输出契约不变（不得凭空多出字段）
   assert.equal(parseJson(run(base)).topByCacheRead, undefined, '无 --top 时不得输出排名段')
   // 非法值必须报错，不得静默忽略（与 --price-* 的 NaN 防御同口径）
-  assert.equal(run([...base, '--top', '0']).code, 1, '--top 0 应 exit 1')
-  assert.equal(run([...base, '--top', 'x']).code, 1, '--top x 应 exit 1')
-  assert.equal(run([...base, '--nope']).code, 1, '未知参数应 exit 1（旧版静默忽略）')
+  // v18.12.0（L-67）：契约由 exit 1 → **exit 10**。旧断言编码的是「用法错 = 1」，而 1 是 M 门的
+  //   「P1 内容失败」——主控会把「--top 写错」读成「正文有 P1 残留」并误触发 T5 修订轮。
+  //   本脚本没有内容判定，故**整个 1 都被取消**（见 docs/troubleshooting.md §8 与 EXIT_CONTRACT）。
+  assert.equal(run([...base, '--top', '0']).code, 10, '--top 0 应 exit 10（参数错）')
+  assert.equal(run([...base, '--top', 'x']).code, 10, '--top x 应 exit 10（参数错）')
+  assert.equal(run([...base, '--nope']).code, 10, '未知参数应 exit 10（旧版静默忽略；v18.12.0 起不再借用 1）')
   rmSync(d, { recursive: true, force: true })
 })
 
@@ -4568,16 +4571,18 @@ test('m-gate-check M-Exist-7：§6 成本指标必须含 `~NN[MKB]` 或「实测
   rmSync(d, { recursive: true, force: true })
 })
 
-test('token-budget：参数契约（-h exit 0 / 未知参数 exit 1+用法 / 无模式 exit 1 / 路径不存在 exit 10）', () => {
+test('token-budget：参数契约（-h exit 0 / 未知参数 exit 10+用法 / 无模式 exit 10 / 路径不存在 exit 10）', () => {
   const help = run([join(SCRIPTS, 'token-budget.mjs'), '--help'])
   assert.equal(help.code, 0, '--help 应 exit 0')
   assert.match(help.stdout, /--project/)
   assert.match(help.stdout, /--roles/)
   const bogus = run([join(SCRIPTS, 'token-budget.mjs'), '--bogus'])
-  assert.equal(bogus.code, 1, '未知参数应 exit 1')
+  // v18.12.0（L-67）：用法错由 exit 1 改 **exit 10**（1 = M 门「P1 内容失败」，撞码会让主控误触发
+  //   T5 修订轮）。本脚本无内容判定，故整份契约里不再出现 1。
+  assert.equal(bogus.code, 10, '未知参数应 exit 10（参数错）')
   assert.match(bogus.out, /用法/)
   const none = run([join(SCRIPTS, 'token-budget.mjs')])
-  assert.equal(none.code, 1, '无模式应 exit 1')
+  assert.equal(none.code, 10, '无模式应 exit 10（用法错）')
   assert.match(none.out, /--project|--roles/)
   const missing = run([join(SCRIPTS, 'token-budget.mjs'), '--project', join(tmpdir(), 'no-such-proj-xyz')])
   assert.equal(missing.code, 10, '项目路径不存在应 exit 10（v18.2.9：旧版 2 与 M 门「2 = P0」撞义，已改）')
@@ -4936,7 +4941,7 @@ test('主人侧三件套与输入模板齐备，且确认单含回填段与 Phas
   assert.equal(help.code, 0, 'token-cost --help 应 exit 0')
   assert.match(help.stdout, /--top N/, '帮助应列出 --top')
   const bogus = run([join(SCRIPTS, 'token-cost.mjs'), '--bogus'])
-  assert.equal(bogus.code, 1, '未知参数应 exit 1')
+  assert.equal(bogus.code, 10, '未知参数应 exit 10（v18.12.0 L-67：1 = M 门「P1 内容失败」，用法错不得借用）')
   assert.match(bogus.out, /用法/, '未知参数应附打印用法（旧版只有一行报错）')
 })
 

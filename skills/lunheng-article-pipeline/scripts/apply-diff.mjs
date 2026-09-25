@@ -245,13 +245,27 @@ const hint = emptyList
     : '全部条目已机械应用；delta 为脚本实测（可直接写入修订说明，替代清单自报的估算值）';
 
 // 写盘统一走 _lib/destructive-write.mjs：原地覆盖（已由 --in-place 显式声明）或 --out 已存在 → 先落带时间戳 .bak。
+// v18.12.0（全量审计 L-69）：**「无实际改动」不得写出下一版**。旧版只要清单有条目（哪怕**全部被跳过**、
+//   正文逐字节未变）就会写盘 + 报 `written: true` → 产出的是与输入**逐字节相同**的 `初稿-vN+1.md`；
+//   主控在修订说明里照抄 `han.delta = 0` 时看似正常，但下游会把这份「未修订的正文」当修订版继续流
+//   （与 v18.2.6 修掉的「清单 0 条仍写盘」是同一类假成功，只是触发条件不同：那次 0 条目，这次 0 改动）。
+//   `--in-place` 亦然：写回同一份内容只会平白多出一个 .bak 回滚点，掩盖「本轮其实没改到东西」。
 let backup = null;
 let written = false;
+let noop = false;
 if (!dryRun && !emptyList) {
-  const w = writeWithSafety(outPath, text, { inPlace: overwritesTarget, source: targetPath });
-  backup = w.backup;
-  written = true;
-  console.log(`✓ 写入: ${outPath}${backup ? `（原文件已备份: ${backup}）` : ''}`);
+  if (text === readFileSync(targetPath, 'utf8')) {
+    noop = true;   // 逐字节相同：不写盘、不留 .bak、如实标注
+  } else {
+    const w = writeWithSafety(outPath, text, { inPlace: overwritesTarget, source: targetPath });
+    backup = w.backup;
+    written = true;
+    console.log(`✓ 写入: ${outPath}${backup ? `（原文件已备份: ${backup}）` : ''}`);
+  }
+}
+if (noop) {
+  console.error('⚠️ 本轮**无实际改动**（应用后与输入逐字节相同）——已跳过写盘：不产出「下一版」副本，也不留 .bak。');
+  console.error('   → 若这不是预期：检查清单条目的「现况」行是否与正文逐字一致（不一致会被计入 skipped/unparsed，见 JSON）。');
 }
 
 const summary = {
@@ -261,6 +275,7 @@ const summary = {
   dry_run: dryRun,
   in_place: overwritesTarget,
   written,
+  noop,
   backup,
   ok,
   list_items: items.length,
@@ -283,7 +298,7 @@ writeReport(reportPath, JSON.stringify(summary, null, 2), { protect: [targetPath
 console.log(JSON.stringify({
   ok,
   target: targetPath, out: outPath, dry_run: dryRun,
-  in_place: overwritesTarget, written, backup,
+  in_place: overwritesTarget, written, noop, backup,
   list_items: items.length,
   applied: applied.length, skipped: skipped.length, unparsed: unparsed.length,
   stripped_meta: [...new Set(strippedMeta)],   // v18.2.9（审计 B11）：被剥离的元注记留痕

@@ -4,6 +4,7 @@
 //   · scripts/m-gate-check.mjs —— M-Form-9 图件闭环（良构 / 安全 / 图上数字 ⊆ 数据卡）
 // 设计口径：**不引入任何 XML 依赖**（本包零依赖），用「标签栈配平 + 特征扫描」做结构判定；
 //   判定宁松勿误伤——结构性缺失（未闭合/无根/无 viewBox）算 problem，可剥离去险的算 warning。
+import { maskFences } from './sections.mjs'   // 围栏遮罩真源（v18.12.0 L-70：图位识别需围栏感知）
 
 /** 可剥离去险的注入载体（消毒目标；与告警一一对应） */
 const DANGEROUS = [
@@ -19,6 +20,13 @@ const DANGEROUS = [
   //   必须放在有引号的两条**之后**，避免把 `onload="x"` 的引号内容截断。
   [/\son\w+\s*=\s*[^"'\s>]+/gi, '含事件属性 on*（未加引号，已剥离）'],
   [/javascript:/gi, '含 javascript: 协议（已剥离）'],
+  // v18.12.0（L-72）：`<style>` 此前**不在** DANGEROUS 里 —— 于是 `<style>@import url(https://evil/x.css)</style>`
+  //   能通过 sanitize 且**零告警**；导出 HTML 一旦被打开，样式表按 `@import` 外发（构成外发 + 离线渲染
+  //   可能挂掉），而本包对「外部资源引用」的既有口径是「必须告警」（见 analyzeSvg 的 href 检查）。
+  //   处置取**剥离 + 告警**（而非仅告警）：本仓图件由主控手写、样式一律走元素属性或 `<svg>` 内联
+  //   属性，`<style>` 块不是本包支持的形态；剥离比放行安全，且留痕可见。
+  [/<style[\s\S]*?<\/style>/gi, '含 <style> 块（可经 @import 外发样式表，已剥离）'],
+  [/<style[^>]*\/?>/gi, '含 <style> 标签（已剥离）'],
 ];
 
 /** 消毒：剥离注入载体（返回 { text, warnings }）——剥离动作必须留痕，不静默 */
@@ -113,9 +121,16 @@ export function figureNoOf(filename) {
   return m ? Number(m[1]) : null;
 }
 
-/** 正文中的图位号（`[图3：标题]`，全/半角冒号皆可；行内与独占一行都识别） */
+/** 正文中的图位号（`[图3：标题]`，全/半角冒号皆可；行内与独占一行都识别）
+ *
+ *  v18.12.0（L-70）：**围栏感知**——旧版扫全文，围栏内示例代码里的 `[图9：…]` 会被计入
+ *  「正文引用的图号」。两处后果都是静默的：① `md2html --fig-dir` 会把图 9 当真实图位去配图
+ *  （导出件里凭空多一张图、且示例代码被替换成图片）；② 反向地，示例里的图号会让真图件目录里
+ *  对应的 `图9_x.svg` 不被判为孤儿图件——而 M-Form-9 的孤儿判定正是靠这个集合。
+ *  遮罩用 `sections.mjs` 的 `maskFences`（**逐字节等长**：非换行字符换等长空格），故偏移不变、
+ *  正则行为与原实现一致，只是围栏内的方括号不再匹配。 */
 export function figurePlaceholders(text) {
   const nums = new Set();
-  for (const m of String(text || '').matchAll(/\[图\s*(\d+)\s*[:：][^\]]*\]/g)) nums.add(Number(m[1]));
+  for (const m of maskFences(String(text || '')).matchAll(/\[图\s*(\d+)\s*[:：][^\]]*\]/g)) nums.add(Number(m[1]));
   return nums;
 }

@@ -65,7 +65,7 @@
 | `70` | **内部错误（EX_SOFTWARE，脚本缺陷）**——与任何内容判定无关 |
 
 判定式（脚本原样）：`exit = p0 > 0 ? 2 : (p1 > 0 ? 1 : (anyFail || skips > 0 ? 3 : 0))`
-另：`model-routing.mjs` 用自有码 **`4`**＝需人工决定（旧版 `3` 与 M 门 `3` 撞码）；非闸门工具（`token-budget` / `md2html` / `pdfcheck` / `token-cost`）不共用本语义。
+另：`model-routing.mjs` 用自有码 **`4`**＝需人工决定（旧版 `3` 与 M 门 `3` 撞码；v18.12.0 起其**用法/配置错**由 `1` 改 **`10`**）；非闸门工具（`token-budget` / `md2html` / `pdfcheck` / `token-cost`）不共用本语义——其中 `token-budget` 与 `token-cost` 的用法/参数错亦在 v18.12.0 收口到 **`10`**（不再借用 M 门的「P1 内容失败」）。
 
 ### 1.4 `[报告后激活]` 标记（四项）
 

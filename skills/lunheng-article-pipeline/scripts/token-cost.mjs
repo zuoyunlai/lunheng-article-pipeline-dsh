@@ -7,10 +7,15 @@
 //   node token-cost.mjs --top N                  # 追加 cacheRead/成本 Top N 会话排名（与 --sessions/--tree 连用，用于优化决策）
 // 数据源：DSH 会话投影缓存 $DSH_HOME/storages/session_projcache.json（每会话 tokenUsage.totals）
 // 说明：主会话运行中时总量为「截至运行时刻」；成本为估算（默认 DeepSeek 价，--price-* 可覆盖）。
-// 退出码（v18.2.6 审计修复 P1-5 时显式登记）：
-//   0  = 统计成功且**至少命中一个会话的用量记录**｜1 = 用法/参数值错（未知参数、--top 非法…）
-//   10 = 参数或路径错（与全仓口径一致：会话投影缓存不存在、**或给出的会话 id 一个都没命中**）
+// 退出码（v18.12.0，L-67 收口）：
+//   0  = 统计成功且**至少命中一个会话的用量记录**
+//   10 = **参数 / 路径 / 环境不可用**（未知参数、`--top` 非法、数值旗标收到非数字、
+//        未给任何模式、会话投影缓存不存在、`--project` 无日志或未提取到会话 ID、
+//        `--tree` 所需 Node 版本不足）——与全仓「10 = 参数或路径错误」一致
 //   70 = 内部错误（EX_SOFTWARE，见 _lib/exit-guard.mjs）
+//   ⚠️ 本脚本**不再使用 exit 1**（v18.12.0 起）：旧版把「未知参数 / 数值非法 / 缓存缺失 / 未给模式」
+//      一律记为 1，而主控统一按 M 门语义读码时会把 1 读成「**P1 内容失败**」→ 误触发 T5 修订轮。
+//      这正是 v18.0.5 引入 exit-guard 要消灭的那类撞码（本文件当时漏改）。
 //   ⚠️ 这里刻意**不**用 4（4 已在 AGENTS.md 登记为 model-routing 的「需人工决定」，不与他脚本共用语义）。
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -55,7 +60,7 @@ try {
     const v = Number(val);
     if (!Number.isFinite(v) || (integer && (!Number.isInteger(v) || v <= 0))) {
       console.error(`${flag} 需为${integer ? '正整数' : '数字'}，收到: ${val}`);
-      process.exit(1);
+      process.exit(10);   // v18.12.0（L-67）：参数值错 = 参数错 → 10（旧版 1 与「P1 内容失败」撞义）
     }
     return v;
   };
@@ -64,7 +69,7 @@ try {
   if (parsed.opts['--price-out']) opt.prices.out = num('--price-out', parsed.opts['--price-out']);
   if (parsed.opts['--top']) opt.top = num('--top', parsed.opts['--top'], { integer: true });
 } catch (e) {
-  if (e && e.code === CLI_USAGE_CODE) { console.error(`${e.message}\n\n${USAGE}`); process.exit(1); }
+  if (e && e.code === CLI_USAGE_CODE) { console.error(`${e.message}\n\n${USAGE}`); process.exit(10); }   // v18.12.0（L-67）
   throw e;
 }
 
@@ -105,7 +110,7 @@ if (hasDirLayout) {
   Object.assign(sessions, cache.tables?.sessions || {});
   cacheDesc = legacyFile;
 } else {
-  console.error('找不到会话投影缓存（已尝试目录式与单文件两种布局）: ' + projDir); process.exit(1);
+  console.error('找不到会话投影缓存（已尝试目录式与单文件两种布局）: ' + projDir); process.exit(10);   // v18.12.0（L-67）：路径错 → 10
 }
 
 // === --project 模式（v18.0.0 新增，P2-1）===
@@ -128,7 +133,7 @@ if (opt.project) {
   }
   if (srcFiles.length === 0) {
     console.error(`--project 未找到任何项目日志（已试: ${cand.join(' / ')}）`);
-    process.exit(1);
+    process.exit(10);   // v18.12.0（L-67）：路径错 → 10
   }
   opt.ids = [...found];
   if (opt.ids.length === 0) {
@@ -136,7 +141,7 @@ if (opt.project) {
       `--project 在 ${srcFiles.join(' / ')} 中未提取到会话 ID（UUID 形态）。\n` +
         `  —— 请让主控在派发时把子代理 session id 记入 agents-log.md，或改用 --sessions 手工传入。`,
     );
-    process.exit(1);
+    process.exit(10);   // v18.12.0（L-67）：参数不足（未给出可用会话 id）→ 10
   }
   console.error(`· --project ${opt.project}：从 ${srcFiles.length} 个日志文件提取到 ${opt.ids.length} 个会话 ID`);
 }
@@ -149,7 +154,7 @@ if (opt.tree && !opt.ids) {
   } catch {}
   if (typeof zstdDecompressSync !== 'function') {
     console.error('tree 模式需要 Node.js >= 22.15（node:zlib.zstdDecompressSync 缺失）——当前环境不支持，请改用 --sessions 显式列表，或升级 Node');
-    process.exit(1);
+    process.exit(10);   // v18.12.0（L-67）：环境/参数不可用 → 10
   }
   const { readdirSync, statSync } = await import('node:fs');
   const headers = {};
@@ -184,7 +189,7 @@ if (opt.tree && !opt.ids) {
   }
 } else if (!opt.ids) {
   console.error(USAGE);
-  process.exit(1);
+  process.exit(10);   // v18.12.0（L-67）：未给任何模式 = 用法错 → 10
 }
 
 const totals = { uncachedInputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0 };

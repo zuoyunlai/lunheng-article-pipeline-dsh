@@ -142,7 +142,65 @@ let embedded = 0;
 let missing = 0;
 const closeList = () => { if (inList) { html += '</ul>\n'; inList = false; } };
 
-for (const raw of lines) {
+// ── v18.12.0（L-70）：**围栏感知** ──────────────────────────────────────────────────────
+// 旧版逐行跑行首正则、完全不认 ``` 围栏 —— 实测两类静默失真：
+//   ① 围栏内的 `# 标题` 被升格成 `<h1>`/`<h2>`（示例代码变成文档结构，导出件层级错乱）；
+//   ② 围栏内的 `[图N：…]` 被当真图位去配图（示例代码被塞进一张图），而 `figurePlaceholders`
+//      也把围栏内的图号计入「正文引用」→ 与 M-Form-9 的孤儿图件判定口径不一致。
+// 口径与 `_lib/sections.mjs` 的 `maskFences` 一致（行首 ≤3 空格 + ≥3 个 ` 或 ~；未闭合则到文末）。
+const FENCE_RE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+const fenceOpen = lines.map((l) => FENCE_RE.exec(l));          // 每行的起栏候选（含缩进）
+const fenceAtOpen = new Map();                                  // 起栏行号 → { ch, len, info }
+const fenceAtClose = new Map();                                 // 止栏行号 → 起栏行号
+const fenceInterior = new Set();                                // 围栏内（不含起止栏行）的行号
+{
+  let i = 0;
+  while (i < lines.length) {
+    const m = fenceOpen[i];
+    if (!m) { i++; continue }
+    const ch = m[1][0], len = m[1].length;
+    fenceAtOpen.set(i, { ch, len, info: m[2].trim() });
+    let j = i + 1, closed = false;
+    const closer = new RegExp('^ {0,3}' + (ch === '`' ? '`' : '~') + `{${len},}`);
+    for (; j < lines.length; j++) {
+      if (closer.test(lines[j])) { closed = true; break }
+    }
+    if (closed) {
+      for (let k = i + 1; k < j; k++) fenceInterior.add(k);
+      fenceAtClose.set(j, i);
+      i = j + 1;
+    } else {
+      for (let k = i + 1; k < lines.length; k++) fenceInterior.add(k);   // 未闭合 → 到文末
+      i = lines.length;
+    }
+  }
+}
+const renderFence = (openIdx, closeIdx) => {
+  const info = fenceAtOpen.get(openIdx).info;
+  const body = closeIdx === null
+    ? lines.slice(openIdx + 1)                                    // 未闭合：起栏行之后的全部内容
+    : lines.slice(openIdx + 1, closeIdx);
+  // 围栏内的尖括号必须转义（否则示例代码里的 `<script>` 会被浏览器当标签解析）——
+  //   这与「插入的 SVG 必须原样输出」是两回事：SVG 是我们的产物，围栏内容是**不可信的正文文本**。
+  return `<pre class="md-fence"${info ? ` data-info="${esc(info.replace(/"/g, '&quot;'))}"` : ''}><code>`
+    + esc(body.join('\n')) + '</code></pre>\n';
+};
+const skipLines = new Set();
+const fenceRender = new Map();   // 起栏行号 → 渲染好的 <pre><code> 块
+for (const [openIdx, closeIdx] of [...fenceAtClose.entries()].map(([c, o]) => [o, c]).concat(
+  [...fenceAtOpen.keys()].filter((o) => ![...fenceAtClose.values()].includes(o)).map((o) => [o, null]),
+)) {
+  for (let k = openIdx; k <= (closeIdx === null ? lines.length - 1 : closeIdx); k++) skipLines.add(k);
+  fenceRender.set(openIdx, renderFence(openIdx, closeIdx));
+}
+
+for (let li = 0; li < lines.length; li++) {
+  const raw = lines[li];
+  if (skipLines.has(li)) {
+    closeList();
+    if (fenceRender.has(li)) html += fenceRender.get(li);
+    continue;
+  }
   const line = raw.trimEnd();
   const blockMatch = line.trim().match(FIG_BLOCK);
   if (blockMatch) {
@@ -235,6 +293,11 @@ li { margin: 0.15em 0; }
 .figure-inline svg { max-width: 100%; height: auto; display: block; margin: 0.6em auto; }
 .figcaption { font-size: 10.5pt; color: #555; margin-top: 0.3em; text-align: center; }
 .fig-missing { color: #b00; font-size: 10pt; }
+/* v18.12.0（L-70）：围栏块此前**不产出任何元素**（围栏只是文本）→ 无需样式；现围栏被渲染为
+   <pre class="md-fence"><code>，故补样式：等宽、可横向滚动、不继承正文首行缩进。 */
+pre.md-fence { background: #f6f7f9; border: 1px solid #e3e6ea; border-radius: 4px; padding: 0.7em 0.9em;
+  font-size: 9.5pt; line-height: 1.5; overflow-x: auto; white-space: pre; }
+pre.md-fence code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 </style>
 </head>
 <body>

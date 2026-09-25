@@ -23,7 +23,7 @@
 //   assertNotSameFile(mdPath, htmlPath);                       // 同文件 → 抛 SameFileError（调用方 exit 10）
 //   if (sameFile(out, target) && !inPlace) { …exit 10… }
 //   writeWithSafety(out, text, { inPlace, source: target });   // 覆盖前自动 .bak（带时间戳）
-import { existsSync, statSync, realpathSync, copyFileSync, writeFileSync, renameSync, unlinkSync, readdirSync } from 'node:fs'
+import { existsSync, statSync, realpathSync, copyFileSync, writeFileSync, renameSync, unlinkSync, readdirSync, mkdirSync } from 'node:fs'
 import { resolve, dirname, join, basename } from 'node:path'
 import { EXIT_USAGE } from './exit-guard.mjs'   // 退出码唯一真源（v18.12.0：writeReport 的同文件拒绝用它）
 
@@ -181,6 +181,13 @@ export function writeWithSafety(p, text, { inPlace = false, source = null } = {}
  *   ② 通过守卫后走 `writeWithSafety(..., { inPlace: true })`：报告本就允许在原地反复重写，
  *      但**必须留时间戳 `.bak` 回滚点**（旧版无备份）。
  *   ③ 空 reportPath → 直接返回 null（调用方无需再判空）。
+ *   ④ v18.12.0（全量审计 L-72）：**目标目录不存在时自动建目录**。旧版各脚本口径不一——`m-gate-check`
+ *      与 `final-check` 在调用前自己 `mkdirSync(dirname(reportPath))`，其余 6 个脚本（apply-diff /
+ *      cite-coverage-check / structure-check / methodology-check / journal-fit / meta-synthesize /
+ *      consistency-check）**没有**：`--report audits/新目录/x.json` 会在 temp 落盘那一步 ENOENT，
+ *      经 exit-guard 变成 exit 10（码是对的，但报错只说「路径错」、不提「目录要不要建」，主控多半会以为
+ *      是路径写法错而反复试）。现把建目录统一到本函数（`recursive: true`，幂等），并**在守卫之后**执行
+ *      ——拒绝路径上不落一个字节，也不新增一个目录。
  *
  * 参数：`protect` = 本次运行**读过的源文件路径**数组（元素可为 null/undefined，自动跳过）。
  */
@@ -191,6 +198,19 @@ export function writeReport(reportPath, text, { protect = [], label = '--report'
     if (sameFile(reportPath, src)) {
       console.error(`${label} 不能与本次运行的源文件是同一文件（会不可回滚地销毁它）：${realPath(reportPath)}`)
       console.error(`→ 退出码 ${EXIT_USAGE}（参数或路径错误）：请把 ${label} 指向另一个路径（如 audits/xxx.json）`)
+      process.exit(EXIT_USAGE)
+    }
+  }
+  // v18.12.0（L-72）：目录缺失 → 建之（守卫之后；`recursive` 幂等）。建失败（权限/路径中间是文件）
+  //   仍会抛 fs 错误 → exit-guard 归 10，码与旧版一致，但这里的错误信息更贴因。
+  const dir = dirname(resolve(reportPath))
+  if (!existsSync(dir)) {
+    try {
+      mkdirSync(dir, { recursive: true })
+      console.error(`· ${label} 目标目录不存在，已创建：${dir}`)
+    } catch (e) {
+      console.error(`${label} 目标目录无法创建：${dir}（${e.code || e.message}）`)
+      console.error(`→ 退出码 ${EXIT_USAGE}（参数或路径错误）：请检查路径拼写与写权限`)
       process.exit(EXIT_USAGE)
     }
   }

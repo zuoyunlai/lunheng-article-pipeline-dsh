@@ -390,7 +390,21 @@ try {
     //   天然不引 [Lxx]（它们是方法性附属材料），旧白名单不含 → 只要 >100 汉字即恒判 P0。
     //   审计实测：`## 附录 A：原始数据表`（表格 + 说明）→ M-Form-8 P0、总 exit=2。
     '附录', '致谢', '注释', '缩略语', 'Appendix', 'Acknowledgement', 'Acknowledgments', 'Abbreviations', 'Notes'];
-  const sections = body.split(/^##\s+/m).filter((s) => s.trim().length > 0);
+  // v18.12.0（全量审计·脚本线 S-14）：**段切分改走 `sections.mjs` 的 `h2Headings` 真源**。
+  //   旧版用 `body.split(/^##\s+/m)` —— 这是 H2 口径的**第三份实现**，与 `H2_LINE_RE` 有三处可观测分歧：
+  //   ① `##\s+` 会跨行匹配（`##` 独占一行后接换行 → `\s+` 吃掉它，标题被切成空串后被 filter 丢弃）；
+  //   ② 不认全角空格 `\u3000`（`##　标题` 不被 `\s` 匹配？—— 实测 JS 的 `\s` **含** `\u3000`，
+  //      但 `H2_LINE_RE` 显式列出它并额外要求标题非空，故 `## ` 尾随全角空格时两者结果不同）；
+  //   ③ **完全无视围栏**：代码块里的 `## 示例` 会被当成真段切开，并被判「段缺 [Lxx]」。
+  //   最要紧的是 ③（与 L-51「围栏感知」同根）。改用真源后本门与 `count-chars` / `segment-chars` /
+  //   `sections-check` 的段边界**逐字节一致**。
+  const h2s = h2Headings(body);
+  const sections = [];
+  for (let i = 0; i < h2s.length; i++) {
+    const start = h2s[i].index;
+    const end = i + 1 < h2s.length ? h2s[i + 1].index : body.length;
+    sections.push(body.slice(start, end));
+  }
   // v18.12.0（全量审计 L-46）：**去掉 20 段扫描上限**。旧版 `sections.slice(0, THRESHOLDS.mform8MaxSections)`
   //   只扫前 20 段，第 21 段起**静默不扫**，而 detail 写「20 段：0 段缺 L」——读者会读成「全文都检了」。
   //   本包定位是 ≥2000 字深度长文（实测项目正文到 16,000+ 汉字），二级节数超 20 是常态。
