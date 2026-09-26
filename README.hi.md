@@ -4,7 +4,7 @@
 
 > 🌐 [English](README.md) ｜ [中文](README.zh.md) ｜ [Español](README.es.md) ｜ [Português](README.pt.md) ｜ **हिन्दी**（यह फ़ाइल）
 
-> एक DeepSeek Harness (DSH) बंडल जो **माँग पर दो एजेंट स्किल** पंजीकृत करता है: `lunheng-article-pipeline` (मुख्य 9-भूमिका पाइपलाइन) और `lunheng-commands` (पतला wrapper जो 11 `/lunheng-*` स्लैश आदेश देता है: status / stats / compression-cycle / evidence-bundle / m-gate / handoff-check आदि; **कोई नई भूमिका नहीं, कोई नया M-द्वार आइटम नहीं**; देखें `skills/lunheng-commands/SKILL.md`)। मुख्य स्किल दीर्घ लेखन — शोध-पत्र, उद्योग विश्लेषण, व्यावसायिक समीक्षा और लंबे लेख — को **मानव-सहभागिता वाली 9-भूमिका पाइपलाइन** में बदल देती है।
+> एक DeepSeek Harness (DSH) बंडल जो **माँग पर दो एजेंट स्किल** पंजीकृत करता है: `lunheng-article-pipeline` (मुख्य 9-भूमिका पाइपलाइन) और `lunheng-commands` (पतला wrapper जो 11 `/lunheng-*` स्लैश आदेश देता है: draft / resume / cite / audit / journal / ppt / history / rollback / status / stats / help; **कोई नई भूमिका नहीं, कोई नया M-द्वार आइटम नहीं**; देखें `skills/lunheng-commands/SKILL.md`)। मुख्य स्किल दीर्घ लेखन — शोध-पत्र, उद्योग विश्लेषण, व्यावसायिक समीक्षा और लंबे लेख — को **मानव-सहभागिता वाली 9-भूमिका पाइपलाइन** में बदल देती है।
 
 ## What this is
 
@@ -78,7 +78,7 @@ lunheng-article-pipeline/                 # पैकेज ही रिपॉ�
 │   ├── README.md             # स्किल-स्तरीय रीडमी (चीनी)
 │   ├── references/           # 9 भूमिका कार्ड, टेम्पलेट, द्वार-एल्गोरिद्म, पत्रिका-कोश
 │   └── scripts/              # निर्भरता-रहित .mjs सत्यापन स्क्रिप्ट (संख्या: स्किल की श्वेतसूची पंक्ति देखें)
-├── skills/lunheng-commands/   # सहयोगी स्किल: 11 /lunheng-* स्लैश आदेश (status / stats / evidence-bundle / m-gate / handoff-check / compression-cycle आदि)
+├── skills/lunheng-commands/   # सहयोगी स्किल: 11 /lunheng-* स्लैश आदेश (draft / resume / cite / audit / journal / ppt / history / rollback / status / stats / help)
 │   ├── SKILL.md              # आदेश प्रवेश (आदेश सूची, डिस्पैच मॉडल)
 │   ├── README.md             # आदेश-स्तरीय readme
 │   ├── scripts/              # आदेश हैंडलर (जैसे lunheng-stats.mjs)

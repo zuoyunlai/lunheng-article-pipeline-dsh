@@ -1,4 +1,4 @@
-# lunheng-commands v1.0.0
+# lunheng-commands v1.0.1
 
 > 论衡（`lunheng-article-pipeline` v18.7+）的斜杠命令薄壳 wrapper。
 
@@ -22,6 +22,7 @@
 /lunheng -history           # 列 run/* 历史
 /lunheng -rollback <id> --confirm  # 回滚到 checkpoint
 /lunheng -status [id]        # 显示当前进度
+/lunheng -stats              # run/ 项目汇总看板
 /lunheng -help              # 列可用命令
 ```
 

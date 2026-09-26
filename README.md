@@ -4,7 +4,7 @@
 
 > 版本：v18.20.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
-> A DeepSeek Harness (DSH) bundle that registers **two on-demand agent skills**: `lunheng-article-pipeline` (the main 9-role pipeline) and `lunheng-commands` (a thin wrapper exposing 11 `/lunheng-*` slash commands for status / stats / compression / evidence / M-gate workflows — no new role, no new M-gate item; see `skills/lunheng-commands/SKILL.md`). The main skill turns long-form production — academic papers, industry analysis, business commentary, and long-form articles — into a **9-role pipeline with a human in the loop**.
+> A DeepSeek Harness (DSH) bundle that registers **two on-demand agent skills**: `lunheng-article-pipeline` (the main 9-role pipeline) and `lunheng-commands` (a thin wrapper exposing 11 `/lunheng-*` slash commands for draft / resume / cite / audit / journal / ppt / history / rollback / status / stats / help — no new role, no new M-gate item; see `skills/lunheng-commands/SKILL.md`). The main skill turns long-form production — academic papers, industry analysis, business commentary, and long-form articles — into a **9-role pipeline with a human in the loop**.
 
 ## What this is
 
@@ -78,7 +78,7 @@ lunheng-article-pipeline/                 # the package is the repository
 │   ├── README.md             # skill-level readme (Chinese)
 │   ├── references/           # 9 role cards, templates, shared gate algorithms, journal database
 │   └── scripts/              # zero-dependency .mjs verification scripts (count: see the skill's whitelist line)
-├── skills/lunheng-commands/   # companion skill: 11 /lunheng-* slash commands (status / stats / evidence / m-gate / handoff-check / compression-cycle / etc.)
+├── skills/lunheng-commands/   # companion skill: 11 /lunheng-* slash commands (draft / resume / cite / audit / journal / ppt / history / rollback / status / stats / help)
 │   ├── SKILL.md              # commands entry (command list, dispatch model)
 │   ├── README.md             # commands-level readme
 │   ├── scripts/              # command handlers (e.g. lunheng-stats.mjs)

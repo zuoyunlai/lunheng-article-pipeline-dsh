@@ -4,7 +4,7 @@
 
 > 版本：v18.20.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
-> 一个 DeepSeek Harness（DSH）bundle 插件，注册**两个按需加载的 agent 技能**：`lunheng-article-pipeline`（9 角色主流水线）与 `lunheng-commands`（薄壳包装 11 个 `/lunheng-*` 斜杠命令：status / stats / compression-cycle / evidence-bundle / m-gate / handoff-check 等；**不引入新角色、不引入新 M 门**，详见 `skills/lunheng-commands/SKILL.md`）。主技能把深度长文的生产——学术论文、行业分析、商业评论、公众号深文——变成**带人在环节点的 9 角色流水线**。
+> 一个 DeepSeek Harness（DSH）bundle 插件，注册**两个按需加载的 agent 技能**：`lunheng-article-pipeline`（9 角色主流水线）与 `lunheng-commands`（薄壳包装 11 个 `/lunheng-*` 斜杠命令：draft / resume / cite / audit / journal / ppt / history / rollback / status / stats / help；**不引入新角色、不引入新 M 门**，详见 `skills/lunheng-commands/SKILL.md`）。主技能把深度长文的生产——学术论文、行业分析、商业评论、公众号深文——变成**带人在环节点的 9 角色流水线**。
 
 ## What this is
 
@@ -78,7 +78,7 @@ lunheng-article-pipeline/                 # 包即仓库
 │   ├── README.md             # 技能级说明（中文）
 │   ├── references/           # 9 张角色卡、模板、共享闸门算法、期刊数据库
 │   └── scripts/              # 零依赖 .mjs 机械校验脚本（数量真源 = 技能白名单行）
-├── skills/lunheng-commands/   # 伴随技能：11 个 /lunheng-* 斜杠命令（status / stats / evidence-bundle / m-gate / handoff-check / compression-cycle 等）
+├── skills/lunheng-commands/   # 伴随技能：11 个 /lunheng-* 斜杠命令（draft / resume / cite / audit / journal / ppt / history / rollback / status / stats / help）
 │   ├── SKILL.md              # 命令入口（命令清单、派发模型）
 │   ├── README.md             # 命令级说明
 │   ├── scripts/              # 命令处理器（如 lunheng-stats.mjs）

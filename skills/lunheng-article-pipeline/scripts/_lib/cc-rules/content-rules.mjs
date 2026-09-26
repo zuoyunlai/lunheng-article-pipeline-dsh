@@ -221,6 +221,68 @@ for (const f of active) {
       walkLocal(cmdDir);
     }
     scanFile(join(REPO_ROOT, 'lib', 'index.js'), 'lib/index.js');
+
+    // ㉕ 扩展（本次审计 P1-②）：除「N 个」数字外，再对账**枚举清单**——「数字对、清单漏」（README 代码块
+    //   与 package.json description 都缺 -stats）此前逃过本规则（数字「11」对，枚举只 10 项）。只对
+    //   「会枚举清单」的文件做**缺项**检查，避免误伤只提单个命令的文档：判「枚举」= 斜杠分隔 ≥5 个
+    //   -token，或代码块 ≥5 行 /lunheng -xxx。只查缺项（⊇ 真源），不查多列（-auto/-manual/-h/--confirm 不误伤）。
+    const canonical = keys.filter((k) => k !== '-h');   // 11 个正命令（-h 别名不计）
+    const enumCheck = (absPath, rel) => {
+      if (!existsSync(absPath)) return;
+      const text = readFileSync(absPath, 'utf8');
+      const lines = text.split('\n');
+      const slashEnum = /(?:^|[^\w-])-([a-z][a-z0-9-]*)(?:\/-([a-z][a-z0-9-]*)){4,}/.test(text);
+      const codeLines = lines.filter((l) => /\/lunheng\s+-([a-z][a-z0-9-]*)/.test(l)).length;
+      if (!slashEnum && codeLines < 5) return;
+      const found = new Set();
+      for (const l of lines) {
+        for (const m of l.matchAll(/-([a-z][a-z0-9-]*)/g)) {
+          const tok = '-' + m[1];
+          if (canonical.includes(tok)) found.add(tok);
+        }
+      }
+      const missing = canonical.filter((c) => !found.has(c));
+      if (missing.length) {
+        errors.push(`[P1 命令枚举缺项] ${rel} 枚举了命令清单但缺 ${missing.join(' / ')}（真源 = route-command.mjs COMMANDS 表 ${canonical.length} 项，-h 别名与 -cite 3 模式不计入）`);
+      }
+    };
+    if (existsSync(cmdDir)) {
+      const walkEnum = (dir) => {
+        for (const e of readdirSync(dir, { withFileTypes: true })) {
+          const p = join(dir, e.name);
+          if (e.isDirectory()) walkEnum(p);
+          else if (e.name.endsWith('.md') || e.name.endsWith('.mjs') || e.name === 'package.json') enumCheck(p, relative(REPO_ROOT, p).replaceAll('\\', '/'));
+        }
+      };
+      walkEnum(cmdDir);
+    }
+    enumCheck(join(REPO_ROOT, 'lib', 'index.js'), 'lib/index.js');
+  }
+}
+
+// ㉖ 子技能版本一致性（本次审计 P1-①）：主包规则① 只对账 18.x 主版本，子技能 lunheng-commands
+//   自己的 1.0.x 版本无人管 → v18.7.1 升版时漏了 README.md + package.json 两处，1.0.0/1.0.1 漂移
+//   存活到 v18.20.0。三件套（SKILL.md frontmatter / README.md 标题 / package.json version）交叉核对。
+{
+  const cmdDir = join(REPO_ROOT, 'skills', 'lunheng-commands');
+  if (existsSync(cmdDir)) {
+    const grab = (p, re) => {
+      if (!existsSync(p)) return null;
+      const m = re.exec(readFileSync(p, 'utf8'));
+      return m ? m[1] : null;
+    };
+    const sv = grab(join(cmdDir, 'SKILL.md'), /^version:\s*["']?(\d+\.\d+\.\d+)["']?\s*$/m);
+    const rv = grab(join(cmdDir, 'README.md'), /^#\s+lunheng-commands\s+v(\d+\.\d+\.\d+)/m);
+    const pv = grab(join(cmdDir, 'package.json'), /"version"\s*:\s*"(\d+\.\d+\.\d+)"/);
+    const names = ['SKILL.md', 'README.md', 'package.json'];
+    const vals = [sv, rv, pv];
+    const present = vals.filter(Boolean);
+    if (present.length < 3) {
+      const missing = names.filter((n, i) => !vals[i]).join(' / ');
+      errors.push(`[P1 子技能版本缺失] skills/lunheng-commands/ 缺版本声明：${missing}（三件套须各自声明 1.0.x）`);
+    } else if (new Set(present).size > 1) {
+      errors.push(`[P1 子技能版本漂移] lunheng-commands 三件套版本不一致：SKILL.md=${sv} / README.md=${rv} / package.json=${pv}`);
+    }
   }
 }
 

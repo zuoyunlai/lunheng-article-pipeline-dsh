@@ -4,7 +4,7 @@
 
 > 🌐 [English](README.md) ｜ [中文](README.zh.md) ｜ [Español](README.es.md) ｜ **Português**（este arquivo）｜ [हिन्दी](README.hi.md)
 
-> Um bundle do DeepSeek Harness (DSH) que registra **duas skills de agente sob demanda**: `lunheng-article-pipeline` (a pipeline principal de 9 papéis) e `lunheng-commands` (um invólucro fino que expõe 11 comandos de barra `/lunheng-*`: status / stats / compression-cycle / evidence-bundle / m-gate / handoff-check, etc.; **sem papel novo e sem item novo do portão M**; ver `skills/lunheng-commands/SKILL.md`). A skill principal transforma a produção de textos longos — artigos acadêmicos, análise setorial, comentário econômico e artigos extensos — em uma **pipeline de 9 papéis com participação humana**.
+> Um bundle do DeepSeek Harness (DSH) que registra **duas skills de agente sob demanda**: `lunheng-article-pipeline` (a pipeline principal de 9 papéis) e `lunheng-commands` (um invólucro fino que expõe 11 comandos de barra `/lunheng-*`: draft / resume / cite / audit / journal / ppt / history / rollback / status / stats / help; **sem papel novo e sem item novo do portão M**; ver `skills/lunheng-commands/SKILL.md`). A skill principal transforma a produção de textos longos — artigos acadêmicos, análise setorial, comentário econômico e artigos extensos — em uma **pipeline de 9 papéis com participação humana**.
 
 ## What this is
 
@@ -78,7 +78,7 @@ lunheng-article-pipeline/                 # o pacote é o repositório
 │   ├── README.md             # readme da skill (chinês)
 │   ├── references/           # 9 fichas de papel, modelos, algoritmos de portão, base de periódicos
 │   └── scripts/              # scripts .mjs de verificação sem dependências (contagem: ver a linha de lista branca da skill)
-├── skills/lunheng-commands/   # skill companheira: 11 comandos de barra /lunheng-* (status / stats / evidence-bundle / m-gate / handoff-check / compression-cycle, etc.)
+├── skills/lunheng-commands/   # skill companheira: 11 comandos de barra /lunheng-* (draft / resume / cite / audit / journal / ppt / history / rollback / status / stats / help)
 │   ├── SKILL.md              # entrada de comandos (lista de comandos, modelo de despacho)
 │   ├── README.md             # readme no nível de comandos
 │   ├── scripts/              # manipuladores de comandos (p. ex. lunheng-stats.mjs)
