@@ -41,7 +41,7 @@
 | 初稿 | 逐版递进，含中文 AI 痕迹清理，每轮由独立写手执行 |
 | 审阅报告 | 批判报告（C1–C7）、审计报告（G0–G14）、审稿报告（6 维度 + 期刊匹配）、AI 痕迹报告 |
 | 终交付 | `final/定稿.md`、图件、证据包、交付说明、M 门报告 |
-| DSH 集成（bundle 安装时） | 三个**只读**工具 `lunheng_m_gate`（M 门机械预检）、`lunheng_char_count`（纯汉字数）与 `lunheng_handoff_check`（交接报告形态/版本/成对/agents-log 校验）——清单里没有就照旧用 `pwsh` 调同名脚本（同源）。人类命令 `/lunheng-status` 与 `/lunheng-stats`（读 `run/<项目>/status.md`，**不产生模型消息**）。**机制文件写保护**：全局 guard 否决指向技能包内的 `write`/`edit` 类工具调用，会话无法悄悄改写流水线自己的规则。**边界如实声明**：guard 只看**工具调用**——`pwsh`/子进程**不经此门**；主人授权例外走 `LUNHENG_ALLOW_MECH_EDIT=1`（或本插件行 `config: { allowMechanismEdit: true }`）。插件 **Config**（部署开关，写在你 profile 的本插件行上）覆盖 `quiet` / `allowMechanismEdit` / `scriptTimeoutMs` / `scriptMaxOutputBytes` / `handoffLevel`（交接门灰度）——与 `LUNHENG_QUIET` / `LUNHENG_ALLOW_MECH_EDIT` / `LUNHENG_HANDOFF_LEVEL` 同义、但随 profile 走且可 review；**非法配置在加载期响亮失败**，不静默回落默认值。 |
+| DSH 集成（bundle 安装时） | 三个**只读**工具 `lunheng_m_gate`（M 门机械预检）、`lunheng_char_count`（纯汉字数）与 `lunheng_handoff_check`（交接报告形态/版本/成对/agents-log 校验）——清单里没有就照旧用 `pwsh` 调同名脚本（同源）。人类命令 `/lunheng-status` 与 `/lunheng-stats`（读 `run/<项目>/status.md`，**不产生模型消息**）。**机制文件写保护**：全局 guard 否决指向技能包内的 `write`/`edit` 类工具调用，会话无法悄悄改写流水线自己的规则。**边界如实声明**：guard 只看**工具调用**——`pwsh`/子进程**不经此门**；主人授权例外走 `LUNHENG_ALLOW_MECH_EDIT=1`（或本插件行 `config: { allowMechanismEdit: true }`）。插件 **Config**（部署开关，写在你 profile 的本插件行上）覆盖 `quiet` / `allowMechanismEdit` / `scriptTimeoutMs` / `scriptMaxOutputBytes` / `handoffLevel`（交接门灰度）——其中 `quiet` / `allowMechanismEdit` 与 `LUNHENG_QUIET` / `LUNHENG_ALLOW_MECH_EDIT` env 同义，而 `scriptTimeoutMs` / `scriptMaxOutputBytes` / `handoffLevel` 三者**仅 Config（无 env 路径）**；五者均随 profile 走且可 review；**非法配置在加载期响亮失败**，不静默回落默认值。 |
 
 ## Pipeline overview
 

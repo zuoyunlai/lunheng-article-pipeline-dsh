@@ -54,9 +54,8 @@ node --test tests/route.test.mjs
 ## 设计原则
 
 1. **薄壳 wrapper**：不引入新角色、新阶段、新 M 门；所有重活走论衡 9 角色流水线
-2. **默认免费**：`/lunheng -cite` 命令借鉴 Ai4Scholar 设计，不消耗 auto_cite 积分
-3. **二次确认**：`/lunheng -rollback` 必须 `--confirm`，防误操作
-4. **单一真源**：所有命令路由细节见 `references/command-routing.md`
+2. **二次确认**：`/lunheng -rollback` 必须 `--confirm`，防误操作
+3. **单一真源**：所有命令路由细节见 `references/command-routing.md`
 
 ## 与论衡的关系
 

@@ -75,7 +75,7 @@
 
 - **C-1**（P1）五语 `README.md` + `SECURITY.md` + `docs/installation.md`：工具数 2→3（补 `lunheng_handoff_check`，来源 `lib/tools.js` 第 3 个 `disposers.push(tools.register(defineTool({…})))` 块）
 - **C-2**（P1）人类命令 `/lunheng-status` → `/lunheng-status` + `/lunheng-stats`（来源 `lib/commands.js` `installStatsCommand`）
-- **C-3**（P1）Config 第 5 键 `handoffLevel`（basic / strict），与 `LUNHENG_HANDOFF_LEVEL` env 镜像
+- **C-3**（P1）Config 第 5 键 `handoffLevel`（basic / strict）——**仅 Config，无 env 路径**（v18.18.0 更正：本项落地时曾误写「与 `LUNHENG_HANDOFF_LEVEL` env 镜像」，而 `lib/index.js` 只读 `LUNHENG_QUIET` / `LUNHENG_ALLOW_MECH_EDIT` 两个 env，凭空多出一个不存在的操作者开关；已改为如实声明「`scriptTimeoutMs` / `scriptMaxOutputBytes` / `handoffLevel` 三者仅 Config」）
 - **C-4**（P1）README 改为「registers **two** on-demand agent skills」+ 布局树补 `skills/lunheng-commands/` 子技能目录（11 个 `/lunheng-*` 斜杠命令；薄壳 wrapper 不引入新角色 / 新 M 门）
 - **C-5**（P1）README 「Local gates」四条命令加限定「**repository sources only** — npm 包不含 `scripts/` 与 `tests/`」
 - **C-6**（P1 + 岔口 #4 白名单化）`lib/commands.js` 的 `/lunheng-stats` 参数白名单化——只放行 `--json` 一个旗标；其它 token 一律拒绝（用户原文不再直接进 argv 末尾，宿主进程 spawn 权限不再随键盘输入传递）
