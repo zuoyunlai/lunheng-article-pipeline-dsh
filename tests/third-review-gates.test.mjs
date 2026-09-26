@@ -10,7 +10,9 @@
 //   CI 真用单点派生、文档真写了宿主已知缺陷。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { withCapturedConsole } from './_fixtures.mjs'
@@ -72,6 +74,61 @@ test('N-3 ci.yml：loader-smoke 从 --print-cli-spec 派生，不得再硬编码
 test('N-3 单点真源：plugin-surface-check 导出 CLI_SPEC，--print-cli-spec 真打印它', async () => {
   const mod = await import('../scripts/plugin-surface-check.mjs')
   assert.match(mod.CLI_SPEC, /^dsh-plugin-guide@\d+\.\d+\.\d+$/, `CLI_SPEC 形状应可被 dlx 直接用，实测 ${mod.CLI_SPEC}`)
+})
+
+// ── N-3（v18.21.1 收紧）：pin 必须是**唯一权威**，本地副本版本对不上时不得抢在 dlx 之前 ─────────
+// 为什么：N-3 只解决了「两处 pin 分叉」，但**第二处分叉在解析层**——本机 profile 副本一旦被抬到
+//   pin 之上（v18.20.2 实测 0.3.19 / pin 0.3.16），本地门就跑另一份语义，而旧判定被策略标签里的
+//   版本号短路成静默（`!hinted` 条件）→ 「本地全绿 CI 红」的经典形态复活。本用例钉**顺序**。
+test('N-3b pin 权威：版本==pin 的副本走快路径；版本≠pin 的副本降级为兜底（排在 dlx 之后）', () => {
+  const home = mkdtempSync(join(tmpdir(), 'lh-cli-pin-'))
+  try {
+    for (const [profile, version] of [['aligned', '0.3.16'], ['stale', '0.3.19']]) {
+      const dir = join(home, 'profiles', profile, 'node_modules', 'dsh-plugin-guide')
+      mkdirSync(join(dir, 'bin'), { recursive: true })
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'dsh-plugin-guide', version }))
+      writeFileSync(join(dir, 'bin', 'dsh-plugin-dev.js'), '// 用例桩：本文件不执行，只用于让策略可见')
+    }
+    const raw = execFileSync(
+      process.execPath,
+      [join(ROOT, 'scripts', 'plugin-surface-check.mjs'), '--print-strategies'],
+      { env: { ...process.env, DSH_HOME: home }, encoding: 'utf8' },
+    )
+    const labels = JSON.parse(raw).map((s) => s.label)
+    const iAligned = labels.findIndex((l) => l.includes('aligned'))
+    const iDlx = labels.findIndex((l) => l.startsWith('pnpm dlx'))
+    const iStale = labels.findIndex((l) => l.includes('stale'))
+    assert.ok(iAligned >= 0 && iDlx >= 0 && iStale >= 0, `三条策略都应可见，实测：${labels.join(' ｜ ')}`)
+    assert.ok(iAligned < iDlx, `与 pin 同版本的本地副本应排在 dlx 之前（零下载快路径），实测：${labels.join(' ｜ ')}`)
+    assert.ok(
+      iStale > iDlx,
+      `与 pin 版本不一致的副本必须排在 dlx 之后——否则「本地门一份语义、CI 门另一份」会再次静默分叉。实测顺序：${labels.join(' ｜ ')}`,
+    )
+  }
+  finally { rmSync(home, { recursive: true, force: true }) }
+})
+
+// ── N-3（配·v18.21.1）：pin 与「文档里的门数」必须同源（0.3.16 = 14 项 / 0.3.19 = 15 项）─────────
+// 为什么：v18.20.2 抬 pin 时项数从 14 改到 15；v18.21.1 回退 pin 又得改回 14——**同一事实两处维护**
+//   正是本仓标志性毛病。现把项数收进 CLI_CHECK_COUNT（单一来源），用例把 AGENTS.md 的三处口径
+//   焊死在它上面：抬 pin 时改一个常量即可，文档漏改即红。
+test('N-3c 门数同源：AGENTS.md 的 check 项数（三处）== CLI_CHECK_COUNT，且与 pin 版本自洽', async () => {
+  const mod = await import('../scripts/plugin-surface-check.mjs')
+  assert.equal(
+    mod.CLI_PIN_VERSION,
+    /@(\d+\.\d+\.\d+)$/.exec(mod.CLI_SPEC)?.[1],
+    `CLI_PIN_VERSION 必须从 CLI_SPEC 派生（实测 CLI_SPEC=${mod.CLI_SPEC} / CLI_PIN_VERSION=${mod.CLI_PIN_VERSION}）`,
+  )
+  const agents = read('skills/lunheng-article-pipeline/AGENTS.md')
+  const mentioned = [...agents.matchAll(/dsh-plugin-dev check`[^\n]{0,30}?(\d+) 项/g)].map((m) => Number(m[1]))
+  assert.ok(mentioned.length >= 3, `AGENTS.md 至少三处声明 check 项数，实测命中 ${mentioned.length} 处`)
+  for (const n of mentioned) {
+    assert.equal(
+      n,
+      mod.CLI_CHECK_COUNT,
+      `AGENTS.md 写「${n} 项」与 CLI_CHECK_COUNT=${mod.CLI_CHECK_COUNT}（pin ${mod.CLI_SPEC}）不一致——抬/降 pin 必须同步改常量与文档`,
+    )
+  }
 })
 
 // ── N-4：宿主已知缺陷必须写在**用户看得到**的文档里（而非 workflow 注释）─────────

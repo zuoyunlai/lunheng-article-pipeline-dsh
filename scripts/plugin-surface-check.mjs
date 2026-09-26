@@ -37,7 +37,10 @@
  * 没有 devDependencies、也没有 `node_modules/`**（刻意不引入依赖树，见 ci.yml 里「为什么不加 cache: pnpm」
  * 的注释）。旧头注释把「本地优先」写成了可用路径，实际每次都要落到 `pnpm dlx`（**从 registry 现场下载**）。
  * 故 v18.2.6 补第三条：**DSH profile 里已装的 dsh-plugin-guide**（`<DSH_HOME>/profiles/<profile>/node_modules/
- * dsh-plugin-guide/bin/dsh-plugin-dev.js`，本机 = 0.3.19，v18.20.2 起与本 pin 对齐）——有则直接用，零下载；CI 上不存在，自动落到 dlx。
+ * dsh-plugin-guide/bin/dsh-plugin-dev.js`）——有则直接用，零下载；CI 上不存在，自动落到 dlx。
+ * **v18.21.1 收紧：该条只在副本版本 == pin 时才用**——版本对不上的副本降级为「dlx/npx 都失败后的兜底」。
+ * 起因：v18.20.2 把本机副本抬到 0.3.19（pin 之上），于是**本地门跑 0.3.19 语义、CI 门跑 0.3.16 语义**
+ * 而输出里不再有任何提示（策略标签自带版本 → 旧逻辑的「版本不一致」分支被 `hinted` 短路）。pin 必须是唯一权威。
  * 无论走哪条，**实际解析到的 CLI 版本都会打印出来**（取自 CLI 报告的 `version` 字段），并校验与 pin 是否一致。
  *
  * 失败即失败（fail-closed）：所有策略都拿不到合法 JSON → 退出码 1，不静默放行；同时输出
@@ -58,14 +61,38 @@ const ROOT = path.resolve(HERE, '..')
  *   `README-zh.md` 连字符命名，见下方 WARN_EXEMPT）。抬高 pin 的意义不是「追新」，而是让**门与文档
  *   对齐到同一个可复现的 CLI 版本**；抬升后必须重跑本脚本并把实际数字写回文档（本次已写回）。
  */
-export const CLI_SPEC = process.env.DSH_PLUGIN_DEV_SPEC || 'dsh-plugin-guide@0.3.19'   // v18.20.2 抬升（0.3.16→0.3.19）
+export const CLI_SPEC = process.env.DSH_PLUGIN_DEV_SPEC || 'dsh-plugin-guide@0.3.16'   // v18.21.1 回退（0.3.19→0.3.16）
 // 三次复审 N-3：本常量是「本包所用的 dsh-plugin-guide」的**唯一 pin 点**。
 //   此前 `.github/workflows/ci.yml` 的 loader-smoke 另硬编码了一份 `dsh-plugin-guide@0.3.16`
 //   ——v18.20.2 抬 pin 时只改了这里 → 两处 pin 分叉，且无门守护（「修一处不修一类」）。
 //   现由 CI 复用本处：`pnpm dlx "$(node scripts/plugin-surface-check.mjs --print-cli-spec)" verify .`，
 //   并由 `repo-hygiene-check` 规则 ⑭ 机械守住「运行面只允许这一处 pin」。
+//
+// ⚠️ **为什么 pin 停在 0.3.16，而不是更新的 0.3.19（v18.21.1 实测证据，改此行前必读）**：
+//   本 pin 同时喂给**两个子命令**——发布门 `check`（本脚本）与 CI loader-smoke 的 `verify`（ci.yml）。
+//   0.3.19 的 `verify` 在**无模型凭据**的 CI 上必红：headless 冒烟的全部输出只有一行
+//   `dsh: TRANSPORT: DeepSeek Messages transport failed` → 判「未证明树已加载」。
+//   证据（同一仓库、同一 runner、仅 CLI 版本不同）：ci 运行 36241874638（派生 0.3.19，`✗ headless-smoke`，两次重跑同红）
+//   vs 36239736390（硬编码 0.3.16，`✓ headless-smoke / verify: OK`）。且 0.3.19 的 `verify` **无开关**可跳过该子步
+//   （`--help` 只列 --cwd/--dsh/--pnpm/--profile/--base/--headless/--timeout/--smoke-timeout）。
+//   → 「两个子命令都能过的最高版本」就是 0.3.16。代价可忽略：0.3.19 相对 0.3.16 只多一条检查
+//   （`redline-async-apply-registration`，本包为 skip，见 SKIP_ALLOWED）→ 回退**不损失任何本包覆盖**。
+//   ⚠️ 抬 pin 的固定动作：① 先在有模型凭据的环境跑 `verify`；② 同步 AGENTS.md 的 check 项数（下条常量）；
+//      ③ 新 skip 项登记进 SKIP_ALLOWED；④ 跑四门 + 全量用例。
+/** 与 pin 配套的 `check` 检查项数（抬 pin 时**唯一**需要改的数字，供 AGENTS.md 口径一致性与用例核对）。 */
+export const CLI_CHECK_COUNT = 14   // dsh-plugin-guide@0.3.16 实测：9 通过 / 0 失败 / 1 提示 / 4 跳过 = 14 项
+/** pin 里声明的版本号（用于「本地副本是否等于 pin」的判定；DSH_PLUGIN_DEV_SPEC 覆盖时随之变化）。 */
+export const CLI_PIN_VERSION = /@(\d+\.\d+\.\d+)/.exec(CLI_SPEC)?.[1] ?? null
 if (process.argv.includes('--print-cli-spec')) {
   process.stdout.write(CLI_SPEC)
+  process.exit(0)
+}
+// 诊断用（用例据此断言「pin 权威」的**顺序**，见 tests/third-review-gates.test.mjs）。
+if (process.argv.includes('--print-strategies')) {
+  process.stdout.write(JSON.stringify(
+    strategies().map((s, i) => ({ i, label: s.label, hinted: s.hinted })),
+    null, 2,
+  ))
   process.exit(0)
 }
 const TIMEOUT_MS = Number(process.env.DSH_PLUGIN_DEV_TIMEOUT || 300000)
@@ -91,7 +118,7 @@ const SKIP_ALLOWED = new Map([
   ['redline-persona-role', '该检查找**仓库根**的 SKILL.md / systemPrompt 段落，而本包（bundle 形态）的技能体在 skills/lunheng-article-pipeline/SKILL.md —— 结构上永远看不到'],
   ['redline-waterfall-next', '本包不用任何 waterfall 监听器（能力面走 ctx.effect / ctx.tools.guard / ctx.commands.register），没有 next() 可漏'],
   ['redline-no-hardcoded-tunables', 'CLI 只认 `export const Config = Schema.…`（Schemastery）与 `= {`（会被判 fail）；本包入口刻意用 standard-schema 形态 `Object.freeze({…})`（不引入宿主依赖，见 lib/index.js 头注释）→ 三条正则都不命中，只能 skip。**已实测**（CLI dist 0.3.10 的 checkRedlineNoHardcodedTunables：:1065-1066,1077）。等价语义由 tests/entry.test.mjs 的 Config 用例与「非法配置加载期响亮失败」覆盖'],
-  ['redline-async-apply-registration', 'v18.20.2 抬 pin 0.3.16→0.3.19 时上游**新增**的检查（「async apply 首个 await 之后不得注册」，卸载窗口竞态）。本包入口 lib/index.js 的 `apply(ctx, config)` 是**同步函数**（apply 体内的异步安装走 `ctx.effect()` 回调，注册发生在其 await 之前；apply 自身不 await）→ 无 async apply 可查，skip 是「本包没有该面」的正常形态，**非**静默失效'],
+  ['redline-async-apply-registration', 'v18.20.2 抬 pin 0.3.16→0.3.19 时上游**新增**的检查（「async apply 首个 await 之后不得注册」，卸载窗口竞态）。**pin 已于 v18.21.1 回退到 0.3.16**（0.3.19 的 verify 在无凭据 CI 上必红，见 CLI_SPEC 注释）→ 本条在 pin 为 0.3.16 时**不触发**，保留它是为了「将来抬到 ≥0.3.19 时该 skip 已被人工确认过」。本包入口 lib/index.js 的 `apply(ctx, config)` 是**同步函数**（apply 体内的异步安装走 `ctx.effect()` 回调，注册发生在其 await 之前；apply 自身不 await）→ 无 async apply 可查，skip 是「本包没有该面」的正常形态，**非**静默失效'],
 ])
 
 /**
@@ -159,9 +186,16 @@ function strategies() {
   const local = path.join(ROOT, 'node_modules', 'dsh-plugin-guide', 'bin', 'dsh-plugin-dev.js')
   if (existsSync(local)) base.push({ label: '本地 node_modules', argv: ['node', quote(local)] })
   // 结构性不可达的说明见文件头；下面是**真正可用**的本地路径（DSH profile 里已装的副本）
-  for (const p of profileInstalls()) base.push({ label: p.label, argv: ['node', quote(p.file)] })
+  // v18.21.1：**只有版本 == pin 的副本才排在 dlx 之前**——版本对不上的副本降级为兜底（排在 npx 之后）。
+  //   否则「本地门跑 A 语义、CI 门跑 B 语义」会静默复活（v18.20.2 起本机副本 0.3.19 / pin 0.3.16 就是这个形态）。
+  const installs = profileInstalls()
+  const matchesPin = (p) => !CLI_PIN_VERSION || p.version === CLI_PIN_VERSION
+  for (const p of installs.filter(matchesPin)) base.push({ label: p.label, argv: ['node', quote(p.file)] })
   base.push({ label: `pnpm dlx ${CLI_SPEC}`, argv: ['pnpm', 'dlx', CLI_SPEC] })
   base.push({ label: `npx -y ${CLI_SPEC}`, argv: ['npx', '-y', CLI_SPEC] })
+  for (const p of installs.filter((p) => !matchesPin(p))) {
+    base.push({ label: `${p.label}（⚠ 版本≠pin，仅作 dlx/npx 不可用时的兜底）`, argv: ['node', quote(p.file)] })
+  }
   return base.map((s) => ({
     label: s.label,
     cmd: [...s.argv, 'check', '--json', '--cwd', quote(ROOT)].join(' '),
@@ -255,8 +289,10 @@ console.log(`\n论衡打包面检查（dsh-plugin-dev via ${label}）· 目标�
 //   两个独立证据：① CLI 报告里的 `version` 字段；② 策略标签里带的版本（profile 副本/显式 pin）。
 //   与 pin 不一致时只**提示**不失败——`DSH_PLUGIN_DEV_SPEC` 是给维护者临时试新版用的合法覆盖。
 console.log(`CLI 版本：${cliVersion}（pin = ${CLI_SPEC}${hinted && hinted !== cliVersion ? `；策略标签给出 ${hinted}` : ''}）\n`)
-if (CLI_SPEC.includes('@') && cliVersion !== '未知' && !CLI_SPEC.endsWith(`@${cliVersion}`) && !hinted) {
-  console.log(`⚠ 实际 CLI 版本 ${cliVersion} 与 pin ${CLI_SPEC} 不一致——若这是上游换了 dlx/npx 的解析结果，请复核 pin 是否需要抬升\n`)
+// v18.21.1：判定收口为「执行到的版本 vs pin 版本」——旧条件带 `!hinted`，而 profile 副本/兜底标签**自带版本**
+//   会被短路 → 「本机 0.3.19 跑门、CI 0.3.16 跑门」这种分叉反而一声不响。对照见 CLI_SPEC 注释。
+if (CLI_PIN_VERSION && cliVersion !== '未知' && cliVersion !== CLI_PIN_VERSION) {
+  console.log(`⚠ 实际执行的 CLI 版本 ${cliVersion} 与 pin ${CLI_PIN_VERSION} 不一致——本地门与 CI 门可能语义分叉；正常路径下 dlx/npx 会命中 pin，出现本提示请查网络/缓存与 DSH profile 副本\n`)
 }
 
 const blocking = []
