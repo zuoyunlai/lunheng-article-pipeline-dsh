@@ -2,6 +2,29 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.20.1 — 2026-09-26
+
+> **性质**：v18.20.0 独立全量审计修订（`4e516fb`）。**缺陷修复 + 机检门加固 + 子技能一致性**。详见 `audits/反哺报告-v18.20.0-独立全量审计-2026-09-26.md`、`audits/机制文件修订记录-2026-09-26.md`。
+
+### 一、缺陷修复
+
+- **P1-① lunheng-commands 子技能版本漂移**：`skills/lunheng-commands/{README.md,package.json}` 版本 1.0.0→1.0.1（v18.7.1 升版时漏改这两处，漂移存活到 v18.20.0）。
+- **P1-② 命令枚举漏 `-stats`**：README 代码块与 package.json description 声称「11 个命令」却只枚举 10，补 `-stats`。
+- **P3-② 五语 README 命令描述与真源不符**：把「status/stats/compression-cycle/evidence-bundle/m-gate/handoff-check」改为真源命令集「draft/resume/cite/audit/journal/ppt/history/rollback/status/stats/help」（10 处）。
+
+### 二、机检门加固（治本）
+
+- **规则 ㉕ 扩展**：除「N 个」数字外，再对账**枚举清单**（斜杠列表 ≥5 个 -token 或代码块 ≥5 行 → 缺项 P1）。旧规只核数字不核清单，故「数字对、清单漏」逃逸。
+- **新增规则 ㉖**：lunheng-commands 三件套（SKILL.md / README.md / package.json）1.0.x 版本交叉核对（主包规则① 只对账 18.x，子技能版本此前无门）。
+- 校正 consistency-check 头部规则计数 24→26（旧「24 类」少算 1 的既存 off-by-one）。
+- 规范-机械门对照表 §一 补 2 行勾稽 + 词预算棘轮 35→36 KB。
+
+### 三、其他
+
+- **去双重身份**：lunheng-commands `package.json` 标 `private: true`（内嵌子技能，不再独立发布）。
+- 清理根目录旧 `*.tgz` 与 `SECURITY.md.bak`（gitignored）。
+- 新增 `tests/command-enum-subskill-version.test.mjs`（4 用例，覆盖规则㉕扩/㉖ 正负向）。
+
 ## 18.20.0 — 2026-09-26
 
 > **性质**：批 1（30629bb）+ 批 2（254fe61）+ 试点报告（600b654）同批归版。**机制改动 + 试点实证**。详见 `audits/机制文件修订记录-2026-09-26-外部借鉴批1.md`、`audits/机制文件修订记录-2026-09-26-外部借鉴批2.md`、`audits/试点报告-A1B1-pilot-2026-09-26.md`、`audits/反哺报告-外部质量提升空间-借鉴评估-v1.md`。
