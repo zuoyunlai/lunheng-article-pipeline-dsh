@@ -1,6 +1,6 @@
 # CRediT 作者贡献声明模板
 
-> 版本：v18.18.5（DSH bundle 插件 / 学术伦理声明 P0-5 新增）
+> 版本：v18.18.6（DSH bundle 插件 / 学术伦理声明 P0-5 新增）
 > 用途：学术论文投稿必附的作者贡献声明（Contributor Roles Taxonomy / NISO Z39.104-2022 标准）。
 > 生成规则：在 14 类 CRediT 标准角色中**只勾选实际承担的角色**，并按贡献度排序主要作者；<方括号> 处按实填实。
 > 引用：Brand A, Allen L, Altman M, et al. Beyond authorship: attribution, contribution, and collaboration in research publication. *Learned Publishing*. 2015;28(2):83-97. doi:10.1087/20150202

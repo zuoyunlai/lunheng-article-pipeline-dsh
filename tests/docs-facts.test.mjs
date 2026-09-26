@@ -20,7 +20,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, existsSync, readdirSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { scan as scanLinks } from '../scripts/link-check.mjs'
 
@@ -342,6 +342,90 @@ test('C-1 反向自证：本门的派生与锚点对「人为删一个工具名�
     missing,
     [tools[2]],
     '反向自证失败：人为删掉一个工具名后，本门应当恰好报出那一个缺失项；' +
-      '若 missing 为空说明断言写错了对象（门恒真），若多报说明锚点选错',
+      '若 missing 为说明断言写错了对象（门恒真），若多报说明锚点选错',
+  )
+})
+
+// ── C-12 / C-13 机械化（v18.18.6）──────────────────────────────────────────────
+//
+// 这两条同族：**文档里一句人写的事实陈述，必须与结构真源绑定**，否则它会随结构演进而
+// 悄悄变成假话。两处都是「改过一轮、仍没改对」的形态，故值得上机检：
+//   · **C-12**：`docs/architecture.md:15` 与 `docs/introduction.md:40` 曾写 T8「**无**角色卡」，
+//     而发布物里一直有 `references/agents/08-终检-finalizer.md`（该卡自称「九个独立角色之一、
+//     不可被其他角色替代」）。文档否认自家角色卡的存在，会让读者以为 T8 无人负责。
+//   · **C-13**：`docs/introduction.md:42` 与 `docs/介绍与排版/*.html` 曾写「六个阶段」却**列了
+//     7~8 项**。v18.18.0 把 introduction 的「六」改成「七」，但同一行的箭头序列仍有 8 项，
+//     而全库其余位置一律写 6 —— **改了一轮仍未自洽**。真源 = 「Phase 0–5 六个主阶段」，
+//     子阶段（1.5/2.5/3.5/3.6/4.2/4.5）不计入。
+const DOC_SURFACES = (() => {
+  const out = []
+  const walk = (dir, base) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, e.name)
+      if (e.isDirectory()) walk(full, base)
+      else if (/\.(md|html)$/.test(e.name)) out.push(relative(base, full).split(sep).join('/'))
+    }
+  }
+  walk(join(ROOT, 'docs'), ROOT)
+  for (const s of readdirSync(join(ROOT, 'skills'), { withFileTypes: true })) {
+    if (s.isDirectory() && existsSync(join(ROOT, 'skills', s.name, 'README.md'))) out.push(`skills/${s.name}/README.md`)
+  }
+  return out
+})()
+
+/** 结构真源：**主**阶段数 = 五语 README 概览块里的整数 Phase 前缀去重个数（Phase 0–5 ⇒ 6）。 */
+function derivedPhaseCount() {
+  return phaseCount('README.md')
+}
+
+const CN_NUM = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 }
+
+test('C-12：文档不得否认角色卡的存在，且声明的卡必须真的在盘', () => {
+  assert.ok(DOC_SURFACES.length > 5, `文档面过少（实测 ${DOC_SURFACES.length}）——扫描退化会让本断言恒真`)
+
+  // ① T1–T9 的角色卡都在（08 是 C-12 的事主；缺任何一张都说明卡片目录被动过）
+  const cardDir = join(ROOT, 'skills', 'lunheng-article-pipeline', 'references', 'agents')
+  const cards = readdirSync(cardDir).filter((f) => /^\d\d-.*\.md$/.test(f))
+  assert.ok(cards.length >= 9, `references/agents/ 的角色卡应 ≥9 张，实测 ${cards.length}`)
+  for (const n of [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
+    const hit = cards.filter((f) => f.startsWith(`0${n}-`))
+    assert.ok(hit.length > 0, `T${n} 的角色卡缺失（references/agents/0${n}-*.md）`)
+  }
+
+  // ② 反向：没有任何文档可以声称某角色「无角色卡」——九张卡都在，这句话必假
+  const denial = /无(独立)?角色卡|没有角色卡/
+  const liars = DOC_SURFACES.filter((f) => denial.test(readFileSync(join(ROOT, f), 'utf8')))
+  assert.deepEqual(
+    liars,
+    [],
+    `以下文档声称存在「无角色卡」的角色，而 references/agents/ 下九张卡齐备：${liars.join(', ')}——` +
+      '（C-12 实例：architecture.md / introduction.md 曾这样写 T8，而 08-终检-finalizer.md 一直随包）',
+  )
+})
+
+test('C-13：文档里「N 个阶段」必须等于结构派生值（六个主阶段 Phase 0–5）', () => {
+  const truth = derivedPhaseCount()
+  assert.ok(truth >= 6, `派生阶段数异常（实测 ${truth}）——派生退化成 0/1 会让本断言形同虚设`)
+
+  const re = /(\d+|[一二三四五六七八九十]+)\s*个(?:主)?阶段/g
+  const stated = []
+  for (const f of DOC_SURFACES) {
+    const text = readFileSync(join(ROOT, f), 'utf8')
+    for (const line of text.split('\n')) {
+      for (const m of line.matchAll(re)) {
+        const raw = m[1]
+        const n = /^\d+$/.test(raw) ? Number(raw) : CN_NUM[raw]
+        stated.push({ f, n, raw, snippet: line.trim().slice(0, 60) })
+      }
+    }
+  }
+  assert.ok(stated.length > 0, '未在任何文档里找到「N 个阶段」表述——正则与文档脱节，本断言会恒真')
+
+  const wrong = stated.filter((s) => s.n !== truth)
+  assert.deepEqual(
+    wrong.map((s) => `${s.f}：说「${s.raw} 个阶段」而真源是 ${truth}`),
+    [],
+    `以下文档的阶段数 ≠ 结构派生值 ${truth}（Phase 0–5 六个主阶段；子阶段 1.5/2.5/3.5/3.6/4.2/4.5 不计）：\n` +
+      wrong.map((s) => `  · ${s.f} → ${s.snippet}`).join('\n'),
   )
 })

@@ -2,7 +2,7 @@
 
 > **论衡（lunheng-article-pipeline）** 是一个多 Agent 深度长文生产流水线，DeepSeek Harness（dsh）bundle 插件。它不是让一个 AI 直接写文章，而是让一支 **9 个 AI 角色组成的"论文生产小队"** 按既定协议协作：定题 → 三线并行检索 → 分析 → 写作 → 批判 → 审计 → 审稿 → 终检。每一步都有明确产出物、交接报告与质量闸门，最终交付**有证据底座、有反方论证、有独立审计、有人工核验节点**的文章。
 
-> 适用：公众号深度长文、研究报告、学术论文、商业评论、行业分析——任何"要站得住脚"的长内容。当前版本 **v18.18.5**（DSH 独立版本）。
+> 适用：公众号深度长文、研究报告、学术论文、商业评论、行业分析——任何"要站得住脚"的长内容。当前版本 **v18.18.6**（DSH 独立版本）。
 
 ---
 
@@ -39,7 +39,9 @@
 
 > **v2.3.0 角色编号重构 + v2.4.0 加 T9**：编号 = 流水线 Phase 顺序——T1-T3 检索 / T4-T5 加工 / T6-T9 防御。T8 终检**有角色卡**（`references/agents/08-终检-finalizer.md`），但**执行者 = 主控本人、不 spawn 子代理**——确保「最后一关」不外包；T9 同行评审是投稿前的「预演审稿人」，学术/行业分析模式默认开启。
 
-**七个阶段**（含 Phase 4.2 修订回环）：**Phase 0 定题 → Phase 1 并行检索 → Phase 2 分析 → Phase 3 写作 → Phase 3.6 批判 → Phase 4 审计 → Phase 4.2 修订回环（≤2 轮纠错 + 至多 +1 深化）→ Phase 5 终检**，中间穿插 **T2.5 / T7.5 两道完整性门**（主控 checkpoint，不绕过交接直接派发）与 **4 个人在环节点**（定题 / 大纲 / 洞察补充 / 终稿）。
+**六个主阶段（Phase 0–5，各自带子阶段）**：**Phase 0 定题 → Phase 1 并行检索（含 1.5 补检索）→ Phase 2 分析（含 2.5 大纲确认）→ Phase 3 写作（含 3.5 洞察补充、3.6 批判）→ Phase 4 审计（含 4.2 修订回环：≤2 轮纠错 + 至多 +1 深化；4.5 审稿）→ Phase 5 终检**，中间穿插 **T2.5 / T7.5 两道完整性门**（主控 checkpoint，不绕过交接直接派发）与 **4 个人在环节点**（定题 / 大纲 / 洞察补充 / 终稿）。
+
+> **口径说明（v18.18.6）**：本行旧标为 **7**，而紧随其后的箭头序列有 **8** 项、全库其余位置（`README*` ×5 / `docs/usage.md` / `skills/lunheng-article-pipeline/README.md`）一律标 **6**，三处互不相容。真源 = 「Phase 0–5 六个**主**阶段」（`tests/docs-facts.test.mjs` 从五语 README 的概览块按整数前缀派生，现已有门约束）——1.5 / 2.5 / 3.5 / 3.6 / 4.2 / 4.5 是**子**阶段，不计入主阶段数。本次按真源收敛。
 
 ---
 
@@ -170,7 +172,7 @@ dsh plugin --profile web add lunheng-article-pipeline
 ## 获取方式
 
 - **GitHub（DSH bundle）**：https://github.com/zuoyunlai/lunheng-article-pipeline-dsh
-- **npm**：`lunheng-article-pipeline@dsh`（dist-tag `dsh` = 最新 DSH 迭代版）；锁定具体版本可写 `@18.18.5`
+- **npm**：`lunheng-article-pipeline@dsh`（dist-tag `dsh` = 最新 DSH 迭代版）；锁定具体版本可写 `@18.18.6`
 - **历史版本线（独立化前）**：https://github.com/zuoyunlai/lunheng-article-pipeline
 
 ---

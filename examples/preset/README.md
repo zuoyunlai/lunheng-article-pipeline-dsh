@@ -13,7 +13,7 @@
 ```sh
 # 1. 在 profile 里声明 bundle 依赖（DSH 读 dsh.bundle.patch 找到 cordis.patch.yml 加载）
 dsh plugin --profile web add lunheng-article-pipeline@dsh   # 推荐：跟随最新 DSH 迭代版
-# 锁定具体版本：dsh plugin --profile web add lunheng-article-pipeline@18.18.5
+# 锁定具体版本：dsh plugin --profile web add lunheng-article-pipeline@18.18.6
 
 # 2. （可选，但要让三档工具真的挂上就必做）设三档 subagent 工具的 provider/model 环境变量
 #    v18.2.6 起：不设任何变量 = 三档行**根本不装载**（不再是「装载但全继承」）
