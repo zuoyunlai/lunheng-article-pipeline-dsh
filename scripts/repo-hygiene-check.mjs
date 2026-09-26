@@ -32,6 +32,7 @@ import { tmpdir } from 'node:os'
 import { join, dirname, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { scanShipped } from './_lib/pack-negative.mjs' // D-1②：与 pack-smoke 共用同形负清单（结构上同形，不靠两份代码同步）
+import { scanLocalPaths, LOCAL_PATH_BASELINE } from './_lib/local-path-scan.mjs' // D-2②：本机绝对路径（发布物硬零 + 非随包树棘轮）
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const isCI = Boolean(process.env.GITHUB_ACTIONS)
@@ -155,12 +156,15 @@ notes.push(`⑤ 编码：UTF-8 校验 ${utf8Checked} 个文本文件${replacemen
 // ⑥ 发布面（npm pack --dry-run）
 // 用单命令串 + shell（Windows 上 npm 是 .cmd）：避免 Node 对「shell:true + args 数组」的 DEP0190 告警
 const pack = spawnSync('npm pack --dry-run --json', { cwd: ROOT, encoding: 'utf8', shell: true, maxBuffer: 32 * 1024 * 1024 })
+/** 发布物清单（供 ⑥ 发布面 与 ⑦b 本机绝对路径 共用；v18.18.4 从 ⑥ 的 try 里提到外层）。 */
+let packFiles = []
 if (pack.status !== 0) {
   fail('pack', `npm pack --dry-run 失败：${(pack.stderr || pack.stdout || '').split('\n').slice(-3).join(' / ')}`)
 } else {
   try {
     const arr = JSON.parse(pack.stdout.slice(pack.stdout.indexOf('[')))
     const files = (arr[0]?.files || []).map((f) => f.path)
+    packFiles = files
     if (files.length === 0) fail('pack', 'npm pack 报告无文件（--json 解析异常？）')
     const must = [
       'package.json',
@@ -249,6 +253,50 @@ for (const p of scanned) {
   })
 }
 notes.push(`⑦ 凭据扫描：${scanned.length} 个文本文件 × ${SECRET_PATTERNS.length} 类模式${secretHits ? '（命中 ' + secretHits + '）' : '，无命中'}`)
+
+// ⑦b 本机绝对路径（D-2·修法② · v18.18.4）
+//   动机：规则⑦ 只扫**凭据形态**，对「路径」这类可避免的信息泄露完全无感——审计 D-2 实测
+//   发布物里写着 `E:\<本机根>\…`（其中一处还带内部项目目录名与内部审计报告名），而⑦ 照打印
+//   「无命中」。那三处内容已在早前批次改为占位符；本规则补的是**防复发的那一半**。
+//
+//   两档强度（这是刻意的，理由见 `_lib/local-path-scan.mjs` 头注释）：
+//     · **发布物**——硬零。它是要发出去的制品，一条都不许有。
+//     · **非随包树**——**棘轮**。那 22 个文件是历史修订记录，备份路径是安全流程的过程证据；
+//       设成硬零会让门**永久红**，而永久红的门等于没有门。棘轮 = 新增即红、缩减即绿。
+const packedSet = new Set(packFiles ?? [])
+let shippedPathHits = 0
+let ratchetBreaches = 0
+const baselineSeen = new Set()
+for (const p of tracked.filter(isText)) {
+  if (p === SELF) continue
+  const abs = join(ROOT, p)
+  if (!existsSync(abs)) continue
+  const hits = scanLocalPaths(readFileSync(abs, 'utf8'))
+  if (!hits.length) continue
+  if (packedSet.has(p)) {
+    shippedPathHits++
+    // 路径本身不是凭据，可以照原样打印（打印才可修）；但仍只给首例，避免刷屏
+    if (shippedPathHits <= 5) fail('localpath', `**发布物**含本机绝对路径：${p} → \`${hits[0].text}\`（${hits[0].why}）——发布物一条都不许有，请改占位符（如 \`<项目根>/…\`）`)
+  } else {
+    const cap = LOCAL_PATH_BASELINE[p]
+    if (cap === undefined) {
+      ratchetBreaches++
+      if (ratchetBreaches <= 5) fail('localpath', `非随包文件含本机绝对路径但**未登记**：${p}（${hits.length} 处，首例 \`${hits[0].text}\`）——若确属历史记录，请在 \`_lib/local-path-scan.mjs\` 的 LOCAL_PATH_BASELINE 登记并写明理由`)
+    } else {
+      baselineSeen.add(p)
+      if (hits.length > cap) {
+        ratchetBreaches++
+        if (ratchetBreaches <= 5) fail('localpath', `${p} 本机绝对路径 ${hits.length} 处 > 棘轮上限 ${cap}（首例 \`${hits[0].text}\`）——新增泄露当即拦下；确属必要请在同一次提交抬升上限并写明理由`)
+      }
+    }
+  }
+}
+if (shippedPathHits > 5) fail('localpath', `发布物本机绝对路径另有 ${shippedPathHits - 5} 处未逐条列出`)
+const staleBaseline = Object.keys(LOCAL_PATH_BASELINE).filter((p) => !baselineSeen.has(p))
+notes.push(
+  `⑦b 本机绝对路径：发布物 ${shippedPathHits} 处（须为 0）／非随包树棘轮 ${baselineSeen.size}/${Object.keys(LOCAL_PATH_BASELINE).length} 个已登记文件在基线内` +
+    `${staleBaseline.length ? `；⚠️ 基线内 ${staleBaseline.length} 个文件已无命中，可把上限改小（${staleBaseline.slice(0, 3).join(' / ')}…）` : ''}`,
+)
 
 // ⑧ 退出码契约表（v18.0.2 新增；v18.0.5 大修——第三方审计 P1-5 指出旧版「声称与能力不符」）
 //    动机：退出码是**被别的组件消费的输出契约**（`final-check` 的推荐语、主控的闸门判定），
