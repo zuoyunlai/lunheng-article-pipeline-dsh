@@ -6,7 +6,13 @@
 
 ```sh
 # 1) 装进 profile 的 node_modules
-dsh plugin --profile <profile> add lunheng-article-pipeline
+#    ⚠️ **务必钉版本**：不写 `@<版本>` 时，装到哪个版本取决于本机包管理器**当时**的解析状态。
+#    实测过一次：同一条命令装到 **18.15.0**，而 registry 上的 `latest` 已是 18.20.4 —— 差了五个小版本，
+#    且按下面流程走下去**没有任何一步能让人察觉**。版本真源只有一处：`npm view lunheng-article-pipeline version`。
+dsh plugin --profile <profile> add lunheng-article-pipeline@18.20.4
+
+# 1b) **核对装到的版本**（钉了版本也值得跑一次——它读的是 profile 里**实际落盘**的 package.json）
+node -e "console.log(require('<DSH_HOME>/profiles/<profile>/node_modules/lunheng-article-pipeline/package.json').version)"
 
 # 2) 把 bundle 加入 profile 清单
 #    $DSH_HOME/profiles/<profile>/package.json
@@ -27,18 +33,28 @@ dsh plugin --profile <profile> add lunheng-article-pipeline
    ```
 2. **`dsh plugin add` 会自动加 bundles 清单（新版 dsh）**：`reconcilePlugins` 会把声明了 `dsh.bundle` 的依赖自动追加进 `dsh.profile.bundles`（按依赖顺序），装完重启即可。仅当**绕过 `dsh plugin` 用纯 npm/pnpm 直接安装**、或使用**旧版 dsh** 时，才需要手动编辑第 2 步（把包名加进 `dsh.profile.bundles`）。
 3. **dshmarket 市场**：v18.0.0 起本包带 JS 包入口（`main` → `lib/index.js`），「只认 JS 入口」的校验器不再误报（详见 `docs/faq.md`）。
+4. **宿主（`@deepseek-ai/dsh`）版本**（三次复审 N-4，如实声明）：本包 `peerDependencies` 写 `>=0.1.2-rc.1 <0.2.0`，但**真实装载冒烟（CI 的 `loader-smoke`）只在 `0.1.7-rc.2` 上跑过**——声明区间宽于实测证据。
+   已知不兼容：`0.1.5-rc.2` / `rc.3` 的 `dsh-app-boot` 在 profile 的 `patchReload: "live"`（`dsh plugin add` 生成的默认值）且无 HMR 时会抛 `requires the Cordis HMR service` → **headless 启动必红**，与本包代码无关（`pack` / `install` / `dump-config` 三个前置子步全过）。规避：用 `0.1.7-rc.2` 及以上，或避开 headless 启动路径。
+   > 该「声明宽于证据」的差额何时收口（CI 加最低版本 leg ↔ 收紧 peer 声明）见三次复审报告 §三.3 定案 1。
 
 ## 验证
 
 ```sh
-# 本包自注册行 + bundle 层 + 三档工具行应出现在组合树中
+# 本包自注册行 + bundle 层应出现在组合树中
 dsh --profile <profile> --dump-config
 #   预期看到：  # == lunheng-article-pipeline
 #              - id: lunheng-article-pipeline      ← 自注册行（缺它 = 入口不会被 import，技能不注册）
-#              - id: tool-subagent-retrieval
+#              - id: tool-subagent-retrieval       ← 以下三行是**声明行**，见下方 ⚠️
 #              - id: tool-subagent-strong
 #              - id: tool-subagent-audit
 ```
+
+> ⚠️ **`--dump-config` 是「声明视图」，不反映装载态**——三档工具行的存在**不能**证明它们已挂载。
+> `disabled` 由 loader 在**装载期**求值裁剪（`refresh()` 首行即 `if (this.disabled) return`），
+> 而 dump 打印的是**声明**。实测：同一条命令在 `LUNHENG_TIERING` **未设 / `on` / `off` 三种取值下
+> 都输出这三行**——三种状态**完全不可区分**。
+> 故本步只能证明「**bundle 层存在 + 自注册行存在**」（这两条才是承重项），**不能**用来判断分档是否生效。
+> tiering 的可见性只能在**真实会话**里看工具清单（即下一条）。
 
 > ⚠️ **`- id: lunheng-article-pipeline` 这一行是承重的**：loader 靠它按包名 import 本包入口（`package.json#main` → `lib/index.js`），入口的 `apply` 才会执行 `ctx.skills.register()`。**只有层头 `# == lunheng-article-pipeline` 而没有这一行，说明技能不会注册**（v18.0.0 的真实缺陷，18.0.1 修复；回归防线 `tests/bundle-contract.test.mjs`）。
 

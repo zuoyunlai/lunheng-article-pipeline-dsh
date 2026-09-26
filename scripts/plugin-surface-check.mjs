@@ -58,7 +58,16 @@ const ROOT = path.resolve(HERE, '..')
  *   `README-zh.md` 连字符命名，见下方 WARN_EXEMPT）。抬高 pin 的意义不是「追新」，而是让**门与文档
  *   对齐到同一个可复现的 CLI 版本**；抬升后必须重跑本脚本并把实际数字写回文档（本次已写回）。
  */
-const CLI_SPEC = process.env.DSH_PLUGIN_DEV_SPEC || 'dsh-plugin-guide@0.3.19'   // v18.20.2 抬升（0.3.16→0.3.19，新版 CLI 已 dlx 实测 9 pass / 0 fail / 1 warn / 5 skip；新增 skip 项 redline-async-apply-registration 已登记 SKIP_ALLOWED；本机 profile 已同步对齐）
+export const CLI_SPEC = process.env.DSH_PLUGIN_DEV_SPEC || 'dsh-plugin-guide@0.3.19'   // v18.20.2 抬升（0.3.16→0.3.19）
+// 三次复审 N-3：本常量是「本包所用的 dsh-plugin-guide」的**唯一 pin 点**。
+//   此前 `.github/workflows/ci.yml` 的 loader-smoke 另硬编码了一份 `dsh-plugin-guide@0.3.16`
+//   ——v18.20.2 抬 pin 时只改了这里 → 两处 pin 分叉，且无门守护（「修一处不修一类」）。
+//   现由 CI 复用本处：`pnpm dlx "$(node scripts/plugin-surface-check.mjs --print-cli-spec)" verify .`，
+//   并由 `repo-hygiene-check` 规则 ⑭ 机械守住「运行面只允许这一处 pin」。
+if (process.argv.includes('--print-cli-spec')) {
+  process.stdout.write(CLI_SPEC)
+  process.exit(0)
+}
 const TIMEOUT_MS = Number(process.env.DSH_PLUGIN_DEV_TIMEOUT || 300000)
 /** warn 是否阻塞（`STRICT_WARN=1`）：CI 与发布门打开——「0 warn」此前只是文档承诺，代码并不阻塞。 */
 const STRICT_WARN = process.env.STRICT_WARN === '1' || process.env.STRICT_WARN === 'true'

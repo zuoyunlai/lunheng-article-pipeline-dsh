@@ -128,7 +128,13 @@ jobs:
       - name: 真实 Loader 冒烟（官方 dsh-plugin-dev verify）
         env:
           DSH_PLUGIN_DEV_TIMEOUT: '420000'
-        run: pnpm dlx dsh-plugin-guide@0.3.16 verify .
+        # 三次复审 N-3：CLI 版本**从唯一 pin 点派生**（此前此处硬编码 `@0.3.16`，与
+        #   `scripts/plugin-surface-check.mjs` 的 `0.3.19` 分叉）。改用 `--print-cli-spec` 后，
+        #   抬 pin 只需改一处；`repo-hygiene-check` 规则 ⑭ 守住「运行面不得出现第二处 pin」。
+        run: |
+          SPEC="$(node scripts/plugin-surface-check.mjs --print-cli-spec)"
+          echo "loader-smoke 使用的 CLI pin：$SPEC（单点来源 = scripts/plugin-surface-check.mjs）"
+          pnpm dlx "$SPEC" verify .
 
   # 随包脚本回归测试（v2.5.2-dsh.13 新增）
   # 矩阵含 windows-latest 与 macos-latest：final-check 的 POSIX 崩溃、路径含空格、
