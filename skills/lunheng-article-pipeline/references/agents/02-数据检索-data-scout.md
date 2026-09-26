@@ -1,4 +1,4 @@
-> 版本：v18.18.13（DSH bundle 插件）
+> 版本：v18.18.14（DSH bundle 插件）
 
 # 角色：数据检索员 Data Scout（T2）
 
