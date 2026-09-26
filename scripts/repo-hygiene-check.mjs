@@ -20,8 +20,19 @@
  *   ⑥ 发布面：npm pack --dry-run --json 必须含关键路径（运行期最小集）+ 脚本数 == SKILL.md 白名单数
  *      **且不得含仓库向文件**（v18.2.0：CHANGELOG/CONTRIBUTING 与 tests/、仓库 scripts/、.github/ 一律不随包）
  *   ⑦ 凭据扫描（零依赖，10 类模式）
+ *   ⑦b 本机绝对路径（D-2·修法② · v18.18.4）：发布物硬零 + 非随包树棘轮
  *   ⑧ 退出码契约表（静态解析 process.exit + exit-guard 兜底检查）
+ *   ⑧b 退出码命名空间双向对账（EXIT_CONTRACT ↔ troubleshooting §8 · C-11 · v18.18.5）
+ *   ⑧c 随包脚本执行面/写盘面派生对账（↔ SECURITY.md · C-7 · v18.18.8）
+ *   ⑧d 脚本**自述**退出码 ⊆ 自身契约行（F-5 · v18.18.12）
  *   ⑨ 文档词预算门（v18.1.0：逐文件棘轮上限 + ≥12 KB 全覆盖 + 常驻集合计上限）
+ *   ⑩ 注解密度门（v18.8.0：references/** 版本注解行占比上限，只降不抬）
+ *   ⑪ `lib/**:LINE` 裸行号引用（C-9 · v18.18.9）
+ *   ⑫ E 族「单源不变量」（E-14 期刊规模派生自洽 + E-8/E-14 锚点在场 · v18.18.10）
+ *   ⑬ CHANGELOG 版本段结构自洽（段内小节编号递增 / 首段 == package.json / 无重复键 / 降序 · v18.18.13）
+ *
+ *   ⚠️ 本清单**必须与实现同步**：v18.18.13 补 ⑩–⑬ 与 ⑦b/⑧b–d 时，本清单此前只列到 ⑨，
+ *   即「门自己的头落后于门的实现」——与它守的「清单落后于代码」是同一病，故一并补齐。
  *
  * 退出码：0 = 全通过；1 = 有失败（fail-closed，CI 红灯）
  * 失败同时输出 GitHub annotation（::error::），无需下载日志即可定位。
@@ -37,6 +48,7 @@ import { parseExitContract, parseNamespaceQuota, reconcile, reconcileScriptHeade
 import { deriveScriptSurface, parseSecuritySurface, reconcileSurface } from './_lib/script-surface.mjs' // C-7：随包脚本执行面/写盘面 ∈ SECURITY.md
 import { findLibLineRefs, isHistoricalDoc } from './_lib/lib-line-refs.mjs' // C-9：当前文档不得有裸 `lib/**:LINE` 引用
 import { resolveExitCodes, parseGuardConsts } from './_lib/exit-resolution.mjs' // A-7③：退出码静态解析（含一层变量内联，可单测）
+import { parseChangelogSections, reconcileChangelogStructure } from './_lib/changelog-structure.mjs' // ⑬：CHANGELOG 版本段结构自洽（v18.18.13）
 import {
   deriveJournalCounts,
   declaredJournalCounts,
@@ -775,6 +787,34 @@ notes.push(
     }
   }
   notes.push(`⑫② E 族锚点在场：MC- 三标签 + ${JOURNAL_POINTER_ANCHORS.length} 处期刊规模指针均在场`)
+}
+
+// ⑬ CHANGELOG「版本段结构自洽」（v18.18.13）
+//   真教训（不是假想）：v18.18.12 发版后复查发现 **`## 18.18.11 — 2026-09-26` 这个版本标题被删了**——
+//   写 v18.18.12 段时 `old_string` 只匹配了那行标题、`new_string` 末尾忘了写回去，于是 v18.18.11 的
+//   整段内容（`### 一、`…`### 六、`）挂到了 `## 18.18.12` 名下，两个版本段被合并。
+//   **它逃过了所有门**：`consistency-check` 规则 ⑪ 只核「**当前**版本段存在」（`## 18.18.12` 在场 → 通过），
+//   没有任何门管历史版本标题被删。同形失真在 v18.12.0 段也发生过一次（段内两个 `### 七、`）直到本次才发现。
+//   三条不变量（完全自洽可判，不依赖 git / 网络 / 发布记录——理由与代价见 `_lib/changelog-structure.mjs` 头注释）：
+//     ① 段内小节编号严格递增（抓「版本标题被删 → 两段合并 → 编号回绕」这一结构指纹）
+//     ② 首个 `## ` 段的版本 == `package.json.version`
+//     ③ 版本键不重复 ④ 版本键降序
+//   解析器在 `_lib/changelog-structure.mjs`（可单测）；形状变了会**抛错**而不是静默通过。
+try {
+  const clText = readFileSync(join(ROOT, 'CHANGELOG.md'), 'utf8')
+  const pkgVer = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version
+  const { sections } = parseChangelogSections(clText)
+  const { checked, withSubs, violations } = reconcileChangelogStructure(sections, pkgVer)
+  for (const v of violations) fail('changelog', `⑬ CHANGELOG 版本段结构（${v.kind}）:${v.line} ${v.msg}`)
+  // 退化防线（独立于违例报出，两者不互相吞掉——设计理由见 `_lib/changelog-structure.mjs` 头注释）
+  if (withSubs === 0) {
+    fail('changelog', '⑬ CHANGELOG 段形变了：没有任何「### 一、」式编号小节 → 子序不变量**空跑**（不是「通过」）——请同步解析器')
+  }
+  if (!violations.length && withSubs > 0) {
+    notes.push(`⑬ CHANGELOG 版本段结构：${checked} 个版本段（其中 ${withSubs} 个含编号小节）编号递增、版本降序、无重复键，且首段 == package.json`)
+  }
+} catch (e) {
+  fail('changelog', `⑬ CHANGELOG 版本段结构对账无法执行：${e.message}`)
 }
 
 console.log('\n=== 仓库机械卫生门（repo-hygiene-check）===')
