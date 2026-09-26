@@ -60,3 +60,77 @@ export function reconcile(actual, declared) {
     onlyInDoc: declared.filter((c) => !actual.includes(c)),
   }
 }
+
+// ── 脚本**自述**退出码 ↔ 自身契约行（⑧d · v18.18.12）────────────────────────────
+//
+// ── 为什么需要 ────────────────────────────────────────────────────────
+// 随包脚本的头部注释会自述返回码（例：`// 返回码：0 = …；4 = …`）。它是**第三处**退出码登记
+// ——除 `EXIT_CONTRACT`（机器面）与 `troubleshooting.md §8`（人读面）之外的**脚本自带面**，
+// 而前两处已有 ⑧b 对账、这一处一直没有门。
+// 实测教训（v18.18.12）：`model-routing.mjs:20` 自述「`1 = 读不到配置`」，而该脚本的
+// `process.exit(1)` **个数为 0**、契约行是 `[0,4,10,70]`——那个 `1` 是 v18.12.0 收口前的
+// 遗留声明。调用方按自述去接 `1`，永远等不到；维护者按自述去改，会以为 `1` 还被占着。
+// 这正是 F-5 一类「文案与行为脱节」的形态，故把不变量机械化成门，而不是再补一条文本断言。
+//
+// ── 与「双向对账」的刻意偏差（如实）──────────────────────────────────
+// 本函数是**单向**的：只报「自述了契约行外的码」（自述 ⊄ 契约），**不报**反方向。
+// 理由：`0` 与 `70`（EXIT_SOFTWARE）对**每个**装了 guard 的脚本都可用，脚本自述常只写语义码
+// 而省略它们——实测 `apply-diff.mjs` / `apply-revision-cycle.mjs` 都是「自述 [0,1,10] ⊂ 契约
+// [0,1,10,70]」。若做双向，这两处会成**假红**，门就再也红不动真问题。
+// 有害方向只有一个：**承诺了本脚本产不出的码**。故只挡这一面。
+
+/** 脚本头部自述退出码的段首标记（段内码写作 `N = 语义`）。 */
+const CODE_HEADER_RE = /(退出码|返回码)[：:]/
+/** 码子句：`N =`，N 限定 1–2 位（退出码都在 0–99，避免把 `v18.12.0 L-60` 之类误吞）。 */
+const CODE_CLAUSE_RE = /(?:^|[：:；;，,、\s(（])(\d{1,2})\s*=/g
+
+/**
+ * 解析单个脚本头部自述的退出码。
+ * @returns `null` = 该脚本不自述（合法，跳过）；否则 `{ line, codes }`（line 为 1 基行号）。
+ */
+export function parseScriptHeaderCodes(text) {
+  const lines = text.split('\n')
+  // 只在头部注释区找（前 40 行）——正文里的 `返回码` 讨论不该被当成本脚本的自述
+  let start = -1
+  for (let i = 0; i < Math.min(40, lines.length); i++) {
+    if (/^\s*\/\//.test(lines[i]) && CODE_HEADER_RE.test(lines[i])) { start = i; break }
+  }
+  if (start === -1) return null
+  const block = []
+  for (let i = start; i < lines.length; i++) {
+    if (!/^\s*\/\//.test(lines[i])) break
+    block.push(lines[i].replace(/^\s*\/\//, ''))
+  }
+  const codes = new Set()
+  for (const m of block.join('\n').matchAll(CODE_CLAUSE_RE)) codes.add(Number(m[1]))
+  if (codes.size === 0) {
+    // 标记在、码却解析不出 ⇒ 形状变了。响亮报错，绝不静默放行（否则本门悄悄失效）。
+    throw new Error(
+      `${lines[start].trim().slice(0, 60)} … 第 ${start + 1} 行的「退出码/返回码」段解析出 0 个码——` +
+        '码不再写作 `N = 语义`？请同步本解析器',
+    )
+  }
+  return { line: start + 1, codes: [...codes].sort((a, b) => a - b) }
+}
+
+/**
+ * 单向对账：每个自述了退出码的脚本，其自述码必须 ⊆ 自身契约行。
+ * @param entries `[{ name, allowed: number[], text }]`
+ * @returns `{ checked, violations: [{ name, line, extra, allowed }] }`
+ */
+export function reconcileScriptHeaders(entries) {
+  const violations = []
+  let checked = 0
+  for (const { name, allowed, text } of entries) {
+    const hdr = parseScriptHeaderCodes(text)
+    if (!hdr) continue
+    checked++
+    const extra = hdr.codes.filter((c) => !allowed.includes(c))
+    if (extra.length) violations.push({ name, line: hdr.line, extra, allowed })
+  }
+  if (checked === 0) {
+    // 一个自述的脚本都没有 ⇒ 要么约定被删、要么解析器脱节。两种都必须响亮报错。
+    throw new Error('没有任何随包脚本自述退出码——约定已删或解析器脱节，本门会静默失效')
+  }
+  return { checked, violations }
+}

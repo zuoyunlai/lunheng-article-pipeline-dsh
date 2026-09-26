@@ -41,22 +41,62 @@ test('L-67 token-cost：未知参数 / 非法数值 / 未给模式 一律 exit 1
   }
 })
 
-test('L-67 两个 token 脚本的源码里不再出现 exit(1)（1 是 M 门的「P1 内容失败」）', () => {
+// ── L-67：退出码不变量（**独立复算**，取代原来的「源码里不许出现 process.exit(1)」文本断言）──
+// v18.18.12（审计 F-5 转行为断言）：原断言 `assert.doesNotMatch(src, /process\.exit\(1\)/)` 有两个毛病：
+//   · **假绿**——它只认 `exit(1)` 这一种写法。`process.exit( 1 )`（带空格）、`process.exit(0x1)`、
+//     或把码装进变量 `const C = 1; process.exit(C)`，行为上与撞码完全等价，文本断言全都看不见；
+//   · **扫得太窄**——真正的规则是「**任何**随包脚本都不得使用自己契约行之外的码」（1 只是最危险的那个，
+//     因为 1 = M 门「P1 内容失败」）。只看两个 token 脚本 = 漏掉另外 21 个。
+//   现改为对**真实产物**独立复算这条不变量（不复用门的实现，故门自己退化时仍能发现）：
+//   解析 EXIT_CONTRACT → 逐脚本收集 `process.exit(<字面整数>)` → 断言每个字面码都落在本脚本契约行内。
+//   设计上**只扫字面整数**（保守子集）：变量形式的码本用例不解析，交由门 ⑧ 的「一层变量内联」负责，
+//   因此本用例红 ⇒ 门 ⑧ 也必然红，不会产生门看不见的假红。
+//   原断言那两条具体事实（两个 token 脚本不得含 1）保留，但**改为读契约行**而非读源码文本。
+test('L-67 退出码不变量：全部随包脚本的字面 exit 码都在各自契约行内（独立复算）', () => {
+  const hyg = readFileSync(join(ROOT, 'scripts', 'repo-hygiene-check.mjs'), 'utf8')
+  const contract = new Map()
+  for (const m of hyg.matchAll(/^\s*'([\w.-]+\.mjs)':\s*\[([^\]]*)\]/gm)) {
+    contract.set(
+      m[1],
+      m[2].split(',').map((x) => Number(x.trim())).filter((x) => Number.isInteger(x)),
+    )
+  }
+  assert.ok(contract.size >= 23, `契约表至少应覆盖 23 个随包脚本，实得 ${contract.size}`)
+
+  const dir = join(SCRIPTS)
+  const violations = []
+  let literals = 0
+  for (const f of readdirSync(dir).filter((x) => x.endsWith('.mjs'))) {
+    const allowed = contract.get(f)
+    if (!allowed) continue // 「装了 guard 却未登记」由下一条用例负责，此处不重复报
+    const src = readFileSync(join(dir, f), 'utf8')
+    for (const m of src.matchAll(/process\.exit\(\s*(\d+)\s*\)/g)) {
+      literals += 1
+      const code = Number(m[1])
+      if (!allowed.includes(code)) violations.push(`${f} exit ${code}（契约 ${allowed.join('/')}）`)
+    }
+  }
+  assert.ok(literals > 0, '复算未扫到任何 process.exit 字面码——扫描面失效（不许静默变成空跑）')
+  assert.deepEqual(violations, [], `这些脚本使用了契约行外的退出码（撞码风险）：${violations.join('; ')}`)
+
+  // 两个 token 脚本的具体事实：契约行不得含 1（= M 门「P1 内容失败」）——读契约，不读源码文本
   for (const f of ['token-budget.mjs', 'token-cost.mjs']) {
-    const src = readFileSync(join(SCRIPTS, f), 'utf8')
-    assert.doesNotMatch(src, /process\.exit\(1\)/, `${f} 不得再使用 exit 1`)
+    assert.ok(!contract.get(f).includes(1), `${f} 的契约行不得含 1（与 M 门「P1 内容失败」撞义）`)
   }
 })
 
 // ── L-68：退出码契约的覆盖面（装了 guard 必登记）────────────────────────────────────
 test('L-68 EXIT_CONTRACT 覆盖全部随包脚本，且每个 import exit-guard 的脚本都已登记', () => {
   const hyg = readFileSync(join(ROOT, 'scripts', 'repo-hygiene-check.mjs'), 'utf8')
-  // 表本身：不许再出现「已声明 1 却解析不出」的幽灵码（meta-synthesize 曾被登记 1，实为 3）
-  assert.match(hyg, /EXIT_GUARDED_EXEMPT\s*=\s*\{\}/, '豁免表应为空（23/23 全覆盖）')
-  // 覆盖面判据存在（而不是只靠人工维护表格）
-  assert.match(hyg, /guardedButUnregistered/, 'hygiene 门必须含「装了 guard 必登记」的断言')
+  // v18.18.12（审计 F-5）：此处原有两条**源码文本断言**已删——
+  //   `assert.match(hyg, /EXIT_GUARDED_EXEMPT\s*=\s*\{\}/)`（豁免表为空）与
+  //   `assert.match(hyg, /guardedButUnregistered/)`（门里写着这条判据）。
+  //   审计修法：「用同用例下半段的独立复算作**唯一判据**」。二者都被下面的复算**严格覆盖**：
+  //   · 复算不读 `EXIT_GUARDED_EXEMPT`——任何人往豁免表里塞一行，该脚本就会落进 `missing` → 红，
+  //     比「断言豁免表字面为空」更严（原文只查字面，改成 `{ 'x.mjs': '理由' }` 就漏了）；
+  //   · 门上是否**写着**这条判据属实现细节；不变量由复算直接钉在产物上，门退化时本用例照样抓得到。
 
-  // 独立复算一遍：模拟门的判据，防止门本身的实现悄悄退化
+  // 独立复算一遍：模拟门的判据，防止门本身的实现悄悄退化（本用例的**唯一**判据）
   const contractNames = new Set(
     [...hyg.matchAll(/^\s*'([\w.-]+\.mjs)':\s*\[/gm)].map((m) => m[1]),
   )

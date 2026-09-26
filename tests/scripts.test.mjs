@@ -2229,41 +2229,78 @@ test('m-gate-check M-Exist-4：修订任务书结构 + 审计↔复核编号闭�
   rmSync(d, { recursive: true, force: true })
 })
 
-test('主人侧三件套与输入模板齐备，且确认单含回填段与 Phase 0 附加块（v2.5.2-dsh.17）', () => {
+// v18.18.12（审计 F-5「模板类断言下沉到消费者」）：原用例对模板与角色卡做了 **11 处文案断言**
+//   （`sheet` 必含 `Phase 0 附加块` / `本轮改动摘要` / `资源预估` / `主人待办清单` / `### 6. 主人回复`；
+//    `feed` 必含 4 项收货校验；`coord` 必含两处措辞）。实测它们的问题不是「看不出来」而是**看错了对象**：
+//   · **假红**——改一个标题的措辞（判据没变）就红；
+//   · **假绿**——真改坏行为时，只要那串字还在别处就照样绿；
+//   · **无消费者**——实测 `Phase 0 附加块` / `本轮改动摘要` / `Phase 0（定题）` / `资源预估` /
+//     `主人待办清单` / 投喂清单 4 项，在 `skills/**/scripts/**` 里**零消费者**（只有人/LLM 读），
+//     断言它们等于把「文案」当契约。
+//   现按审计修法分三类处置：
+//     ① **有消费者的下沉**——`### 6. 主人回复` 的消费者是 `handoff-check.mjs --require-gates`
+//        （`<项目>/阶段确认-Phase*.md` 的 §6 段 + 五项字段），改为**真跑消费者**断言三档行为；
+//     ② **无消费者的删除**——上面点名的 6 组文案断言全部删掉（模板正文**不动**，它仍是给人与 LLM 读的）；
+//     ③ **契约表登记改读真表**——不再 grep `content-rules.mjs` 的源码文本，改为 `import` 真实的
+//        `CONTRACTS` 表断言登记（源码文本断言对「换行/引号/合并写法」过敏）。
+//   另附一条**新发现的两处维护**对账（③ 之后）：模板 §6 的条目标题 ↔ 消费者 `GATE_FIELDS`——
+//   模板改了字段名而消费者没跟，没有任何门会发现；而后果是**每个项目都被判「未留痕」**。
+test('模板齐备；§6 回填由消费者 handoff-check 判定；§6 字段与消费者 GATE_FIELDS 对账', async () => {
   const SK = join(ROOT, 'skills', 'lunheng-article-pipeline')
   const TPL = join(SK, 'references', 'templates')
+
+  // ① 模板在盘 + 版本头（产物存在性，与措辞无关，保留）
   for (const f of ['进展-主人版-template.md', '主人投喂清单-template.md', 'style-baseline-template.md', '主人确认-template.md', '任务简报-template.md']) {
     const p = join(TPL, f)
     assert.ok(existsSync(p), `模板应存在: ${f}`)
     assert.ok(readFileSync(p, 'utf8').includes('版本：'), `${f} 应有版本头`)
   }
-  // 确认单：四门 + 改动摘要 + §6 回复回填 + Phase 0 三块
-  const sheet = readFileSync(join(TPL, '主人确认-template.md'), 'utf8')
-  assert.match(sheet, /### 6\. 主人回复/, '必须含主人回复回填段（决策留痕）')
-  assert.match(sheet, /Phase 0 附加块/, '必须含 Phase 0 附加块')
-  assert.match(sheet, /本轮改动摘要/, '必须含改动摘要段')
-  assert.match(sheet, /Phase 0（定题）/, '用途必须覆盖 Phase 0（四门）')
-  assert.match(sheet, /资源预估/, 'Phase 0 块必须含资源预估')
-  assert.match(sheet, /主人待办清单/, 'Phase 0 块必须含主人待办清单')
-  // 投喂清单：4 项收货校验
-  const feed = readFileSync(join(TPL, '主人投喂清单-template.md'), 'utf8')
-  for (const k of ['路径存在且可读', '口径 / 范围 / 时间齐全', '可对外引用性明确', '脱敏与知情同意已确认']) {
-    assert.ok(feed.includes(k), `投喂清单应含校验项: ${k}`)
-  }
-  // 契约表登记（防新产物游离在机检之外）——v18.3.1（审计 B2 阶段 3）：CONTRACTS 表已随 ⑲ 迁入
-  //   _lib/cc-rules/content-rules.mjs，断言真源随之更新（实现文件位置变化 ≠ 契约本身变化）
-  const cs = readFileSync(join(SCRIPTS, '_lib', 'cc-rules', 'content-rules.mjs'), 'utf8')
-  for (const k of ['进展-主人版', '阶段确认-', '主人投喂清单', 'style-baseline']) {
-    assert.ok(cs.includes(`['${k}'`), `交接契约表应登记 ${k}`)
-  }
-  // 主控卡：四门 + 主人侧可见性
-  const coord = readFileSync(join(SK, 'references', 'agents', '00-主控-coordinator.md'), 'utf8')
-  assert.match(coord, /进展-主人版/, '主控卡应声明刷新进展（主人版）')
-  assert.match(coord, /四个\*\*人在环节点|四个\*\*人在环节点|Phase 0（定题）/, '主控卡应把 Phase 0 计入人在环节点')
-  // v2.5.2-dsh.17 续：模型路由表（模板存在 + 主控卡声明 + 契约表登记 + token-cost 帮助）
   assert.ok(existsSync(join(TPL, '模型路由表-template.md')), '模型路由表模板应存在')
-  assert.match(coord, /模型路由表/, '主控卡应声明 Phase 0 落模型路由表')
-  assert.ok(readFileSync(join(SCRIPTS, '_lib', 'cc-rules', 'content-rules.mjs'), 'utf8').includes("['模型路由表'"), '交接契约表应登记模型路由表')
+
+  // ② §6 回填：**下沉到消费者**。造三档输入 → 断言 handoff-check 的**行为**（而不是模板里的那句文案）。
+  //    注意：夹具没有产物/回报，故 exit code 恒为 20（别的项也在报）——断言**报错内容**而不是退出码。
+  const GATES = ['阶段确认-Phase0.md', '阶段确认-Phase2.5.md', '阶段确认-Phase3.5.md', '阶段确认-Phase5.md']
+  const FIVE = ['主人原话', '回复时间', '提问方式', '主控落盘结论', '轮次计数']
+  const sec6 = (fields) => ['### 6. 主人回复（主控回填）', '', ...fields.map((f) => `- **${f}**：已回填`), ''].join('\n')
+  const probeGates = (name, docBody) => {
+    const d = tmp(`lunheng-f5e-${name}-`)
+    for (const g of GATES) writeFileSync(join(d, g), docBody, 'utf8')
+    const r = run([join(SCRIPTS, 'handoff-check.mjs'), '--project', d, '--role', 'T5', '--require-gates', '--summary'])
+    rmSync(d, { recursive: true, force: true })
+    return r.out
+  }
+  const noSec = probeGates('nos', '# 阶段确认\n\n### 5. 其他\n\n内容\n')
+  assert.match(noSec, /缺「### 6\. 主人回复」段/, '缺 §6 段的确认单必须被消费者报出（决策留痕判据）')
+  const missField = probeGates('miss', `# 阶段确认\n\n${sec6(FIVE.slice(0, 4))}`)
+  assert.match(missField, /§6 回填不全/, '§6 缺字段必须被消费者报出')
+  assert.match(missField, /缺字段 轮次计数/, '应精确指出缺的那一项')
+  const full = probeGates('full', `# 阶段确认\n\n${sec6(FIVE)}`)
+  assert.doesNotMatch(full, /缺「### 6\. 主人回复」段|§6 回填不全/, '五项齐全且已回填时，消费者不得再报 §6 问题')
+
+  // ③ 两处维护对账：消费者要求的字段必须都在模板 §6 里定义。
+  //    **单向**（理由同 repo-hygiene ⑧d）：模板多出的**可选**字段（如「部署上下文备注」）不报，
+  //    但消费者若要求一个模板没有的字段，则每个项目都会被判「未留痕」——那才是真缺陷。
+  const sheet = readFileSync(join(TPL, '主人确认-template.md'), 'utf8')
+  const s6 = sheet.slice(sheet.search(/^###\s*6\./m), sheet.search(/^###\s*7\./m))
+  assert.ok(s6.length > 0, '模板 §6 段应可定位（§6…§7 之间）——形状变了请同步本解析器')
+  const tplFields = [...s6.matchAll(/^-\s*\*\*(.+?)\*\*/gm)].map((m) => m[1].replace(/[（(].*$/, '').trim())
+  assert.ok(tplFields.length >= 5, `模板 §6 解析出的字段过少（实测 ${tplFields.length}）——形状变了？`)
+  const hcSrc = readFileSync(join(SCRIPTS, 'handoff-check.mjs'), 'utf8')
+  const mGf = hcSrc.match(/const GATE_FIELDS = \[([^\]]*)\]/)
+  assert.ok(mGf, '消费者 handoff-check.mjs 应含 `const GATE_FIELDS = [...]`——形状变了请同步本解析器')
+  const gateFields = [...mGf[1].matchAll(/'([^']+)'/g)].map((m) => m[1])
+  assert.ok(gateFields.length >= 5, `GATE_FIELDS 解析出的字段过少（实测 ${gateFields.length}）`)
+  const undef = gateFields.filter((k) => !tplFields.includes(k))
+  assert.deepEqual(undef, [], `消费者要求了模板 §6 未定义的字段：${undef.join(' / ')}——模板与 handoff-check 必须同一次提交一起改`)
+
+  // ④ 契约表登记：读**真表**（`CONTRACTS`），不 grep 源码文本
+  const contracts = await import(pathToFileURL(join(SCRIPTS, '_lib', 'cc-rules', 'content-rules.mjs')).href)
+  const names = contracts.CONTRACTS.map((row) => row[0])
+  for (const k of ['进展-主人版', '阶段确认-', '主人投喂清单', 'style-baseline', '模型路由表']) {
+    assert.ok(names.includes(k), `交接契约表应登记 ${k}（实测登记 ${names.length} 项）`)
+  }
+
+  // ⑤ token-cost 的 CLI 行为（原属本用例的 v2.5.2-dsh.17 段，是**行为**断言，保留）
   const help = run([join(SCRIPTS, 'token-cost.mjs'), '--help'])
   assert.equal(help.code, 0, 'token-cost --help 应 exit 0')
   assert.match(help.stdout, /--top N/, '帮助应列出 --top')
@@ -2314,11 +2351,34 @@ test('退出码契约：路径/参数错一律 exit 10（v18.0.2 统一，防与
   rmSync(d, { recursive: true, force: true })
 })
 
-test('model-routing：退出码 3 已改为 4（避免与 M 门「仅 P2 可放行」撞码）', () => {
-  const src = readFileSync(join(SCRIPTS, 'model-routing.mjs'), 'utf8')
-  assert.ok(!/process\.exit\(3\)/.test(src), 'model-routing 不得再用 exit 3')
-  assert.match(src, /process\.exit\(anyMissing \? 4 : 0\)/, '缺档位的退出码应为 4')
-  assert.match(src, /返回码：0 = 三档都有主选；4 =/, '头注释必须写明新的返回码语义')
+// v18.18.12（审计 F-5 转行为断言）：原用例三条断言**全是源码文本**——
+//   `!/process\.exit\(3\)/`、`/process\.exit\(anyMissing \? 4 : 0\)/`、`/返回码：0 = 三档都有主选；4 =/`。
+//   第三条正是让那个陈旧的「读不到配置」码活到本版的原因：它只核了**前缀**「0 = …；4 =」，
+//   后面多挂一个早已不存在的码照样绿（假绿）；而真去改那行行文又会无故变红（假红）。
+//   现改为行为断言：**造一个「所有档位都没有候选」的 settings.yaml**，断言脚本真按 `4` 退出
+//   （= 「需人工决定」自有码，不是 M 门的 1/2/3）；并保留「用法/配置错必须 10」的行为对照，
+//   这两条一起钉住「3 与 1 都不再用」这个事实。头注释与契约行的一致性由仓库门 ⑧d 机械钉住。
+test('model-routing：无可用模型时 exit 4、配置错时 exit 10（行为，旧版是 3 与 1）', () => {
+  const d = tmp('lunheng-mr-')
+  const home = join(d, 'dsh-home')
+  mkdirSync(home, { recursive: true })
+  // provider 存在但**一个模型都没登记** ⇒ inventory 为空 ⇒ 走「没有可用模型」分支
+  writeFileSync(
+    join(home, 'settings.yaml'),
+    ['providers:', '  testprov:', '    displayName: "Test"', '    baseURL: "https://api.example.com/v1"', ''].join('\n'),
+    'utf8',
+  )
+  const r4 = run([join(SCRIPTS, 'model-routing.mjs'), '--dsh-home', home, '--json', '--no-probe'])
+  assert.equal(r4.code, 4, '无可用模型应 exit 4（需人工决定），实得 ' + r4.code + '：' + (r4.out + r4.err).slice(0, 300))
+  assert.notEqual(r4.code, 3, '不得用 3（与 M 门「仅 P2·soft·SKIP，可放行」撞码）')
+  assert.match(r4.out, /没有可用模型/, '应给出可读原因')
+
+  // 配置读不到 ⇒ 10（旧版是 1，与 M 门「P1 内容失败」撞义）
+  const r10 = run([join(SCRIPTS, 'model-routing.mjs'), '--dsh-home', join(d, 'nonexistent-home'), '--json'])
+  assert.equal(r10.code, 10, '读不到 settings.yaml 应 exit 10，实得 ' + r10.code)
+  assert.notEqual(r10.code, 1, '不得退回 1（= M 门「P1 内容失败」，会让主控误触发 T5 修订轮）')
+
+  rmSync(d, { recursive: true, force: true })
 })
 
 test('v18.2.9 方案：causal.mjs 三档词表逐词注入（删任意一词必红）', async () => {

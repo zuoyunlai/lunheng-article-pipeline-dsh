@@ -178,17 +178,43 @@ test('exit-guard L-66：describeSpawn 把 status=null / signal 分流，决策 J
   assert.match(r.stdout, /"consistencyCheck": "dry-run"/, '口径应为 dry-run')
 })
 
-// ── L-61 / L-66：编排脚本不得在**可执行代码**里引用未定义变量 ────────────────────────
-test('apply-compression-cycle L-61/L-66：可执行代码无未定义 repoRoot，且 --skip-bundle 真被读取', async () => {
-  const { readFileSync } = await import('node:fs')
-  const src = readFileSync(join(SCRIPTS, 'apply-compression-cycle.mjs'), 'utf8')
-  // 注释里会**如实记述**这次修正（提到旧版的 `repoRoot`），故只看剥掉注释后的代码。
-  const code = src
-    .split('\n')
-    .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
-    .map((l) => l.replace(/\s\/\/.*$/, ''))
-    .join('\n')
-  assert.doesNotMatch(code, /\brepoRoot\b/, '可执行代码不得引用未定义变量 repoRoot（旧版必然 ReferenceError → exit 70）')
-  assert.match(code, /flags\.has\('--skip-bundle'\)/, '--skip-bundle 必须被真正读取（旧版只在白名单里挂着、无效果）')
-  assert.doesNotMatch(code, /writeFileSync|copyFileSync/, '未被调用的导入应已删除')
+// ── L-61 / L-66：编排脚本的非 dry-run 分支必须真跑通，且 `--skip-bundle` 真被读取 ────────
+// v18.18.12（审计 F-5 转行为断言）：原用例断言的是**源码文本**——`doesNotMatch(code, /\brepoRoot\b/)`
+//   与 `match(code, /flags\.has\('--skip-bundle'\)/)` 都只看字面，失效方向是**双向**的：
+//     · 假绿——把 `--skip-bundle` 的**行为**改回「永远照跑证据包」，只要那句 `flags.has(...)`
+//       的字面还在，文本断言照样绿；
+//     · 假红——把 `flags` 改名或把该行拆成两行，行为完全不变却会无故变红；
+//     · 且 `repoRoot` 那条**扫错了分支**：旧缺陷在**非 dry-run** 分支，而同文件 :174 的用例只跑 dry-run。
+//   现改为行为断言（两次真跑，各约 0.5 s）：
+//     · `bundle === 'skipped(--skip-bundle)'` 这个取值**只有**非 dry-run 分支读到该开关时才可能产生
+//       （`dryRun ? 'dry-run' : (flags.has('--skip-bundle') ? 'skipped(--skip-bundle)' : 'skipped')`）
+//       ⇒ 一条断言同时证明「开关被读取」与「证据包确实没被 spawn」；
+//     · `consistencyCheck === 'exit 0'` 证明**非 dry-run 分支真的执行到了**——旧版 `repoRoot`
+//       未定义必然在此 ReferenceError → exit-guard 归为 exit 70，故它取代了 `/\brepoRoot\b/` 文本扫描；
+//     · 第 ② 次去掉开关，`bundle` 必须不再是 `skipped(--skip-bundle)`（证明该开关真的是**开关**）。
+//   原第三条 `doesNotMatch(code, /writeFileSync|copyFileSync/)`（「未被调用的导入应已删除」）**已删**：
+//   它是纯 lint（无消费者、无行为可破坏），正是审计 F-5 所述「无消费者的删掉或降级」的对象。
+test('apply-compression-cycle L-61/L-66：非 dry-run 分支真跑通，且 --skip-bundle 真被读取（行为断言）', () => {
+  const d = tmp('lunheng-b7-skipbundle-')
+  const proj = join(d, 'run', 'proj')
+  mkdirSync(join(proj, 'final'), { recursive: true })
+  writeFileSync(join(proj, 'final', '定稿.md'), '# 标题\n\n## 摘要\n\n正文。\n', 'utf8')
+
+  // ① 带开关：证据包必须被跳过
+  const withSkip = run([S('apply-compression-cycle.mjs'), proj, '--skip-bundle'])
+  assert.notEqual(withSkip.code, 70, '非 dry-run 分支不得因未定义变量 repoRoot 而 exit 70（旧版必然）：' + withSkip.out.slice(0, 300))
+  assert.equal(withSkip.code, 0, '未超阻塞线应 exit 0，实得 ' + withSkip.code + '：' + withSkip.out.slice(0, 300))
+  const j1 = parseJson(withSkip)
+  // 口径：**非 dry-run 分支是否真的执行到了 spawn**（而不是「一致性门是否通过」——那是门 1 的职责）。
+  //   故断言「已结算的 spawn 状态」的形状 `exit <N>`，**不**断言等于 `exit 0`：
+  //   v18.18.12 实测踩到过——把这里写成 `=== 'exit 0'` 会让本用例随**仓库全仓一致性**变红
+  //   （镜像未同步时 `consistency-check` 就是 exit 1），那就把「行为单测」变成了「依赖环境的集成测」，
+  //   正是审计 F-5 要消除的那类脆弱。
+  assert.match(j1.consistencyCheck, /^exit \d+$/, '非 dry-run 分支必须真的刷新一致性门（= 该分支已执行到底），实得 ' + j1.consistencyCheck)
+  assert.equal(j1.bundle, 'skipped(--skip-bundle)', '--skip-bundle 必须被真正读取并跳过证据包，实得 ' + j1.bundle)
+
+  // ② 去掉开关：证据包必须真被 spawn（`skipped(--skip-bundle)` 不再可能出现）
+  const noSkip = run([S('apply-compression-cycle.mjs'), proj])
+  const j2 = parseJson(noSkip)
+  assert.notEqual(j2.bundle, 'skipped(--skip-bundle)', '不带 --skip-bundle 时必须真的尝试刷新证据包，实得 ' + j2.bundle)
 })
