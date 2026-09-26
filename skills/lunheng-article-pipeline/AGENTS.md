@@ -6,7 +6,7 @@
 
 > **清单真源 = `SKILL.md` §启动清单 与 §⚡ 启动速查表**——本处**不再复述**（v18.2.2 收敛：旧版此处复述，构成同一事实两处维护，只要还复述就会再漂）。**改启动清单只改 `SKILL.md`**。
 
-> **包形态（v18.0.0 起）**：**包根**含 `package.json`（`main` → `lib/index.js` + `dsh.bundle.patch` → `cordis.patch.yml`）、`lib/index.js`（**入口**：读随包 `skills/lunheng-article-pipeline/SKILL.md`，经 `ctx.skills.register()` 注册为 agent 技能，`inject=['skills']` + `resourceBase` 指向技能目录，注册即 effect、卸载自动清理）、`cordis.patch.yml`（**① 插入本包自注册行** `- id: lunheng-article-pipeline / name: lunheng-article-pipeline`——loader 靠这一行按包名 import 入口，**删了它技能就不注册**（v18.0.0 缺陷，v18.0.1 修复）+ ② 3 档 subagent 工具）。两种部署均受支持：① `dsh plugin add` 装 bundle（技能由入口注册）；② 把 **`skills/lunheng-article-pipeline/` 技能目录**复制到任一 skill 根（项目级 `.dsh/skills/` rank 100 / 用户级 `$DSH_HOME/skills/` rank 400）。**包面自检**：`dsh-plugin-dev check`（14 项，**v18.0.0 起无豁免**，目标 0 fail / 0 warn）+ `node --test "tests/**/*.test.mjs"`。
+> **包形态（v18.0.0 起）**：**包根**含 `package.json`（`main` → `lib/index.js` + `dsh.bundle.patch` → `cordis.patch.yml`）、`lib/index.js`（**入口**：读随包 `skills/lunheng-article-pipeline/SKILL.md`，经 `ctx.skills.register()` 注册为 agent 技能，`inject=['skills']` + `resourceBase` 指向技能目录，注册即 effect、卸载自动清理）、`cordis.patch.yml`（**① 插入本包自注册行** `- id: lunheng-article-pipeline / name: lunheng-article-pipeline`——loader 靠这一行按包名 import 入口，**删了它技能就不注册**（v18.0.0 缺陷，v18.0.1 修复）+ ② 3 档 subagent 工具）。两种部署均受支持：① `dsh plugin add` 装 bundle（技能由入口注册）；② 把 **`skills/lunheng-article-pipeline/` 技能目录**复制到任一 skill 根（项目级 `.dsh/skills/` rank 100 / 用户级 `$DSH_HOME/skills/` rank 400）。**包面自检**：`dsh-plugin-dev check`（15 项，**v18.0.0 起无豁免**，目标 0 fail / 0 warn）+ `node --test "tests/**/*.test.mjs"`。
 
 ## 流水线协议（摘要，详见 references/pipeline-readme.md）
 
@@ -64,7 +64,7 @@ Phase 5 终检     → T8 终检（独立角色，主控 T0 以 T8 身份亲完�
 5. **改动位置（v18.0.1 新增，教训 #153）**：机制 / 角色卡 / 脚本 / 模板的改动**一律在真源仓库里做**（`<repo>/skills/lunheng-article-pipeline/`——那里才有 `tests/` 与两道仓库门），四道门全绿、提交之后**再同步到部署镜像**（项目技能根 `.dsh/skills/<name>/` 或用户技能根）。**不要反过来**：镜像不含 `tests/`，在镜像上改完再回流 = 跳过契约验证（实例：一处 `exit 10` 中止在镜像上自测通过、官方门全绿，合入仓库后 18 个用例红）。**判据：实现与测试同居的目录才是真源**。镜像里不得出现 `package.json` / `cordis.patch.yml` / `docs` / `examples` / `.git` / `lib` / 包级 README / `*.tgz`（`consistency-check` 规则⑨ 判 P1 污染）。
 6. **验证**：本修改走完后必 `grep` 关键词 + 结构性 grep（如本手册的「## 交接报告」所有角色卡齐整性）；改论衡机制/文档后额外跑两条门（v18.0.0 起为双门）：
    - `node scripts/consistency-check.mjs` —— 文档一致性（**规则表见脚本头注释**——v18.0.3 起此处不再抄数字，防「加规则忘改数字」；**exit 0 才提交**）
-   - `dsh-plugin-dev check` —— 包面静态门（14 项：patch 合法性 / `package.json` 元数据 / 多语 README 一致性 / 工程红线；**目标 0 fail / 0 warn**）
+   - `dsh-plugin-dev check` —— 包面静态门（15 项：patch 合法性 / `package.json` 元数据 / 多语 README 一致性 / 工程红线；**目标 0 fail / 0 warn**）
    - `node --test "tests/**/*.test.mjs"` —— 随包脚本 + **组合包契约** + 入口回归（改脚本输出契约、`cordis.patch.yml`、`package.json` 时**必跑**）
    > **布局提示（v18.0.0）**：`consistency-check.mjs` 的 `REPO_ROOT` 自动探测两种布局（仓库布局 / 技能即包根）；旧版硬编码「向上两级」，在本机 `.dsh/skills/` 布局下会指向 `~/.dsh` 而 ENOENT。
    > **改「规范」时另查**（v18.0.5，冗余审计 §二.7）：`references/_shared/规范-机械门对照表.md`——**维护者文档**，逐条勾稽「规范写了什么 ↔ 机械门是否覆盖」（两问：有无门 / 是否覆盖全要件）。新增或修改任何规范/机检门时在该表加一行；它刻意不进运行期读清单（角色不读）。
@@ -93,7 +93,7 @@ Phase 5 终检     → T8 终检（独立角色，主控 T0 以 T8 身份亲完�
 | 能力接缝（Service Definition / Provider / Consumer 三层） | `references/official-docs/docs/capability-seams.md` |
 
 **机械层（官方 CLI，随知识库分发）**：
-- `dsh-plugin-dev check` —— 14 项静态门（patch 合法性 / `package.json` 元数据 / 多语 README 一致性 / 工程红线）；**目标 0 fail / 0 warn**
+- `dsh-plugin-dev check` —— 15 项静态门（patch 合法性 / `package.json` 元数据 / 多语 README 一致性 / 工程红线）；**目标 0 fail / 0 warn**
 - `dsh-plugin-dev verify` —— `pnpm pack` 后装入干净 `DSH_HOME` profile 做安装+启动+卸载冒烟
 - `dsh-plugin-dev new <name>` —— 参数化脚手架（生成契约模板 / Schemastery Config / `cordis.patch.yml` / 五语 README）
 

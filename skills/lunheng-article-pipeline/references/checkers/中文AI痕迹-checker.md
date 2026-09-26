@@ -1,4 +1,4 @@
-> 版本：v18.20.1（DSH bundle 插件）
+> 版本：v18.20.2（DSH bundle 插件）
 
 # G14 中文 AI 痕迹检测器（Checker）
 

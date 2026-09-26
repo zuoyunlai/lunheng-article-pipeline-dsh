@@ -2,6 +2,17 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.20.2 — 2026-09-26
+
+> **性质**：开发工具链维护（`dsh-plugin-guide` pin 抬升）。**无流水线行为变更**；唯一的随包改动是 AGENTS.md 的门数口径。
+
+### 一、pin 抬升 0.3.16 → 0.3.19
+
+- `scripts/plugin-surface-check.mjs` 的 `CLI_SPEC` 由 `dsh-plugin-guide@0.3.16` 抬到 **`@0.3.19`**（0.3.19 已 dlx 实测对论衡包装面 **9 pass / 0 fail / 1 warn / 5 skip**，与 0.3.10 相比仅多一个 skip）。
+- **同步登记新 skip 项**：0.3.19 上游**新增**检查 `redline-async-apply-registration`（「async apply 首个 await 之后不得注册」）→ 本包入口 `apply` 是**同步函数**（异步安装走 `ctx.effect()` 回调，注册发生在其 await 之前）→ 无该面可查；按其「skip 只允许出现在白名单里、表外 skip 判失败」的 fail-closed 口径登记进 `SKIP_ALLOWED`。
+- **门数口径同步**：`AGENTS.md` 的 `dsh-plugin-dev check` 描述（3 处）由「14 项」改为「**15 项**」（0.3.19 检查项总数；0.3.10 为 14）——否则文档与门数口径再次漂移。
+- **消除本地/CI 漂移**：本机 profile 的 dsh-plugin-guide 随之 0.3.16 → 0.3.19，与仓库 pin 一致（v18.20.1 批已先把它从 0.3.10 对齐到 0.3.16）。
+
 ## 18.20.1 — 2026-09-26
 
 > **性质**：v18.20.0 独立全量审计修订（`4e516fb`）。**缺陷修复 + 机检门加固 + 子技能一致性**。详见 `audits/反哺报告-v18.20.0-独立全量审计-2026-09-26.md`、`audits/机制文件修订记录-2026-09-26.md`。

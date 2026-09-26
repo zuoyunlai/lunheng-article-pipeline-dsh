@@ -37,7 +37,7 @@
  * 没有 devDependencies、也没有 `node_modules/`**（刻意不引入依赖树，见 ci.yml 里「为什么不加 cache: pnpm」
  * 的注释）。旧头注释把「本地优先」写成了可用路径，实际每次都要落到 `pnpm dlx`（**从 registry 现场下载**）。
  * 故 v18.2.6 补第三条：**DSH profile 里已装的 dsh-plugin-guide**（`<DSH_HOME>/profiles/<profile>/node_modules/
- * dsh-plugin-guide/bin/dsh-plugin-dev.js`，本机 = 0.3.10）——有则直接用，零下载；CI 上不存在，自动落到 dlx。
+ * dsh-plugin-guide/bin/dsh-plugin-dev.js`，本机 = 0.3.19，v18.20.2 起与本 pin 对齐）——有则直接用，零下载；CI 上不存在，自动落到 dlx。
  * 无论走哪条，**实际解析到的 CLI 版本都会打印出来**（取自 CLI 报告的 `version` 字段），并校验与 pin 是否一致。
  *
  * 失败即失败（fail-closed）：所有策略都拿不到合法 JSON → 退出码 1，不静默放行；同时输出
@@ -58,7 +58,7 @@ const ROOT = path.resolve(HERE, '..')
  *   `README-zh.md` 连字符命名，见下方 WARN_EXEMPT）。抬高 pin 的意义不是「追新」，而是让**门与文档
  *   对齐到同一个可复现的 CLI 版本**；抬升后必须重跑本脚本并把实际数字写回文档（本次已写回）。
  */
-const CLI_SPEC = process.env.DSH_PLUGIN_DEV_SPEC || 'dsh-plugin-guide@0.3.16'   // v18.2.9 抬升（0.3.10→0.3.16，新版 CLI 已本地 dlx 实测 exit 0；本机 profile 旧装仍会零下载优先命中）
+const CLI_SPEC = process.env.DSH_PLUGIN_DEV_SPEC || 'dsh-plugin-guide@0.3.19'   // v18.20.2 抬升（0.3.16→0.3.19，新版 CLI 已 dlx 实测 9 pass / 0 fail / 1 warn / 5 skip；新增 skip 项 redline-async-apply-registration 已登记 SKIP_ALLOWED；本机 profile 已同步对齐）
 const TIMEOUT_MS = Number(process.env.DSH_PLUGIN_DEV_TIMEOUT || 300000)
 /** warn 是否阻塞（`STRICT_WARN=1`）：CI 与发布门打开——「0 warn」此前只是文档承诺，代码并不阻塞。 */
 const STRICT_WARN = process.env.STRICT_WARN === '1' || process.env.STRICT_WARN === 'true'
@@ -82,6 +82,7 @@ const SKIP_ALLOWED = new Map([
   ['redline-persona-role', '该检查找**仓库根**的 SKILL.md / systemPrompt 段落，而本包（bundle 形态）的技能体在 skills/lunheng-article-pipeline/SKILL.md —— 结构上永远看不到'],
   ['redline-waterfall-next', '本包不用任何 waterfall 监听器（能力面走 ctx.effect / ctx.tools.guard / ctx.commands.register），没有 next() 可漏'],
   ['redline-no-hardcoded-tunables', 'CLI 只认 `export const Config = Schema.…`（Schemastery）与 `= {`（会被判 fail）；本包入口刻意用 standard-schema 形态 `Object.freeze({…})`（不引入宿主依赖，见 lib/index.js 头注释）→ 三条正则都不命中，只能 skip。**已实测**（CLI dist 0.3.10 的 checkRedlineNoHardcodedTunables：:1065-1066,1077）。等价语义由 tests/entry.test.mjs 的 Config 用例与「非法配置加载期响亮失败」覆盖'],
+  ['redline-async-apply-registration', 'v18.20.2 抬 pin 0.3.16→0.3.19 时上游**新增**的检查（「async apply 首个 await 之后不得注册」，卸载窗口竞态）。本包入口 lib/index.js 的 `apply(ctx, config)` 是**同步函数**（apply 体内的异步安装走 `ctx.effect()` 回调，注册发生在其 await 之前；apply 自身不 await）→ 无 async apply 可查，skip 是「本包没有该面」的正常形态，**非**静默失效'],
 ])
 
 /**
