@@ -263,12 +263,22 @@ notes.push(`⑦ 凭据扫描：${scanned.length} 个文本文件 × ${SECRET_PAT
 //     · **发布物**——硬零。它是要发出去的制品，一条都不许有。
 //     · **非随包树**——**棘轮**。那 22 个文件是历史修订记录，备份路径是安全流程的过程证据；
 //       设成硬零会让门**永久红**，而永久红的门等于没有门。棘轮 = 新增即红、缩减即绿。
+//
+//   ⚠️ **两个由 CI 抓出来的实现缺陷**（v18.18.4，本地跑是绿的、推上去才红）：
+//     ① **扫 tracked 会漏掉未 `git add` 的新文件**——`git ls-files` 只列已跟踪的。我本地跑门时
+//        新模块还没 add，于是「零命中」；提交后被 CI 扫到才暴露。**改为扫 `scanSet`（含未跟踪，
+//        与规则① 同源）**，本地与 CI 才同口径。
+//     ② **扫描器自身的定义与测试必然含示例机器路径**——`_lib/local-path-scan.mjs` 要写出模式、
+//        `tests/local-path-scan.test.mjs` 要写正/负例夹具，那不是泄露。故显式豁免（同 `SELF` 的思路）。
+//        边界（如实）：这三个文件里若真藏了一条与模式无关的真实路径，本规则会漏；缓解是它们
+//        **都不随包**（发布物硬零仍生效）、体积小、用途单一。
+const LOCAL_PATH_EXEMPT = new Set([SELF, 'scripts/_lib/local-path-scan.mjs', 'tests/local-path-scan.test.mjs'])
 const packedSet = new Set(packFiles ?? [])
 let shippedPathHits = 0
 let ratchetBreaches = 0
 const baselineSeen = new Set()
-for (const p of tracked.filter(isText)) {
-  if (p === SELF) continue
+for (const p of scanSet.filter(isText)) {
+  if (LOCAL_PATH_EXEMPT.has(p)) continue
   const abs = join(ROOT, p)
   if (!existsSync(abs)) continue
   const hits = scanLocalPaths(readFileSync(abs, 'utf8'))
