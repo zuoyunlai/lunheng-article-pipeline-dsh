@@ -36,6 +36,12 @@ import { scanLocalPaths, LOCAL_PATH_BASELINE } from './_lib/local-path-scan.mjs'
 import { parseExitContract, parseNamespaceQuota, reconcile } from './_lib/exit-namespace.mjs' // C-11：§8 配额 ↔ EXIT_CONTRACT 双向对账
 import { deriveScriptSurface, parseSecuritySurface, reconcileSurface } from './_lib/script-surface.mjs' // C-7：随包脚本执行面/写盘面 ∈ SECURITY.md
 import { findLibLineRefs, isHistoricalDoc } from './_lib/lib-line-refs.mjs' // C-9：当前文档不得有裸 `lib/**:LINE` 引用
+import {
+  deriveJournalCounts,
+  declaredJournalCounts,
+  MC_LABEL_ANCHORS,
+  JOURNAL_POINTER_ANCHORS,
+} from './_lib/e-family-invariants.mjs' // E 族：可派生的单源不变量（见模块头，为什么不做字面禁令）
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const isCI = Boolean(process.env.GITHUB_ACTIONS)
@@ -556,7 +562,7 @@ const DOC_BUDGET = {
   'skills/lunheng-article-pipeline/references/agents/07-审计-auditor.md': [35840, 22528, 'T7 审计卡——**v18.12.0 显式抬升 33→34 KB（2026-09-25 全量审计第七梯队 L-27）**：§「M 门预检」的清单由 **5 项**（M-Form-3/4/5/7/8）改写为**全量 22 项 + M-Form-4 人工补扫**。旧清单按「判断力要求低」选，却恰好漏掉三个**零判断力、后果最重**的项（M-Form-9 图件闭环 / M-Exist-1 引用双向闭环 / M-Form-11 素材清单）——2026-09-20 实战中这三项**一路漏到 T8** 才被脚本抓出，此时 A 轨已封盘，只能进 `final/局限性.md`。本卡优先级高于派发话术（`pipeline-readme.md:351`），故漏项必须在卡内修正而非只改话术。**同批已先瘦身**：删去卡内与 `pipeline-readme.md` 重复的「为什么扩全量」完整论述（保留一行结论 + 指针），并删去与 `_shared/M-Gate-Algorithm-appendix.md` 重复的 5 项阈值速查表（改为指针）。**v18.11.0 补登记 28→33 KB（主人授权「依次全部都做」）**：v18.10.0 落地 12 项战略改进时本卡增长但未同提交抬棘轮（违反 v18.1.0），发布后即为红；本次补登记实测值，并叠加本次反哺落地（新增「提议写法：稿件侧优先」元规则段——4 条被回归测试驳回的实测教训 + 判据）。**瘦身待办**：§「G 项实据最小样板」的 5 类形态 + 模板可下沉到 `_shared/` 按需加载。v18.5.1 显式抬升 22→23 KB：修订任务书新增「违反规范」列 + 「怎么改」列处置动作动词前缀（补/删/改/降级），借鉴 writing-guard rule/action 分离（反哺报告-writing-guard借鉴-v1 动议一）；**v18.7.1 显式抬升 23→24 KB（共锁反哺：铁律加 T6 交叉验证）**；**v18.9.0 显式抬升 24→28 KB（数字社交-关系重构项目实战反哺）**：①「与 T6 批判的职责边界」段（v18.9.0 反哺 P1-1，治 T6/T7 重叠攻击同一论点）——含 12 行职责分工表 + 判定边界 + 重叠项终判口径；②「G 项实据最小样板」段（v18.9.0 反哺 P0-3，治 M-Exist-9 = P2 软提示「9/15 项 G 项结论无实据」）——含实据形态清单 5 类（路径 / 素材编号 / §+行号 / 带量词数字 / M-Gate-Report exit code）+ 判定 3 类 + 写作模板 1 个。两条均为实战反哺的承重内容（M 门契约源头 / 不挪 references/），按「同一次提交显式抬升」原则同步抬上限；目标（长期）维持 22 KB（v18.9.1 起考虑瘦身）。**v18.18.0 显式抬升 34→35 KB（C 批审计 E-5/E-8）**：①E-5 承重墙超载阈值由「4 论点以上 = P0」改为「**≥3 = 超载 P1 / ≥4 = P0**」+ 真源指针（原写法与 `M-Gate-Algorithm.md` 的「同一证据被 ≥3 论点标承重 = 超载」逐字冲突，卡面比机检更宽 → 人工复核会放过机检该报的超载）；②E-8「M 门契约」段补**命名空间澄清**（本脚本三检属 `methodology-check.mjs` 自有命名空间、加 `MC-` 前缀，不是 M 门体系编号——M 门总 23 项内无 M-Form-12）。'],
   'skills/lunheng-article-pipeline/references/memory/lessons.md': [19456, 19456, '教训库（只增，需定期合并同类项）'],
   'skills/lunheng-article-pipeline/references/_shared/audit-checklist-quickref.md': [14336, 10240, '审计必查项快速参考——**v18.11.0 显式抬升 12.5→14 KB（主人授权「根据反哺依次全部修订」）**：F-3 在 §G8 字数偏差核验下新增「字数判定渐进式警告」（`<11,000` 完美 / `11,000-11,550` 通过 / `11,550-12,000` 警告 / `>12,000` 阻塞），协调 v18.10.0「+20% buffer」与原 G5 单点阻塞线的口径冲突。**v18.7.1 首次登记（借鉴 Ai4Scholar v2.9.4 落地）：§必查项尾部新增 G15 引用匹配度（任务简报 §引用数量与质量控制 字段核验：引用数区间 / 优先同刊比例 / IF 门槛 / 卷期页码完整率 / auto_cite 替换率 + 修订任务书条目联动）。依据 v18.1.0「词预算预冲」原则显式登记上限；目标（长期）维持 10 KB。'],
-  'skills/lunheng-article-pipeline/references/templates/任务简报-template.md': [24576, 19456, '任务简报模板（full 版）——v18.2.2 显式抬升 19→21 KB：① 补「字数判定层级强制显式勾选 + 与 G5 硬阈的关系澄清」；② 补「GB/T 7714 只约束著录格式、不约束标签形态」正误形态对照（第二处抬升，20480→21504）——**v18.5.1 显式抬升 21→22 KB（ai-content-farm-retractions 反哺：「需找数据点 vs 需找案例」标签口径说明）**；**v18.7.1 显式抬升 22→24 KB（借鉴 Ai4Scholar 落地 4 份反哺报告整合）**：§引用格式段后追加 §引用数量与质量控制 字段（目标引用数 / 目标期刊 / IF 门槛 / JCR 分区 / 优先同刊 / auto_cite 替换预算）+ §卷期页码完整性 段；§v2.5.0 可选项追加 3 个新勾选项（APA 优先输出 + T3.5 + /lunheng）。依据 v18.1.0「词预算预冲」原则显式抬升上限；目标（长期）维持 19 KB。'],
+  'skills/lunheng-article-pipeline/references/templates/任务简报-template.md': [25600, 19456, '任务简报模板（full 版）——v18.2.2 显式抬升 19→21 KB：① 补「字数判定层级强制显式勾选 + 与 G5 硬阈的关系澄清」；② 补「GB/T 7714 只约束著录格式、不约束标签形态」正误形态对照（第二处抬升，20480→21504）——**v18.5.1 显式抬升 21→22 KB（ai-content-farm-retractions 反哺：「需找数据点 vs 需找案例」标签口径说明）**；**v18.7.1 显式抬升 22→24 KB（借鉴 Ai4Scholar 落地 4 份反哺报告整合）**：§引用格式段后追加 §引用数量与质量控制 字段（目标引用数 / 目标期刊 / IF 门槛 / JCR 分区 / 优先同刊 / auto_cite 替换预算）+ §卷期页码完整性 段；§v2.5.0 可选项追加 3 个新勾选项（APA 优先输出 + T3.5 + /lunheng）。依据 v18.1.0「词预算预冲」原则显式抬升上限；目标（长期）维持 19 KB。**v18.18.10 显式抬升 24→25 KB（E 族 E-14）**：§启用期刊匹配 勾选说明里的「（25 中文 CSSCI + 12 英文 SSCI 数据库，…）」改为「（中文 CSSCI + 英文 SSCI 期刊库，**规模真源 = `期刊数据库.md` 表行数**，本模板不写死数字；…）」——原文写死 25 而真源表实为 28，属 E-14「四处写死规模」的其中一处。改指针比删数字略长（+约 40 B），且改后余量仅 254 B——按本文件既有的「不许把棘轮停在距上限数十 B」原则抬到 25 KB（余量约 1.2 KB）。'],
   'skills/lunheng-article-pipeline/references/agents/06-批判-critical-companion.md': [24576, 17408, 'T6 批判卡——**v18.6.3 显式抬升 17→18 KB**：补 T7 互不搬运清单 / 校对协议深化（v18.6.3 落地时回填具体子项）；**v18.9.0 显式抬升 18→24 KB（数字社交-关系重构项目实战反哺 v18.8.x + v18.9.0 两轮承重）**：①「豁免规则：任务简报 Phase 1.5 trigger=false 项不主动攻击」段（v18.8.x 反哺，治 T6 攻击 trigger=false Permanent Gap → T5 v2/v3 写防御性文字字数膨胀 1.4x）——含触发条件 / 豁免范围 / T6 行为 3 项 / 3 类例外触发 / 机检判别 / 实战教训（数字社交-关系重构 4 项 Permanent Gap 完整链）；②「与 T7 审计的职责边界」段（v18.9.0 反哺 P1-1，治重叠审）——含 12 行职责分工表 + 重叠项处理。两条均为实战反哺的承重内容（教训细节不可丢，不挪 references/），按「同一次提交显式抬升」原则同步抬上限；目标（长期）维持 17 KB（v18.9.1 起考虑瘦身）。'],
   'skills/lunheng-article-pipeline/references/deliverables.md': [22528, 16384, '交付边界 + F1-F9 + 闸门（按需加载）——v18.2.1 显式抬升 16→17 KB：补「文末编号必须沿用素材卡真编号」硬要求；**v18.12.2 显式抬升 18→21 KB（2026-09-25 L-06 定案）**：新增 §「产物 `-vN` 的 N 跟谁走」——七类版本化产物的 N 语义表 + 「审的是哪一版」的两载体（报告头 `被审正文:` 声明 / M 门 `verdict_scope`）+ 三条机械校验（A4b/A4c）+ 实测依据（22 项目账本）。该节是**七类产物 N 语义的唯一真源**，删不得。**v18.12.0 显式抬升 17→18 KB（2026-09-25 全量审计响应 L-17）**：「定稿文末白名单」由“只允许 5 节”改写为「必需 5 节（M-Form-2 存在性）+ 可选 4 学术声明（仅 M-Form-7 成员/顺序）」两层表 + 机检真源指针——旧表述与 v18.10.0 起写手卡要求的「文末九节」互斥，学术稿照规范写必被 M-Form-7 判 P0 且该门不可兜底（实测 exit=2）**v18.18.0 显式抬升 21→22 KB（C 批审计 E-4）**：§修订回环的「轮」定义由**独立定义**改为**指向 glossary 双轨真源**（A 轨 = 审计打回轮 ≤2 轮 / B 轨 = 主控触发轮至多 +1 深化），v2.3.1 旧口径（把 T6 批判与审计打回混在同一计数轴）降级为**历史注记 + 已作废声明**——原写法与 glossary 直接冲突，两个真实项目均按双轨记账。**同批已先瘦身**：历史注记由「原文 4 条 + 背景段」压成 1 行（约 -400 B）。'],
   'skills/lunheng-article-pipeline/README.md': [16384, 15360, '技能目录 README（人类入口）——**v18.6.3 显式抬升 15→16 KB**：v18.6.3 同步（v18.6.3 落地时回填具体子项）'],
@@ -721,6 +727,51 @@ notes.push(
   }
   if (refHits > 5) fail('lib-line-ref', `另有 ${refHits - 5} 处裸行号引用未逐条列出`)
   notes.push(`⑪ 文档行号引用：${scannedExisting} 个当前文档（.md/.html，已排除历史留痕）零裸 \`lib/**:LINE\` 引用`)
+}
+
+// ⑫ E 族「单源不变量」机检（v18.18.10）
+//   审计 E 族统一处理法要「该事实只允许出现在真源一处，其余必须是指针」——但**对 17 组异质散文
+//   事实不可判定**，硬做只能退化成字面禁令，而字面禁令在本仓**必然误报**（文档规范要求更正记录
+//   写出旧值：`07卡` 写「无 M-Form-12」、期刊文档写「原写 25 个，真源实为 28」都属正当）。
+//   故本规则只做两类**可判定**检查，均为正向存在性或可派生数值、没有绕过口：
+//     ① **E-14 数值派生**：真源自称的规模 == 它自己的表行数（「按磁盘表行数导出规模」的题面本身）
+//     ② **E-8 / E-14 锚点在场**：新名字（`MC-` 三标签）与新指针（「规模真源 = 期刊数据库.md」）
+//        必须在场——单侧回退会让锚点消失
+//   边界：E 族**语义半边**（取哪一侧是否正确）没有门，也不假装有；详见模块头注释。
+{
+  const S = (p) => join(ROOT, 'skills', 'lunheng-article-pipeline', p)
+  // ① 期刊规模：自称 vs 表行数
+  try {
+    const db = readFileSync(S('references/_shared/期刊数据库.md'), 'utf8')
+    const derived = deriveJournalCounts(db)
+    const declared = declaredJournalCounts(db)
+    for (const k of ['zh', 'en']) {
+      const label = k === 'zh' ? '中文' : '英文'
+      if (derived[k] === null || declared[k] === null) {
+        fail('e-family', `期刊库${label}规模：真源里「表行数」或「章节标题自称」有一侧读不到（派生 ${derived[k]} / 自称 ${declared[k]}）——解析器与文档形状脱节`)
+      } else if (derived[k] !== declared[k]) {
+        fail('e-family', `期刊库${label}规模不自洽：章节标题自称 ${declared[k]}，而表实有 ${derived[k]} 行——加减期刊后忘了改标题（E-14 的原病就是这个）`)
+      }
+    }
+    notes.push(`⑫① 期刊库规模真源自洽：中文 ${derived.zh} 行 / 英文 ${derived.en} 行（与章节标题自称一致）`)
+  } catch (e) {
+    fail('e-family', `⑫① 期刊规模核对无法执行：${e.message}`)
+  }
+  // ② 锚点在场（E-8 新名字 / E-14 新指针）
+  const anchors = [
+    { file: MC_LABEL_ANCHORS.file, miss: MC_LABEL_ANCHORS.labels.filter((n) => !MC_LABEL_ANCHORS.definitionRe(n).test(readFileSync(S(MC_LABEL_ANCHORS.file), 'utf8'))), what: 'MC- 命名空间三标签的**定义项**（E-8）' },
+    ...JOURNAL_POINTER_ANCHORS.map((a) => ({
+      file: a.file,
+      miss: a.must.test(readFileSync(S(a.file), 'utf8')) ? [] : ['「规模真源 = 期刊数据库.md」指针'],
+      what: '期刊规模指针（E-14）',
+    })),
+  ]
+  for (const a of anchors) {
+    if (a.miss.length) {
+      fail('e-family', `${a.file} 缺 ${a.what}：${a.miss.join('、')}——单侧回退（改回旧名 / 改回硬编码数字）会让锚点消失，故此处正向要求它在场`)
+    }
+  }
+  notes.push(`⑫② E 族锚点在场：MC- 三标签 + ${JOURNAL_POINTER_ANCHORS.length} 处期刊规模指针均在场`)
 }
 
 console.log('\n=== 仓库机械卫生门（repo-hygiene-check）===')
