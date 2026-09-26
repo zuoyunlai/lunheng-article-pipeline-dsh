@@ -2,6 +2,44 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.20.0 — 2026-09-26
+
+> **性质**：批 1（30629bb）+ 批 2（254fe61）+ 试点报告（600b654）同批归版。**机制改动 + 试点实证**。详见 `audits/机制文件修订记录-2026-09-26-外部借鉴批1.md`、`audits/机制文件修订记录-2026-09-26-外部借鉴批2.md`、`audits/试点报告-A1B1-pilot-2026-09-26.md`、`audits/反哺报告-外部质量提升空间-借鉴评估-v1.md`。
+
+### 一、新增 / 改进（外部机制借鉴，批 1 = 30629bb）
+
+- **A2 理论贡献三层声明 + 贡献层级自评 L1-L4**：04 卡 §原创性声明增三层三问 + 层级自评；05 卡 §视角与精度铁律 增第 4 条「禁笼统创新声明」；06 卡 C3 增贡献层级判定（层级虚标 / 预测层空转）；09 卡 §原创性维度增贡献层级锚点（L1-L2≈3 / L3≈4 / L4≈5，层级缺失不扣分）。
+- **A3 人类决策链汇总**：交付说明模板 §11 增「主人洞察汇总 / 最终拍板 / 主人手工修改」三项；只读汇总四门确认单 §6，不新增留痕义务、不代填。
+- **B1 可选对抗视角 T9-v / T9-i**：09 卡新增 §🎭 可选对抗视角，三条硬边界写在段首（不进判定 / 不触发 T5 修订轮 / 不改变既有定位），pipeline-readme T9 段补最小集，任务简报勾选启用。
+- **B2 最新进展补扫 `[L-pre]`**：01 卡 §T1b 增量，任务简报勾选启用；DSH 工具直接调用（search_arxiv / search_papers / search_semantic）。
+- **B3 学科对话点**：04 卡 §12（可选），任务简报勾选启用，复用既有 `[L-cross]` 索引。
+- **B4 G14 按章命中定位表**：G14 报告模板 §一 + `gates/14` §五；**刻意不出「AI 痕迹密度」分数**（不可复现的量化证据，入投稿版 AI 声明即成审稿风险）。
+
+### 二、清理（批 1）
+
+- 16 处误入机制文件的「本次机制文件改动依据主人显式授权」注全部清除（纯删除）。其中 2 处在交付说明模板（每次交付物都会被复制），14 处在角色卡（会被注入子代理 prompt）。机检对此**无门**，靠纪律。
+
+### 三、新增 / 改进（外部机制借鉴，批 2 = 254fe61）
+
+- **A1 质性研究因果识别工具箱**：04 卡 §13（识别策略五选一 + 反事实条件 + F1-Fn 可证伪预测），05 卡 §视角与精度铁律 第 4 条「因果主张的强度纪律」，09 卡 T9-m 的 M3「因果推断合法性」改为先辨路径（定量 + 质性分支）。**刻意不加 `structure-check --qualitative` 档**（试点实证：卡层已够用；详见 §五）。
+- **05 卡 ↔ 09 卡 M3 质性路径互为前置的指针**：05 卡铁律 4 段增指针「见 09 卡 T9-m M3 质性路径」（T9-m 试点附带发现，已关联标注）。
+
+### 四、试点实证（600b654 = `audits/试点报告-A1B1-pilot-2026-09-26.md`）
+
+- **Q1** M3 质性路径对 A 实验稿 pass / 对 B 对照稿 P1（5 项最低要求逐项差异，1 档差）。
+- **Q2** 04 §13 字段被填出实质内容（4 条反事实 + F1-F3 三预测 + 验证窗口 ≤ 2027-01-01）。
+- **Q3** 试点**支持 A1 立项，**不动脚本**：`structure-check --qualitative` 档不加（卡层判据已够用；若加须新开 `QS-` 命名空间）。
+- **附带验证**：05 铁律 4 强度纪律实测生效——A 强档因果词 1 处 vs B 强档因果词 8 处（8 倍差距）。
+- **B1 三条硬边界**：T9-v + T9-i 双双 4/4 + 2/2 守住（共 12/12），真实文献依据 ≥ 21 条（DOI / SSRN / S2 ID 可核验）。
+
+### 五、归版落地步骤（与记忆「论衡发版必漏点」对齐）
+
+1. 仓库级版本号点位级联 bump（package.json + 五语 README + CONTRIBUTING + cordis.patch.yml + SKILL.md frontmatter + references/{glossary,maintainers,pipeline-readme,deliverables}.md + 全部 9 张 agents 卡 + references/_shared/* 9 篇 + references/templates/* 14 篇 + SECURITY.md + docs/{introduction,troubleshooting}.md + references/checkers/gates）——共 59 处。
+2. 三门复跑：consistency-check exit 0 / repo-hygiene-check exit 0（27 → 27 个词预算登记 / ⑦b 基线 23 → 24）/ node --test 326/326 pass。
+3. commit + `git push origin master`（ahead 3 → 0）。
+4. 打 tag：`git tag v18.20.0 && git push origin v18.20.0` → 触发 `.github/workflows/publish.yml`（gates job 4 道门 → publish job 含 OIDC `--provenance --tag dsh`）。
+5. 手工 `npm dist-tag add lunheng-article-pipeline@18.20.0 latest`（CI 未配 NPM_TOKEN，`latest` dist-tag 不自动跟）。
+
 ## 18.18.14 — 2026-09-26
 
 > **性质**：**纯文档补丁**——把随包 `docs/introduction.md` 的「升级亮点」段从 v2.x 线补到 v18 线，并顺带修掉该段内两处已过时的口径。**无机制改动、无脚本改动、无新增门**。依据主人指令「论衡插件修订介绍了吗？结束了应该升号发版」。
