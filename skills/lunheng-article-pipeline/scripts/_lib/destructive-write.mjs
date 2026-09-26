@@ -161,6 +161,32 @@ export function backupFile(p, { stamp = null } = {}) {
  *      要么新文件完整。temp 命名带 pid + 随机段避免并发冲突；任何一步失败都清掉 temp、目标保持原状。
  * 返回 `{ path, backup, inPlace }`（backup = 本次备份路径，未备份为 null）。
  */
+/** 同步小睡（rename 重试退避用；本函数在同步写盘路径上，不能 await）。 */
+const sleepSync = (ms) => { try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms) } catch { /* 环境不支持则跳过退避 */ } }
+
+/**
+ * 有界重试的 `renameSync`（二次复审 M-5，2026-09-26）。
+ * 为什么：Windows 上 `MoveFileEx` 可**瞬时** `EPERM`（杀软 / 索引器 / 编辑器此刻持有目标句柄）——
+ *   实测当日全量跑出现过一次 `EPERM: operation not permitted, rename '<tmp>' -> '<p>'`，重跑不复现。
+ *   该失败本身是**响亮且可恢复**的（目标保持原状、temp 被清、第 ② 步的 `.bak` 仍在、错误外抛），
+ *   故严重度维持 P2；但一次瞬时抖动就让调用方失败不值当 → 有界重试 3 次（退避 10 / 50 / 200 ms）。
+ * 边界（如实）：**只对句柄类瞬时错误重试**（`EPERM` / `EACCES` / `EBUSY`）；其它错误立即抛，
+ *   绝不把真问题（跨卷 `EXDEV`、磁盘满 `ENOSPC` 等）掩盖成「重试成功」。
+ */
+function renameWithRetry(from, to, attempts = 3) {
+  const backoff = [10, 50, 200]
+  for (let i = 1; ; i++) {
+    try {
+      return renameSync(from, to)
+    } catch (e) {
+      const code = e?.code
+      const transient = code === 'EPERM' || code === 'EACCES' || code === 'EBUSY'
+      if (!transient || i >= attempts) throw e
+      sleepSync(backoff[i - 1] ?? 200)
+    }
+  }
+}
+
 export function writeWithSafety(p, text, { inPlace = false, source = null } = {}) {
   if (!p) throw new Error('writeWithSafety: 缺少写入路径（p 为空）')
   if (source && !inPlace) assertNotSameFile(source, p)
@@ -168,7 +194,7 @@ export function writeWithSafety(p, text, { inPlace = false, source = null } = {}
   const tmp = join(dirname(resolve(p)), `.${Math.random().toString(36).slice(2, 10)}-${process.pid}.lunheng-tmp`)
   try {
     writeFileSync(tmp, text, 'utf8')
-    renameSync(tmp, p)
+    renameWithRetry(tmp, p) // M-5：有界重试（Windows 句柄类瞬时 EPERM）
   } catch (e) {
     try { unlinkSync(tmp) } catch { /* temp 可能尚未创建 */ }
     throw e

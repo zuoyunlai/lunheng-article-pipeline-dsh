@@ -23,6 +23,7 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { dirname, join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { scan as scanLinks } from '../scripts/link-check.mjs'
+import { readPackManifest } from '../scripts/_lib/pack-manifest.mjs' // M-2/M-3：pack 清单单点解析（声明面派生）
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const SKILL = join(ROOT, 'skills', 'lunheng-article-pipeline')
@@ -174,7 +175,20 @@ test('技能目录断链穷举：无未归类断链（link-check 的纯函数入
 //   · 数量词只认 2–5 的常见语言对应词；`docs/installation.md` 不声明数量故不查数量词。
 //   · 本门抓的是**集合级漂移**（少了谁 / 多了谁 / 数字不符），**抓不到语义级失真**
 //     （例：把某个键的行为描述错）。语义那半仍需人读。
-const SURFACES = [...README_FILES, 'SECURITY.md', 'docs/installation.md']
+// M-3（二次复审，2026-09-26）：声明面**从 pack 清单派生**，而不是手写 7 个常量——手写常量会让
+//   **新增的随包文档**天然逃过本门（实测：把同型假声明写进 `docs/architecture.md` / `docs/faq.md`
+//   时本门**无感**）。派生口径 = 随包 `.md` ∩ 对外声明面（`docs/**` + 顶层 `README*` + `SECURITY.md`）。
+const SURFACES = (() => {
+  let packed = []
+  try { packed = readPackManifest(ROOT).files } catch { /* 受限会话 / npm 不可用 → 走下方静态回退 */ }
+  const derived = packed
+    .filter((f) => f.endsWith('.md'))
+    .filter((f) => f.startsWith('docs/') || /^README[^/]*\.md$/.test(f) || f === 'SECURITY.md')
+    .sort()
+  // 派生为空 / 过少 ⇒ 派生退化。**绝不**退回空集（那会让本门变恒真断言）；退回静态清单并留痕。
+  if (derived.length < 7) return [...README_FILES, 'SECURITY.md', 'docs/installation.md']
+  return derived
+})()
 
 /**
  * 配置声明行上**允许出现但不是 Config 键**的纯标识符。
@@ -223,14 +237,23 @@ const NUM_WORDS = {
   5: /\b(five|cinco)\b|五|पाँच|पांच/i,
 }
 
-/** 在 surface 里找锚点行：`both` 全部命中才算该行（防命中同文件别处的偶发提及）。 */
+/** 在 surface 里找锚点行：`both` 全部命中才算该行（防命中同文件别处的偶发提及）。
+ *  M-3（二次复审）：**跳过版本演进史行**——`docs/introduction.md` 这类文档的 `（v18.1.0）` 条目是
+ *  **历史记录**（当时确实只有 `/lunheng-status`），把它当「声明行」等于要求**篡改历史**（假红）。 */
+/** 版本演进史行——历史记录，**不是**对外声明面。两种形态：条目 `- **标题（vX.Y.Z）**：…`
+ *  与表格行 `| **vX.Y.Z** | … |`（`docs/introduction.md` 两处都有）。 */
+const isHistoryLine = (l) => /^\s*[-*]\s+\*\*[^*]*（v\d+\.\d+/.test(l) || /^\s*\|\s*\*\*v\d+\.\d+/.test(l)
+
+/** 在 surface 里找锚点行：`both` 全部命中才算该行（防命中同文件别处的偶发提及）。
+ *  M-3（二次复审）：**跳过版本演进史行**——`docs/introduction.md` 这类文档的 `（v18.1.0）` 条目是
+ *  **历史记录**（当时确实只有 `/lunheng-status`），把它当「声明行」等于要求**篡改历史**（假红）。 */
 function anchorLine(text, mustAll) {
   const lines = text.split('\n')
-  const i = lines.findIndex((l) => mustAll.every((t) => l.includes(t)))
+  const i = lines.findIndex((l) => mustAll.every((t) => l.includes(t)) && !isHistoryLine(l))
   return { line: i < 0 ? null : lines[i], no: i + 1 }
 }
 
-test('C-1 对外声明 ↔ 代码真源：工具/配置/命令/技能 四集合在 7 个声明面逐项一致', () => {
+test('C-1 对外声明 ↔ 代码真源：工具/配置/命令/技能 四集合在**派生**的随包声明面逐项一致', () => {
   const { tools, config, commands, skills, enumValues } = deriveCodeFacts()
 
   // 非空断言：派生退化（正则失配、文件改名）必须**响亮失败**，否则本门会静默变成恒真断言
@@ -242,7 +265,19 @@ test('C-1 对外声明 ↔ 代码真源：工具/配置/命令/技能 四集合�
   for (const f of SURFACES) {
     const text = readFileSync(join(ROOT, f), 'utf8')
 
+    // M-3：按**参与度**检查——随包文档里不涉某面的（如 `docs/faq.md` 根本不提工具）不该被要求写
+    //   声明行；一旦**提及**该面，就必须列全（集合相等）。这样派生面能扩到全部随包文档、又不误红。
+    // 参与度只看**非历史行**——历史条目（`（v18.1.0）` 那类）记的是**当时**的事实，不该拉高参与度
+    //   （否则 `docs/introduction.md` 会因历史里的 `lunheng_m_gate` 被要求写「当下」的声明行 = 假红）。
+    const prose = text.split('\n').filter((l) => !isHistoryLine(l)).join('\n')
+    const engages = {
+      tools: tools.some((n) => prose.includes(n)),
+      config: prose.includes('allowMechanismEdit'),
+      commands: commands.some((n) => prose.includes('/' + n)),
+      skills: skills.some((n) => prose.includes(n)),
+    }
     // ① 工具集：锚 = 首个同时含「第一个工具名」的行
+    if (engages.tools) {
     const t = anchorLine(text, [tools[0]])
     assert.ok(t.line, `${f} 未见工具声明行（须出现 \`${tools[0]}\`）`)
     for (const name of tools) {
@@ -260,10 +295,11 @@ test('C-1 对外声明 ↔ 代码真源：工具/配置/命令/技能 四集合�
       `${f}:${t.no} 的声明行列出了真源里**不存在**的工具名：${tExtra.join(', ')}——` +
         `真源 lib/tools.js 只有 ${tools.join(' / ')}。文档不得凭空多出工具（读者会去调用一个不存在的工具）`,
     )
+    } // ① 工具集 guard 结束
 
     // ② 配置集：锚 = 首个**同时**含 allowMechanismEdit 与 quiet 的行
     //    （只看 allowMechanismEdit 会误命中 SECURITY.md 的 guard 逃逸口行「config 写 allowMechanismEdit: true」）
-    if (f !== 'docs/installation.md') {
+    if (engages.config && f !== 'docs/installation.md') {
       const c = anchorLine(text, ['allowMechanismEdit', 'quiet'])
       assert.ok(c.line, `${f} 未见配置声明行（须同时出现 allowMechanismEdit 与 quiet）`)
       for (const key of config) {
@@ -300,6 +336,7 @@ test('C-1 对外声明 ↔ 代码真源：工具/配置/命令/技能 四集合�
     }
 
     // ③ 命令集：锚 = 首个含 /lunheng-status 的行
+    if (engages.commands) {
     const k = anchorLine(text, ['/lunheng-status'])
     assert.ok(k.line, `${f} 未见人类命令声明行（须出现 \`/lunheng-status\`）`)
     for (const name of commands) {
@@ -318,8 +355,10 @@ test('C-1 对外声明 ↔ 代码真源：工具/配置/命令/技能 四集合�
       [],
       `${f}:${k.no} 的声明行列出了真源里**不存在**的命令：${kExtra.join(', ')}——真源 lib/commands.js 只有 ${commands.join(' / ')}`,
     )
+    } // ③ 命令集 guard 结束
 
     // ④ 技能集：整文件覆盖（技能名可在描述段与目录树任一处出现）
+    if (engages.skills) {
     for (const name of skills) {
       assert.ok(
         text.includes(name),
@@ -327,6 +366,7 @@ test('C-1 对外声明 ↔ 代码真源：工具/配置/命令/技能 四集合�
           '⚠️ 漏声明的后果：按文档部署的人「装了什么」与事实不符（实例：lunheng-commands 曾在四语 README 里 0 命中）',
       )
     }
+    } // ④ 技能集 guard 结束
   }
 })
 

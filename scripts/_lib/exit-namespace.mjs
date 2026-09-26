@@ -13,6 +13,8 @@
 // 哪些是「非 M 门语义另给码」）。故「逐行比对」无从谈起；本模块实现的是它的**等价不变量**：
 //   **「代码里实际用到的码集合」== 「§8 声明的码集合」**
 // 这比逐行更紧：它同时挡「加了码没登记」与「§8 写了码但已无人用」两个方向。
+// **v18.20.4（二次复审 M-4）**：§8 的「声明」有两处载体（配额散文 + **表格**），本模块两处都解析
+//   （`parseNamespaceQuota` / `parseExitTable`），两侧分别与 EXIT_CONTRACT 双向对账。
 //
 // ── 边界（如实）────────────────────────────────────────────────────
 // · 只管**码的集合**，不管「码 ↔ 语义」的对应是否写对（那要人读）。
@@ -49,6 +51,38 @@ export function parseNamespaceQuota(docText) {
   }
   if (codes.size === 0) {
     throw new Error(`troubleshooting.md:${idx + 1} 的命名空间配额段解析出 0 个码——码不再写在反引号里？本门会静默失效`)
+  }
+  return { line: idx + 1, codes: [...codes].sort((a, b) => a - b) }
+}
+
+/**
+ * 从 `docs/troubleshooting.md` 解析 §8 的**表格码列**（`| <码> | 含义 |`）——二次复审 M-4。
+ *
+ * 为什么需要：§8 里同一事实（退出码）有**两种呈现**——「命名空间配额」散文（上一函数管的）
+ * 与**表格**（主控最常读的入口）。旧版只钉了散文，实测把表里 `| 2 |` 改成 `| 12 |` **全套门绿**。
+ * 故补这一维：表行的码集合也必须 == `EXIT_CONTRACT` 的码集合。
+ * 边界（如实）：只管**码集合**，不管「码 ↔ 语义」写得对不对（那要人读）。
+ * @throws 找不到 §8 标题 / 解析出 0 行表 → 响亮报错（形状变了绝不静默通过）。
+ */
+export function parseExitTable(docText) {
+  const lines = docText.split('\n')
+  const idx = lines.findIndex((l) => /^##\s*8\./.test(l))
+  if (idx < 0) throw new Error('docs/troubleshooting.md 未找到 §8 标题（`## 8.`）——§8 被改名/删除，请同步本解析器')
+  const codes = new Set()
+  let started = false
+  let rows = 0
+  for (let i = idx + 1; i < lines.length; i++) {
+    const l = lines[i]
+    if (l.startsWith('|')) {
+      started = true
+      const m = /^\|\s*(\d{1,2})\s*\|/.exec(l)
+      if (m) { rows++; codes.add(Number(m[1])) }
+      continue
+    }
+    if (started) break // 首个非表行 = 表格结束
+  }
+  if (rows === 0) {
+    throw new Error(`troubleshooting.md §8（第 ${idx + 1} 行起）未解析出任何「| <码> |」表行——表被改形态？本门会静默失效`)
   }
   return { line: idx + 1, codes: [...codes].sort((a, b) => a - b) }
 }

@@ -15,7 +15,7 @@
   > **计数口径**（v18.2.6 更正）：`Select-String cordis.patch.yml -Pattern '^\s*[A-Za-z]+:\s*!!js'` → **6 行**。旧版本节与旧 patch 注释只写「3 处」（只数了 `agentOptions`），**漏算 3 处 `disabled`**，等于把加载期执行面**少报一半**。
   > v17.0.0 及更早还有第 4 处 `!!js`（技能目录路径求值，用 `baseUrl`/`URL`）；v18.0.0 改由包入口注册技能后，这处求值**已删除**，表达式面更窄。
 
-实测技能可正常加载：`dsh --profile <profile> --dump-config` 可见本包层与 `tool-subagent-*` 的**声明行**，新会话的技能目录能列出 `lunheng-article-pipeline`。
+实测技能可正常加载：`dsh --profile <profile> --dump-config` 可见本包层与 `tool-subagent-*` 的**声明行**，新会话的技能目录能列出 `lunheng-article-pipeline` 与 `lunheng-commands` 两个技能。
 > ⚠️ **`--dump-config` 只打印声明行**：三档工具**默认不装载**（v18.2.6 起，见 `docs/installation.md`），所以「dump 里看得到三行」**不等于**「已装载」；要确认装载，看是否设了任一档 `LUNHENG_*_PROVIDER/MODEL` 或 `LUNHENG_TIERING=on`。
 
 ## 版本号为什么是纯语义化三段式？

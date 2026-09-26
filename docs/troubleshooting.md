@@ -8,7 +8,7 @@
 
 | 你的形态 | 自检手段 |
 |---|---|
-| **npm / `dsh plugin add` 安装包**（绝大多数用户） | `dsh plugin --profile <profile> list`、`npm view lunheng-article-pipeline version`、会话内 `/lunheng-status`、让模型列出技能目录。**注意：安装包里没有仓库级的 `scripts/` 与 `tests/`**，下面那四条命令在你的环境里无法执行（这是刻意的发布面裁剪，见 CHANGELOG `## 18.2.0`）。 |
+| **npm / `dsh plugin add` 安装包**（绝大多数用户） | `dsh plugin --profile <profile> list`、`npm view lunheng-article-pipeline version`、会话内 `/lunheng-status` 与 `/lunheng-stats`、让模型列出技能目录（应看到 `lunheng-article-pipeline` 与 `lunheng-commands`）。**注意：安装包里没有仓库级的 `scripts/` 与 `tests/`**，下面那四条命令在你的环境里无法执行（这是刻意的发布面裁剪，见 CHANGELOG `## 18.2.0`）。 |
 | **克隆源码仓库**（维护者 / 想改机制的人） | 跑下面四道门（它们只在仓库里存在）： |
 
 ```sh
@@ -85,6 +85,7 @@ node --test "tests/**/*.test.mjs"                                    # 随包脚
 | 1 | 存在 P1 失败 |
 | 2 | 存在 P0 失败 |
 | 3 | 仅 P2 / LLM 兜底 / SKIP —— **需 LLM 复核，不得当作通过** |
+| 4 | **`model-routing.mjs`**：需人工决定（某档位在本机无候选模型）—— 与 M 门 `3`（仅 P2，可放行）**语义分离**，**不得**读作「可放行」 |
 | 10 | **参数或路径错误（不是内容问题）** —— 全部随包脚本均用此码，**含异常路径**（`_lib/exit-guard.mjs` 把 fs 类未捕获异常统一映射为 10） |
 | 70 | **内部错误（EX_SOFTWARE，脚本缺陷）** —— `exit-guard` 对非 fs 类未捕获异常使用；与内容判定无关，请连同命令与栈回报 issue |
 | 30 | **`m-gate-check.mjs --adjudicate`（v18.12.0）**：裁定**被拒**（红线命中 / 四件套不全 / 缺 `true_p0`）—— 对策：按报错补齐裁定 JSON 后重提；**拒绝裁定 ≠ 内容失败** |

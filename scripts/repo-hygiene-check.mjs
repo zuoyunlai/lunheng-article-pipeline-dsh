@@ -45,7 +45,7 @@ import { fileURLToPath } from 'node:url'
 import { scanShipped } from './_lib/pack-negative.mjs' // D-1②：与 pack-smoke 共用同形负清单（结构上同形，不靠两份代码同步）
 import { scanLocalPaths, LOCAL_PATH_BASELINE } from './_lib/local-path-scan.mjs' // D-2②：本机绝对路径（发布物硬零 + 非随包树棘轮）
 import { parsePackManifest } from './_lib/pack-manifest.mjs' // 二次复审 M-2/O-3：npm pack --json 单点解析（数组 ≤npm11 / 对象 npm12+）
-import { parseExitContract, parseNamespaceQuota, reconcile, reconcileScriptHeaders } from './_lib/exit-namespace.mjs' // C-11：§8 配额 ↔ EXIT_CONTRACT 双向对账；v18.18.12 加 ⑧d 脚本自述码对账
+import { parseExitContract, parseNamespaceQuota, parseExitTable, reconcile, reconcileScriptHeaders } from './_lib/exit-namespace.mjs' // C-11：§8 配额 ↔ EXIT_CONTRACT 双向对账；v18.18.12 加 ⑧d 脚本自述码对账
 import { deriveScriptSurface, parseSecuritySurface, reconcileSurface } from './_lib/script-surface.mjs' // C-7：随包脚本执行面/写盘面 ∈ SECURITY.md
 import { findLibLineRefs, isHistoricalDoc } from './_lib/lib-line-refs.mjs' // C-9：当前文档不得有裸 `lib/**:LINE` 引用
 import { resolveExitCodes, parseGuardConsts } from './_lib/exit-resolution.mjs' // A-7③：退出码静态解析（含一层变量内联，可单测）
@@ -518,7 +518,8 @@ notes.push(
 //   解析器放在 `_lib/exit-namespace.mjs`（可单测）；形状变了会**抛错**而不是静默通过。
 try {
   const contract = parseExitContract(readFileSync(join(ROOT, 'scripts', 'repo-hygiene-check.mjs'), 'utf8'))
-  const quota = parseNamespaceQuota(readFileSync(join(ROOT, 'docs', 'troubleshooting.md'), 'utf8'))
+  const docText = readFileSync(join(ROOT, 'docs', 'troubleshooting.md'), 'utf8')
+  const quota = parseNamespaceQuota(docText)
   const { onlyInCode, onlyInDoc } = reconcile(contract.codes, quota.codes)
   if (onlyInCode.length) {
     fail('exit-code', `退出码 ${onlyInCode.join(', ')} 已写进 EXIT_CONTRACT 但**未登记**于 docs/troubleshooting.md §8 命名空间配额（:${quota.line}）——两处必须同一次提交一起改`)
@@ -526,7 +527,17 @@ try {
   if (onlyInDoc.length) {
     fail('exit-code', `§8 命名空间配额（:${quota.line}）声明了 ${onlyInDoc.join(', ')}，但 EXIT_CONTRACT 里**已无人使用**——要么补用，要么从 §8 删掉（免得下一个人以为这些码被占了）`)
   }
-  notes.push(`⑧b 退出码命名空间：代码侧 ${contract.codes.length} 个码 ↔ §8 声明 ${quota.codes.length} 个码，双向一致（${contract.codes.join('/')}）`)
+  // M-4（二次复审）：§8 的「声明」还有**第二种载体——表格**（主控最常读的入口）。旧版只钉了配额散文，
+  //   实测把表里 `| 2 |` 改成 `| 12 |` 时**全套门绿**。故对表行做同一套双向对账。
+  const table = parseExitTable(docText)
+  const tbl = reconcile(contract.codes, table.codes)
+  if (tbl.onlyInCode.length) {
+    fail('exit-code', `退出码 ${tbl.onlyInCode.join(', ')} 在 EXIT_CONTRACT 里，但 §8 的**表格**（:${table.line} 起）**缺该行**——表是主控的阅读入口，缺行会让读表的人以为该码不存在`)
+  }
+  if (tbl.onlyInDoc.length) {
+    fail('exit-code', `§8 的**表格**（:${table.line} 起）列了 ${tbl.onlyInDoc.join(', ')}，但 EXIT_CONTRACT 里**已无人使用**——要么补用，要么从表里删掉`)
+  }
+  notes.push(`⑧b 退出码命名空间：代码侧 ${contract.codes.length} 个码 ↔ §8 配额 ${quota.codes.length} 个 ↔ §8 表格 ${table.codes.length} 个，三方一致（${contract.codes.join('/')}）`)
 } catch (e) {
   fail('exit-code', `⑧b 退出码命名空间对账无法执行：${e.message}`)
 }
