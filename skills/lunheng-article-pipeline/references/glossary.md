@@ -1,4 +1,4 @@
-> 版本：v18.16.0（DSH bundle 插件）
+> 版本：v18.17.0（DSH bundle 插件）
 
 
 <a id="concepts"></a>
@@ -348,7 +348,7 @@
 
 ### 第 4 层：npm registry 与已安装副本
 - `npm publish --tag dsh`：registry 发布（dist-tag = `dsh`）
-- 已安装副本同步：各部署位（如 `E:\HERNESS\.dsh\skills\lunheng-article-pipeline`）随发布内容保持一致，用 `scripts/consistency-check.mjs` 校验漂移
+- 已安装副本同步：各部署位（如 `<镜像根>/.dsh/skills/lunheng-article-pipeline`）随发布内容保持一致，用 `scripts/consistency-check.mjs` 校验漂移
 
 ---
 

@@ -15,7 +15,9 @@ dsh plugin --profile <profile> add lunheng-article-pipeline
 # 3) 重启 dsh
 ```
 
-安装后技能自动出现在会话的 `skill` 工具目录，无需手动复制到技能根。
+安装后**两个**技能自动出现在会话的 `skill` 工具目录，无需手动复制到技能根：
+- `lunheng-article-pipeline`：主技能，9 角色流水线
+- `lunheng-commands`：伴随技能，11 个 `/lunheng-*` 斜杠命令（status / stats / compression-cycle / evidence-bundle / m-gate / handoff-check 等；薄壳 wrapper，不引入新角色 / 新 M 门）
 
 ## 安装前提与注意事项
 
@@ -47,7 +49,7 @@ dsh --profile <profile> --dump-config
 ```sh
 mkdir -p /tmp/empty-cwd && cd /tmp/empty-cwd
 dsh --profile <headless-profile> "请调用 skill 工具列出你可见的技能名称"
-# 预期输出包含：lunheng-article-pipeline
+# 预期输出包含：lunheng-article-pipeline 与 lunheng-commands（两技能目录均出现）
 ```
 
 ## 分档预设（按角色分模型，可选，通用化）
@@ -87,7 +89,7 @@ dsh --profile <profile>
 | `LUNHENG_TIERING` | `on` / `off` | `on` = 显式装载三档工具行（不指定模型也可，用于确认工具可见）；`off` = 强制不装载 | 优先级最高，压过其它 `LUNHENG_*` |
 | `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_{PROVIDER,MODEL}` | provider 名 / 模型 id | 分档取值；**设任一档即同时装载三行** | 跨 provider 时才需同时给 PROVIDER + MODEL |
 
-同名的**部署开关**走插件 `config`（v18.2.6 起入口导出 `Config`）：`allowMechanismEdit` / `quiet` / `scriptTimeoutMs`（原生工具跑脚本的超时，默认 120 000 ms）/ `scriptMaxOutputBytes`（单次 stdout/stderr 采集上限，默认 4 MiB）。写在你 profile 里本插件行上：
+同名的**部署开关**走插件 `config`（v18.2.6 起入口导出 `Config`）：`allowMechanismEdit` / `quiet` / `scriptTimeoutMs`（原生工具跑脚本的超时，默认 120 000 ms）/ `scriptMaxOutputBytes`（单次 stdout/stderr 采集上限，默认 4 MiB）/ `handoffLevel`（交接门灰度开关：`basic` = 仅验存在/非空/回报六要素；`strict` = 加结构/版本/成对/agents-log 校验；默认 `basic`）。写在你 profile 里本插件行上：
 
 ```yaml
 - id: lunheng-article-pipeline
@@ -103,7 +105,7 @@ dsh --profile <profile>
 
 | 路径 | 依赖 | 受限环境下的表现 |
 |---|---|---|
-| ① 原生工具 `lunheng_m_gate` / `lunheng_char_count` | bundle 部署（入口跑过）+ 宿主有 `tools` 服务 + `@deepseek-ai/dsh-tools` 可解析 | 工具本体在**宿主进程内**，但脚本由 `lib/tools.js` **派生子进程**执行 → 沙箱禁子进程管道时失败（错误信息会明确写 EPERM 并提示改用 `pwsh`） |
+| ① 原生工具 `lunheng_m_gate` / `lunheng_char_count` / `lunheng_handoff_check` | bundle 部署（入口跑过）+ 宿主有 `tools` 服务 + `@deepseek-ai/dsh-tools` 可解析 | 工具本体在**宿主进程内**，但脚本由 `lib/tools.js` **派生子进程**执行 → 沙箱禁子进程管道时失败（错误信息会明确写 EPERM 并提示改用 `pwsh`） |
 | ② `pwsh` 调脚本 `node scripts/<脚本>.mjs …` | 会话里有命令工具（`pwsh`/`bash`） | 沙箱**整体禁止派生子进程**时不可用（v18.2.2 记录过整段 `pwsh` 失效的实例）——此时该如实记「本机无法执行机检」 |
 | ③ 纯技能目录部署直接跑脚本 | 只把 `skills/lunheng-article-pipeline/` 拷进技能根 | **没有**路径 ①（入口不跑 → 无原生工具、无 guard、无 `/lunheng-status`），只剩 `pwsh`/命令工具 |
 

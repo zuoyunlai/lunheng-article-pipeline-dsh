@@ -2,7 +2,7 @@
 
 > 🌐 [English](README.md) ｜ **中文**（本文件）｜ [Español](README.es.md) ｜ [Português](README.pt.md) ｜ [हिन्दी](README.hi.md)
 
-> 版本：v18.16.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.17.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > 一个 DeepSeek Harness（DSH）bundle 插件，注册一个按需加载的 agent 技能。它把深度长文的生产——学术论文、行业分析、商业评论、公众号深文——变成**带人在环节点的 9 角色流水线**。
 
@@ -41,7 +41,7 @@
 | 初稿 | 逐版递进，含中文 AI 痕迹清理，每轮由独立写手执行 |
 | 审阅报告 | 批判报告（C1–C7）、审计报告（G0–G14）、审稿报告（6 维度 + 期刊匹配）、AI 痕迹报告 |
 | 终交付 | `final/定稿.md`、图件、证据包、交付说明、M 门报告 |
-| DSH 集成（bundle 安装时） | 两个**只读**工具 `lunheng_m_gate`（M 门机械预检）与 `lunheng_char_count`（纯汉字数）——清单里没有就照旧用 `pwsh` 调同名脚本（同源）。人类命令 `/lunheng-status`（读 `run/<项目>/status.md`，**不产生模型消息**）。**机制文件写保护**：全局 guard 否决指向技能包内的 `write`/`edit` 类工具调用，会话无法悄悄改写流水线自己的规则。**边界如实声明**：guard 只看**工具调用**——`pwsh`/子进程**不经此门**；主人授权例外走 `LUNHENG_ALLOW_MECH_EDIT=1`（或本插件行 `config: { allowMechanismEdit: true }`）。插件 **Config**（部署开关，写在你 profile 的本插件行上）覆盖 `quiet` / `allowMechanismEdit` / `scriptTimeoutMs` / `scriptMaxOutputBytes`——与 `LUNHENG_QUIET` / `LUNHENG_ALLOW_MECH_EDIT` 同义、但随 profile 走且可 review；**非法配置在加载期响亮失败**，不静默回落默认值。 |
+| DSH 集成（bundle 安装时） | 三个**只读**工具 `lunheng_m_gate`（M 门机械预检）、`lunheng_char_count`（纯汉字数）与 `lunheng_handoff_check`（交接报告形态/版本/成对/agents-log 校验）——清单里没有就照旧用 `pwsh` 调同名脚本（同源）。人类命令 `/lunheng-status` 与 `/lunheng-stats`（读 `run/<项目>/status.md`，**不产生模型消息**）。**机制文件写保护**：全局 guard 否决指向技能包内的 `write`/`edit` 类工具调用，会话无法悄悄改写流水线自己的规则。**边界如实声明**：guard 只看**工具调用**——`pwsh`/子进程**不经此门**；主人授权例外走 `LUNHENG_ALLOW_MECH_EDIT=1`（或本插件行 `config: { allowMechanismEdit: true }`）。插件 **Config**（部署开关，写在你 profile 的本插件行上）覆盖 `quiet` / `allowMechanismEdit` / `scriptTimeoutMs` / `scriptMaxOutputBytes` / `handoffLevel`（交接门灰度）——与 `LUNHENG_QUIET` / `LUNHENG_ALLOW_MECH_EDIT` / `LUNHENG_HANDOFF_LEVEL` 同义、但随 profile 走且可 review；**非法配置在加载期响亮失败**，不静默回落默认值。 |
 
 ## Pipeline overview
 
@@ -110,7 +110,7 @@ patch 层做两件事：**插入一行本包自注册行**（`- id: lunheng-arti
 **只推 tag 发布，禁止本地 `npm publish`**（本地直发会绕过 CI 三道门与 OIDC 来源证明，且 npm 版本不可覆盖）。
 
 ```sh
-git tag v18.16.0 && git push origin v18.16.0   # 一次只推 1 个 tag（GitHub：单次 push >3 个 tag 不触发任何 workflow）
+git tag v18.17.0 && git push origin v18.17.0   # 一次只推 1 个 tag（GitHub：单次 push >3 个 tag 不触发任何 workflow）
 # publish.yml 依次跑：门 1 一致性 → 门 2 打包面 → 门 3 机械卫生 → 门 4 打包产物冒烟 → 脚本回归测试
 #   → tag/版本一致校验 → 幂等守卫 → OIDC 发布 --provenance --tag dsh → 发布后审计
 ```
@@ -140,7 +140,8 @@ dsh --profile web --dump-config   # 应出现 "# == lunheng-article-pipeline" �
 
 | 项 | 要求 |
 |---|---|
-| DSH | `dsh` CLI 可用；bundle 的 `- insert:` 增量 patch 行需 DSH 5.5.0+ |
+| DSH（产品版） | `dsh` CLI 可用；bundle 的 `- insert:` 增量 patch 行需 **DSH 5.5.0+ 产品发行版**——注意：`dsh` 有两条并行版本线，**产品发行线**（semver，如 `5.5.0`）与 **npm 包线** `@deepseek-ai/dsh`（prerelease tags，如 `0.1.7-rc.2`），**两者不可互换** |
+| `@deepseek-ai/dsh`（npm 包版） | `peerDependencies` 声明 `>=0.1.2-rc.1 <0.2.0`；**CI 仅实测过 `0.1.7-rc.2`**（`ci.yml` pin 的 prerelease tag）；早于该版本的 `0.1.x` 能否工作未实测——下限是**声明**而非验证 |
 | Node | `^22.19.0 \|\| >=24.0.0`（DSH 运行时下限；见 `package.json` 的 `engines`） |
 | pnpm | 安装/卸载依赖它（`dsh plugin` 内部转 pnpm） |
 | 平台 | Windows / macOS / Linux（脚本零依赖，跨平台可跑） |

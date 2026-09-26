@@ -2,6 +2,40 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.17.0 — 2026-09-25
+
+> **性质**：v18.17.0 = 「对外声明与发布面」收口批。一次**外部独立全量审计**触发 56 项发现中的 B 批 16 项（C 族 13 项文档面 + D 族 3 项发布面）。详见 [`audits/反哺报告-v18.16.0-全量独立审计修订方案.md`](audits/反哺报告-v18.16.0-全量独立审计修订方案.md) §三.2 + §三.4 三岔口 #3/#4/#5/#6（主人全采纳报告建议）。
+
+### 一、C 族（11 项 P1 + 2 项 P2 = 13 项 · 文档面）
+
+> **本批核心原则**：**对外声明从代码派生**，不再由人手抄（这是 C 族 9 版本漂移的根治解）。
+> C 族全部走 `consistency-check.mjs` 规则 ㉑（五语 README 结构镜像）+ 五语同步自动化校验，下次 bump 漏刷即 P1 红灯。
+
+- **C-1**（P1）五语 `README.md` + `SECURITY.md` + `docs/installation.md`：工具数 2→3（补 `lunheng_handoff_check`，来源 `lib/tools.js` 第 3 个 `disposers.push(tools.register(defineTool({…})))` 块）
+- **C-2**（P1）人类命令 `/lunheng-status` → `/lunheng-status` + `/lunheng-stats`（来源 `lib/commands.js` `installStatsCommand`）
+- **C-3**（P1）Config 第 5 键 `handoffLevel`（basic / strict），与 `LUNHENG_HANDOFF_LEVEL` env 镜像
+- **C-4**（P1）README 改为「registers **two** on-demand agent skills」+ 布局树补 `skills/lunheng-commands/` 子技能目录（11 个 `/lunheng-*` 斜杠命令；薄壳 wrapper 不引入新角色 / 新 M 门）
+- **C-5**（P1）README 「Local gates」四条命令加限定「**repository sources only** — npm 包不含 `scripts/` 与 `tests/`」
+- **C-6**（P1 + 岔口 #4 白名单化）`lib/commands.js` 的 `/lunheng-stats` 参数白名单化——只放行 `--json` 一个旗标；其它 token 一律拒绝（用户原文不再直接进 argv 末尾，宿主进程 spawn 权限不再随键盘输入传递）
+- **C-7**（P1）`SECURITY.md` 修正 `apply-compression-cycle.mjs` 描述：从「只读」改为「3 处 spawnSync（`final-check` / `apply-revision-cycle` / `apply-compression-cycle`，后者 v18.16.0 起含写盘效果——通过 `consistency-check.mjs` + `build-evidence-bundle.mjs` 间接写盘）」
+- **C-8**（P1）`SECURITY.md` NPM_TOKEN 现状与 `publish.yml` 同步：从「已删除」改为「v18.8.0 末起恢复，v18.10.0 / v18.15.0 / v18.16.0 三次发布均走 `npm dist-tag add … latest` 自动同步成功」
+- **C-9**（P1）`SECURITY.md` 的 `lib/tools.js:18,24,133,191` 行号改为**符号引用**——「寻找 `name: 'lunheng_*'` 三处的 `spawn(...)` 调用即可」（行号随改动漂移，不写绝对行号）
+- **C-10**（P1）`SECURITY.md` 措辞修正：跨平台 windows/macos 矩阵由 `ci.yml` 的 `script-tests` job 并行执行；发布链 ubuntu 单跑（与主控三岔口 #6 对齐）
+- **C-11**（P1）`docs/troubleshooting.md` 三处陈旧/矛盾修正：line 137 exit 1→10（v18.12.0 L-67 已收口到 10）；line 3 版本头 v18.2.6→v18.16.0；line 50 rank 300→250
+- **C-12**（P2）`docs/architecture.md` + `docs/introduction.md`：T8 描述从「无角色卡」改为「**有角色卡** `references/agents/08-终检-finalizer.md`，但**执行者 = 主控本人不 spawn**」
+- **C-13**（P2）`docs/introduction.md` 期刊数 / 阶段数修正：阶段数「六个」→「七个」（含 Phase 4.2 修订回环）；期刊库规模声明改为「真源 = `references/_shared/期刊数据库.md` 表行数」
+
+### 二、D 族（3 项 P1 + 2 项 P2 = 5 项 · 发布面）
+
+- **D-1**（P1）`package.json` 的 `files` 加两条负向项 `!skills/lunheng-commands/tests` + `!skills/lunheng-commands/package.json`（子技能自带 22 用例未自动运行 / 嵌套 manifest 字段在 bundle 形态下无意义）。**验证**：`npm pack --dry-run` 实测排除生效（147→145 文件，删 `tests/route.test.mjs` + 嵌套 `package.json`）；`pack-smoke.mjs` 「发布面零污染」门继续通过
+- **D-2**（P1）3 处作者本机绝对路径改占位符：`references/glossary.md:351` `E:\HERNESS\.dsh\…` → `<镜像根>/.dsh/skills/lunheng-article-pipeline`；`references/_shared/M-Gate-Algorithm.md:16` → `<项目根>/run/审计/<内部报告名>.md`；`scripts/_lib/mgate-gates/mintegrity-gate.mjs:47` → `<项目根>/run/<项目名>/01-任务简报.md`
+- **D-3**（P2）`README.md` Requirements 段区分 DSH 的两条版本线——**产品发行版**（semver，如 `5.5.0`）与 **npm 包版** `@deepseek-ai/dsh`（prerelease tags，如 `0.1.7-rc.2`）**不可互换**；CI 仅实测过 `0.1.7-rc.2`，peerDependencies 声明的下限是**声明**而非验证
+
+### 三、归版
+
+- 6 处同步：package.json + SKILL.md frontmatter + SKILL.md 首部 `> 版本：` + SKILL.md 角色卡 `- 版本：` + 五语 README 版本头 + 五语 README git tag 示例 + examples/preset 安装 pin + CONTRIBUTING + SECURITY.md + docs/installation.md + docs/troubleshooting.md + 60+ 份 `references/**/*.md` 的 `> 版本：vX.Y.Z` 头
+- commit 信息：`v18.17.0：对外声明与发布面（B 批 16 项；C 族 13 项 + D 族 3 项）`。
+
 ## 18.16.0 — 2026-09-25
 
 > **性质**：v18.16.0 = 「门与守卫自身可信度」收口批。一次**外部独立全量审计**触发 56 项发现中的 A 批 19 项（先行项 G-1 / S-3 + S+A 族 9 项 + B 族 5 项 + F 族 2 项）。详见 [`audits/反哺报告-v18.16.0-全量独立审计修订方案.md`](audits/反哺报告-v18.16.0-全量独立审计修订方案.md)。

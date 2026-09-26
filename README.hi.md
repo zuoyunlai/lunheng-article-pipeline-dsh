@@ -1,6 +1,6 @@
 # लुन्हेंग (lunheng-article-pipeline) — बहु-एजेंट दीर्घ-लेख पाइपलाइन
 
-> 版本：v18.16.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.17.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > 🌐 [English](README.md) ｜ [中文](README.zh.md) ｜ [Español](README.es.md) ｜ [Português](README.pt.md) ｜ **हिन्दी**（यह फ़ाइल）
 
@@ -41,7 +41,7 @@
 | प्रारूप | क्रमिक संस्करण, AI-चिह्न सफ़ाई सहित, प्रत्येक स्वतंत्र लेखक से |
 | रिपोर्ट | समालोचना (C1–C7), लेखा-परीक्षा (G0–G14), सहकर्मी समीक्षा (6 आयाम + पत्रिकाएँ) |
 | अंतिम उपज | `final/定稿.md`, चित्र, प्रमाण-पुंज, वितरण टिप्पणियाँ, M-द्वार रिपोर्ट |
-| DSH एकीकरण (bundle स्थापना पर) | दो **केवल-पठन** उपकरण — `lunheng_m_gate` (M-द्वार यांत्रिक पूर्व-जाँच) और `lunheng_char_count` (शुद्ध चीनी अक्षर गणना); सूची में न हों तो पहले की तरह `pwsh` से वही स्क्रिप्ट चलाएँ (एक ही स्रोत)। मानव आदेश `/lunheng-status` (`run/<परियोजना>/status.md` पढ़ता है; मॉडल संदेश नहीं बनाता)। **तंत्र-फ़ाइल लेखन सुरक्षा**: वैश्विक guard स्किल पैकेज को लक्षित `write`/`edit` प्रकार की उपकरण-कॉल अस्वीकार करता है, अतः सत्र चुपचाप पाइपलाइन के अपने नियम नहीं बदल सकता। **सीमा स्पष्ट रूप से**: guard केवल **उपकरण-कॉल** देखता है — `pwsh`/उप-प्रक्रियाएँ **इस द्वार से नहीं गुज़रतीं**; स्वामी की छूट `LUNHENG_ALLOW_MECH_EDIT=1` (या `config: { allowMechanismEdit: true }`) है। प्लगइन **Config** (परिनियोजन स्विच, आपकी profile में इस प्लगइन की पंक्ति पर) `quiet`, `allowMechanismEdit`, `scriptTimeoutMs`, `scriptMaxOutputBytes` कवर करता है — वही नियंत्रण जो `LUNHENG_QUIET` / `LUNHENG_ALLOW_MECH_EDIT` env देते हैं, पर profile के साथ संस्करणित और समीक्षायोग्य; **अवैध config लोड के समय ज़ोरदार विफल होता है**, चुपचाप डिफ़ॉल्ट पर नहीं लौटता। |
+| DSH एकीकरण (bundle स्थापना पर) | तीन **केवल-पठन** उपकरण — `lunheng_m_gate` (M-द्वार यांत्रिक पूर्व-जाँच), `lunheng_char_count` (शुद्ध चीनी अक्षर गणना), और `lunheng_handoff_check` (हैंडऑफ रिपोर्ट के आकार / संस्करण / युग्मों / agents-log की जाँच); सूची में न हों तो पहले की तरह `pwsh` से वही स्क्रिप्ट चलाएँ (एक ही स्रोत)। मानव आदेश `/lunheng-status` (`run/<परियोजना>/status.md` पढ़ता है) तथा `/lunheng-stats` (परियोजनाओं के बीच टेलीमेट्री पैनल; होस्ट-प्रक्रिया में `scripts/lunheng-stats.mjs` को केवल `--json` श्वेतसूची के साथ चलाता है); कोई भी मॉडल संदेश नहीं बनाता। **तंत्र-फ़ाइल लेखन सुरक्षा**: वैश्विक guard स्किल पैकेज को लक्षित `write`/`edit` प्रकार की उपकरण-कॉल अस्वीकार करता है, अतः सत्र चुपचाप पाइपलाइन के अपने नियम नहीं बदल सकता। **सीमा स्पष्ट रूप से**: guard केवल **उपकरण-कॉल** देखता है — `pwsh`/उप-प्रक्रियाएँ **इस द्वार से नहीं गुज़रतीं**; स्वामी की छूट `LUNHENG_ALLOW_MECH_EDIT=1` (या `config: { allowMechanismEdit: true }`) है। प्लगइन **Config** (परिनियोजन स्विच, आपकी profile में इस प्लगइन की पंक्ति पर) `quiet`, `allowMechanismEdit`, `scriptTimeoutMs`, `scriptMaxOutputBytes`, और `handoffLevel` कवर करता है — वही नियंत्रण जो `LUNHENG_QUIET` / `LUNHENG_ALLOW_MECH_EDIT` / `LUNHENG_HANDOFF_LEVEL` / `LUNHENG_HANDOFF_LEVEL` env देते हैं, पर profile के साथ संस्करणित और समीक्षायोग्य; **अवैध config लोड के समय ज़ोरदार विफल होता है**, चुपचाप डिफ़ॉल्ट पर नहीं लौटता। |
 
 ## Pipeline overview
 
@@ -110,7 +110,7 @@ patch परत दो काम करती है: **इस पैकेज �
 संस्करण **केवल tag से** प्रकाशित होते हैं; स्थानीय `npm publish` वर्जित है (यह CI द्वारों और OIDC provenance को दरकिनार करता है, और npm संस्करण कभी अधिलेखित नहीं हो सकता)।
 
 ```sh
-git tag v18.16.0 && git push origin v18.16.0   # एक बार में एक ही tag (GitHub: >3 tag एक push में कोई workflow नहीं चलाता)
+git tag v18.17.0 && git push origin v18.17.0   # एक बार में एक ही tag (GitHub: >3 tag एक push में कोई workflow नहीं चलाता)
 # publish.yml क्रम: द्वार 1 सुसंगति → द्वार 2 पैकेजिंग → द्वार 3 स्वच्छता → द्वार 4 पैकेज स्मोक → स्क्रिप्ट परीक्षण
 #   → tag/संस्करण समानता → idempotency गार्ड → OIDC publish --provenance --tag dsh → प्रकाशन-पश्चात लेखा-परीक्षा
 ```
@@ -140,7 +140,8 @@ dsh --profile web --dump-config   # "# == lunheng-article-pipeline" परत �
 
 | मद | आवश्यकता |
 |---|---|
-| DSH | `dsh` CLI उपलब्ध; `- insert:` पंक्तियों हेतु DSH 5.5.0+ |
+| DSH (उत्पाद संस्करण) | `dsh` CLI उपलब्ध; बंडल की `- insert:` पंक्तियों को **DSH 5.5.0+ उत्पाद संस्करण** चाहिए — ध्यान दें: `dsh` दो समानांतर संस्करण रेखाओं में आता है, **उत्पाद रेखा** (semver, जैसे `5.5.0`) और **npm पैकेज रेखा** `@deepseek-ai/dsh` (prerelease टैग, जैसे `0.1.7-rc.2`); **वे परस्पर विनिमेय नहीं हैं** |
+| `@deepseek-ai/dsh` (npm पैकेज संस्करण) | `peerDependencies` में `>=0.1.2-rc.1 <0.2.0` घोषित; **CI केवल `0.1.7-rc.2` का परीक्षण करता है** (`ci.yml` में pin किया गया prerelease टैग); पहले के `0.1.x` संस्करण काम करें या नहीं — निचली सीमा **घोषणा** है, सत्यापन नहीं |; `- insert:` पंक्तियों हेतु DSH 5.5.0+ |
 | Node | `^22.19.0 \|\| >=24.0.0` (DSH न्यूनतम; `package.json` का `engines` देखें) |
 | pnpm | स्थापना/विस्थापन हेतु आवश्यक (`dsh plugin` pnpm को सौंपता है) |
 | प्लेटफ़ॉर्म | Windows / macOS / Linux (स्क्रिप्ट निर्भरता-रहित) |

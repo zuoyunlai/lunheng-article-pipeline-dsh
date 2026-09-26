@@ -1,6 +1,6 @@
 # Lunheng (lunheng-article-pipeline) — pipeline multiagente para textos largos
 
-> 版本：v18.16.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.17.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > 🌐 [English](README.md) ｜ [中文](README.zh.md) ｜ **Español**（este archivo）｜ [Português](README.pt.md) ｜ [हिन्दी](README.hi.md)
 
@@ -41,7 +41,7 @@ Regla práctica: pregunte si la evidencia ya está **publicada**. Si lo está, L
 | Borradores | Versiones sucesivas con limpieza de huellas de IA, cada una de un redactor independiente |
 | Informes | Informe crítico (C1–C7), auditoría (G0–G14), revisión por pares (6 dimensiones + revistas) |
 | Entregables finales | `final/定稿.md`, figuras, paquete probatorio, notas de entrega, informe de la puerta M |
-| Integración con DSH (instalación como bundle) | Dos herramientas **de solo lectura**: `lunheng_m_gate` (precomprobación mecánica de la puerta M) y `lunheng_char_count` (recuento de caracteres chinos); si su sesión no las expone, invoque los mismos scripts con `pwsh` como antes (misma fuente de verdad). Comando humano `/lunheng-status` (lee `run/<proyecto>/status.md`; no genera mensajes de modelo). **Protección de escritura de los archivos de mecanismo**: un guard global rechaza las llamadas de herramientas tipo `write`/`edit` dirigidas al paquete de la skill, de modo que una sesión no puede reescribir en silencio las reglas de la propia pipeline. Límite declarado sin adornos: el guard solo ve **llamadas de herramientas**; `pwsh` y cualquier subproceso **no pasan por esta puerta**; la excepción del propietario es `LUNHENG_ALLOW_MECH_EDIT=1` (o `config: { allowMechanismEdit: true }`). El **Config** del plugin (interruptor de despliegue, en la fila de este plugin de su perfil) cubre `quiet`, `allowMechanismEdit`, `scriptTimeoutMs` y `scriptMaxOutputBytes` — las mismas palancas que las variables `LUNHENG_QUIET` / `LUNHENG_ALLOW_MECH_EDIT`, pero versionadas con el perfil y revisables; una **config inválida falla ruidosamente en la carga** en lugar de volver en silencio a los valores por defecto. |
+| Integración con DSH (instalación como bundle) | Tres herramientas **de solo lectura**: `lunheng_m_gate` (precomprobación mecánica de la puerta M), `lunheng_char_count` (recuento de caracteres chinos) y `lunheng_handoff_check` (verificación de forma / versión / pares / agents-log del informe de traspaso); si su sesión no las expone, invoque los mismos scripts con `pwsh` como antes (misma fuente de verdad). Comandos humanos `/lunheng-status` (lee `run/<proyecto>/status.md`) y `/lunheng-stats` (panel de telemetría entre proyectos; lanza `scripts/lunheng-stats.mjs` con `--json` como único argumento en lista blanca); ninguno genera mensajes de modelo. **Protección de escritura de los archivos de mecanismo**: un guard global rechaza las llamadas de herramientas tipo `write`/`edit` dirigidas al paquete de la skill, de modo que una sesión no puede reescribir en silencio las reglas de la propia pipeline. Límite declarado sin adornos: el guard solo ve **llamadas de herramientas**; `pwsh` y cualquier subproceso **no pasan por esta puerta**; la excepción del propietario es `LUNHENG_ALLOW_MECH_EDIT=1` (o `config: { allowMechanismEdit: true }`). El **Config** del plugin (interruptor de despliegue, en la fila de este plugin de su perfil) cubre `quiet`, `allowMechanismEdit`, `scriptTimeoutMs`, `scriptMaxOutputBytes` y `handoffLevel` — las mismas palancas que las variables `LUNHENG_QUIET` / `LUNHENG_ALLOW_MECH_EDIT` / `LUNHENG_HANDOFF_LEVEL`, pero versionadas con el perfil y revisables; una **config inválida falla ruidosamente en la carga** en lugar de volver en silencio a los valores por defecto. |
 
 ## Pipeline overview
 
@@ -110,7 +110,7 @@ La capa patch hace dos cosas: **inserta una fila para este paquete** (`- id: lun
 Las versiones se publican **solo por tag**; `npm publish` local está prohibido (evita las puertas de CI y la procedencia OIDC, y una versión npm nunca se puede sobrescribir).
 
 ```sh
-git tag v18.16.0 && git push origin v18.16.0   # un tag por push (GitHub: >3 tags en un push no dispara workflow)
+git tag v18.17.0 && git push origin v18.17.0   # un tag por push (GitHub: >3 tags en un push no dispara workflow)
 # publish.yml ejecuta: puerta 1 consistencia → puerta 2 empaquetado → puerta 3 higiene → puerta 4 humo del paquete → tests
 #   → tag/versión iguales → guarda de idempotencia → OIDC publish --provenance --tag dsh → auditoría posterior
 ```
@@ -140,7 +140,8 @@ Un directorio simple no declara `dsh.bundle`, así que `dsh plugin add` solo lo 
 
 | Elemento | Requisito |
 |---|---|
-| DSH | CLI `dsh` disponible; las filas `- insert:` necesitan DSH 5.5.0+ |
+| DSH (versión de producto) | `dsh` CLI disponible; las filas `- insert:` del bundle necesitan **DSH 5.5.0+ versión de producto** — nota: `dsh` se distribuye en dos líneas de versión paralelas, una **línea de producto** (semver, p.ej. `5.5.0`) y la **línea npm** `@deepseek-ai/dsh` (tags prerelease, p.ej. `0.1.7-rc.2`); **no son intercambiables** |
+| `@deepseek-ai/dsh` (versión npm) | `peerDependencies` declara `>=0.1.2-rc.1 <0.2.0`; **CI solo prueba `0.1.7-rc.2`** (tag prerelease fijado en `ci.yml`); versiones `0.1.x` anteriores pueden o no funcionar — el límite inferior es **declaración**, no verificación |
 | Node | `^22.19.0 \|\| >=24.0.0` (mínimo de DSH; ver `engines` en `package.json`) |
 | pnpm | Necesario para instalar/desinstalar (`dsh plugin` delega en pnpm) |
 | Plataforma | Windows / macOS / Linux (scripts sin dependencias) |

@@ -2,9 +2,9 @@
 
 > 🌐 **English** (this file) ｜ [中文](README.zh.md) ｜ [Español](README.es.md) ｜ [Português](README.pt.md) ｜ [हिन्दी](README.hi.md)
 
-> 版本：v18.16.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.17.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
-> A DeepSeek Harness (DSH) bundle that registers one on-demand agent skill. The skill turns long-form production — academic papers, industry analysis, business commentary, and long-form articles — into a **9-role pipeline with a human in the loop**.
+> A DeepSeek Harness (DSH) bundle that registers **two on-demand agent skills**: `lunheng-article-pipeline` (the main 9-role pipeline) and `lunheng-commands` (a thin wrapper exposing 11 `/lunheng-*` slash commands for status / stats / compression / evidence / M-gate workflows — no new role, no new M-gate item; see `skills/lunheng-commands/SKILL.md`). The main skill turns long-form production — academic papers, industry analysis, business commentary, and long-form articles — into a **9-role pipeline with a human in the loop**.
 
 ## What this is
 
@@ -41,7 +41,7 @@ Rule of thumb: ask whether the evidence is already **published**. If yes, Lunhen
 | Drafts | Successive versions with AI-trace cleanup, each independent writer run |
 | Review reports | Critical report (C1–C7), audit report (G0–G14), peer-review report (6 dimensions + journal matching), AI-trace report |
 | Final deliverables | `final/定稿.md`, figures, evidence bundle, delivery notes, M-gate report |
-| DSH integration (bundle install) | Two **read-only** tools — `lunheng_m_gate` (M-gate mechanical pre-check) and `lunheng_char_count` (pure Chinese-character count); if your session does not expose them, call the same scripts with `pwsh` as before (same source of truth). Human command `/lunheng-status` (reads `run/<project>/status.md`; produces no model message). **Mechanism-file write protection**: a global guard rejects `write`/`edit`-style tool calls that target the skill package, so a session cannot quietly rewrite the pipeline's own rules. Boundary, stated plainly: the guard only sees **tool calls** — `pwsh` and any subprocess are **not** behind this gate; the owner's escape hatch is `LUNHENG_ALLOW_MECH_EDIT=1` (or `config: { allowMechanismEdit: true }`). Plugin **Config** (deployment switch, this plugin's row in your profile) covers `quiet`, `allowMechanismEdit`, `scriptTimeoutMs` and `scriptMaxOutputBytes` — the same knobs as the `LUNHENG_QUIET` / `LUNHENG_ALLOW_MECH_EDIT` env vars, but reviewable in the profile; an **invalid config fails loudly at load time** instead of silently falling back to defaults. |
+| DSH integration (bundle install) | Three **read-only** tools — `lunheng_m_gate` (M-gate mechanical pre-check), `lunheng_char_count` (pure Chinese-character count), and `lunheng_handoff_check` (handoff-report shape / version / pairs / agents-log verification at the role-handoff boundary); if your session does not expose them, call the same scripts with `pwsh` as before (same source of truth). Human commands `/lunheng-status` (reads `run/<project>/status.md`; produces no model message) and `/lunheng-stats` (cross-project telemetry dashboard; spawns the host-process `scripts/lunheng-stats.mjs` with `--json` whitelisted only; output truncated to 8000 chars; produces no model message). **Mechanism-file write protection**: a global guard rejects `write`/`edit`-style tool calls that target the skill package, so a session cannot quietly rewrite the pipeline's own rules. Boundary, stated plainly: the guard only sees **tool calls** — `pwsh` and any subprocess are **not** behind this gate; the owner's escape hatch is `LUNHENG_ALLOW_MECH_EDIT=1` (or `config: { allowMechanismEdit: true }`). Plugin **Config** (deployment switch, this plugin's row in your profile) covers `quiet`, `allowMechanismEdit`, `scriptTimeoutMs`, `scriptMaxOutputBytes`, and `handoffLevel` — `handoffLevel` toggles the handoff-check strictness (`basic` = A1/A2/B1 only; `strict` = + structure/version/pairs/agents-log); the same knobs are mirrored by `LUNHENG_QUIET` / `LUNHENG_ALLOW_MECH_EDIT` / `LUNHENG_HANDOFF_LEVEL` env vars but reviewable in the profile; an **invalid config fails loudly at load time** instead of silently falling back to defaults. |
 
 ## Pipeline overview
 
@@ -71,13 +71,18 @@ lunheng-article-pipeline/                 # the package is the repository
 ├── package.json              # declares main (lib/index.js) + dsh.bundle.patch
 ├── cordis.patch.yml          # bundle layer: self-register row + 3 model-tier subagent tools (mounted only when LUNHENG_* is set)
 ├── lib/index.js              # plugin entry: skill + read-only tools + mechanism write guard + /lunheng-status
-├── skills/lunheng-article-pipeline/       # the skill body (one directory)
+├── skills/lunheng-article-pipeline/       # the main skill body (one directory)
 │   ├── SKILL.md              # skill entry (roles, gates, execution boundaries)
 │   ├── AGENTS.md             # operator manual
 │   ├── QUICKSTART.md         # five-minute start
 │   ├── README.md             # skill-level readme (Chinese)
 │   ├── references/           # 9 role cards, templates, shared gate algorithms, journal database
 │   └── scripts/              # zero-dependency .mjs verification scripts (count: see the skill's whitelist line)
+├── skills/lunheng-commands/   # companion skill: 11 /lunheng-* slash commands (status / stats / evidence / m-gate / handoff-check / compression-cycle / etc.)
+│   ├── SKILL.md              # commands entry (command list, dispatch model)
+│   ├── README.md             # commands-level readme
+│   ├── scripts/              # command handlers (e.g. lunheng-stats.mjs)
+│   └── tests/                # command-level tests (not auto-run; manual npm test scope)
 ├── scripts/                  # repository gates: packaging surface + mechanical hygiene + pack smoke
 ├── tests/                    # node --test suites (scripts + plugin entry smoke)
 ├── docs/                     # installation, usage, architecture, faq, troubleshooting
@@ -110,7 +115,7 @@ The patch layer does two things: it **inserts one row for this package** (`- id:
 Releases are **tag-only**; a local `npm publish` is forbidden (it would bypass the CI gates and OIDC provenance, and a published npm version can never be overwritten).
 
 ```sh
-git tag v18.16.0 && git push origin v18.16.0   # push one tag at a time (GitHub: >3 tags in one push triggers no workflow)
+git tag v18.17.0 && git push origin v18.17.0   # push one tag at a time (GitHub: >3 tags in one push triggers no workflow)
 # publish.yml then runs gate 1 consistency → gate 2 packaging surface → gate 3 hygiene → gate 4 pack smoke → script tests
 #   → tag/version equality → idempotency guard → OIDC publish --provenance --tag dsh → post-publish audit
 ```
@@ -140,7 +145,8 @@ A plain directory carries no `dsh.bundle` declaration, so `dsh plugin add` insta
 
 | Item | Requirement |
 |---|---|
-| DSH | `dsh` CLI available; the bundle's `- insert:` incremental patch rows need DSH 5.5.0+ |
+| DSH (product version) | `dsh` CLI available; the bundle's `- insert:` incremental patch rows need **DSH 5.5.0+ product release** — note: `dsh` ships as two parallel version lines, a **product release line** (semver, e.g. `5.5.0`) and the **npm package line** `@deepseek-ai/dsh` (prerelease tags, e.g. `0.1.7-rc.2`); they are **not** interchangeable |
+| `@deepseek-ai/dsh` (npm package version) | `>=0.1.2-rc.1 <0.2.0` declared in `peerDependencies`; **CI only exercises `0.1.7-rc.2`** (the prerelease tag pinned in `ci.yml`); earlier `0.1.x` versions may or may not work — the lower bound is a **declaration**, not a verification |
 | Node | `^22.19.0 \|\| >=24.0.0` (DSH runtime floor; see `engines` in `package.json`) |
 | pnpm | Required by install/uninstall (`dsh plugin` delegates to pnpm) |
 | Platform | Windows / macOS / Linux (the scripts have zero dependencies and run cross-platform) |
@@ -190,7 +196,7 @@ The coordinator must disclose these and obtain explicit consent at Phase 0. For 
 
 > **How to read this table (two calibers that are easy to mix up)**: ① "revision rounds" counts **all writer passes in that run** (Phase 3.5 → v2, critique/T6 fixes, G14 rounds, audit loop) — the pipeline's own cap of **≤2 rounds** applies to the **Phase 4.2 audit loop alone**, so the two numbers measure different things; ② the outcomes are **historical values recorded at the time of each run, with that run's script version** — they are not reproducible with the current scripts. Re-running the packaged scripts on the archived projects today yields e.g. the formaldehyde cabbage article at `exit 2` with 5 P0 (M-Form-6/10, M-Exist-7/9, M-Integrity-1): three of those gates were added **after** that run. Read this table as "what the pipeline produced then", not as "the current gate set passes these projects".
 
-Local gates: `node skills/lunheng-article-pipeline/scripts/consistency-check.mjs`, `node scripts/plugin-surface-check.mjs`, `node scripts/repo-hygiene-check.mjs`, `node scripts/pack-smoke.mjs`, `node --test "tests/**/*.test.mjs"`.
+Local gates (repository sources only — the npm package ships no `scripts/` or `tests/`; the command below runs the equivalent set on a freshly downloaded tarball via `pack-smoke`): `node skills/lunheng-article-pipeline/scripts/consistency-check.mjs`, `node scripts/plugin-surface-check.mjs`, `node scripts/repo-hygiene-check.mjs`, `node scripts/pack-smoke.mjs`, `node --test "tests/**/*.test.mjs"`.
 
 ## Known limitations
 

@@ -1,4 +1,4 @@
-> 版本：v18.16.0（DSH bundle 插件）
+> 版本：v18.17.0（DSH bundle 插件）
 
 # auto_cite 预标注补充清单（v18.8.0 借鉴 Ai4Scholar v2.9.1）
 
