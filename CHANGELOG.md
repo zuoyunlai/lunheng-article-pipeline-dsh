@@ -2,6 +2,26 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.20.4 — 2026-09-26
+
+> **性质**：`audits/反哺报告-v18.19.0-二次复审修订方案.md` 的 M 族落地（**逐项受控复现后**）。**两道 P1 仓库门缺陷 + 三处对账/健壮性不足**。提交 `b7b6747` + `647be17`。
+
+### 一、P1（均已复现确认）
+
+- **M-1 发布物集 ≠ 扫描集**：`npm pack` 按 `files` 白名单取**盘上**文件、**不受 `.gitignore` 约束**，而 ④/⑤/⑦ 的扫描集是 `tracked` → 实测含 `sk-…` 的 gitignored `.bak` **对 ⑦ 隐形却被 pack 收录**（凭据形态文件会随包发布）。修：④/⑤/⑦ 改扫 `scanSet`；**新增 ⑥b「扫描集 ⊇ 打包集」差集门**（把覆盖变成机械不变量）；`files` 加负向项（`*.bak*` / `*.tgz` / `.env*` / `*.pem` / `*.key` / `*.p12` / `*.pfx` / `.credentials*`）。
+- **M-2 npm 12 形态连锁**：`npm pack --json` 顶层形态随 npm 大版本变（≤11 数组 / 12 对象），旧实现 `slice(indexOf('['))[0].files` 必抛 → `packFiles` 留空 → **⑦b 在空集上真空打印「发布物 0 处」合格字样**；3 处测试的 `catch { return }` 又把 TypeError 当「环境不可用」吞成 pass。修：新增 `scripts/_lib/pack-manifest.mjs` **单点解析器**（数组/对象双形态；形状不认识即抛具名错误）；`packFiles` 改**三态**（UNKNOWN 不打印合格字样）；测试按错误类型分流（只有 `ENOENT/EPERM/EACCES` 才 `t.skip`）。
+
+### 二、P2（对账维度 / 健壮性）
+
+- **M-4 §8 表格无门**：⑧b 只对账「命名空间配额」散文，而主控最常读的是**表格**——实测把表里 `| 2 |` 改成 `| 12 |` 时**全套门绿**。修：新增 `parseExitTable`，⑧b 改**三方对账**（`EXIT_CONTRACT` ↔ 配额散文 ↔ 表格）。**新门当场抓出 §8 表缺 `| 4 |`**（model-routing 需人工决定）并补齐。
+- **M-3 声明面无派生**：`docs-facts` 的 `SURFACES` 是硬编码 7 个常量 → **新增的随包文档天然逃过本门**（实测把同型假声明写进 `docs/architecture.md` / `docs/faq.md` 时门无感）。修：改**从 pack 清单派生** + 逐面参与度检查 + 跳过版本演进史行（历史记录不该要求列全）。**派生扩面抓出 4 处真实文档缺口**（`architecture.md`/`faq.md`/`troubleshooting.md` 缺子技能名；`troubleshooting.md` 缺 `/lunheng-stats`）并修好。
+- **M-5 `renameSync` 无重试**：Windows `MoveFileEx` 可**瞬时** `EPERM`（杀软/索引器持句柄），实测当日全量跑出现过一次。修：`renameWithRetry` 有界重试 3 次（退避 10/50/200 ms），**只对**句柄类瞬时错误（`EPERM`/`EACCES`/`EBUSY`），其它立即抛。
+- **M-6 发布纪律**：核实结论 = **无需改动**——`publish.yml` 的 `gates` 作业已跑 `node --test "tests/**/*.test.mjs"`（含 `docs-facts`），假声明在发布前即红；「合并批次发布」属主人定案。
+
+### 三、验证
+
+新增 `tests/second-review-gates.test.mjs`（6 用例：两解析器正例/反例/形状必抛 + 真实树三方一致桩）。四道具全绿（含 `pack-smoke`）+ **358 测试全过**；M-1～M-4 均附**反向自证**（`.bak` 排除 / `.advtest` 被差集门抓 / 对象形态必抛 / 表码双向报红 / 盲区文档注入被抓）。
+
 ## 18.20.3 — 2026-09-26
 
 > **性质**：文档瘦身（AGENTS.md 词预算）。**无流水线行为变更**。
