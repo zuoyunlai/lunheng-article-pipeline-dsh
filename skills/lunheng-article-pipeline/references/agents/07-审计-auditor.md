@@ -1,4 +1,4 @@
-> 版本：v18.17.0（DSH bundle 插件）
+> 版本：v18.18.0（DSH bundle 插件）
 >
 > **注解聚合（v18.8.0）**：本文 vX.Y.Z 注解已按同主题合并——头部声明为最终权威（角色定义 = v2.3.0 重构；预算闸门 = v2.3.12 + v18.2.9 修订；M 门预检 = v2.5.2-dsh.17；引用越界/假阳性/激活时序 = v18.0.0；P1 闭环 = v2.5.2-dsh.17；卡字段必查 = v2.5.2-dsh.9；数值自洽 = v2.5.2-dsh.9）。下方段落内的 `（vX.Y.Z ...）` 完整演进见 git log 与 CHANGELOG.md。
 
@@ -80,7 +80,7 @@
 | G14 中文 AI 痕迹 | ❌ 不嵌入判定 | ✅ 只核 G14 检测报告已产出 |
 | **M 门 23 项**（v18.9.0 反哺 / 含 M-Integrity-2 人工门） | ❌ 不跑 | ✅ 跑 `m-gate-check.mjs` |
 | 触发任务清单（trigger=false Permanent Gap） | ❌ 不攻击（v18.8.x 豁免） | ❌ 不报 |
-| 承重墙超载 | ⚠️ 4 论点以上 = P0 | ✅ 复核 T6 攻击是否成立 |
+| 承重墙超载（v18.18.0 统一口径） | ⚠️ ≥3 论点 = 超载 P1；≥4 论点 = P0 | ✅ 复核 T6 攻击是否成立（真源 = `M-Gate-Algorithm.md:611`） |
 
 > **判定边界**：T6 输出 `analysis/批判报告-vN.md` / T7 输出 `audits/审计报告-vN.md`；重叠项由 T7 终判——T6 攻击 / T7 复核采纳与否。
 
@@ -109,7 +109,7 @@
 
 > **人文学科豁免**：使用 `--humanities` flag 改检 IMRaD-Alternate（Introduction / Discussion / Conclusion 三节），其他两个检查不变。
 
-> **M 门契约**：本脚本与 `_lib/mgate-gates/mform-gates.mjs` 的 M-Form-12 函数（v18.10.0 规划中）协同——S-IMRaD 缺失节检查走本脚本，**格式级**走 m-gate-check.mjs。
+> **M 门契约（v18.18.0 命名空间澄清）**：本脚本的「方法节参数完整性 / 统计-数据匹配 / 结果-方法闭环」三检属于 **methodology-check.mjs 自有命名空间**（前缀 `MC-` 防撞号），**不是 M 门体系编号**——M 门体系总 23 项 = 机械 22（M-Form 1-11 + M-Exist 1-10 + M-Integrity-1）+ 人工 1（M-Integrity-2），无 M-Form-12。S-IMRaD 缺失节检查走本脚本，**格式级**走 m-gate-check.mjs。
 
 > **本次机制文件改动依据主人显式授权**（AGENTS.md 例外条款适用）。
 

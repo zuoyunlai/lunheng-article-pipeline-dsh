@@ -176,7 +176,9 @@ for (const f of active) {
   }
 }
 
-// ⑳ 命令数口径（v18.7.3 P1-3，全量审计「命令数 12/11/13 三处漂移」的机械化）：
+// ㉕ 命令数口径（v18.7.3 P1-3，全量审计「命令数 12/11/13 三处漂移」的机械化；
+//    v18.18.0 由 ⑳ 改名——⑳ 已被 mgate-doc-rules.mjs 的「M-Gate-Algorithm.md 自洽」占用，
+//    两者原为同号两义。改名后全库规则编号唯一，见 consistency-check.mjs 头部清单）：
 //    /lunheng 命令数唯一真源 = skills/lunheng-commands/scripts/route-command.mjs 的 COMMANDS 表
 //    （排除 `-h` 这类同 phase 别名键）。凡文档写「N 个 /lunheng 命令 / 斜杠命令」且 N ≠ 真源数 → P1。
 //    `-cite` 的 3 种模式（默认/-auto/-manual）与 `-h` 别名不计入命令数（口径已在 command-routing.md 定案）。

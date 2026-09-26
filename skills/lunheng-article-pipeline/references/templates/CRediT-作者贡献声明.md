@@ -1,6 +1,6 @@
 # CRediT 作者贡献声明模板
 
-> 版本：v18.17.0（DSH bundle 插件 / 学术伦理声明 P0-5 新增）
+> 版本：v18.18.0（DSH bundle 插件 / 学术伦理声明 P0-5 新增）
 > 用途：学术论文投稿必附的作者贡献声明（Contributor Roles Taxonomy / NISO Z39.104-2022 标准）。
 > 生成规则：在 14 类 CRediT 标准角色中**只勾选实际承担的角色**，并按贡献度排序主要作者；<方括号> 处按实填实。
 > 引用：Brand A, Allen L, Altman M, et al. Beyond authorship: attribution, contribution, and collaboration in research publication. *Learned Publishing*. 2015;28(2):83-97. doi:10.1087/20150202
@@ -43,7 +43,7 @@
 - **AI 工具不计入 CRediT 角色**——CRediT 专指人类作者贡献，AI 参与范围须在 AI 使用声明节单独声明
 - **期刊差异**：Nature 系列要求全员列示；Cell 系列允许简化为「A, B, C contributed equally」；投稿前须按目标期刊模板调整
 
-**机检判别**：本声明节是否出现 `/ 14`（作者承担角色数 / 标准角色数 14）——**T7 人工核验**，承担角色数 / 标准角色数 = 实际比值（⚠️ v18.12.0 更正：此前写「M-Form-12 子门」，该编号不在 M 门体系内，**无脚本在核**）
+**机检判别**：本声明节是否出现 `/ 14`（作者承担角色数 / 标准角色数 14）——**T7 人工核验**，承担角色数 / 标准角色数 = 实际比值（⚠️ v18.12.0 起明确：「M-Form-12 子门」是 methodology-check.mjs 命名空间内的称谓（方法节参数完整性），与 M 门体系编号 M-Form 1-11 不共用；承担角色数比值**无任何脚本在核**，由 T7 人工核）
 
 ---
 

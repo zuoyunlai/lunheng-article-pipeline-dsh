@@ -14,9 +14,9 @@
 // 本文件不导出内部函数，而是**真跑一次入口**拿到 guard 与 reporter——测的就是发布物本身的行为。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, resolve, relative } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { settle } from './_fixtures.mjs'   // v18.16.0（F-1 反哺 · 共享 settle）
+import { settle, withEnv } from './_fixtures.mjs'   // v18.16.0（F-1 反哺 · 共享 settle）；v18.18.0（F-6 · withEnv）
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PACKAGE_ROOT = join(HERE, '..')
@@ -58,16 +58,33 @@ const exec = (name, args, sessionCwd) => ({
   ...(sessionCwd === undefined ? {} : { agent: { session: { header: { cwd: sessionCwd } } } }),
 })
 
-/** 会话工作区故意选一个与 `process.cwd()` 不同的目录（本测试进程的 cwd = 仓库根，故用其父目录）。 */
-const OTHER_WORKSPACE = resolve(PACKAGE_ROOT, '..')
+/** 会话工作区：**动态挑一个与 `process.cwd()` 不同、且是 SKILL.md 祖先目录的路径**。
+ *  v18.18.0（F-3 反哺）：旧实现写死 `resolve(PACKAGE_ROOT, '..')`（仓库根的父目录），并断言
+ *    `process.cwd() !== 它`——从父目录跑本测试时该断言**必红**（`node --test <repo>/tests/…` 在
+ *    repo 上层调用即复现）。现改为**沿 SKILL.md 向上找第一个 ≠ cwd 的祖先**：无论从哪里调用，
+ *    都存在这样的祖先（`/` 或盘符根本身），断言恒可满足，且「会话工作区 ≠ 进程 cwd」这一
+ *    被测前提仍被真实构造出来（不是靠 skip 绕过）。 */
+const SKILL_MD_FOR_WS = join(PACKAGE_ROOT, 'skills', 'lunheng-article-pipeline', 'SKILL.md')
+const OTHER_WORKSPACE = (() => {
+  let cur = resolve(SKILL_MD_FOR_WS)
+  for (;;) {
+    const up = resolve(cur, '..')
+    if (up === cur) return cur                     // 到达根仍无解：退回根本身（极端兜底）
+    if (up !== resolve(process.cwd())) return up   // 第一个 ≠ 进程 cwd 的祖先
+    cur = up
+  }
+})()
 
 test('B-5 基准错位：会话工作区 ≠ 进程 cwd 时，相对路径写机制文件必须被拦', async () => {
   const { guards } = await runApply()
   assert.equal(guards.length, 1, '入口必须装上写保护（否则后续断言全是假绿）')
   const guard = guards[0]
-  // 前提自检：本测试确实处在本报告复现的那个形态里（两个基准不同）
-  assert.notEqual(resolve(process.cwd()), resolve(OTHER_WORKSPACE), '夹具无效：请让本测试进程的 cwd 与 OTHER_WORKSPACE 不同')
-  const rel = join(PACKAGE_ROOT, 'skills', 'lunheng-article-pipeline', 'SKILL.md').slice(resolve(OTHER_WORKSPACE).length + 1)
+  // 前提自检：本测试确实处在本报告复现的那个形态里（两个基准不同）。
+  //   v18.18.0：OTHER_WORKSPACE 由上面的选择器保证恒 ≠ cwd，此处保留断言作**回归网**
+  //   （若将来有人把它改回写死路径，这里会立刻红并指出原因）。
+  assert.notEqual(resolve(process.cwd()), resolve(OTHER_WORKSPACE), '夹具无效：OTHER_WORKSPACE 必须 ≠ 进程 cwd（见上方选择器注释）')
+  const rel = relative(resolve(OTHER_WORKSPACE), resolve(SKILL_MD_FOR_WS))
+  assert.ok(!rel.startsWith('..'), `夹具无效：SKILL.md 必须在 OTHER_WORKSPACE(${OTHER_WORKSPACE}) 之下，实得 rel=${rel}`)
   const reason = await guard(exec('write', { file_path: rel }, OTHER_WORKSPACE))
   assert.ok(reason, `相对路径 "${rel}" 在会话工作区 ${OTHER_WORKSPACE} 下正是受保护文件，必须被拦（审计 B-5 回归）`)
   assert.match(reason, /机制文件写保护/)
@@ -163,15 +180,12 @@ test('授权例外：allowed() 为真时放行（env 与 Config 两条路径都�
   const cfg = await runApply({ allowMechanismEdit: true })
   assert.equal(await cfg.guards[0](exec('write', { file_path: SKILL_MD }, PACKAGE_ROOT)), undefined,
     'config.allowMechanismEdit=true 必须放行（旧版 guard.js 注释声称有这个开关，而入口当时根本不接 config）')
-  // 路径 2：LUNHENG_ALLOW_MECH_EDIT=1
-  process.env.LUNHENG_ALLOW_MECH_EDIT = '1'
-  try {
+  // 路径 2：LUNHENG_ALLOW_MECH_EDIT=1（v18.18.0 F-6：改用共享 withEnv helper）
+  await withEnv({ LUNHENG_ALLOW_MECH_EDIT: '1' }, async () => {
     const env = await runApply()
     assert.equal(await env.guards[0](exec('write', { file_path: SKILL_MD }, PACKAGE_ROOT)), undefined,
       'LUNHENG_ALLOW_MECH_EDIT=1 必须放行（既有操作者开关不得因加 Config 而失效）')
-  } finally {
-    delete process.env.LUNHENG_ALLOW_MECH_EDIT
-  }
+  })
 })
 
 test('B-3/B-7 Config：默认值、合法值、非法值（响亮失败）三条路径', async () => {

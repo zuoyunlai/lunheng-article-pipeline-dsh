@@ -182,6 +182,50 @@ export const settle = async ({ ms = 80 } = {}) => {
   await new Promise((r) => setTimeout(r, ms))
 }
 
+// ── v18.18.0（F-6 反哺）：env / console 打桩收敛到共享 helper ────────────────────────
+// 旧形态：`process.env` 改写散在 entry.test.mjs / entry-frontmatter.test.mjs / guard-config.test.mjs
+//   三处各自的 try/finally，`console.error` 整体替换散在两处。风险：并行度提高或
+//   `--test-isolation=none` 下文件交错时，`LUNHENG_ALLOW_MECH_EDIT=1` 会**泄漏进** guard 断言
+//   → 写保护测试假绿（该 env 一旦残留，guard 对全部机制路径放行，断言「必须被拦」不会红）。
+// 现统一为两个 helper：调用方不再手写 try/finally，恢复责任收在一处。
+/**
+ * 临时改写 `process.env` 并在回调结束后**精确还原**（增/改/删三类差异都还原）。
+ * 用法：`await withEnv({ LUNHENG_ALLOW_MECH_EDIT: '1' }, async () => { … })`
+ */
+export const withEnv = async (vars, fn) => {
+  const saved = new Map()
+  for (const [k, v] of Object.entries(vars)) {
+    saved.set(k, Object.prototype.hasOwnProperty.call(process.env, k) ? process.env[k] : undefined)
+    if (v === undefined) delete process.env[k]
+    else process.env[k] = String(v)
+  }
+  try {
+    return await fn()
+  } finally {
+    for (const [k, v] of saved) {
+      if (v === undefined) delete process.env[k]
+      else process.env[k] = v
+    }
+  }
+}
+
+/**
+ * 临时替换 `console.error`（默认静音，避免启动状态行污染测试输出）并在回调结束后**还原原函数**。
+ * 返回 `{ texts, value }` —— `texts` 是收集到的全部参数行，`value` 是回调返回值。
+ * 用法：`const { texts } = await withCapturedConsole(async () => { … })`
+ */
+export const withCapturedConsole = async (fn) => {
+  const texts = []
+  const orig = console.error
+  console.error = (...args) => { texts.push(args.map((a) => String(a)).join(' ')) }
+  try {
+    const value = await fn()
+    return { texts, value }
+  } finally {
+    console.error = orig   // v18.18.0：**无条件还原**（还原成静音桩会让后续文件永远丢错误输出）
+  }
+}
+
 // v18.16.0（S-3 反哺 · 共享夹具上提）：m-gate-check M-Exist-7 §6 成本指标用例的
 // 「除 §6 外的其余交付说明小节」标准内容。原先在 tests/scripts.test.mjs 各 test 块内联 13 次（部分完全相同、部分略有变体）。
 // 上提后：① 改动 §6 测试输入时不会牵连别的章节字符串；② 新增用例不再需要复制这 11 节。

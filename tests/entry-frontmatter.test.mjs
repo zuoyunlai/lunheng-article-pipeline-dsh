@@ -17,7 +17,7 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { settle } from './_fixtures.mjs'   // v18.16.0（F-1 反哺 · 共享 settle）
+import { settle, withEnv } from './_fixtures.mjs'   // v18.16.0（F-1 反哺 · 共享 settle）；v18.18.0（F-6 · withEnv）
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PACKAGE_ROOT = join(HERE, '..')
@@ -119,24 +119,25 @@ test('C.2 前置空行 + 缺闭合行：必须响亮告警并把兜底形态说�
 })
 
 test('C.3 静音开关：LUNHENG_QUIET=1 静音信息行，但降级告警不静音', async () => {
-  process.env.LUNHENG_QUIET = '1'
-  try {
+  // v18.18.0（F-6）：改用共享 withEnv helper（原本地 try/finally；无隔离模式下 env 泄漏会让后续断言假绿）
+  await withEnv({ LUNHENG_QUIET: '1' }, async () => {
     await withTemp(() => '\n坏文件（无 frontmatter）\n', async (root) => {
       const { logs } = await runApply(root)
       assert.equal(logs.warn.length, 1, '降级（warn）必须始终可见——「静默降级」正是 v18.0.0 事故的形态')
       assert.deepEqual(logs.info, [], 'LUNHENG_QUIET=1 时信息行必须静音')
     })
-  } finally {
-    delete process.env.LUNHENG_QUIET
-  }
+  })
 })
 
 test('C.3 无 logger 宿主：退回 console.error，信息不丢', async () => {
   await withTemp(() => '\n坏文件（无 frontmatter）\n', async (root) => {
     const { logs, errs } = await runApply(root, { logger: false })
     assert.deepEqual(logs.warn, [], '无 logger 时不该走 logger')
-    assert.equal(errs.length, 2, '宿主无日志面时必须退回 console.error（宁可见勿静默；v18.7.1 多 1 条子技能注册 info）')
-    assert.match(errs[0], /frontmatter 未解析/)
+    // v18.18.0（F-5 反哺）：原断言 `errs.length === 2` 是**计数耦合**——它靠「临时包里多/少一条
+    //   子技能注册 info」凑数，任何与本次被测行为无关的启动文案增删都会让它红/绿（假红/假绿）。
+    //   现改按**内容**断言：必须有一条点明 frontmatter 解析失败；且**不得静默**（≥1 条）。
+    assert.ok(errs.length >= 1, '宿主无日志面时必须有 console.error 输出（宁可见勿静默）')
+    assert.ok(errs.some((e) => /frontmatter 未解析/.test(e)), `必须有一条点明「frontmatter 未解析」，实得：${JSON.stringify(errs)}`)
   })
 })
 

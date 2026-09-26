@@ -212,16 +212,17 @@ test('L-09：M-Gate-Report 形状规则——`-v<数字>` 仅限 audits/，中�
     ['references/_shared/probe-bad3.md', '见 `final/M-Gate-Report-v18.2.2b.json`。\n', 1, '带字母的版本（旧规则漏）'],
     ['references/_shared/probe-bad4.md', '版本化副本放在 final/：`final/M-Gate-Report-v4.json`。\n', 1, '版本化副本挂在 final/ 下'],
   ]
-  for (const [rel, content, want, why] of cases) {
-    // `full: true` 是**构造必需**：`consistency-check.mjs` 的 `ROOT = dirname(__dirname)`（脚本自身位置），
-    //   **不看 cwd**——用 `mkRepo()` 生成夹具仓、却跑真源里的脚本，扫的仍是真源（首版即踩此坑：
-    //   74 个文件、0 漂移，期望 0 的用例恒过、期望 1 的恒挂，测的根本不是本规则）。
-    //   `full: true` 把整个真源（含脚本自身 + `.dsh` 镜像）克隆进夹具，脚本才在自己的仓里自检。
-    // `readme: true` 是**基线必需**：不带它时「五语 README」规则先报 P1。
-    const { d, R, repo } = mkRepo({ full: true, readme: true })
-    try {
-      writeFileSync(join(R, rel), content)
-      const r = run([join(repo, 'skills', 'lunheng-article-pipeline', 'scripts', 'consistency-check.mjs')], { cwd: d })
+  // v18.18.0（F-7 反哺 · 合并 full 克隆）：旧实现**每个 case 各建一次 `full: true` 夹具仓**
+  //   （7 案例 = 7 次整仓 cpSync，实测单次 ~478 ms → 本用例独占 ~3.4 s，占整套一成）。
+  //   现改为**一个夹具仓贯穿全部 case**：每轮只改写同一个探针文件的内容（先清上一个探针，
+  //   避免上一轮残留的 `-rev` 之类把下一轮带红）。用例语义逐字不变，只去掉重复克隆。
+  const PROBE = 'references/_shared/probe-shape.md'
+  const { d, R, repo } = mkRepo({ full: true, readme: true })
+  try {
+    const ccPath = join(repo, 'skills', 'lunheng-article-pipeline', 'scripts', 'consistency-check.mjs')
+    for (const [rel, content, want, why] of cases) {
+      writeFileSync(join(R, PROBE), content)
+      const r = run([ccPath], { cwd: d })
       const all = `${r.stdout}${r.stderr}`
       // ⚠️ 断言的是**本规则自己的输出**，不是退出码 —— `full: true` 会把整个真源克隆进夹具，
       //    真源里任何无关的红（如某个文档的字数棘轮、某条待登记项）都会顺带把 exit 变成 1，
@@ -235,8 +236,8 @@ test('L-09：M-Gate-Report 形状规则——`-v<数字>` 仅限 audits/，中�
       } else {
         assert.ok(reported, `${why} —— 本规则应报却没有：\n${all.slice(-400)}`)
       }
-    } finally { rmSync(d, { recursive: true, force: true }) }
-  }
+    }
+  } finally { rmSync(d, { recursive: true, force: true }) }
 })
 
 // ── L-07（v18.12.3）：Phase 序列自洽（速查表 = 主控计划真源，流水线全景 = 详述真源）───────────────

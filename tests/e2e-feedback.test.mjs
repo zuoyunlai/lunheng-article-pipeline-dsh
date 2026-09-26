@@ -95,13 +95,10 @@ test('端到端反哺⑤：M-Exist-10 字数预算允许标题换行后出现数
   rmSync(d, { recursive: true, force: true })
 })
 
-test('端到端反哺⑥：final-check 步骤顺序必须是「先刷新证据包、再跑 M 门」', () => {
-  const src = readFileSync(join(SCRIPTS, 'final-check.mjs'), 'utf8')
-  const iEv = src.indexOf("steps.push({ name: 'build-evidence-bundle.mjs --summary'")
-  const iGate = src.indexOf("steps.push({ name: 'm-gate-check.mjs'")
-  assert.ok(iEv > 0 && iGate > 0, '两个步骤都应通过 push 进入 steps 数组')
-  assert.ok(iEv < iGate, 'build-evidence-bundle 必须排在 m-gate-check 之前（否则 M 门读到上一次收集的陈旧证据包）')
-})
+// v18.18.0（F-5 反哺）：此处原有一条**源码文本断言**（`src.indexOf("steps.push({ name: 'build-evidence-bundle…'")`
+//   比 `src.indexOf("steps.push({ name: 'm-gate-check…'")` 的先后）——断言的是**源码文本形态**，
+//   挪动代码（改写成循环 / 换引号 / 加变量）即失效或误报，而它的**行为等价版**就在下面（⑥b 真跑
+//   final-check 断言 steps 实际顺序，v18.0.5 已补）。已按「行为断言留 CI、源码文本断言删」原则删除。
 
 // v18.0.5（第三方审计 P1-4/③）：上面那条断言的是**源码文本形态**（挪动代码即失效/误报）。
 //   本用例改为**真跑** final-check 并断言 `steps` 的实际顺序 —— 行为断言才防得住回归。

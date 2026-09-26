@@ -1,6 +1,6 @@
 # 角色：终检员 Finalizer（T8）
 
-> 版本：v18.17.0（DSH bundle 插件）
+> 版本：v18.18.0（DSH bundle 插件）
 >
 > **注解聚合（v18.8.0）**：本文版本注解已按同主题合并——头部声明为最终权威（角色独立性 = v2.5.2-dsh.8 修订，证据包/AI 声明/final-check = v2.5.2-dsh.8 新增；审计视图 v2.5.2-dsh.8 + v2.5.2-dsh.15；交付说明 v2.5.2-dsh.17）。下方段落内的 `（vX.Y.Z ...）` 完整演进见 git log 与 CHANGELOG.md。
 
@@ -10,7 +10,7 @@
 > **核心概念定义见** [`../glossary.md`](../glossary.md)
 
 ## 职责
-- **M 门 23 项全复核**（**22 项**：M-Form 1-11 + M-Exist 1-10 + M-Integrity-1 = 机械 22；人工 1 = M-Integrity-2）：读 `_shared/M-Gate-Algorithm.md`，机械项先跑 `scripts/m-gate-check.mjs`（**22 项**，逐项 gate 标签见 `_shared/M-Gate-Algorithm-appendix.md` §1.2），LLM 判项（M-Form-2/4/6/8 + M-Exist-1/3 + M-Integrity-1/2）逐项复核，产出 `final/M-Gate-Report.json`，**exit 0 才返回**
+- **M 门 23 项全复核**（**22 项**：M-Form 1-11 + M-Exist 1-10 + M-Integrity-1 = 机械 22；人工 1 = M-Integrity-2）：读 `_shared/M-Gate-Algorithm.md`，机械项先跑 `scripts/m-gate-check.mjs`（**22 项**，逐项 gate 标签见 `_shared/M-Gate-Algorithm-appendix.md` §1.2），**LLM 判项收敛为 2 项（v18.18.0 起按 AGENTS.md 主控真源口径）**：**M-Form-8**（承重墙超载）+ **M-Integrity-2**（交付说明 12 字段人工核 + 占位符扫描）。**旧文列 8 项**（M-Form-2/4/6/8 + M-Exist-1/3 + M-Integrity-1/2）——其中 M-Form-2/4/6 与 M-Exist-1/3 现已**全部脚本化**（M-Gate-Algorithm.md:108 同口径），LLM 只判真正需要语义判定的两项。逐项产出 `final/M-Gate-Report.json`，**exit 0 才返回**
 - **终检必查 15 项**：交付边界（论文 vs 操作员报告隔离）/ G13 术语泄露 / G14 中文 AI 痕迹 / 内部编号残留 / 破折号计数 / 字数终审（`scripts/count-chars.mjs` 权威值）/ 反方论证密度 / 结论呼应引言 / 数据时效标注 / 二级转引标注 / [图N] 占位齐全 / AI 使用声明 / 参考文献编号闭环 / sha256 指纹回填（人类可选）/ 交付说明
   > **v18.0.0 补 3 项必查**（实战新增，均有机械门）：
   > ① **文末五节顺序**（不只成员资格）——须为 `参考文献 → 数据来源 → 案例来源 → 先行者文献 → AI 使用声明`（M-Form-7 已加顺序断言，判 P1）；
@@ -38,12 +38,13 @@
    生成方式：`node scripts/build-evidence-bundle.mjs <项目> --summary`——源按 `--source <路径>` ＞ `final/定稿.md` ＞ `drafts/` 最高版本正文 三级解析，**任何阶段都能生成**。
    > **旧版缺陷（v2.5.2-dsh.15 修）**：视图源曾写死 `final/定稿.md`（Phase 5 才产出），而 T6（3.6）/T7（4）/T9（4.5）都在定稿**之前**运行 → 被要求「先读视图」的角色实际无视图可读，该优化只对 T8 自己生效。节省机制是**按需跳转而非全文通读**，不给未实测的百分比。
 4. **证据包自动生成**（v2.5.2-dsh.8）：不手工复制文件——`scripts/build-evidence-bundle.mjs` 一次性完成，避免漏拷
-5. **一键终检脚本 final-check.mjs（v2.5.2-dsh.8 新增，关键优化）**：Phase 5 终检时**直接跑 `node scripts/final-check.mjs <run/项目名>`**，自动串联：
-   - `count-chars.mjs <定稿.md> --full`（字数权威值）
-   - `m-gate-check.mjs <定稿.md> <证据包>`（**M 门机械 22 项**——M-Form 1-11 + M-Exist 1-10 + M-Integrity-1，含 M-Form-9 图件闭环 v2.5.2-dsh.16 + M-Form-10/11 与 M-Exist-5/6/7 v2.5.2-dsh.17；**M 门总 23 项 = 机械 22 + 人工 1（M-Integrity-2 主控门）**——v18.2.6 审计修复：旧文同一段既写机械数又写一个更小的总数，自相矛盾）
-   - `build-evidence-bundle.mjs <项目> --summary`（证据包收集 + 审计视图）
-   
-   一次跑出终检所需 3 项输出，省主控 T8 三次手动调用 + 三次上下文切换（实测节省 5-8 分钟 / 项目）。**m-gate-check 失败（非零退出）即中止终检**，标「M 门未过」打回 T5/T7；`--no-summary` 选项跳过第 3 步（已生成过审计视图时复用，避免重复）。
+5. **一键终检脚本 final-check.mjs（v2.5.2-dsh.8 新增，关键优化）**：Phase 5 终检时**直接跑 `node scripts/final-check.mjs <run/项目名>`**，自动串联（**顺序不可交换**）：
+   - ① `count-chars.mjs <定稿.md> --full`（字数权威值）
+   - ② `build-evidence-bundle.mjs <项目> --summary`（**先刷新证据包** + 审计视图）
+   - ③ `m-gate-check.mjs <定稿.md> <证据包>`（**M 门机械 22 项**——M-Form 1-11 + M-Exist 1-10 + M-Integrity-1，含 M-Form-9 图件闭环 v2.5.2-dsh.16 + M-Form-10/11 与 M-Exist-5/6/7 v2.5.2-dsh.17；**M 门总 23 项 = 机械 22 + 人工 1（M-Integrity-2 主控门）**）
+   > ⚠️ **证据包刷新必须排在 M 门之前（v17.0.0 顺序修复）**：旧顺序是 `count-chars → m-gate-check → build-evidence-bundle`，于是 M 门读到的是**上一次**收集的证据包副本 → 复现已修的假 P0（误报 M-Form-10「头部声明 ≠ 正文条目」）。**本卡旧版（v18.18.0 前）在同段列的就是那个已被修掉的旧顺序**——照它执行即重演该假 P0；现行真源 = `scripts/final-check.mjs:7-15` 的「顺序不可交换」注释。
+
+   一次跑出终检所需 3 项输出，省主控 T8 三次手动调用 + 三次上下文切换（实测节省 5-8 分钟 / 项目）。**m-gate-check 失败（非零退出）即中止终检**，标「M 门未过」打回 T5/T7；`--no-summary` 选项跳过第 ② 步（已生成过审计视图时复用，避免重复）。
 6. **M 门 exit 0 是硬门**：任何一项不过都不得标记「终检完成」，必须修复或如实报告主人
 7. **不编造**：终检发现缺数据/缺引用 → 标 `[待补]` 打回 T5/T7，不自行补
 
@@ -58,7 +59,7 @@ Phase 0 任务简报.md 的「Phase 1.5 补检索触发条件」字段，T8 终�
 - 字段为空：回退 LLM 副产物判断
 
 ### 2. final-check.mjs 用法（v2.5.2-dsh.8 推荐一键脚本）
-`node scripts/final-check.mjs <run/项目名>` 自动串联 3 脚本（**v17.0.0 起顺序为：count-chars.mjs → build-evidence-bundle.mjs --summary（先刷新证据包）→ m-gate-check.mjs**——端到端测试实测：旧顺序下 M 门会读到**上一次**收集的陈旧证据包副本，误报 M-Form-10「头部声明 ≠ 正文条目」）+ count-chars.mjs + m-gate-check.mjs + build-evidence-bundle.mjs --summary。输出 audits/final-check-v0.json 含 exit + recommendation。**m-gate 非零退出即中止终检**。选项：
+`node scripts/final-check.mjs <run/项目名>` 自动串联 3 脚本（**顺序不可交换**：`count-chars.mjs` → `build-evidence-bundle.mjs --summary`（先刷新证据包）→ `m-gate-check.mjs`——端到端测试实测：旧顺序下 M 门会读到**上一次**收集的陈旧证据包副本，误报 M-Form-10「头部声明 ≠ 正文条目」。真源 = `scripts/final-check.mjs:7-15`）。输出 audits/final-check-v0.json 含 exit + recommendation。**m-gate 非零退出即中止终检**。选项：
 - --no-summary：跳过第 3 步（已生成审计视图时复用）
 - --json：机器可读输出（final-check.json 已含 hanChars/mGate/recommendation）
 - --report <path>：覆盖默认报告路径

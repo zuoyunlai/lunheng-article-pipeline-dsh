@@ -1,6 +1,6 @@
 # COI 利益冲突声明模板
 
-> 版本：v18.17.0（DSH bundle 插件 / 学术伦理声明 P0-5 新增）
+> 版本：v18.18.0（DSH bundle 插件 / 学术伦理声明 P0-5 新增）
 > 用途：学术论文投稿必附的利益冲突声明（Conflict of Interest Disclosure）。
 > 生成规则：分两档——**无利益冲突**（直接填第 1 节）/ **存在利益冲突**（填第 1 节 + 第 2 节清单）；<方括号> 处按实填实。
 > 引用：ICMJE Recommendations for the Conduct, Reporting, Editing, and Publication of Scholarly Work in Medical Journals（最新版，http://www.icmje.org/recommendations/）
@@ -40,7 +40,7 @@
 - **家属 / 亲属关系**：包括配偶、子女、兄弟姐妹等近亲属——不限于直系
 - **期刊差异**：医学期刊（ICMJE）严格按 8 类；经济管理类期刊可能只要求经济类；投稿前须按目标期刊模板调整
 
-**机检判别**：本声明节是否勾选「不存在」或「存在」之一——**T7 人工核验**（⚠️ v18.12.0 更正：此处此前写「T7 审计跑 M-Form-12 子门」，而 M 门编号体系内不存在 M-Form-12，该档位勾选**无任何脚本在核**，见 `_shared/规范-机械门对照表.md`）
+**机检判别**：本声明节是否勾选「不存在」或「存在」之一——**T7 人工核验**（⚠️ v18.12.0 起明确：「M-Form-12 子门」是该编号在 methodology-check.mjs 命名空间内的称谓（方法节参数完整性），与 M 门体系编号 M-Form 1-11 不共用；本声明档位勾选**无任何脚本在核**，由 T7 人工核；真源 = `_shared/规范-机械门对照表.md` §四声明档位行）
 
 ---
 

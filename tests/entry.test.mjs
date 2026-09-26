@@ -15,7 +15,7 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { PIPE_SPAWN_BLOCKED, skipWhen, settle } from './_fixtures.mjs'   // v18.16.0（F-1 反哺 · 共享 settle）
+import { PIPE_SPAWN_BLOCKED, skipWhen, settle, withEnv } from './_fixtures.mjs'   // v18.16.0（F-1 反哺 · 共享 settle）；v18.18.0（F-6 · withEnv）
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PACKAGE_ROOT = join(HERE, '..')
@@ -293,13 +293,11 @@ test('C 组：机制写保护 guard —— 技能包内路径否决、包外放�
   assert.equal(guard({ name: 'write', arguments: { path: outside } }), undefined, '包外路径不得被拦（宁松勿误伤）')
   assert.equal(guard({ name: 'pwsh', arguments: { command: 'echo hi > x' } }), undefined, '非写类工具不在本 guard 职责内（如实边界）')
 
-  // 主人授权 → 放行（env 开关）
-  process.env.LUNHENG_ALLOW_MECH_EDIT = '1'
-  try {
+  // 主人授权 → 放行（env 开关）。v18.18.0（F-6）：改用共享 withEnv helper（原为本地 try/finally，
+  //   并行/无隔离模式下 env 泄漏会让后续 guard 断言假绿——见 _fixtures.mjs 注释）。
+  await withEnv({ LUNHENG_ALLOW_MECH_EDIT: '1' }, async () => {
     assert.equal(guard({ name: 'write', arguments: { path: inside } }), undefined, 'LUNHENG_ALLOW_MECH_EDIT=1 时必须放行')
-  } finally {
-    delete process.env.LUNHENG_ALLOW_MECH_EDIT
-  }
+  })
 })
 
 test('C 组：/lunheng-status 命令 —— 读 run/<项目> 进展，不产生模型消息（返回 CommandResult）', async () => {
