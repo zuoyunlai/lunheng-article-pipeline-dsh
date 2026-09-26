@@ -14,6 +14,7 @@ import { readFileSync, existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { scanLocalPaths, LOCAL_PATH_BASELINE, LOCAL_PATH_PATTERNS } from '../scripts/_lib/local-path-scan.mjs'
+import { readPackManifest, isPackEnvUnavailable } from '../scripts/_lib/pack-manifest.mjs' // M-2/O-3：pack 清单单点解析
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -66,16 +67,16 @@ test('棘轮基线形态：键非空、值为正整数', () => {
   assert.ok(LOCAL_PATH_PATTERNS.length >= 4, '模式数过少——可能被误删')
 })
 
-test('真实树：发布物零命中，且非随包命中数不超过棘轮（防「门自己写了恒真断言」）', () => {
+test('真实树：发布物零命中，且非随包命中数不超过棘轮（防「门自己写了恒真断言」）', (t) => {
   let packed
   try {
-    packed = new Set(
-      JSON.parse(execSync('npm pack --dry-run --json', { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }))[0].files.map(
-        (f) => f.path,
-      ),
-    )
-  } catch {
-    return // 受限会话禁子进程管道时 npm 不可用——跳过而非假绿（与仓内既有约定一致）
+    packed = new Set(readPackManifest(ROOT).files) // M-2/O-3：单点解析器（数组 ≤npm11 / 对象 npm12+）
+  } catch (e) {
+    // O-5 / M-2 修法 4：**按错误类型分流**——只有「环境不可用」才 skip（node:test 会记 skip，可见）；
+    //   形状不认识（PackManifestShapeError）一律**照抛**。旧写法 `catch { return }` 会把 npm 12 对象
+    //   形态的 TypeError 当「环境不可用」吞掉 = 用例报 ✔（静默 pass），本文件的反恒真断言（下一行）永不执行。
+    if (isPackEnvUnavailable(e)) return t.skip('受限会话禁子进程 / npm 不可用')
+    throw e
   }
   assert.ok(packed.size > 100, `pack 清单过少（实测 ${packed.size}）——派生失败会让本断言恒真`)
 

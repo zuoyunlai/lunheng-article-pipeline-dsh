@@ -53,20 +53,18 @@ test('nested 作用域：根 package.json 必须放行（npm 强制且必需）'
   assert.deepEqual(hitsFor('package.json', ['package.json']), [], '根 package.json 排除掉会让 npm 包无法安装')
 })
 
-test('反向：真实发布物清单必须零命中（防「门自己写了个恒真断言」）', async () => {
-  const { execSync } = await import('node:child_process')
+test('反向：真实发布物清单必须零命中（防「门自己写了个恒真断言」）', async (t) => {
   const { dirname, join } = await import('node:path')
   const { fileURLToPath } = await import('node:url')
+  const { readPackManifest, isPackEnvUnavailable } = await import('../scripts/_lib/pack-manifest.mjs') // M-2/O-3
   const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
   let files
   try {
-    const j = JSON.parse(
-      execSync('npm pack --dry-run --json', { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }),
-    )
-    files = j[0].files.map((f) => f.path)
-  } catch {
-    // 受限会话禁子进程管道时 npm 不可用——跳过而非假绿（与仓内既有约定一致）
-    return
+    files = readPackManifest(ROOT).files // 单点解析器（数组 ≤npm11 / 对象 npm12+）
+  } catch (e) {
+    // O-5：只有「环境不可用」才 skip（可见）；形状不认识一律照抛——旧 `catch { return }` 会吞成 pass。
+    if (isPackEnvUnavailable(e)) return t.skip('受限会话禁子进程 / npm 不可用')
+    throw e
   }
   assert.ok(files.length > 100, `pack 清单过少（实测 ${files.length}）——派生失败会让本断言恒真`)
   const violations = describeViolations(scanShipped(files))

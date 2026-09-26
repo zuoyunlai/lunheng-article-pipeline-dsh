@@ -44,6 +44,7 @@ import { join, dirname, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { scanShipped } from './_lib/pack-negative.mjs' // D-1②：与 pack-smoke 共用同形负清单（结构上同形，不靠两份代码同步）
 import { scanLocalPaths, LOCAL_PATH_BASELINE } from './_lib/local-path-scan.mjs' // D-2②：本机绝对路径（发布物硬零 + 非随包树棘轮）
+import { parsePackManifest } from './_lib/pack-manifest.mjs' // 二次复审 M-2/O-3：npm pack --json 单点解析（数组 ≤npm11 / 对象 npm12+）
 import { parseExitContract, parseNamespaceQuota, reconcile, reconcileScriptHeaders } from './_lib/exit-namespace.mjs' // C-11：§8 配额 ↔ EXIT_CONTRACT 双向对账；v18.18.12 加 ⑧d 脚本自述码对账
 import { deriveScriptSurface, parseSecuritySurface, reconcileSurface } from './_lib/script-surface.mjs' // C-7：随包脚本执行面/写盘面 ∈ SECURITY.md
 import { findLibLineRefs, isHistoricalDoc } from './_lib/lib-line-refs.mjs' // C-9：当前文档不得有裸 `lib/**:LINE` 引用
@@ -146,9 +147,25 @@ notes.push(`③ YAML：结构检查 ${yamls.length} 个（含 4 个关键文件�
 // ④ 行尾
 const eolOut = git(['ls-files', '--eol'])
 let eolBad = 0
+const eolSeen = new Set()
 for (const line of (eolOut.stdout || '').split('\n')) {
   const m = line.match(/w\/(crlf|mixed)/)
   if (m) { eolBad++; if (eolBad <= 5) fail('eol', `工作区行尾 ${m[1]}：${line.split('\t').pop()}`) }
+  const rel = line.split('\t').pop()
+  if (rel) eolSeen.add(rel)
+}
+// ④ 补扫（二次复审 M-1）：`git ls-files --eol` **只见已跟踪文件**——未跟踪 / 被 ignore 的文件
+//   （它们可能按 `files` 白名单**随包发布**）不在其中。故对 scanSet 里未被上表覆盖的文本文件直接读盘检测。
+for (const p of scanSet.filter(isText)) {
+  if (eolSeen.has(p)) continue
+  const abs = join(ROOT, p)
+  if (!existsSync(abs)) continue
+  const buf = readFileSync(abs)
+  if (buf.includes(0)) continue // 含 NUL = 二进制，跳过
+  if (buf.toString('utf8').includes('\r\n')) {
+    eolBad++
+    if (eolBad <= 5) fail('eol', `工作区行尾 crlf/mixed（未跟踪）：${p}`)
+  }
 }
 if (eolBad === 0) notes.push('④ 行尾：无 w/crlf / w/mixed')
 
@@ -156,7 +173,7 @@ if (eolBad === 0) notes.push('④ 行尾：无 w/crlf / w/mixed')
 let utf8Checked = 0
 let replacementHits = 0
 const dec = new TextDecoder('utf-8', { fatal: true })
-for (const p of tracked.filter(isText)) {
+for (const p of scanSet.filter(isText)) {
   const abs = join(ROOT, p)
   if (!existsSync(abs)) continue
   utf8Checked++
@@ -179,14 +196,15 @@ notes.push(`⑤ 编码：UTF-8 校验 ${utf8Checked} 个文本文件${replacemen
 // 用单命令串 + shell（Windows 上 npm 是 .cmd）：避免 Node 对「shell:true + args 数组」的 DEP0190 告警
 const pack = spawnSync('npm pack --dry-run --json', { cwd: ROOT, encoding: 'utf8', shell: true, maxBuffer: 32 * 1024 * 1024 })
 /** 发布物清单（供 ⑥ 发布面 与 ⑦b 本机绝对路径 共用；v18.18.4 从 ⑥ 的 try 里提到外层）。 */
-let packFiles = []
+let packFiles = null   // 三态（O-2，二次复审 M-2）：string[] = PASS / **null = UNKNOWN**（pack 没跑成或输出形态不认识）
+let packUnpackedSize = 0
 if (pack.status !== 0) {
   fail('pack', `npm pack --dry-run 失败：${(pack.stderr || pack.stdout || '').split('\n').slice(-3).join(' / ')}`)
 } else {
   try {
-    const arr = JSON.parse(pack.stdout.slice(pack.stdout.indexOf('[')))
-    const files = (arr[0]?.files || []).map((f) => f.path)
+    const { files, unpackedSize } = parsePackManifest(pack.stdout)   // M-2：单点解析（数组 ≤npm11 / 对象 npm12+）
     packFiles = files
+    packUnpackedSize = unpackedSize
     if (files.length === 0) fail('pack', 'npm pack 报告无文件（--json 解析异常？）')
     const must = [
       'package.json',
@@ -230,7 +248,7 @@ if (pack.status !== 0) {
     const declared = (wl.split('=')[1] || '').split('+')[0].split('/').map((s) => s.trim()).filter((s) => /^[a-z0-9][a-z0-9-]*$/.test(s))
     if (declared.length === 0) fail('pack', 'SKILL.md 未声明随包脚本白名单（规则 ⑩ 同源）')
     else if (scripts.length !== declared.length) fail('pack', `发布包内随包脚本数 ${scripts.length} ≠ SKILL.md 白名单 ${declared.length}（白名单不一致）`)
-    const unpacked = Number(arr[0]?.unpackedSize ?? 0)
+    const unpacked = packUnpackedSize
     const negClean = negViolations.filter((v) => v.hits.length === 0).length
     notes.push(
       `⑥ 发布面：${files.length} 个文件 / 随包脚本 ${scripts.length} 个（与 SKILL.md 白名单一致）/ 关键路径齐备` +
@@ -238,8 +256,28 @@ if (pack.status !== 0) {
         (unpacked ? `｜解包 ${(unpacked / 1024).toFixed(0)} KB` : ''),
     )
   } catch (e) {
-    fail('pack', `npm pack --json 解析失败：${e.message}`)
+    // 三态（O-2）：解析失败 → packFiles 保持 null = UNKNOWN；⑦b 据此**不得**打印合格字样。
+    fail('pack', `npm pack --json 解析失败（输出形态不认识 → 发布物清单 UNKNOWN）：${e.message}`)
   }
+}
+
+// ⑥b「扫描集 ⊇ 打包集」差集门（二次复审 M-1②，2026-09-26）：
+//   把「④/⑤/⑦ 的扫描集必须覆盖发布物」从**靠人记得**变成**机械不变量**。
+//   为什么需要（M-1 实测复现）：`npm pack` 按 `files` 白名单取**盘上**文件，**不受 `.gitignore` 约束**；
+//   而扫描集 `scanSet = tracked ∪ 未跟踪且未被 ignore`。两者之差 = 「被 ignore 但落在白名单目录内」的文件
+//   （如 `skills/**/*.bak`）——它**会随包发布**却对 ④/⑤/⑦ 全部隐形。实测：含 `sk-…` 形态的
+//   `skills/lunheng-article-pipeline/tmp-creds-probe.bak` 未被 ⑦ 命中、却被 `npm pack` 收录。
+//   判据：`pack 清单` 里的每个**文本文件**都必须在 `scanSet` 内；差集非空即报。
+if (packFiles !== null) {
+  const scanSetHas = new Set(scanSet)
+  const uncovered = packFiles.filter((f) => isText(f) && !scanSetHas.has(f))
+  if (uncovered.length) {
+    fail('pack-coverage', `${uncovered.length} 个**随包文件**不在 ④/⑤/⑦ 扫描集内（会被发布出去却逃过全部规则）：${uncovered.slice(0, 5).join(' / ')}——多半是被 .gitignore 排除、却落在 files 白名单目录内的文件（如 *.bak）；请在 package.json 的 files 加负向项排除它，或把它纳入扫描集`)
+  } else {
+    notes.push(`⑥b 扫描集覆盖：随包 ${packFiles.filter(isText).length} 个文本文件全部在 ④/⑤/⑦ 扫描集内`)
+  }
+} else {
+  notes.push('⑥b 扫描集覆盖：**UNKNOWN**（⑥ 的 pack 清单未取得——**不得**读作「已覆盖」）')
 }
 
 // ⑦ 凭据扫描（v2.5.2-dsh.13 新增）：零依赖实现，取代引入第三方扫描 action——
@@ -258,7 +296,7 @@ const SECRET_PATTERNS = [
   ['私钥块', /-----BEGIN [A-Z ]*PRIVATE KEY-----/],
   ['npmrc _authToken', /_authToken\s*=\s*\S{20,}/],
 ]
-const scanned = tracked.filter(isText).filter((p) => p !== SELF)
+const scanned = scanSet.filter(isText).filter((p) => p !== SELF)
 let secretHits = 0
 for (const p of scanned) {
   const abs = join(ROOT, p)
@@ -295,6 +333,7 @@ notes.push(`⑦ 凭据扫描：${scanned.length} 个文本文件 × ${SECRET_PAT
 //        边界（如实）：这三个文件里若真藏了一条与模式无关的真实路径，本规则会漏；缓解是它们
 //        **都不随包**（发布物硬零仍生效）、体积小、用途单一。
 const LOCAL_PATH_EXEMPT = new Set([SELF, 'scripts/_lib/local-path-scan.mjs', 'tests/local-path-scan.test.mjs'])
+const packKnown = packFiles !== null   // 三态（O-2）：null = UNKNOWN，**不得**当作「发布物 0 处合格」
 const packedSet = new Set(packFiles ?? [])
 let shippedPathHits = 0
 let ratchetBreaches = 0
@@ -326,7 +365,10 @@ for (const p of scanSet.filter(isText)) {
 if (shippedPathHits > 5) fail('localpath', `发布物本机绝对路径另有 ${shippedPathHits - 5} 处未逐条列出`)
 const staleBaseline = Object.keys(LOCAL_PATH_BASELINE).filter((p) => !baselineSeen.has(p))
 notes.push(
-  `⑦b 本机绝对路径：发布物 ${shippedPathHits} 处（须为 0）／非随包树棘轮 ${baselineSeen.size}/${Object.keys(LOCAL_PATH_BASELINE).length} 个已登记文件在基线内` +
+  (packKnown
+    ? `⑦b 本机绝对路径：发布物 ${shippedPathHits} 处（须为 0）`
+    : `⑦b 本机绝对路径：**发布物档 UNKNOWN**（⑥ 的 npm pack 清单未取得——**不得**读作「0 处合格」）`) +
+    `／非随包树棘轮 ${baselineSeen.size}/${Object.keys(LOCAL_PATH_BASELINE).length} 个已登记文件在基线内` +
     `${staleBaseline.length ? `；⚠️ 基线内 ${staleBaseline.length} 个文件已无命中，可把上限改小（${staleBaseline.slice(0, 3).join(' / ')}…）` : ''}`,
 )
 

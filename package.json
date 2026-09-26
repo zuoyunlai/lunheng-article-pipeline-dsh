@@ -41,7 +41,15 @@
     "docs/troubleshooting.md",
     "examples",
     "!skills/lunheng-commands/tests",
-    "!skills/lunheng-commands/package.json"
+    "!skills/lunheng-commands/package.json",
+    "!**/*.bak*",
+    "!**/*.tgz",
+    "!**/.env*",
+    "!**/*.pem",
+    "!**/*.key",
+    "!**/*.p12",
+    "!**/*.pfx",
+    "!**/.credentials*"
   ],
   "scripts": {
     "check:consistent": "node skills/lunheng-article-pipeline/scripts/consistency-check.mjs",

@@ -460,15 +460,15 @@ function nodeCommandPaths(cmdText) {
   return out
 }
 
-test('C-5：README 里指向「非发布物路径」的命令必须带「仅源码仓库」限定词', async () => {
-  const { execSync } = await import('node:child_process')
+test('C-5：README 里指向「非发布物路径」的命令必须带「仅源码仓库」限定词', async (t) => {
+  const { readPackManifest, isPackEnvUnavailable } = await import('../scripts/_lib/pack-manifest.mjs') // M-2/O-3
   let packed
   try {
-    packed = JSON.parse(
-      execSync('npm pack --dry-run --json', { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }),
-    )[0].files.map((f) => f.path)
-  } catch {
-    return // 受限会话禁子进程管道时 npm 不可用——跳过而非假绿
+    packed = readPackManifest(ROOT).files // 单点解析器（数组 ≤npm11 / 对象 npm12+）
+  } catch (e) {
+    // O-5：只有「环境不可用」才 skip（可见）；形状不认识一律照抛（旧 `catch { return }` 会吞成 pass）。
+    if (isPackEnvUnavailable(e)) return t.skip('受限会话禁子进程 / npm 不可用')
+    throw e
   }
   const shipped = new Set(packed)
   assert.ok(shipped.size > 100, `发布物清单过少（实测 ${shipped.size}）——派生失败会让本断言恒真`)
