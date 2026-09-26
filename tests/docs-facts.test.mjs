@@ -429,3 +429,72 @@ test('C-13：文档里「N 个阶段」必须等于结构派生值（六个主�
       wrong.map((s) => `  · ${s.f} → ${s.snippet}`).join('\n'),
   )
 })
+
+// ── C-5：README 承诺的命令必须在「当前形态」可执行（v18.18.7）────────────────────
+//
+// 动机：五语 README 都列了「Local gates」几条 `node …` 命令，而其中四条走的是**仓库级**路径
+// （`scripts/` / `tests/`）——发布物的 `files` 白名单明确**不含**这两者（`pack-smoke` 的
+// `mustNotShip` 还把两者列为「必须不随包」）。于是装了 npm 包的人照 README 敲：
+//   三条 `node scripts/…` → `Cannot find module`；`node --test "tests/**/*.test.mjs"` →
+//   匹配 0 文件且 **exit 0**（**静默成功**，最坏的一种：看起来跑过了）。
+//
+// 断言形态（审计 C-5 原话）：**README 里出现的 `node …` 命令，若其路径不在发布物内，
+// 则该行必须带「仅源码仓库」限定词。** 并且**逐 README**要求至少存在这样一条命令——
+// 否则某个语言把整行删掉就能让断言空过（这正是 es/pt/hi 当初的形态）。
+const REPO_ONLY_MARKERS = [
+  /repository sources only/i,
+  /仅源码仓库/,
+  /solo fuentes del repositorio/i,
+  /somente fontes do reposit[óo]rio/i,
+  /केवल स्रोत रिपॉज़िटरी/,
+]
+
+/** 从一段「node 命令行」里取出被调用的脚本路径（跳过 `--flag`，去引号与尾部标点）。 */
+function nodeCommandPaths(cmdText) {
+  const out = []
+  for (const m of cmdText.matchAll(/\bnode\s+((?:--\S+\s+)*)("[^"]+"|'[^']+'|[^\s`、,，]+)/g)) {
+    const p = m[2].replace(/^["']|["']$/g, '').replace(/[`、,，]+$/, '')
+    if (!p || p.startsWith('-')) continue
+    out.push(p)
+  }
+  return out
+}
+
+test('C-5：README 里指向「非发布物路径」的命令必须带「仅源码仓库」限定词', async () => {
+  const { execSync } = await import('node:child_process')
+  let packed
+  try {
+    packed = JSON.parse(
+      execSync('npm pack --dry-run --json', { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }),
+    )[0].files.map((f) => f.path)
+  } catch {
+    return // 受限会话禁子进程管道时 npm 不可用——跳过而非假绿
+  }
+  const shipped = new Set(packed)
+  assert.ok(shipped.size > 100, `发布物清单过少（实测 ${shipped.size}）——派生失败会让本断言恒真`)
+
+  const problems = []
+  let nonShippedCommandsSeen = 0
+  for (const f of README_FILES) {
+    const lines = readFileSync(join(ROOT, f), 'utf8').split('\n')
+    let perFileNonShipped = 0
+    lines.forEach((l, i) => {
+      // 只认**反引号内联命令**——裸正则会跑到布局树的注释行 `# node --test suites (…)` 上，
+      // 取出 `suites` 这类垃圾 token（实测踩过）。
+      for (const m of l.matchAll(/`([^`]*\bnode\s[^`]*)`/g)) {
+        const outside = nodeCommandPaths(m[1]).filter((p) => !shipped.has(p))
+        if (!outside.length) continue
+        perFileNonShipped++
+        nonShippedCommandsSeen++
+        if (!REPO_ONLY_MARKERS.some((re) => re.test(l))) {
+          problems.push(`${f}:${i + 1} 调用了发布物外的路径 ${outside.join(', ')}，但该行没有「仅源码仓库」限定词`)
+        }
+      }
+    })
+    if (perFileNonShipped === 0) {
+      problems.push(`${f} 找不到任何「调用发布物外路径」的命令行——按 C-5 口径五语都应保留该行并带限定词（整行删掉会让本断言空过）`)
+    }
+  }
+  assert.ok(nonShippedCommandsSeen > 0, '五语 README 里一条发布物外命令都没找到——正则与文档脱节，本断言会恒真')
+  assert.deepEqual(problems, [], `README 承诺了在装包形态下不可执行的命令：\n${problems.map((p) => '  · ' + p).join('\n')}`)
+})

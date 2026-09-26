@@ -1,6 +1,6 @@
 # Lunheng (lunheng-article-pipeline) — pipeline multiagente para textos largos
 
-> 版本：v18.18.6（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.18.7（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > 🌐 [English](README.md) ｜ [中文](README.zh.md) ｜ **Español**（este archivo）｜ [Português](README.pt.md) ｜ [हिन्दी](README.hi.md)
 
@@ -115,7 +115,7 @@ La capa patch hace dos cosas: **inserta una fila para este paquete** (`- id: lun
 Las versiones se publican **solo por tag**; `npm publish` local está prohibido (evita las puertas de CI y la procedencia OIDC, y una versión npm nunca se puede sobrescribir).
 
 ```sh
-git tag v18.18.6 && git push origin v18.18.6   # un tag por push (GitHub: >3 tags en un push no dispara workflow)
+git tag v18.18.7 && git push origin v18.18.7   # un tag por push (GitHub: >3 tags en un push no dispara workflow)
 # publish.yml ejecuta: puerta 1 consistencia → puerta 2 empaquetado → puerta 3 higiene → puerta 4 humo del paquete → tests
 #   → tag/versión iguales → guarda de idempotencia → OIDC publish --provenance --tag dsh → auditoría posterior
 ```
@@ -195,6 +195,8 @@ El coordinador debe divulgar estos envíos y obtener consentimiento explícito e
 | Artículo sobre noción e idea (2026-09) | ~6280 caracteres, 18 fuentes + 15 datos, 0 casos | 2 rondas de auditoría, 23/30 revisión menor, P0 real = 0 |
 
 > **Cómo leer esta tabla (dos criterios que se confunden con facilidad)**: ① «rondas de revisión» cuenta **todas las pasadas del redactor en esa ejecución** (fase 3.5 → v2, correcciones de la crítica T6, rondas G14, bucle de auditoría), mientras que el límite propio de la pipeline (**≤2 rondas**) se aplica **solo al bucle de auditoría de la fase 4.2**: los dos números no miden lo mismo; ② los resultados son **valores históricos registrados en el momento de cada ejecución, con la versión de scripts de entonces** — no son reproducibles con los scripts actuales. Volver a ejecutar los scripts del paquete sobre los proyectos archivados da hoy, por ejemplo, el artículo de la col china con formaldehído en `exit 2` con 5 P0 (M-Form-6/10, M-Exist-7/9, M-Integrity-1): tres de esas puertas se añadieron **después** de aquella ejecución. Lea la tabla como «lo que la pipeline produjo entonces», no como «el conjunto de puertas actual aprueba estos proyectos».
+
+Puertas locales (**solo fuentes del repositorio** — el paquete npm **no incluye** `scripts/` ni `tests/`, por lo que los comandos siguientes no se pueden ejecutar en una instalación desde el paquete; dentro del paquete puede ejecutar el conjunto equivalente sobre el tarball recién descargado con `pack-smoke`): `node skills/lunheng-article-pipeline/scripts/consistency-check.mjs`, `node scripts/plugin-surface-check.mjs`, `node scripts/repo-hygiene-check.mjs`, `node scripts/pack-smoke.mjs`, `node --test "tests/**/*.test.mjs"`.
 
 ## Known limitations
 

@@ -2,7 +2,7 @@
 
 > 🌐 [English](README.md) ｜ **中文**（本文件）｜ [Español](README.es.md) ｜ [Português](README.pt.md) ｜ [हिन्दी](README.hi.md)
 
-> 版本：v18.18.6（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.18.7（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > 一个 DeepSeek Harness（DSH）bundle 插件，注册**两个按需加载的 agent 技能**：`lunheng-article-pipeline`（9 角色主流水线）与 `lunheng-commands`（薄壳包装 11 个 `/lunheng-*` 斜杠命令：status / stats / compression-cycle / evidence-bundle / m-gate / handoff-check 等；**不引入新角色、不引入新 M 门**，详见 `skills/lunheng-commands/SKILL.md`）。主技能把深度长文的生产——学术论文、行业分析、商业评论、公众号深文——变成**带人在环节点的 9 角色流水线**。
 
@@ -115,7 +115,7 @@ patch 层做两件事：**插入一行本包自注册行**（`- id: lunheng-arti
 **只推 tag 发布，禁止本地 `npm publish`**（本地直发会绕过 CI 三道门与 OIDC 来源证明，且 npm 版本不可覆盖）。
 
 ```sh
-git tag v18.18.6 && git push origin v18.18.6   # 一次只推 1 个 tag（GitHub：单次 push >3 个 tag 不触发任何 workflow）
+git tag v18.18.7 && git push origin v18.18.7   # 一次只推 1 个 tag（GitHub：单次 push >3 个 tag 不触发任何 workflow）
 # publish.yml 依次跑：门 1 一致性 → 门 2 打包面 → 门 3 机械卫生 → 门 4 打包产物冒烟 → 脚本回归测试
 #   → tag/版本一致校验 → 幂等守卫 → OIDC 发布 --provenance --tag dsh → 发布后审计
 ```
@@ -196,7 +196,7 @@ DSH 通过 `settings.yaml` 路由模型；`subagent` 继承会话模型，因此
 
 > **本表怎么读（两种容易混的口径）**：① 「修订轮数」数的是**那一次跑的全部写手过稿**（Phase 3.5 → v2、T6 批判修订、G14 轮、审计回环），而流水线自己的上限 **≤2 轮**只约束 **Phase 4.2 的审计回环**——两个数字量的不是一回事；② 表内结论是**当时那一次跑的历史值（配当时的脚本版本）**，用**当前脚本无法复现**：今天拿随包脚本重跑归档项目，甲醛白菜文章会得到 `exit 2` 与 5 个 P0（M-Form-6/10、M-Exist-7/9、M-Integrity-1），因为其中三项门是**那篇文章之后**才加的。请把本表读成「当时产出了什么」，而不是「当前门集能过这些项目」。
 
-本地四道门 + 回归测试：`node skills/lunheng-article-pipeline/scripts/consistency-check.mjs`、`node scripts/plugin-surface-check.mjs`、`node scripts/repo-hygiene-check.mjs`、`node scripts/pack-smoke.mjs`、`node --test "tests/**/*.test.mjs"`。
+本地四道门 + 回归测试（**仅源码仓库**——npm 包内**不含** `scripts/` 与 `tests/`，故下面几条在装包形态下无法执行；包内可用 `pack-smoke` 对刚下载的 tarball 跑等价检查）：`node skills/lunheng-article-pipeline/scripts/consistency-check.mjs`、`node scripts/plugin-surface-check.mjs`、`node scripts/repo-hygiene-check.mjs`、`node scripts/pack-smoke.mjs`、`node --test "tests/**/*.test.mjs"`。
 
 ## Known limitations
 
