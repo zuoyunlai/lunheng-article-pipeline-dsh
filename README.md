@@ -2,7 +2,7 @@
 
 > 🌐 **English** (this file) ｜ [中文](README.zh.md) ｜ [Español](README.es.md) ｜ [Português](README.pt.md) ｜ [हिन्दी](README.hi.md)
 
-> 版本：v18.18.4（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.18.5（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > A DeepSeek Harness (DSH) bundle that registers **two on-demand agent skills**: `lunheng-article-pipeline` (the main 9-role pipeline) and `lunheng-commands` (a thin wrapper exposing 11 `/lunheng-*` slash commands for status / stats / compression / evidence / M-gate workflows — no new role, no new M-gate item; see `skills/lunheng-commands/SKILL.md`). The main skill turns long-form production — academic papers, industry analysis, business commentary, and long-form articles — into a **9-role pipeline with a human in the loop**.
 
@@ -115,7 +115,7 @@ The patch layer does two things: it **inserts one row for this package** (`- id:
 Releases are **tag-only**; a local `npm publish` is forbidden (it would bypass the CI gates and OIDC provenance, and a published npm version can never be overwritten).
 
 ```sh
-git tag v18.18.4 && git push origin v18.18.4   # push one tag at a time (GitHub: >3 tags in one push triggers no workflow)
+git tag v18.18.5 && git push origin v18.18.5   # push one tag at a time (GitHub: >3 tags in one push triggers no workflow)
 # publish.yml then runs gate 1 consistency → gate 2 packaging surface → gate 3 hygiene → gate 4 pack smoke → script tests
 #   → tag/version equality → idempotency guard → OIDC publish --provenance --tag dsh → post-publish audit
 ```

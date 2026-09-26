@@ -33,6 +33,7 @@ import { join, dirname, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { scanShipped } from './_lib/pack-negative.mjs' // D-1②：与 pack-smoke 共用同形负清单（结构上同形，不靠两份代码同步）
 import { scanLocalPaths, LOCAL_PATH_BASELINE } from './_lib/local-path-scan.mjs' // D-2②：本机绝对路径（发布物硬零 + 非随包树棘轮）
+import { parseExitContract, parseNamespaceQuota, reconcile } from './_lib/exit-namespace.mjs' // C-11：§8 配额 ↔ EXIT_CONTRACT 双向对账
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const isCI = Boolean(process.env.GITHUB_ACTIONS)
@@ -472,6 +473,28 @@ notes.push(
     `；覆盖面：凡 import ${GUARD} 的脚本 100% 已登记（豁免 ${Object.keys(EXIT_GUARDED_EXEMPT).length} 个）` +
     (dynamicScripts.length ? `；动态 exit（静态不可判定，仅核字面量）：${dynamicScripts.join(', ')}` : ''),
 )
+
+// ⑧b 退出码命名空间对账（C-11 机械化 · v18.18.5）
+//   动机：纪律要求两处登记——`EXIT_CONTRACT`（机器面）与 `docs/troubleshooting.md` §8
+//   「命名空间配额」（人读面）——但两处一直**只靠人工同步**。加了新码而 §8 忘写（或反之）
+//   没有任何门会发现。审计 C-11 要的是「§8 与 EXIT_CONTRACT 一致（新增断言）」。
+//   审计设想 §8 是逐行表，实测它是**配额散文**，故实现其等价不变量：
+//   「代码实际用到的码集合」== 「§8 声明的码集合」，**双向**查（漏登记 / 已无人用 都报）。
+//   解析器放在 `_lib/exit-namespace.mjs`（可单测）；形状变了会**抛错**而不是静默通过。
+try {
+  const contract = parseExitContract(readFileSync(join(ROOT, 'scripts', 'repo-hygiene-check.mjs'), 'utf8'))
+  const quota = parseNamespaceQuota(readFileSync(join(ROOT, 'docs', 'troubleshooting.md'), 'utf8'))
+  const { onlyInCode, onlyInDoc } = reconcile(contract.codes, quota.codes)
+  if (onlyInCode.length) {
+    fail('exit-code', `退出码 ${onlyInCode.join(', ')} 已写进 EXIT_CONTRACT 但**未登记**于 docs/troubleshooting.md §8 命名空间配额（:${quota.line}）——两处必须同一次提交一起改`)
+  }
+  if (onlyInDoc.length) {
+    fail('exit-code', `§8 命名空间配额（:${quota.line}）声明了 ${onlyInDoc.join(', ')}，但 EXIT_CONTRACT 里**已无人使用**——要么补用，要么从 §8 删掉（免得下一个人以为这些码被占了）`)
+  }
+  notes.push(`⑧b 退出码命名空间：代码侧 ${contract.codes.length} 个码 ↔ §8 声明 ${quota.codes.length} 个码，双向一致（${contract.codes.join('/')}）`)
+} catch (e) {
+  fail('exit-code', `⑧b 退出码命名空间对账无法执行：${e.message}`)
+}
 
 // ⑨ 文档词预算门（v18.1.0 新增，第三方审计改进方案 C-6）
 //    为什么需要：本包的成本结构里，**唯一随每次会话恒定的开销就是被载入上下文的文档**（技能体 SKILL.md
