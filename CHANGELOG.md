@@ -2,6 +2,31 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.18.1 — 2026-09-26
+
+> **性质**：**纯文档补丁**。修掉 v18.18.0 自己引入、并已随 npm 包发布出去的一处**假声明**——没有代码、门、契约变更。
+>
+> **为什么必须发版**：`npm pack` 会把仓库根的五个 README（`README.md` / `.zh` / `.es` / `.pt` / `.hi`）一并打包（`--dry-run` 实测 145 个文件中含这 5 个）。因此 v18.18.0 的 README 假声明**不是只在 GitHub 上可见，而是显示在 npm 包页面**上——只改 `master` 分支不足以撤回。
+
+### 一、修掉 C-3 自己造的假开关 `LUNHENG_HANDOFF_LEVEL`
+
+- **症状**：v18.18.0 的 C-3 条目把 Config 第 5 键 `handoffLevel` 描述为「与 `LUNHENG_QUIET` / `LUNHENG_ALLOW_MECH_EDIT` 一样由 env 镜像」，五语 README 与 CHANGELOG 同步写了 `LUNHENG_HANDOFF_LEVEL`。
+- **实测**：`lib/index.js` 全文**只读两个 env**——`LUNHENG_QUIET` 与 `LUNHENG_ALLOW_MECH_EDIT`。`handoffLevel` 与 `scriptTimeoutMs` / `scriptMaxOutputBytes` **同为 Config-only**，不存在 env 路径。
+- **后果**：文档凭空造出一个**不存在的操作者开关**，读者会照它去设一个永远不生效的环境变量（静默失效，无报错）。
+- **处置**：五语 README + 本 CHANGELOG 的 C-3 条目改为如实声明「`scriptTimeoutMs` / `scriptMaxOutputBytes` / `handoffLevel` 三者**仅 Config（无 env 路径）**」；`README.hi.md` 另修掉一处**重复粘贴**的段落。
+
+### 二、顺带修掉一处未证实承诺
+
+- `skills/lunheng-commands/README.md` 原写「`/lunheng -cite` 借鉴 Ai4Scholar 设计，**不消耗 auto_cite 积分**」——该「不消耗」的结论无任何实测或脚本依据支撑，属对第三方服务计费行为的未经证实断言，已删除该条并重排编号。
+
+### 三、这次事故暴露的真问题（已登记，未在本版修）
+
+> 本版是**纯止血**，它没有修掉让这条假声明漏过去的原因；如实记录如下。
+
+**四道门 + 265 条用例全绿，没有一道能抓住它。** 根因是审计报告 `C-1`（报告自己标注为「本批的承重项」）要求的机械化**未落地**：`tests/docs-facts.test.mjs` 目前只做「frontmatter 长度 / 五语 README 数字一致 / 脚本数取自 SKILL.md 白名单」三类派生，**不派生工具集、命令集、Config 键集、技能集**，因此没有任何断言把「README 声称的 Config 键 ↔ `lib/index.js` 的 `CONFIG_SPEC`」对账。
+
+C 批其余的机械化子项（`C-2` / `C-5 后半` / `C-7 后半` / `C-9` / `C-11` / `C-12` / `C-13`）、`E 族单源规则`、`A-7③/④`、`D-1②/③`、`D-2`、`F-5 批量`、以及 `§5.3 DoD` 的「反向自证」要求，同样**未落地**。清单与逐条实测状态见本次交付说明。
+
 ## 18.18.0 — 2026-09-26
 
 > **性质**：v18.18.0 = 「文档自洽与测试体系」收口批。一次**外部独立全量审计**触发 56 项发现中的 C 批 21 项（E 族 17 组机制文档自相矛盾 + F 族 5 项测试体系）。详见 [`audits/反哺报告-v18.16.0-全量独立审计修订方案.md`](audits/反哺报告-v18.16.0-全量独立审计修订方案.md) §三.3 + §三.4 三岔口 #3/#5（主人全采纳报告建议）。
