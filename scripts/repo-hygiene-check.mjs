@@ -35,6 +35,7 @@ import { scanShipped } from './_lib/pack-negative.mjs' // D-1②：与 pack-smok
 import { scanLocalPaths, LOCAL_PATH_BASELINE } from './_lib/local-path-scan.mjs' // D-2②：本机绝对路径（发布物硬零 + 非随包树棘轮）
 import { parseExitContract, parseNamespaceQuota, reconcile } from './_lib/exit-namespace.mjs' // C-11：§8 配额 ↔ EXIT_CONTRACT 双向对账
 import { deriveScriptSurface, parseSecuritySurface, reconcileSurface } from './_lib/script-surface.mjs' // C-7：随包脚本执行面/写盘面 ∈ SECURITY.md
+import { findLibLineRefs, isHistoricalDoc } from './_lib/lib-line-refs.mjs' // C-9：当前文档不得有裸 `lib/**:LINE` 引用
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const isCI = Boolean(process.env.GITHUB_ACTIONS)
@@ -689,6 +690,37 @@ notes.push(
     fail('ann-density', `版本注解密度超 ${ANN_MAX_RATIO * 100}% 上限：${annOver.join('；')}——按 AGENTS.md「注解聚合」政策合并为卡头单行（最新版本 + 一句教训），历史细节指向 git log；确需抬升阈值须在同一次提交写明理由`)
   }
   notes.push(`⑩ 注解密度：references/**/*.md 版本注解行占比 ≤ ${(ANN_MAX_RATIO * 100)}%（超限 ${annOver.length} 个；TOP5：${annStats.sort((a, b) => parseFloat(b.split(' ')[1]) - parseFloat(a.split(' ')[1])).slice(0, 5).map((s) => s.replace('%', '%')).join('、') || '—'}）`)
+}
+
+// ⑪ `lib/**:LINE` 裸行号引用（C-9 机械化 · v18.18.9）
+//   动机：审计 C-9 实测 `SECURITY.md` 引 `lib/tools.js:18,24,133,191`，四行全都不是它说的东西。
+//   该处改成符号引用后，**同一份文档就地写下了政策**「行号随改动漂移故按符号引用，不写绝对行号」
+//   ——**但政策没有门**。v18.18.9 复核发现隔壁那行仍写着 `lib/guard.js:177`，而该行是
+//   `const cwd = process.cwd()`（真实安装点 = `installMechanismGuard()` 内的 `tools.guard(...)`）。
+//   **同一页上，一行宣布政策、下一行违反它** —— 政策要靠门落，不能靠同一页的另一句话。
+//   口径与豁免见 `_lib/lib-line-refs.mjs`（历史留痕按目录豁免；上游包路径如 `dsh-app-boot/lib/...` 不算）。
+{
+  const docExts = /\.(md|html)$/
+  const scannedDocs = scanSet.filter((p) => docExts.test(p) && !isHistoricalDoc(p))
+  let refHits = 0
+  let scannedExisting = 0
+  for (const p of scannedDocs) {
+    const abs = join(ROOT, p)
+    if (!existsSync(abs)) continue
+    scannedExisting++
+    for (const hit of findLibLineRefs(readFileSync(abs, 'utf8'))) {
+      refHits++
+      if (refHits <= 5) {
+        fail(
+          'lib-line-ref',
+          `${p} 用了裸行号引用 \`${hit.raw}\`——请改为**符号引用**（如「\`lib/guard.js\` 的 \`installMechanismGuard()\` 内的 \`tools.guard(...)\`」）。` +
+            '理由：行号随任何改动漂移，而它读起来像一个可核验的事实——C-9 实测某处引的四行全都不是它说的东西',
+        )
+      }
+    }
+  }
+  if (refHits > 5) fail('lib-line-ref', `另有 ${refHits - 5} 处裸行号引用未逐条列出`)
+  notes.push(`⑪ 文档行号引用：${scannedExisting} 个当前文档（.md/.html，已排除历史留痕）零裸 \`lib/**:LINE\` 引用`)
 }
 
 console.log('\n=== 仓库机械卫生门（repo-hygiene-check）===')
