@@ -36,6 +36,7 @@ import { scanLocalPaths, LOCAL_PATH_BASELINE } from './_lib/local-path-scan.mjs'
 import { parseExitContract, parseNamespaceQuota, reconcile } from './_lib/exit-namespace.mjs' // C-11：§8 配额 ↔ EXIT_CONTRACT 双向对账
 import { deriveScriptSurface, parseSecuritySurface, reconcileSurface } from './_lib/script-surface.mjs' // C-7：随包脚本执行面/写盘面 ∈ SECURITY.md
 import { findLibLineRefs, isHistoricalDoc } from './_lib/lib-line-refs.mjs' // C-9：当前文档不得有裸 `lib/**:LINE` 引用
+import { resolveExitCodes, parseGuardConsts } from './_lib/exit-resolution.mjs' // A-7③：退出码静态解析（含一层变量内联，可单测）
 import {
   deriveJournalCounts,
   declaredJournalCounts,
@@ -378,9 +379,9 @@ const EXIT_CONTRACT = {
   'journal-fit.mjs': [0, 1, 3, 10, 70],            // 1 = P1 命中 / 3 = 仅 P2（期刊不在库等）
   'lunheng-stats.mjs': [0, 10, 70],
   'meta-synthesize.mjs': [0, 3, 10, 70],           // 3 = 仅 P2 软提示（表内曾误登 1，静态解析无此字面量）
-  'methodology-check.mjs': [0, 1, 2, 10, 70],   // v18.16.0（A-7 反哺）：补 2 = P0（方法节参数 <2 项）
+  'methodology-check.mjs': [0, 1, 2, 3, 10, 70],   // v18.16.0（A-7 反哺）：补 2 = P0（方法节参数 <2 项）；**v18.18.11 再补 3**——A-7 当时只补了 2，而该脚本的 `exitCode = allPass ? 0 : (hasP0 ? 2 : (hasP1 ? 1 : 3))` 明确可达 3（仅 P2 软提示），属「修一半」
   'segment-chars.mjs': [0, 10, 70],
-  'structure-check.mjs': [0, 1, 10, 70],
+  'structure-check.mjs': [0, 1, 2, 3, 10, 70],  // v18.18.11（A-7③ 一层内联后暴露）：本脚本与 methodology-check 同形（`allPass ? 0 : (hasP0 ? 2 : (hasP1 ? 1 : 3))`），旧表只登记 0/1/10/70，**2 与 3 都漏了**
 }
 // v18.12.0（L-68）：**「装了 guard 必登记」是判据，不是注释** —— 旧表靠人工维护，漏登记没有任何门会发现。
 //   新脚本加 guard 却忘了登记，等于给自己开了一个「表外退出码随便用」的后门；故本规则改为
@@ -389,6 +390,7 @@ const EXIT_CONTRACT = {
 const EXIT_GUARDED_EXEMPT = {}
 const scriptDir = join(ROOT, 'skills', 'lunheng-article-pipeline', 'scripts')
 const dynamicScripts = []
+let indirectHits = 0 // A-7③：一层变量内联累计命中数（跨脚本统计，故声明在循环外）
 const guardPath = join(scriptDir, GUARD)
 if (!existsSync(guardPath)) {
   fail('exit-code', `缺少 ${GUARD}——退出码硬化的实现不在盘（契约里 10/70 的语义无处可查）`)
@@ -404,41 +406,11 @@ for (const [name, allowed] of Object.entries(EXIT_CONTRACT)) {
   const p = join(scriptDir, name)
   if (!existsSync(p)) { fail('exit-code', `退出码表登记的脚本不存在：${name}`); continue }
   const text = readFileSync(p, 'utf8')
-  // ① 解析本文件里的 `const X = <数字>`（含顶层与函数内声明）
-  const localConsts = new Map()
-  for (const m of text.matchAll(/const\s+([A-Za-z_$][\w$]*)\s*=\s*(\d+)\b/g)) localConsts.set(m[1], Number(m[2]))
-  // ② 解析 guard 模块导出的常量
-  const guardConsts = new Map()
-  if (existsSync(guardPath)) {
-    for (const m of readFileSync(guardPath, 'utf8').matchAll(/export\s+const\s+([A-Za-z_$][\w$]*)\s*=\s*(\d+)\b/g)) {
-      guardConsts.set(m[1], Number(m[2]))
-    }
-  }
-  const resolved = new Set()
-  let dynamicExit = false
-  // 退出码的两个写法都要看（v18.2.6 收紧）：
-  //   ① `process.exit(N)` / `process.exitCode(N)` —— 括号调用形态（旧版只看这个）；
-  //   ② `process.exitCode = N` —— **赋值**形态。它在 Node 里与 ① **同样生效**（进程正常结束即用该码），
-  //      而旧版完全看不见它：一个 `process.exitCode = 4` 能绕过「表外退出码」检查（本规则的主要锋芒）。
-  //      本包当前无此形态，但门不能只覆盖「今天恰好没写」的那种写法。
-  const exitArgs = [
-    ...[...text.matchAll(/process\.exit(?:Code)?\(([^)]*)\)/g)].map((m) => m[1].trim()),
-    ...[...text.matchAll(/process\.exitCode\s*=\s*([^;\n]+)/g)].map((m) => m[1].trim()),
-  ]
-  for (const arg of exitArgs) {
-    if (!arg) continue
-    for (const n of arg.matchAll(/\b\d+\b/g)) resolved.add(Number(n[0]))
-    for (const id of arg.matchAll(/\b([A-Za-z_$][\w$]*)\b/g)) {
-      const nm = id[1]
-      if (localConsts.has(nm)) {
-        resolved.add(localConsts.get(nm))
-      } else if (guardConsts.has(nm)) {
-        resolved.add(guardConsts.get(nm))
-      } else if (!/^\d+$/.test(arg)) {
-        dynamicExit = true // 运行时算出来的值（如 anyMissing ? 4 : 0 / p0>0?2:…）——静态看不见
-      }
-    }
-  }
+  // ①-③（A-7③ v18.18.11）：静态解析交给 `_lib/exit-resolution.mjs`（含「一层变量内联」，可单测）。
+  //   该模块头注释记了本次一口气修掉的三个坑（只取初值 / 赋值为另一变量 / 复合实参误追标识符）。
+  const guardConsts = existsSync(guardPath) ? parseGuardConsts(readFileSync(guardPath, 'utf8')) : new Map()
+  const { resolved, dynamic: dynamicExit, indirectHits: hits } = resolveExitCodes(text, guardConsts)
+  indirectHits += hits
   // 真 import 检查（v18.2.6 收紧）：旧实现是 `text.includes(GUARD)`——**注释里提到也算「已 import」**，
   //   于是「头注释写了 `_lib/exit-guard.mjs`、代码里却删了 import」这种**最该抓的形态**恰好被判通过
   //   （本仓每个脚本的头注释都提到该文件名，等于这条检查对它们恒真）。现改为匹配真正的 import：
@@ -477,9 +449,10 @@ if (guardedButUnregistered.length) {
     '请在 EXIT_CONTRACT 补一行；若确需豁免，必须在 EXIT_GUARDED_EXEMPT 写明理由（不得静默跳过）')
 }
 notes.push(
-  `⑧ 退出码表：${Object.keys(EXIT_CONTRACT).length} 个随包脚本的退出码契约已核（静态解析 process.exit/exitCode 两种写法 + guard **真 import** 兜底检查）` +
+  `⑧ 退出码表：${Object.keys(EXIT_CONTRACT).length} 个随包脚本的退出码契约已核（静态解析 process.exit/exitCode 两种写法 + **一层变量内联**（A-7③）+ guard **真 import** 兜底检查）` +
     `；覆盖面：凡 import ${GUARD} 的脚本 100% 已登记（豁免 ${Object.keys(EXIT_GUARDED_EXEMPT).length} 个）` +
-    (dynamicScripts.length ? `；动态 exit（静态不可判定，仅核字面量）：${dynamicScripts.join(', ')}` : ''),
+    `；一层内联命中 ${indirectHits} 处字面量` +
+    (dynamicScripts.length ? `；**仍未静态可判定**（仅对契约码核「文件里出现过」，如实标注不假装核过）：${dynamicScripts.join(', ')}` : '；全部脚本均可静态判定'),
 )
 
 // ⑧b 退出码命名空间对账（C-11 机械化 · v18.18.5）
