@@ -1,10 +1,10 @@
 # लुन्हेंग (lunheng-article-pipeline) — बहु-एजेंट दीर्घ-लेख पाइपलाइन
 
-> 版本：v18.18.1（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.18.2（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > 🌐 [English](README.md) ｜ [中文](README.zh.md) ｜ [Español](README.es.md) ｜ [Português](README.pt.md) ｜ **हिन्दी**（यह फ़ाइल）
 
-> एक DeepSeek Harness (DSH) बंडल जो माँग पर एक एजेंट स्किल पंजीकृत करता है। यह स्किल दीर्घ लेखन — शोध-पत्र, उद्योग विश्लेषण, व्यावसायिक समीक्षा और लंबे लेख — को **मानव-सहभागिता वाली 9-भूमिका पाइपलाइन** में बदल देती है।
+> एक DeepSeek Harness (DSH) बंडल जो **माँग पर दो एजेंट स्किल** पंजीकृत करता है: `lunheng-article-pipeline` (मुख्य 9-भूमिका पाइपलाइन) और `lunheng-commands` (पतला wrapper जो 11 `/lunheng-*` स्लैश आदेश देता है: status / stats / compression-cycle / evidence-bundle / m-gate / handoff-check आदि; **कोई नई भूमिका नहीं, कोई नया M-द्वार आइटम नहीं**; देखें `skills/lunheng-commands/SKILL.md`)। मुख्य स्किल दीर्घ लेखन — शोध-पत्र, उद्योग विश्लेषण, व्यावसायिक समीक्षा और लंबे लेख — को **मानव-सहभागिता वाली 9-भूमिका पाइपलाइन** में बदल देती है।
 
 ## What this is
 
@@ -41,7 +41,7 @@
 | प्रारूप | क्रमिक संस्करण, AI-चिह्न सफ़ाई सहित, प्रत्येक स्वतंत्र लेखक से |
 | रिपोर्ट | समालोचना (C1–C7), लेखा-परीक्षा (G0–G14), सहकर्मी समीक्षा (6 आयाम + पत्रिकाएँ) |
 | अंतिम उपज | `final/定稿.md`, चित्र, प्रमाण-पुंज, वितरण टिप्पणियाँ, M-द्वार रिपोर्ट |
-| DSH एकीकरण (bundle स्थापना पर) | तीन **केवल-पठन** उपकरण — `lunheng_m_gate` (M-द्वार यांत्रिक पूर्व-जाँच), `lunheng_char_count` (शुद्ध चीनी अक्षर गणना), और `lunheng_handoff_check` (हैंडऑफ रिपोर्ट के आकार / संस्करण / युग्मों / agents-log की जाँच); सूची में न हों तो पहले की तरह `pwsh` से वही स्क्रिप्ट चलाएँ (एक ही स्रोत)। मानव आदेश `/lunheng-status` (`run/<परियोजना>/status.md` पढ़ता है) तथा `/lunheng-stats` (परियोजनाओं के बीच टेलीमेट्री पैनल; होस्ट-प्रक्रिया में `scripts/lunheng-stats.mjs` को केवल `--json` श्वेतसूची के साथ चलाता है); कोई भी मॉडल संदेश नहीं बनाता। **तंत्र-फ़ाइल लेखन सुरक्षा**: वैश्विक guard स्किल पैकेज को लक्षित `write`/`edit` प्रकार की उपकरण-कॉल अस्वीकार करता है, अतः सत्र चुपचाप पाइपलाइन के अपने नियम नहीं बदल सकता। **सीमा स्पष्ट रूप से**: guard केवल **उपकरण-कॉल** देखता है — `pwsh`/उप-प्रक्रियाएँ **इस द्वार से नहीं गुज़रतीं**; स्वामी की छूट `LUNHENG_ALLOW_MECH_EDIT=1` (या `config: { allowMechanismEdit: true }`) है। प्लगइन **Config** (परिनियोजन स्विच, आपकी profile में इस प्लगइन की पंक्ति पर) `quiet`, `allowMechanismEdit`, `scriptTimeoutMs`, `scriptMaxOutputBytes`, और `handoffLevel` कवर करता है — पहले दो LUNHENG_QUIET / LUNHENG_ALLOW_MECH_EDIT env के समान हैं, जबकि scriptTimeoutMs / scriptMaxOutputBytes / handoffLevel **केवल Config (कोई env पथ नहीं)**, पर profile के साथ संस्करणित और समीक्षायोग्य; **अवैध config लोड के समय ज़ोरदार विफल होता है**, चुपचाप डिफ़ॉल्ट पर नहीं लौटता। |
+| DSH एकीकरण (bundle स्थापना पर) | तीन **केवल-पठन** उपकरण — `lunheng_m_gate` (M-द्वार यांत्रिक पूर्व-जाँच), `lunheng_char_count` (शुद्ध चीनी अक्षर गणना), और `lunheng_handoff_check` (हैंडऑफ रिपोर्ट के आकार / संस्करण / युग्मों / agents-log की जाँच); सूची में न हों तो पहले की तरह `pwsh` से वही स्क्रिप्ट चलाएँ (एक ही स्रोत)। मानव आदेश `/lunheng-status` (`run/<परियोजना>/status.md` पढ़ता है) तथा `/lunheng-stats` (परियोजनाओं के बीच टेलीमेट्री पैनल; होस्ट-प्रक्रिया में `scripts/lunheng-stats.mjs` को केवल `--json` श्वेतसूची के साथ चलाता है); कोई भी मॉडल संदेश नहीं बनाता। **तंत्र-फ़ाइल लेखन सुरक्षा**: वैश्विक guard स्किल पैकेज को लक्षित `write`/`edit` प्रकार की उपकरण-कॉल अस्वीकार करता है, अतः सत्र चुपचाप पाइपलाइन के अपने नियम नहीं बदल सकता। **सीमा स्पष्ट रूप से**: guard केवल **उपकरण-कॉल** देखता है — `pwsh`/उप-प्रक्रियाएँ **इस द्वार से नहीं गुज़रतीं**; स्वामी की छूट `LUNHENG_ALLOW_MECH_EDIT=1` (या `config: { allowMechanismEdit: true }`) है। प्लगइन **Config** (परिनियोजन स्विच, आपकी profile में इस प्लगइन की पंक्ति पर) `quiet`, `allowMechanismEdit`, `scriptTimeoutMs`, `scriptMaxOutputBytes`, और `handoffLevel` — कुल **पाँचों** — कवर करता है; पहले दो LUNHENG_QUIET / LUNHENG_ALLOW_MECH_EDIT env के समान हैं, जबकि scriptTimeoutMs / scriptMaxOutputBytes / handoffLevel **केवल Config (कोई env पथ नहीं)**, पर profile के साथ संस्करणित और समीक्षायोग्य; **अवैध config लोड के समय ज़ोरदार विफल होता है**, चुपचाप डिफ़ॉल्ट पर नहीं लौटता। |
 
 ## Pipeline overview
 
@@ -78,6 +78,11 @@ lunheng-article-pipeline/                 # पैकेज ही रिपॉ�
 │   ├── README.md             # स्किल-स्तरीय रीडमी (चीनी)
 │   ├── references/           # 9 भूमिका कार्ड, टेम्पलेट, द्वार-एल्गोरिद्म, पत्रिका-कोश
 │   └── scripts/              # निर्भरता-रहित .mjs सत्यापन स्क्रिप्ट (संख्या: स्किल की श्वेतसूची पंक्ति देखें)
+├── skills/lunheng-commands/   # सहयोगी स्किल: 11 /lunheng-* स्लैश आदेश (status / stats / evidence-bundle / m-gate / handoff-check / compression-cycle आदि)
+│   ├── SKILL.md              # आदेश प्रवेश (आदेश सूची, डिस्पैच मॉडल)
+│   ├── README.md             # आदेश-स्तरीय readme
+│   ├── scripts/              # आदेश हैंडलर (जैसे lunheng-stats.mjs)
+│   └── tests/                # आदेश-स्तरीय परीक्षण (स्वतः नहीं चलते; मैनुअल npm test दायरा)
 ├── scripts/                  # रिपॉज़िटरी द्वार: पैकेजिंग सतह + यांत्रिक स्वच्छता + पैकेज स्मोक
 ├── tests/                    # node --test सूट (स्क्रिप्ट + प्रवेश स्मोक)
 ├── docs/                     # स्थापना, उपयोग, संरचना, faq, समस्या-निवारण
@@ -110,7 +115,7 @@ patch परत दो काम करती है: **इस पैकेज �
 संस्करण **केवल tag से** प्रकाशित होते हैं; स्थानीय `npm publish` वर्जित है (यह CI द्वारों और OIDC provenance को दरकिनार करता है, और npm संस्करण कभी अधिलेखित नहीं हो सकता)।
 
 ```sh
-git tag v18.18.1 && git push origin v18.18.1   # एक बार में एक ही tag (GitHub: >3 tag एक push में कोई workflow नहीं चलाता)
+git tag v18.18.2 && git push origin v18.18.2   # एक बार में एक ही tag (GitHub: >3 tag एक push में कोई workflow नहीं चलाता)
 # publish.yml क्रम: द्वार 1 सुसंगति → द्वार 2 पैकेजिंग → द्वार 3 स्वच्छता → द्वार 4 पैकेज स्मोक → स्क्रिप्ट परीक्षण
 #   → tag/संस्करण समानता → idempotency गार्ड → OIDC publish --provenance --tag dsh → प्रकाशन-पश्चात लेखा-परीक्षा
 ```

@@ -2,6 +2,59 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.18.2 — 2026-09-26
+
+> **性质**：**机械化加固批**——把审计 `C-1`（报告自称「本批的承重项」）要求的对账门真正装上，并修掉它当场抓出的 4 处漏改 + 7 处假声明。无新增功能。
+>
+> **为什么是这一版**：v18.18.1 是止血，没有修病因。病因是——**没有任何断言把「文档声称的东西」与「代码里真实存在的东西」对起来**，于是 v18.18.0 能在四道门 + 265 条用例全绿的情况下，把 `handoffLevel` 描述成一个代码里并不存在的 env 开关。
+
+### 一、C-1 机械化落地：对外声明 ↔ 代码真源 双向对账门
+
+`tests/docs-facts.test.mjs` 新增两条用例，从代码派生四个集合并要求 **7 个对外声明面**（五语 README + `SECURITY.md` + `docs/installation.md`）逐项一致：
+
+| 集合 | 派生来源 |
+|---|---|
+| 工具集（3） | `lib/tools.js` 的 `tools.register(defineTool({ name }))` |
+| 配置集（5）+ 枚举值 | `lib/index.js` 的 `CONFIG_SPEC`（枚举值也从 `values: [...]` 派生，文档断言里不写死 `basic`/`strict`） |
+| 命令集（2） | `lib/commands.js` 的 `commands.register({ name })` |
+| 技能集（2） | `skills/*/SKILL.md` frontmatter 的 `name` |
+
+**关键设计：双向，即「集合相等」而非「包含」**。审计原文要求的是「文档中出现的 config 键集合 == `Object.keys(CONFIG_SPEC)`」——只查「有没有漏」会放过反向的病（文档凭空多出一个键），而**反向恰恰就是本次事故的形态**。故三个集合都各查两遍：漏了谁 / 多了谁。
+
+**防空转**：派生结果为空（正则与源码脱节、文件改名）会**响亮失败**，否则本门会退化成恒真断言——这是所有「从代码派生」的门最容易悄悄失效的地方。
+
+### 二、反向自证（§5.3 DoD 要求的证据，4/4 通过）
+
+| 篡改 | 门 |
+|---|---|
+| 从 README 删掉 `lunheng_handoff_check` | 红 ✓ |
+| 往 README 塞代码里不存在的 `phantomKey` | 红 ✓ |
+| 从 `SECURITY.md` 删掉 `handoffLevel` | 红 ✓ |
+| 从 `README.zh.md` 抹掉 `lunheng-commands` | 红 ✓ |
+
+四条**恢复后均复绿**。自证台脚本 `scripts/c1-reverse-proof.mjs`（仓库级，不随包）。
+
+> **自证本身也要防自证为假**：第 ③ 条第一次写的时候是「只替换第一处 `handoffLevel`」——同行后面那句更正说明里仍留着一个 `handoffLevel`，门因「键还在」而放行，自证**假绿**。改为全域替换后才真正变红。这条写进脚本注释了。
+
+### 三、门当场抓出的 4 处漏改（原批次声称已落地、实际没有）
+
+- **`SECURITY.md:25`** 长期写「**四个开关**」——`C-3` 当时只改了五语 README 与 `docs/installation.md`，**漏了 SECURITY.md**。已改「五个开关」并补 `handoffLevel` 语义/默认值。
+- **`SECURITY.md:21`** 声称「读随包 SKILL.md（**唯一一次 `readFileSync`**）」——实测为**两次**（`lib/index.js` 另读 `skills/lunheng-commands/SKILL.md`），且只字未提注册了**两个技能**。这是**安全文档里的低报**（少报一次读盘），已更正。
+- **`docs/installation.md`** 全文 `/lunheng-stats` **0 命中**——`C-2` 要求的「installation.md 补 `/lunheng-stats`」未做。已补，并加一段「两条人类命令只在 bundle 路径存在」的边界说明。
+- **`README.zh/es/pt/hi`** 的 `lunheng-commands` **0 命中**——`C-4` 的「五语同步」只做了英文源版。已补「注册两个技能」段 + 布局树的 `skills/lunheng-commands/` 子树。
+
+### 四、清掉 7 处「`-cite` 默认免费」假声明
+
+`/lunheng -cite` 的自身定义就是「**调用 DSH 原生 `auto_cite`**」，而 `auto_cite` 是**计费工具**。故文档声称的「默认免费 / 不消耗 auto_cite 积分」与它自己点名的工具**直接矛盾**——不是「未经证实」，是**与事实相反**。
+
+7 处已清（`pipeline-readme.md` ×2、`lunheng-commands/README.md` ×2、`command-routing.md` ×2、`route-command.mjs` ×1），统一改为「**消耗 AI4Scholar 积分**」，并保留一行更正说明。v18.18.1 只清掉了其中 1 处，本版补全。
+
+> 根因同 §一：该说法「借自 Ai4Scholar『斜杠命令引用免费』」，但本集成的 `-cite` 走的是 `auto_cite` 工具，**与该说法不是同一条计费路径**——属于把上游的宣传语当成自己集成的计费事实照抄。
+
+### 五、仍未做（如实登记）
+
+C 批余下的机械化子项（`C-2`/`C-5 后半`/`C-7 后半`/`C-9`/`C-11`/`C-12`/`C-13`）、`E 族单源规则`、`A-7③/④`、`D-1②/③`、`D-2`、`F-5 批量`，以及 `§5.3 DoD` 对其余批次的「反向自证」要求，**仍未落地**。`C-1` 是其中唯一有真实事故背书的，故先做它。
+
 ## 18.18.1 — 2026-09-26
 
 > **性质**：**纯文档补丁**。修掉 v18.18.0 自己引入、并已随 npm 包发布出去的一处**假声明**——没有代码、门、契约变更。

@@ -107,7 +107,9 @@ dsh --profile <profile>
 |---|---|---|
 | ① 原生工具 `lunheng_m_gate` / `lunheng_char_count` / `lunheng_handoff_check` | bundle 部署（入口跑过）+ 宿主有 `tools` 服务 + `@deepseek-ai/dsh-tools` 可解析 | 工具本体在**宿主进程内**，但脚本由 `lib/tools.js` **派生子进程**执行 → 沙箱禁子进程管道时失败（错误信息会明确写 EPERM 并提示改用 `pwsh`） |
 | ② `pwsh` 调脚本 `node scripts/<脚本>.mjs …` | 会话里有命令工具（`pwsh`/`bash`） | 沙箱**整体禁止派生子进程**时不可用（v18.2.2 记录过整段 `pwsh` 失效的实例）——此时该如实记「本机无法执行机检」 |
-| ③ 纯技能目录部署直接跑脚本 | 只把 `skills/lunheng-article-pipeline/` 拷进技能根 | **没有**路径 ①（入口不跑 → 无原生工具、无 guard、无 `/lunheng-status`），只剩 `pwsh`/命令工具 |
+| ③ 纯技能目录部署直接跑脚本 | 只把 `skills/lunheng-article-pipeline/` 拷进技能根 | **没有**路径 ①（入口不跑 → 无原生工具、无 guard、无 `/lunheng-status`、无 `/lunheng-stats` 两条人类命令），只剩 `pwsh`/命令工具 |
+
+> **人类命令只在路径 ① 存在**：`/lunheng-status`（读 `run/<项目>/status.md`）与 `/lunheng-stats`（跨项目遥测看板，白名单只放行 `--json`）都由 `lib/commands.js` 经 `ctx.commands.register()` 注册，**入口不跑就没有它们**。纯技能目录部署（路径 ③）下要用看板，只能照旧 `pwsh` 跑 `scripts/lunheng-stats.mjs`——**退出码与 JSON 契约同源，可用性不同**。
 
 **纪律**：三条路径全废时**停机报告主人**，**不得**用 LLM 断言充当闸门实据（见 `SKILL.md` §执行能力边界）。
 

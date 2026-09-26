@@ -13,7 +13,7 @@
 ```
 /lunheng -draft [task]      # 启动完整流水线
 /lunheng -resume <id>       # 续跑已有项目
-/lunheng -cite <text>       # 对段落跑 auto_cite（默认免费）
+/lunheng -cite <text>       # 对段落跑 auto_cite（**消耗 AI4Scholar 积分**）
 /lunheng -cite -auto        # 全文 auto_cite
 /lunheng -cite -manual <m>  # 手动模式（用户已标 [CITE]）
 /lunheng -audit             # 仅跑 G 审计 + M 门（不改稿）
@@ -31,7 +31,7 @@
 
 **Ai4Scholar 借鉴点**：
 - **v2.9.5**「斜杠命令合并重复的引用/搜索为统一入口」——避免 UX 噪声
-- **v2.9.5**「🆓 斜杠命令引用免费」——`/lunheng -cite` 不消耗 auto_cite 积分
+- ~~**v2.9.5**「🆓 斜杠命令引用免费」——`/lunheng -cite` 不消耗 auto_cite 积分~~ **已删除（v18.18.1）**：本集成的 `-cite` 调的就是 DSH 原生 `auto_cite`（**计费工具**），与上游「斜杠命令引用免费」不是同一条计费路径；照抄等于对第三方计费行为作未经证实的承诺
 - **v2.9.5**「写作页斜杠命令」——`/lunheng` 在 DSH 聊天框随时触发
 
 ## 安装

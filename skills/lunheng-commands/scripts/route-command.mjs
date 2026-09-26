@@ -11,7 +11,7 @@
 const COMMANDS = {
   '-draft':    { phase: 'full',     desc: '启动完整流水线（等效 @lunheng-article-pipeline）' },
   '-resume':   { phase: 'resume',   desc: '续跑已有项目（载入 run/<id>/ 状态）' },
-  '-cite':     { phase: 'cite',     desc: '对段落跑 auto_cite（默认免费，借鉴 Ai4Scholar v2.9.5）' },
+  '-cite':     { phase: 'cite',     desc: '对段落跑 auto_cite（消耗 AI4Scholar 积分）' },
   '-audit':    { phase: 'audit',    desc: '仅跑 T7 G 审计 + M 门（不改稿）' },
   '-journal':  { phase: 'journal',  desc: '改目标期刊 + 重跑 T9 + 期刊匹配' },
   '-ppt':      { phase: 'ppt',      desc: '把当前定稿 → PPT 大纲（Markdown 表格）' },

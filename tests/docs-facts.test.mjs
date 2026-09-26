@@ -19,7 +19,7 @@
 //     README 一律不写死（见下方 test 的反向断言）。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { scan as scanLinks } from '../scripts/link-check.mjs'
@@ -148,5 +148,200 @@ test('技能目录断链穷举：无未归类断链（link-check 的纯函数入
     [],
     '存在未归类断链：既不在盘，也不属于运行期产物 / 跨技能资源 / 墓碑 / 存疑任一类。' +
       '修法见 scripts/link-check.mjs 头部口径（改文档 / 登记 TOMBSTONES / 登记 CROSS_SKILL_*）',
+  )
+})
+
+// ── 对外声明 ↔ 代码真源 对账门（v18.18.1 新增 · 审计 C-1 机械化「本批的承重项」）────────────
+//
+// **为什么必须机械化**（本门是被一次真实事故逼出来的，不是预防性设计）：
+//   v18.18.0 的 C-3 在五语 README + CHANGELOG 里把 Config 第 5 键 `handoffLevel` 描述为
+//   「由 `LUNHENG_HANDOFF_LEVEL` env 镜像」——而 `lib/index.js` 全文**只读两个 env**
+//   （`LUNHENG_QUIET` / `LUNHENG_ALLOW_MECH_EDIT`）。即文档凭空造出一个**不存在的操作者开关**，
+//   读者会照它去设一个永远不生效的环境变量（**静默失效、无报错**）。
+//   **四道门 + 本文件原有的 265 条用例全绿，没有一道抓住它**——因为没有任何断言把
+//   「文档声称的 Config 键」与「`CONFIG_SPEC` 的真实键集」对起来。
+//   同批复查又抓到三处同源漏改：SECURITY.md 仍写「四个开关」、SECURITY.md 声称
+//   「唯一一次 `readFileSync`」实际两次、`lunheng-commands` 在四语 README 里 0 命中。
+//
+// **本门做什么**：从代码派生四个集合，要求 7 个对外声明面**逐项一致**。
+//   · 工具集  ← `lib/tools.js` 的 `tools.register(defineTool({ name }))`
+//   · 配置集  ← `lib/index.js` 的 `CONFIG_SPEC` 键
+//   · 命令集  ← `lib/commands.js` 的 `commands.register({ name })`
+//   · 技能集  ← `skills/*/SKILL.md` frontmatter 的 `name`
+//
+// **边界（如实）**：
+//   · 比对用「锚点行」而非全文——文档正文别处提某个工具名属正常，只有**声明行**必须列全。
+//   · 数量词只认 2–5 的常见语言对应词；`docs/installation.md` 不声明数量故不查数量词。
+//   · 本门抓的是**集合级漂移**（少了谁 / 多了谁 / 数字不符），**抓不到语义级失真**
+//     （例：把某个键的行为描述错）。语义那半仍需人读。
+const SURFACES = [...README_FILES, 'SECURITY.md', 'docs/installation.md']
+
+/**
+ * 配置声明行上**允许出现但不是 Config 键**的纯标识符。
+ * 这些是同一段落在讨论的其它东西（写工具名、字面词 config），不是配置面。
+ * 任何**不在此表、也不是真源键/枚举值**的标识符都会让本门变红——这正是要抓的「人造键」。
+ */
+const NON_KEY_TOKENS = new Set(['pwsh', 'bash', 'write', 'edit', 'read', 'config'])
+
+/** 从代码派生四类真源集合（任一为空即认为派生逻辑退化，见下方 non-vacuous 断言）。 */
+function deriveCodeFacts() {
+  const toolsSrc = readFileSync(join(ROOT, 'lib', 'tools.js'), 'utf8')
+  const tools = [...toolsSrc.matchAll(/tools\.register\(\s*defineTool\(\s*\{\s*name:\s*'([^']+)'/g)].map((m) => m[1])
+
+  const idxSrc = readFileSync(join(ROOT, 'lib', 'index.js'), 'utf8')
+  const start = idxSrc.indexOf('const CONFIG_SPEC = Object.freeze({')
+  const end = idxSrc.indexOf('\n})', start)
+  assert.ok(start > -1 && end > start, 'lib/index.js 必须仍有 `const CONFIG_SPEC = Object.freeze({` … `})` 块（派生失败会让本门静默失效）')
+  const specBlock = idxSrc.slice(start, end)
+  const config = [...specBlock.matchAll(/^ {2}(\w+):\s*\{/gm)].map((m) => m[1])
+  // 枚举型键的合法取值也从真源派生（不在文档断言里写死 basic/strict）
+  const enumValues = [...specBlock.matchAll(/values:\s*\[([^\]]*)\]/g)]
+    .flatMap((m) => [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]))
+
+  const cmdSrc = readFileSync(join(ROOT, 'lib', 'commands.js'), 'utf8')
+  const commands = [...cmdSrc.matchAll(/commands\.register\(\s*\{\s*name:\s*'([^']+)'/g)].map((m) => m[1])
+
+  const skillsDir = join(ROOT, 'skills')
+  const skills = readdirSync(skillsDir, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && existsSync(join(skillsDir, d.name, 'SKILL.md')))
+    .map((d) => {
+      const raw = readFileSync(join(skillsDir, d.name, 'SKILL.md'), 'utf8').replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n')
+      const m = /^---[ \t]*\n([\s\S]*?)\n---[ \t]*(?:\n|$)/.exec(raw)
+      assert.ok(m, `skills/${d.name}/SKILL.md 必须有成行闭合的 frontmatter`)
+      return (/^name:\s*["']?(.+?)["']?\s*$/m.exec(m[1]) || [])[1]
+    })
+    .filter(Boolean)
+
+  return { tools, config, commands, skills, enumValues }
+}
+
+/** 数量词表（只覆盖本仓实际用到的 2–5）。 */
+const NUM_WORDS = {
+  2: /\b(two|dos|dois)\b|二|两|दो/i,
+  3: /\b(three|tres|três)\b|三|तीन/i,
+  4: /\b(four|cuatro|quatro)\b|四|चार/i,
+  5: /\b(five|cinco)\b|五|पाँच|पांच/i,
+}
+
+/** 在 surface 里找锚点行：`both` 全部命中才算该行（防命中同文件别处的偶发提及）。 */
+function anchorLine(text, mustAll) {
+  const lines = text.split('\n')
+  const i = lines.findIndex((l) => mustAll.every((t) => l.includes(t)))
+  return { line: i < 0 ? null : lines[i], no: i + 1 }
+}
+
+test('C-1 对外声明 ↔ 代码真源：工具/配置/命令/技能 四集合在 7 个声明面逐项一致', () => {
+  const { tools, config, commands, skills, enumValues } = deriveCodeFacts()
+
+  // 非空断言：派生退化（正则失配、文件改名）必须**响亮失败**，否则本门会静默变成恒真断言
+  assert.equal(tools.length, 3, `应从 lib/tools.js 派生出 3 个工具，实测 ${tools.length}——派生正则可能已与源码脱节`)
+  assert.equal(config.length, 5, `应从 lib/index.js 的 CONFIG_SPEC 派生出 5 个配置键，实测 ${config.length}`)
+  assert.equal(commands.length, 2, `应从 lib/commands.js 派生出 2 条命令，实测 ${commands.length}`)
+  assert.equal(skills.length, 2, `应从 skills/*/SKILL.md 派生出 2 个技能，实测 ${skills.length}`)
+
+  for (const f of SURFACES) {
+    const text = readFileSync(join(ROOT, f), 'utf8')
+
+    // ① 工具集：锚 = 首个同时含「第一个工具名」的行
+    const t = anchorLine(text, [tools[0]])
+    assert.ok(t.line, `${f} 未见工具声明行（须出现 \`${tools[0]}\`）`)
+    for (const name of tools) {
+      assert.ok(
+        t.line.includes(name),
+        `${f}:${t.no} 的声明行漏了工具 \`${name}\`（该行已列 \`${tools[0]}\` 却未列全，属 C-1 那类漏列）。` +
+          `真源 = lib/tools.js 的 defineTool 注册（共 ${tools.length} 个：${tools.join(' / ')}）`,
+      )
+    }
+    // 反方向：文档**不得多出**真源没有的工具名（「集合相等」而非「包含」）
+    const tExtra = [...new Set([...t.line.matchAll(/lunheng_[a-z_]{2,}/g)].map((m) => m[0]))].filter((n) => !tools.includes(n))
+    assert.deepEqual(
+      tExtra,
+      [],
+      `${f}:${t.no} 的声明行列出了真源里**不存在**的工具名：${tExtra.join(', ')}——` +
+        `真源 lib/tools.js 只有 ${tools.join(' / ')}。文档不得凭空多出工具（读者会去调用一个不存在的工具）`,
+    )
+
+    // ② 配置集：锚 = 首个**同时**含 allowMechanismEdit 与 quiet 的行
+    //    （只看 allowMechanismEdit 会误命中 SECURITY.md 的 guard 逃逸口行「config 写 allowMechanismEdit: true」）
+    if (f !== 'docs/installation.md') {
+      const c = anchorLine(text, ['allowMechanismEdit', 'quiet'])
+      assert.ok(c.line, `${f} 未见配置声明行（须同时出现 allowMechanismEdit 与 quiet）`)
+      for (const key of config) {
+        assert.ok(
+          c.line.includes(key),
+          `${f}:${c.no} 的配置声明行漏了 \`${key}\`。真源 = lib/index.js 的 CONFIG_SPEC（共 ${config.length} 个：${config.join(' / ')}）。` +
+            '⚠️ 漏键的后果不是「少写一行」——实例：SECURITY.md 长期写「四个开关」，读者会以为 handoffLevel 不存在',
+        )
+      }
+      // 数量词必须与真值一致（「四个开关」写死数词正是上次翻车的形态）
+      const word = c.line.match(NUM_WORDS[config.length])
+      assert.ok(
+        word,
+        `${f}:${c.no} 的配置声明行未见与真值一致的数量词（应含 ${config.length} 的语言对应词）。` +
+          '写死数词就会随代码增键而过期——真值只有 CONFIG_SPEC 一处',
+      )
+      // 反方向（**审计原文要求的「集合相等」**）：文档不得出现真源里没有的配置键。
+      // 反引号里的纯标识符 - 真源键 - 枚举值 - 已声明的非键词 = 必须为空。
+      const cExtra = [
+        ...new Set(
+          [...c.line.matchAll(/`([^`]+)`/g)]
+            .map((m) => m[1])
+            .filter((tok) => /^[a-z][a-zA-Z0-9]*$/.test(tok))
+            .filter((tok) => !config.includes(tok) && !enumValues.includes(tok) && !NON_KEY_TOKENS.has(tok)),
+        ),
+      ]
+      assert.deepEqual(
+        cExtra,
+        [],
+        `${f}:${c.no} 的配置声明行列出了真源里**不存在**的键：${cExtra.join(', ')}——` +
+          `真源 CONFIG_SPEC 只有 ${config.join(' / ')}（枚举值 ${enumValues.join('/')} 亦已派生）。` +
+          '⚠️ 这正是本门被逼出来的那次事故的形态：文档声称一个代码里没有的开关，读者照做只会静默失效',
+      )
+    }
+
+    // ③ 命令集：锚 = 首个含 /lunheng-status 的行
+    const k = anchorLine(text, ['/lunheng-status'])
+    assert.ok(k.line, `${f} 未见人类命令声明行（须出现 \`/lunheng-status\`）`)
+    for (const name of commands) {
+      assert.ok(
+        k.line.includes('/' + name),
+        `${f}:${k.no} 的命令声明行漏了 \`/${name}\`。真源 = lib/commands.js（共 ${commands.length} 条：${commands.join(' / ')}）`,
+      )
+    }
+    // 反方向：不得多出真源没有的命令。负向先行断言排除**技能目录路径**（`/lunheng-article-pipeline`
+    // 会被 `\/lunheng-[a-z]+` 截成 `lunheng-article`，那是路径不是命令）。
+    const kExtra = [...new Set([...k.line.matchAll(/\/lunheng-[a-z]+(?![-\w])/g)].map((m) => m[0].slice(1)))].filter(
+      (n) => !commands.includes(n),
+    )
+    assert.deepEqual(
+      kExtra,
+      [],
+      `${f}:${k.no} 的声明行列出了真源里**不存在**的命令：${kExtra.join(', ')}——真源 lib/commands.js 只有 ${commands.join(' / ')}`,
+    )
+
+    // ④ 技能集：整文件覆盖（技能名可在描述段与目录树任一处出现）
+    for (const name of skills) {
+      assert.ok(
+        text.includes(name),
+        `${f} 全文未提及技能 \`${name}\`。真源 = skills/*/SKILL.md 的 frontmatter name（共 ${skills.length} 个：${skills.join(' / ')}）。` +
+          '⚠️ 漏声明的后果：按文档部署的人「装了什么」与事实不符（实例：lunheng-commands 曾在四语 README 里 0 命中）',
+      )
+    }
+  }
+})
+
+test('C-1 反向自证：本门的派生与锚点对「人为删一个工具名」敏感（防空转）', () => {
+  // 用内存中的字符串模拟「有人从 README 删掉一个工具名」，验证断言路径真的会红，
+  // 而不是因为锚点找错行 / 集合为空而恒真。
+  const { tools } = deriveCodeFacts()
+  const tampered = readFileSync(join(ROOT, 'README.md'), 'utf8').replaceAll(tools[2], 'REMOVED_TOOL')
+  const t = anchorLine(tampered, [tools[0]])
+  assert.ok(t.line, '锚点应仍在（只删了第三个工具名）')
+  const missing = tools.filter((n) => !t.line.includes(n))
+  assert.deepEqual(
+    missing,
+    [tools[2]],
+    '反向自证失败：人为删掉一个工具名后，本门应当恰好报出那一个缺失项；' +
+      '若 missing 为空说明断言写错了对象（门恒真），若多报说明锚点选错',
   )
 })

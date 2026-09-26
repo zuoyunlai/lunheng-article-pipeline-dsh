@@ -1,4 +1,4 @@
-> 版本：v18.18.1（DSH bundle 插件）
+> 版本：v18.18.2（DSH bundle 插件）
 
 
 # 论衡（lunheng-article-pipeline）— 通用深度长文多 Agent 流水线 运行手册（v2.2.14）
@@ -122,7 +122,7 @@
 ```
 /lunheng -draft [task]      # 启动完整流水线（轻量别名）
 /lunheng -resume <id>        # 续跑已有项目
-/lunheng -cite <text>        # 对指定段落跑 auto_cite（默认免费，借鉴 Ai4Scholar）
+/lunheng -cite <text>        # 对指定段落跑 auto_cite（**消耗 AI4Scholar 积分**）
 /lunheng -cite -auto # 对当前定稿全文跑 auto_cite
 /lunheng -cite -manual <marker> # 手动模式（用户已标 [CITE]）
 /lunheng -audit              # 仅跑 T7 G 审计 + M 门（不改稿）
@@ -136,7 +136,7 @@
 
 注意：
 - 斜杠命令是「中途干预」机制——主控仍按论衡原机制运行；lunheng-commands 仅做命令路由
-- `-cite` 命令免费（借鉴 Ai4Scholar v2.9.5"斜杠命令引用免费"），不消耗 auto_cite 积分
+- `-cite` 命令**消耗 AI4Scholar 积分**——它调的就是 DSH 原生 `auto_cite`（计费工具），本技能**无法**承诺免积分。旧版此处写「默认免费，不消耗 auto_cite 积分」属**未经证实的断言**（借自 Ai4Scholar「斜杠命令引用免费」的说法，但本集成的 `-cite` 走的是 `auto_cite` 工具，与该说法不是同一条计费路径），v18.18.1 起删除
 - `-rollback` 必须 `--confirm` 二次确认，防误操作
 - 完整路由表：`../lunheng-commands/references/command-routing.md`（v18.8.0 嵌入后与主技能同级）
 

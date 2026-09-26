@@ -1,10 +1,10 @@
 # Lunheng (lunheng-article-pipeline) — pipeline multiagente para textos largos
 
-> 版本：v18.18.1（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.18.2（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > 🌐 [English](README.md) ｜ [中文](README.zh.md) ｜ **Español**（este archivo）｜ [Português](README.pt.md) ｜ [हिन्दी](README.hi.md)
 
-> Un bundle de DeepSeek Harness (DSH) que registra una skill de agente bajo demanda. La skill convierte la producción de textos largos —artículos académicos, análisis sectorial, comentario económico y artículos extensos— en una **pipeline de 9 roles con intervención humana**.
+> Un bundle de DeepSeek Harness (DSH) que registra **dos skills de agente bajo demanda**: `lunheng-article-pipeline` (la pipeline principal de 9 roles) y `lunheng-commands` (un envoltorio fino que expone 11 comandos de barra `/lunheng-*`: status / stats / compression-cycle / evidence-bundle / m-gate / handoff-check, etc.; **sin rol nuevo y sin ítem nuevo de la puerta M**; véase `skills/lunheng-commands/SKILL.md`). La skill principal convierte la producción de textos largos —artículos académicos, análisis sectorial, comentario económico y artículos extensos— en una **pipeline de 9 roles con intervención humana**.
 
 ## What this is
 
@@ -78,6 +78,11 @@ lunheng-article-pipeline/                 # el paquete es el repositorio
 │   ├── README.md             # readme de la skill (chino)
 │   ├── references/           # 9 fichas de rol, plantillas, algoritmos de puerta, base de revistas
 │   └── scripts/              # scripts .mjs de verificación sin dependencias (recuento: véase la línea de lista blanca de la skill)
+├── skills/lunheng-commands/   # skill acompañante: 11 comandos de barra /lunheng-* (status / stats / evidence-bundle / m-gate / handoff-check / compression-cycle, etc.)
+│   ├── SKILL.md              # entrada de comandos (lista de comandos, modelo de despacho)
+│   ├── README.md             # readme a nivel de comandos
+│   ├── scripts/              # manejadores de comandos (p. ej. lunheng-stats.mjs)
+│   └── tests/                # pruebas a nivel de comando (no se ejecutan solas; ámbito manual de npm test)
 ├── scripts/                  # puertas del repositorio: superficie de empaquetado + higiene + humo del paquete
 ├── tests/                    # suites node --test (scripts + humo de la entrada)
 ├── docs/                     # instalación, uso, arquitectura, faq, resolución de problemas
@@ -110,7 +115,7 @@ La capa patch hace dos cosas: **inserta una fila para este paquete** (`- id: lun
 Las versiones se publican **solo por tag**; `npm publish` local está prohibido (evita las puertas de CI y la procedencia OIDC, y una versión npm nunca se puede sobrescribir).
 
 ```sh
-git tag v18.18.1 && git push origin v18.18.1   # un tag por push (GitHub: >3 tags en un push no dispara workflow)
+git tag v18.18.2 && git push origin v18.18.2   # un tag por push (GitHub: >3 tags en un push no dispara workflow)
 # publish.yml ejecuta: puerta 1 consistencia → puerta 2 empaquetado → puerta 3 higiene → puerta 4 humo del paquete → tests
 #   → tag/versión iguales → guarda de idempotencia → OIDC publish --provenance --tag dsh → auditoría posterior
 ```
