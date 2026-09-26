@@ -159,4 +159,8 @@ jobs:
       - name: 随包脚本回归测试（node --test）
         # 用引号保护的 glob：让 Node 自己展开（bash 与 pwsh 都能原样传递）
         # CI 用**标准隔离模式**（受限 DSH 会话里的 `--test-isolation=none` 降级跑法只用于本地，见 CONTRIBUTING）
-        run: node --test "tests/**/*.test.mjs"
+        # v18.18.3（审计 D-1③）：补 `skills/*/tests/**` —— 子技能 `lunheng-commands` 的
+        # route.test.mjs（22 用例）此前**不在任何自动触发点**：根 test 脚本只 glob `tests/**`，
+        # 本工作流 grep `lunheng-commands` 0 命中。它只靠人手动跑，等于没有回归网。
+        # 该 glob 与 package.json 的 `test` / `test:no-isolation` 三处同形（判据 = 用例总数 289）。
+        run: node --test "tests/**/*.test.mjs" "skills/*/tests/**/*.test.mjs"

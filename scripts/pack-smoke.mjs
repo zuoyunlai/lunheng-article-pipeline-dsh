@@ -23,6 +23,7 @@ import { tmpdir } from 'node:os'
 import { join, dirname, resolve, relative } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { installExitGuard } from '../skills/lunheng-article-pipeline/scripts/_lib/exit-guard.mjs'
+import { scanShipped, describeViolations } from './_lib/pack-negative.mjs' // D-1②：与 repo-hygiene 共用同形负清单
 
 installExitGuard()
 
@@ -269,11 +270,14 @@ try {
   //   ⚠️ 如实边界：npm **强制包含**根目录 `README*` 与 `LICENSE`（实测：从 `files` 白名单删掉、
   //   或加 `.npmignore` 排除，**均无效**；`npm pack --dry-run --json` 实证）。故五语 README 保留在包内，
   //   这是 npm 的规则，不是本仓疏漏——不为它俩造假红灯。
-  const mustNotShip = ['CHANGELOG.md', 'CONTRIBUTING.md', 'tests/', 'scripts/', '.github/']
-  for (const m of mustNotShip) {
-    const hit = shipped.filter((f) => (m.endsWith('/') ? f.startsWith(m) : f === m))
-    if (hit.length === 0) ok(`发布面已裁剪：不含 ${m}（${m.endsWith('/') ? '目录' : '仓库向文件'}）`)
-    else bad(`发布面污染：${m} 随包了（${hit.length} 个，如 ${hit[0]}）——仓库向内容不得进发布物`)
+  //
+  //   v18.18.3（审计 D-1②）：负清单由「仓库根前缀匹配」改为**路径分量匹配**（共用 `_lib/pack-negative.mjs`，
+  //   与 repo-hygiene 同源）。旧口径只看根，导致 `skills/lunheng-commands/tests/`（22 用例）与嵌套
+  //   `package.json` 随包时**本门照打印「已裁剪」**——修掉那两个文件只治症，病在匹配口径。
+  const negViolations = scanShipped(shipped).filter((v) => v.hits.length > 0)
+  for (const v of describeViolations(negViolations)) bad(v)
+  for (const v of scanShipped(shipped).filter((v) => v.hits.length === 0)) {
+    ok(`发布面已裁剪：不含 ${v.name}（${v.kind === 'dir' ? '目录' : '仓库向文件'}·${v.scope} 作用域）`)
   }
   ok(`发布物解包体积 ${(unpackedSize / 1024).toFixed(0)} KB / ${shipped.length} 个文件`)
 } finally {

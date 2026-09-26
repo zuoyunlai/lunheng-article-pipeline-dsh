@@ -31,6 +31,7 @@ import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join, dirname, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { scanShipped } from './_lib/pack-negative.mjs' // D-1②：与 pack-smoke 共用同形负清单（结构上同形，不靠两份代码同步）
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const isCI = Boolean(process.env.GITHUB_ACTIONS)
@@ -183,20 +184,16 @@ if (pack.status !== 0) {
     //   本清单是**机械防线**：谁把 `CHANGELOG.md` 加回 `files` 白名单，这里立刻报（不是靠自觉）。
     //   边界（如实）：npm **强制包含** 根目录 `README*` 与 `LICENSE`（实测 `files` 删掉、`.npmignore`
     //   排除均无效）——故五语 README 保留在包内，这是 npm 的规则而非本仓疏漏。
-    const mustNotShipFiles = [
-      'CHANGELOG.md',
-      'CONTRIBUTING.md',
-      'scripts/repo-hygiene-check.mjs',
-      'scripts/plugin-surface-check.mjs',
-      'scripts/pack-smoke.mjs',
-    ]
-    const mustNotShipDirs = ['tests/', 'scripts/', '.github/']
-    for (const m of mustNotShipFiles) {
-      if (files.includes(m)) fail('pack', `发布面污染：${m} 不应随包（仓库向文件；见 CHANGELOG ## 18.2.0 的裁剪口径）`)
-    }
-    for (const d of mustNotShipDirs) {
-      const hit = files.filter((f) => f.startsWith(d))
-      if (hit.length) fail('pack', `发布面污染：${d} 下有 ${hit.length} 个文件随包（如 ${hit[0]}）——仓库向目录不得进发布物`)
+    //
+    //   v18.18.3（审计 D-1②）：负清单由「仓库根前缀匹配」改为**路径分量匹配**，与 `pack-smoke.mjs`
+    //   共用 `_lib/pack-negative.mjs`。旧口径 `f.startsWith('tests/')` 只看根，导致
+    //   `skills/lunheng-commands/tests/`（22 用例）与嵌套 `package.json` 随包时**本门照打印零污染**。
+    //   多数条目收敛进共用清单后，原先在此逐条硬写的 `scripts/*.mjs` 由 `scripts`（root 作用域）覆盖。
+    const negViolations = scanShipped(files)
+    for (const v of negViolations) {
+      if (v.hits.length) {
+        fail('pack', `发布面污染：${v.name}（${v.kind === 'dir' ? '目录' : '文件'}·${v.scope} 作用域）下有 ${v.hits.length} 个随包（如 ${v.hits[0]}）——${v.why}`)
+      }
     }
     // 只数**顶层**随包脚本（`scripts/_lib/` 是共享库，不算入口；v2.5.2-dsh.13）
     const scripts = files.filter((f) => /^skills\/lunheng-article-pipeline\/scripts\/[^/]+\.mjs$/.test(f))
@@ -208,9 +205,10 @@ if (pack.status !== 0) {
     if (declared.length === 0) fail('pack', 'SKILL.md 未声明随包脚本白名单（规则 ⑩ 同源）')
     else if (scripts.length !== declared.length) fail('pack', `发布包内随包脚本数 ${scripts.length} ≠ SKILL.md 白名单 ${declared.length}（白名单不一致）`)
     const unpacked = Number(arr[0]?.unpackedSize ?? 0)
+    const negClean = negViolations.filter((v) => v.hits.length === 0).length
     notes.push(
       `⑥ 发布面：${files.length} 个文件 / 随包脚本 ${scripts.length} 个（与 SKILL.md 白名单一致）/ 关键路径齐备` +
-        ` / 仓库向文件零污染（${mustNotShipFiles.length} 个文件 + ${mustNotShipDirs.length} 个目录）` +
+        ` / 仓库向零污染（负清单 ${negClean}/${negViolations.length} 条无命中；口径 = 路径分量匹配，非根前缀）` +
         (unpacked ? `｜解包 ${(unpacked / 1024).toFixed(0)} KB` : ''),
     )
   } catch (e) {

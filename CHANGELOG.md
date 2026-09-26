@@ -2,6 +2,59 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.18.3 — 2026-09-26
+
+> **性质**：**发布面与回归网加固批**——落地审计 `D-1` 的 ②③ 两子项。无新增功能。
+>
+> **为什么是这一版**：`D-1①` 在 v18.17.0 已落地（`files` 的两个负向项），但那只治了症——**病在门的匹配口径**（见下 §一）。同批的 ③ 更直白：`lunheng-commands` 的 22 个用例跑得通、全绿，却**不在任何自动触发点**。
+
+### 一、`D-1②`：发布面负清单由「仓库根前缀」改为「路径分量」（两门共用同一份口径）
+
+**漏检是怎么发生的**：两处门都写 `f.startsWith('tests/')`——**只看仓库根**。于是 `skills/lunheng-commands/tests/route.test.mjs`（22 用例）与 `skills/lunheng-commands/package.json`（自带 `engines >=18`，与本包 `^22.19.0 || >=24` 冲突；bundle 形态下 `peerDependencies: lunheng-article-pipeline` 亦无意义）**随了包**，而 `pack-smoke` 与 `repo-hygiene` **照打印「仓库向文件零污染」**。
+
+**修法的关键不是「多排除两个文件」，而是把口径改对**：新增 `scripts/_lib/pack-negative.mjs`，两门**共用**它（写成两份相同代码只是承诺同形，共用一份才是结构上同形）。
+
+**每条负清单项显式声明作用域**，因为一律「任意层级」会让发布物残废：
+
+| 条目 | kind | scope | 理由 |
+|---|---|---|---|
+| `tests` | dir | `any` | 仓库向测试目录，任意层级都不得随包 |
+| `scripts` | dir | **`root`** | **只排仓库根**——`skills/**/scripts/` 是随包脚本本体，必须发货 |
+| `.github` | dir | `any` | CI 配置对装包用户无用 |
+| `CHANGELOG.md` / `CONTRIBUTING.md` | file | `any` | 仓库向文件 |
+| `package.json` | file | **`nested`** | 根 `package.json` 是 npm 必需且强制；**嵌套 manifest** 才该排 |
+
+> `scripts` 这一条是**反向的坑**：如果照「any 层级」一刀切，`skills/lunheng-article-pipeline/scripts/*.mjs`（技能的全部机检能力）会被排除，发布物直接残废。故作用域必须逐条声明，不允许笼统匹配。
+
+### 二、`D-1③`：子技能测试接入自动触发点（此前**从不自动跑**）
+
+`skills/lunheng-commands/tests/route.test.mjs` 的 **22 个用例**能跑通且全绿，但根 `npm test` 只 glob `tests/**`、CI 也 grep `lunheng-commands` 零命中——**它只靠人手动跑，等于没有回归网**。三处已同形补上 `skills/*/tests/**/*.test.mjs`：`package.json` 的 `test` / `test:no-isolation` + `.github/workflows/ci.yml` 一处。
+
+**用例总数 267 → 294**（267 根 + 22 子技能 + 5 新增）。判据**不写死数字**（会随新增用例过期），而是「子技能那 22 个必须出现在总计里」。
+
+### 三、新增回归网：`tests/pack-negative.test.mjs`（5 用例）
+
+钉住**口径本身**而非那两个具体文件：五条负清单的 scope/kind/why 形态、任意层级命中、`root` 作用域不误伤 `skills/**/scripts/`、`nested` 放行根 `package.json`、以及**真实 `npm pack` 清单必须零命中**（防「门自己写了恒真断言」，并带非空前置断言防空转）。
+
+### 四、反向自证（§5.3 DoD）
+
+`scripts/d1-reverse-proof.mjs`（仓库级，不随包）：
+
+| 自证 | 结果 |
+|---|---|
+| 基线两门皆绿 | ✓ |
+| ① 摘掉 `!skills/lunheng-commands/tests` → 两门变红；恢复复绿 | ✓ |
+| ② 摘掉 `!skills/lunheng-commands/package.json` → 两门变红；恢复复绿 | ✓ |
+| ③ **阴性对照**：旧前缀口径对这两条**全漏**（0 命中），新口径 2 命中 | ✓ |
+| ④ **过度收紧对照**：`scripts` root 作用域只命中根，不误伤 `skills/**/scripts/` | ✓ |
+
+> ③ 是本批最该看的一条：它证明**这个修复是承重的、不是装饰性的**——旧口径确实抓不到，不是「碰巧也能抓到」。
+
+### 五、仍未做（如实登记）
+
+`D-1` 已完结（①②③三项齐）。D 族余下：`D-2`（发布物含 3 处作者本机绝对路径 + `repo-hygiene` 规则⑦ 补「本机绝对路径」模式）、`D-3`（`peerDependencies` 下限从未被 CI 验证）。
+C 批余下机械化：`C-2`/`C-5 后半`/`C-7 后半`/`C-9`/`C-11`/`C-12`/`C-13`；另有 `E 族单源规则`、`A-7③/④`、`F-5 批量`。
+
 ## 18.18.2 — 2026-09-26
 
 > **性质**：**机械化加固批**——把审计 `C-1`（报告自称「本批的承重项」）要求的对账门真正装上，并修掉它当场抓出的 4 处漏改 + 7 处假声明。无新增功能。
