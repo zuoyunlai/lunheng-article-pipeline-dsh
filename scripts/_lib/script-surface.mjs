@@ -11,8 +11,14 @@
 // 该处已修；本模块补的是**防复发**——清单改为**从源码派生**，与文档对账。
 //
 // ── 分档口径（这是本次顺带改正的一处：文档原来把两档混为一谈）──────
-//   · **写内容**：`writeFileSync` / `writeWithSafety` / `appendFileSync` / `copyFileSync` /
-//     `renameSync` / `rmSync` / `unlinkSync`——会改变文件**内容**。
+//   · **写内容**：`writeFileSync` / `writeReport` / `writeWithSafety` / `appendFileSync` /
+//     `copyFileSync` / `renameSync` / `rmSync` / `unlinkSync`——会改变文件**内容**。
+//     ⚠️ `writeReport`（v18.29.1 补）：词表第一版**漏收它**，而它是 `_lib/destructive-write.mjs`
+//     的 `--report` 唯一写盘出口（内部转 `writeWithSafety`）；后果是**只用 `writeReport` 写报告的
+//     脚本被算成「只读」**——`cite-coverage-check` / `final-check` / `g-audit-check` / `journal-fit` /
+//     `m-gate-check` / `meta-synthesize` / `methodology-check` / `sources-index` / `structure-check` 九个。
+//     这正是本模块自己开头写的那句「失真方向几乎总是低报执行面」——**门也会犯它要抓的错**，
+//     故补词表这件事必须与「反向自证」同时做（见 `tests/script-surface.test.mjs` 的 writeReport 用例）。
 //   · **仅建目录**：只命中 `mkdirSync`——只造目录，不写内容（`--report` 输出目录之类）。
 //   · **子进程**：`spawnSync` / `execSync` / `execFileSync` / `spawn` / `exec`。
 // 文档原先把 `final-check.mjs`（仅 mkdirSync）与真正的写内容脚本并列，又漏了三个真写内容的
@@ -47,6 +53,7 @@ const CONTENT_WRITE_PATTERNS = [
   ['rmSync', /(?<![\w.])rmSync\s*\(/g],
   ['unlinkSync', /(?<![\w.])unlinkSync\s*\(/g],
   ['writeWithSafety', /(?<![\w.])writeWithSafety\s*\(/g],
+  ['writeReport', /(?<![\w.])writeReport\s*\(/g], // v18.29.1：词表第一版漏收它 → 9 个只经它写报告的脚本被算成只读
 ]
 const MKDIR_ONLY_PATTERN = /(?<![\w.])mkdirSync\s*\(/
 
