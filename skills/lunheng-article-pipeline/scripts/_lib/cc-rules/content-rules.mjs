@@ -435,4 +435,85 @@ const HISTORY_TOKEN_RE = /此前|曾经|旧版|已删|已移除|已作废|历史
   }
 }
 
+// ㉙ G 项主清单口径（v18.34.0 新增）——**真源 = `_lib/mgate-gates/mexist-gates.mjs` 的 `G_MAIN` 常量**。
+//   为什么需要（本批实测到四处同时漂移，且三种口径并存）：
+//     · `audit-checklist-quickref.md:14` 写「G0-G14 主项，**14 项**硬门」——**而 M-Gate-Algorithm 的「真源声明」
+//       恰恰指向 quickref**：真源自己错了，四处引它的人各错各的；
+//     · `glossary.md:128` / `:455` 写「**14 项**硬门」/「**14 主项**」；
+//     · `pipeline-readme.md` 的 T7 派发话术第 1 条**只列到 G13**（漏 G14）——**主控照抄派发话术**是该路径的常规动作，
+//       于是审计报告会漏 G14 → **M-Exist-9 判 P1**，而直到 T8 才可能被发现。
+//   为什么此前没有任何门抓到：M 门项数规则 ⑥b **刻意豁免**了前缀含「G0-G14 / G 清单」的行（防把 G 项数误读成
+//   M 门项数——该豁免本身正确，其反例清单第 3 条引的就是 quickref 那行），于是这块成了**盲区**，漂移正好落在里面。
+//   本规则把盲区补上（**⑥b 的豁免一个字不动**）。
+//   两条判据：
+//     ① **计数**：任何「G0-G14 … N 项/个」的声明必须 == `G_MAIN.length`（显式引用旧值的行豁免）；
+//     ② **清单**：T7 派发话术那条「产出 audits/审计报告-vN.md：G0 …」必须**列全** G_MAIN。
+//   刻意不查 G15：它是**模式相关**项（仅在任务简报启用「引用数量与质量控制」时必写），与 M-Exist-9 的 note9
+//   同一处置——本门看不到任务简报，一律要求会造假阳性。
+{
+  const mgPath = join(ROOT, 'scripts', '_lib', 'mgate-gates', 'mexist-gates.mjs');
+  if (existsSync(mgPath)) {
+    const mgSrc = readFileSync(mgPath, 'utf8');
+    const gm = /const\s+G_MAIN\s*=\s*\[([^\]]*)\]/.exec(mgSrc);
+    if (!gm) {
+      errors.push('[P0 派生源失效] mexist-gates.mjs 里找不到 `G_MAIN` 常量——规则 ㉙ 的派生源失效（它是 M-Exist-9 判「审计报告 G 项覆盖」的清单真源）');
+    } else {
+      const G_MAIN = [...gm[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+      const N = G_MAIN.length;
+      if (N < 10) {
+        errors.push(`[P0 派生源失效] 从 G_MAIN 只解析出 ${N} 个 G 项（应在 15 个左右）——派生退化会让规则 ㉙ 恒真`);
+      } else {
+        // 中文数字（文档里两种写法都在用：「15 项」与「十五个主项」）
+        const CN = { 十: 10, 十一: 11, 十二: 12, 十三: 13, 十四: 14, 十五: 15, 十六: 16 };
+        const toNum = (s) => (CN[s] !== undefined ? CN[s] : Number(s));
+        const G_LABEL = G_MAIN.map((id) => new RegExp(`(?<![A-Za-z0-9])${id.replace(/[.-]/g, (c) => `\\${c}`)}(?![0-9.])`));
+        const HISTQ = /旧版|旧文|历史|废止|旧口径/;   // 清仓注解必须能引用旧数字（与 ⑥b 同口径）
+        for (const f of active) {
+          const rel = relative(ROOT, f).replaceAll('\\', '/');
+          readFileSync(f, 'utf8').split('\n').forEach((l, i) => {
+            if (HISTQ.test(l)) return;
+            // ① 计数声明：G0-G14 匹配点前后一个**窄窗口**内的「N 项|N 个|N 主项」
+            const era = /G0\s*[-–]\s*G14/.exec(l);
+            if (era) {
+              const win = l.slice(Math.max(0, era.index - 10), era.index + 45);
+              for (const m of win.matchAll(/(\d+|十[一二三四五六]?|二十)\s*(?:主)?\s*(?:项|个)/g)) {
+                // ⚠️ 三条防误报（全部由反向自证实测逼出来）：
+                //   · **标识符左边界**：「G14 主项」里的 `14 主项` 会被读成计数声明——**这正是 ⑩b 在 v18.22.3
+                //     踩过的同一个坑**（当时是 `eff4-probe2.mjs` 的 `2.mjs` 被读成「写 2 个」）。修法同款：
+                //     数字**前**紧邻字母/数字/`_`/`-`/`.` 即属名字的一部分，不算计数。
+                //   · 比较量词：「缺 >3 项 → P0」（`07-审计-auditor.md:193` 实测）
+                const pre = win.slice(Math.max(0, m.index - 3), m.index);
+                if (/[A-Za-z0-9._-]$/.test(pre)) continue;
+                if (/[><≥≤≈~＝=]|缺\s?$|约\s?$/.test(pre)) continue;
+                if (toNum(m[1]) !== N) {
+                  errors.push(
+                    `[P1 G 项数口径漂移] ${rel}:${i + 1} 写「${m[0].trim()}」，真源应为 ${N}（真源 = mexist-gates.mjs 的 G_MAIN = G0–G14 共 ${N} 个主项；`
+                    + 'M-Exist-9 按它判审计报告的 G 项覆盖）',
+                  );
+                }
+              }
+            }
+            // ② T7 派发话术的 G 清单必须列全。
+            //   ⚠️ 定位必须精确到**清单行**：第一版按「含 审计报告-vN.md + G0」定位，实测对三处**散文提及**误报
+            //   （`AGENTS.md:22` 的「audits/审计报告-vN.md（G0-G14 全项检查）」、`06 卡:109` 的「输出 G0-G14 检查项结论」、
+            //   `M-Gate-Algorithm.md:1049` 的「检查对象：… 对 G0-G14 十五个主项的覆盖」）——那三处**本来就不该列全 G 项**。
+            //   判据（清单行的构造特征）：文件名**紧跟冒号**再接 `G0`，且该行至少出现 5 个 G 标签（防「一句话提到 G0」被当清单）。
+            //   边界（如实）：若将来派发话术改写成不含冒号的形态，本支会**静默不判**（清单漏项回到无门状态，与改前同）。
+            const isListLine = /审计报告-vN\.md\s*[:：]\s*`?G0/.test(l) && G_LABEL.filter((re) => re.test(l)).length >= 5;
+            if (isListLine) {
+              const missing = G_MAIN.filter((_, k) => !G_LABEL[k].test(l));
+              if (missing.length) {
+                errors.push(
+                  `[P1 G 项清单漏项] ${rel}:${i + 1} T7 派发话术的 G 清单漏 ${missing.join('、')}——`
+                  + '主控照抄派发话术 → 审计报告漏该 G 项 → M-Exist-9 判 P1（且要到 T8 才可能被发现）',
+                );
+              }
+            }
+          });
+        }
+      }
+    }
+  }
+}
+
 }

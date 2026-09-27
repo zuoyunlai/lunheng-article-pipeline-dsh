@@ -264,3 +264,48 @@ test('A8 断链回归：模板含门认的锚点、两份文档指向它，且�
   assert.ok(!j.hard.some((x) => x.check === 'A8'), '模板自身不该触发 A8 硬失败：' + JSON.stringify(j.hard))
   rmSync(d, { recursive: true, force: true })
 })
+
+// ── v18.34.0：A4c ②「被审正文:」软档 —— **无法收紧，改为把触发条件写死 + 补模板** ─────────────
+// 实测依据（2026-09-27 扫 `run/**`）：**22 份审计报告 22/22 都没有该字段**（规则 v18.12.2 才落地，
+//   最晚一份报告写于规则之前）→ 与 A8 那次不同，**没有「存量零落档」可以安全收紧**。
+// 故本批：① 软提示必须**写明触发条件**（可检索，防「已排期」变成「算了」）；② 补
+//   `templates/审计报告-template.md`，让「新报告天然含该字段」变成**产物形状**。
+// A4c 与 A8 的一处关键差别：A4c 要**真路径在盘**，所以**未填写的模板必然报**（这是对的——报告必须填真路径）。
+//   故断链用例验的是「**照模板填** ⇒ 不报」，而不是「模板原样不报」。
+test('A4c ②：缺「被审正文:」仍软，但软提示必须写明触发条件（防「已排期」变「算了」）', () => {
+  const d = makeProject({ 'audits/审计报告-v1.md': '# 审计报告\n## 结论\n通过。\n' })
+  const j = parseJson(run([SCRIPT, '--project', d, '--role', 'T7', '--level', 'strict']))
+  const a4c = j.soft.find((x) => x.check === 'A4c' && /被审正文/.test(x.detail))
+  assert.ok(a4c, '缺声明应报 A4c 软提示：' + JSON.stringify(j.soft))
+  assert.match(a4c.detail, /触发条件/, '软提示必须写明收紧的触发条件与可检索的名字')
+  assert.match(a4c.detail, /审计报告-template\.md/, '触发条件必须指向那个模板（否则后来者不知道去哪找）')
+  assert.ok(!j.hard.some((x) => x.check === 'A4c' && /被审正文/.test(x.detail)), '这一档本批不得判硬（存量 22/22 全落此档）')
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('A4c ② 断链回归：模板含门认的锚点形状、两份文档指向它，且**照模板填**后门不报', () => {
+  const SKILL = join(SCRIPTS, '..')
+  const TPL = join(SKILL, 'references', 'templates', '审计报告-template.md')
+  const tpl = readFileSync(TPL, 'utf8')
+
+  // ① 模板的声明行必须是**门能认的形状**（否则填了真路径也匹配不上）。
+  //    ⚠️ 必须与门的正则逐字同形——模板第一版写的是加粗 `**被审正文**：`，而门当时的正则要求冒号紧跟词后
+  //    → **照模板填也匹配不上**。这正是本用例要挡的断裂（同规则 ⑫ 在 v18.2.4 修过的形态）。
+  assert.match(tpl, /\*{0,2}被审正文\*{0,2}\s*[：:]\s*`?[^\s`|，。]*\.md/, '模板缺少 A4c 认的「被审正文: …md」声明行')
+  // ② 模板必须带 G0-G14 十五行骨架（M-Exist-9 的锚点）
+  const gRows = [...tpl.matchAll(/^\|\s*G\d+(?:\.\d+|-\d)?\s*\|/gm)].map((m) => m[0])
+  assert.ok(gRows.length >= 15, `模板 G 骨架不足 15 行（实测 ${gRows.length}）——照模板填会漏项`)
+  for (const f of ['references/agents/07-审计-auditor.md', 'references/pipeline-readme.md']) {
+    assert.match(readFileSync(join(SKILL, f), 'utf8'), /审计报告-template\.md/, `${f} 必须指向审计报告模板`)
+  }
+
+  // ③ 「照模板填」= 把声明行的槽位换成真实路径 → 门不得再报 A4c 的声明缺项
+  const filled = tpl.replace(/被审正文\*\*：[^\n]*/, '被审正文**：`drafts/初稿-v1.md`　｜　**审计时间**：2026-09-27')
+  const d = makeProject({ 'audits/审计报告-v1.md': filled })
+  const j = parseJson(run([SCRIPT, '--project', d, '--role', 'T7', '--level', 'strict']))
+  assert.ok(
+    !j.soft.some((x) => x.check === 'A4c' && /被审正文/.test(x.detail)),
+    '照模板填了真实路径后不该再报 A4c ②：' + JSON.stringify(j.soft),
+  )
+  rmSync(d, { recursive: true, force: true })
+})

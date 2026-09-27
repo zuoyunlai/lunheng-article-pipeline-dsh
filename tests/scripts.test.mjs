@@ -650,6 +650,56 @@ test("consistency-check ⑰'：默认开启（口径三要素缺一即报）+ �
   rmSync(d, { recursive: true, force: true })
 })
 
+// v18.34.0：规则 ㉙（G 项主清单口径）——真源 = `_lib/mgate-gates/mexist-gates.mjs` 的 `G_MAIN`。
+// 为什么需要：M 门项数规则 ⑥b **刻意豁免**了前缀含「G0-G14 / G 清单」的行（防把 G 项数误读成 M 门项数，
+//   该豁免本身正确）——于是 G 项数成了**盲区**，实测该盲区里同时漂了四处（三处计数写 14、派发话术漏列 G14）。
+// 本用例锁四件事：① 计数漂移必报；② 派发话术清单漏项必报；③ 防误报：`G14 主项` 不得被读成「14 主项」
+//   （**⑩b 在 v18.22.3 踩过的同款坑**，修法同为「标识符左边界」）；④ 防误报：比较量词「缺 >3 项」不算项数。
+test('consistency-check ㉙：G 项数与 G 清单对账（含两处防误报回归）', () => {
+  const { d, R } = mkRepo()
+  const glossary = join(R, 'references', 'glossary.md')
+  const dispatch = join(R, 'references', 'pipeline-readme.md')
+  const gBase = readFileSync(glossary, 'utf8')
+  const dBase = readFileSync(dispatch, 'utf8')
+  const check = () => {
+    const r = run([join(R, 'scripts', 'consistency-check.mjs')])
+    return r.out
+  }
+
+  // ① 计数漂移：真源 15 → 写成 14（本批实测的真实漂移形态）
+  writeFileSync(glossary, gBase.replace('**15 项硬门 = 机检硬门**', '**14 项硬门 = 机检硬门**'))
+  let out = check()
+  assert.match(out, /G 项数口径漂移/, 'G 项数写成 14 必须报：' + out.slice(0, 300))
+  writeFileSync(glossary, gBase)
+
+  // ② 清单漏项：把派发话术里的 G14 去掉（本批实测的真实漂移形态）
+  writeFileSync(dispatch, dBase.replace(' / **G14 中文 AI 痕迹**', ''))
+  out = check()
+  assert.match(out, /G 项清单漏项/, '派发话术漏 G14 必须报：' + out.slice(0, 300))
+  assert.match(out, /漏 G14/, '报错必须点名漏了哪一项')
+  writeFileSync(dispatch, dBase)
+
+  // ③ 防误报：`G14 主项` 不是「14 主项」（标识符左边界；⑩b v18.22.3 同款坑）
+  writeFileSync(glossary, gBase + '\n- 探针：G0-G14 主项逐条执行即可。\n')
+  out = check()
+  assert.ok(!/G 项数口径漂移/.test(out), '「G14 主项」不得被读成计数声明：' + out.slice(0, 300))
+
+  // ④ 防误报：比较量词「缺 >3 项 → P0」不是 G 项数
+  writeFileSync(glossary, gBase + '\n- 探针：G0-G14 十五个主项；缺 >3 项 → P0。\n')
+  out = check()
+  assert.ok(!/G 项数口径漂移/.test(out), '「缺 >3 项」不得被读成 G 项数：' + out.slice(0, 300))
+
+  // ⑤ 防空转：真源必须真的从代码派生（G_MAIN 找不到时是 P0，而不是静默不判）
+  const mg = join(R, 'scripts', '_lib', 'mgate-gates', 'mexist-gates.mjs')
+  const mgBase = readFileSync(mg, 'utf8')
+  writeFileSync(mg, mgBase.replace('const G_MAIN =', 'const G_MAIN_X ='))
+  out = check()
+  assert.match(out, /派生源失效/, 'G_MAIN 消失时必须响亮报错（否则本规则恒真）')
+  writeFileSync(mg, mgBase)
+  writeFileSync(glossary, gBase)
+  rmSync(d, { recursive: true, force: true })
+})
+
 test('m-gate-check M-Exist-7：§6 成本指标必须含 `~NN[MKB]` 或「实测不可得」（v18.6.3 反哺：原只看「字段有内容」漏报，看板 17/21 token 列空）', () => {
   const { d, proj, fin, ev } = mkProject()
   writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
