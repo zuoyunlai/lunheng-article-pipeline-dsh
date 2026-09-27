@@ -87,3 +87,27 @@ test('N-接入面⑥ 反向自证：把 T1 卡的接入面引用行替换成同�
     '把 T1 卡的接入面引用屏蔽后，SOURCE_RE 仍命中 → 「门在此却不生效」的假绿（v18.15.0 教训）',
   )
 })
+
+// ── ⑦ v18.21.3 B：T1/T2/T3 卡主轮默认层不含 web_search 作"主推"（v18.21.2 实测发现 Bing 中文偏置，主人 2026-09-26 授权强约束）────
+// 为什么需要（v18.18.x「长期存活型缺陷共性：不报错、不失败、`ok:true`」）：v18.21.2 真实项目实测
+//   T2/T3 subagent 亲遇 Bing 偏置——主轮默认层含 web_search 是结构性问题，仅靠文档不够，
+//   必须**结构性**强约束 T1/T2/T3 卡的主轮默认层不含 web_search 作"主推"。
+// 边界：
+//   · 只检前 60 行（职责段 + 默认层段）；不检全文（保留 §「检索策略」里「先用 web_search 列 5-10 条候选 URL」措辞的合法性）。
+//   · 「URL 列表生成器」措辞允许（T2/T3 仍可调 web_search 作 query→URL 列表生成器）。
+test('v18.21.3 B：T1/T2/T3 卡主轮默认层（前 60 行）不含 web_search 作「主推」（结构性强约束）', () => {
+  for (const rel of [
+    'references/agents/01-文献检索-literature-scout.md',
+    'references/agents/02-数据检索-data-scout.md',
+    'references/agents/03-案例检索-case-scout.md',
+  ]) {
+    const text = read(rel)
+    const head = text.split('\n').slice(0, 60).join('\n')
+    // 「默认层」段（前 60 行内）不得含「web_search」作主推——判定形式：「默认X源 ... web_search」
+    //   X ∈ {学术层, 网页层, 事件层, 抓取层, 1源, 2源, 3源}
+    assert.ok(
+      !/默认[学术网页事件抓取]+层[^\n]{0,40}web_search/.test(head),
+      `${rel} 主轮默认层（含「默认学术层/网页层/事件层/抓取层」等措辞的前 60 行）含 web_search——v18.21.3 强约束被绕过。\n相关段落：${head.match(/默认[学术网页事件抓取]+层[^\n]*/)?.[0]?.slice(0, 200) ?? '(无匹配段)'}`
+    )
+  }
+})

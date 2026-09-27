@@ -1,4 +1,4 @@
-> 版本：v18.21.2（DSH bundle 插件）
+> 版本：v18.21.3（DSH bundle 插件）
 
 # 角色：案例检索员 Case Scout（T3）
 
@@ -16,12 +16,12 @@
 
 ## 职责
 
-> **v18.21.2 接入面扩展**：默认动作从纯 `web_search + web_fetch` 扩到**默认 3 源 + 备用 3 源**——T3 事件/案例结构是核心，故**默认事件层 + 抓取层**优先；学术背书层在案例需学术支撑时启用（详见 [`../_shared/外部检索源接入面.md`](../_shared/外部检索源接入面.md)）。
+> **v18.21.3 强约束（v18.21.2 验证发现 Bing 中文流量偏置，主人 2026-09-26 授权）**：**T3 主轮默认层不再含 `web_search` 作"主推"**——`web_search` 仅作 **query → URL 列表生成器**（被 `web_fetch` 跟进），不走"搜索式直接读结果"——避免 Bing 中文偏置。详见 [`../_shared/外部检索源接入面.md`](../_shared/外部检索源接入面.md) §3.5。
 >
-> **默认事件层**：`web_search`（DSH 内置，用 `include_domains` 限定财经/商业/行业垂类/官方/国际）+ `web_fetch`。
-> **事件页面抓取层**：`firecrawl`（如 key 配，反爬强场景）—— 官方公告/判决书 PDF / 公司公告原文抓取。
+> **默认事件层**：`web_fetch`（DSH 内置，**精准抓取**已知权威 URL 的真实内容）+ `firecrawl`（如主会话配 key，反爬强场景）—— 官方公告 / 判决书 PDF / 公司公告原文抓取。
+> **URL 列表生成器**：`web_search`（DSH 内置，引擎降级链 bing → exa → tavily → keenable → firecrawl → parallel → ddg → searxng → anysearch；**keyless 也能跑**）——**仅当主轮需要新一批 URL 时启用**，不走"搜索式直接读结果"——避免 Bing 中文偏置（v18.21.2 真实项目实测）。
 > **学术背书层（案例需学术支撑时启用）**：`search_papers` + `search_semantic`（找「案例在学术文献中的讨论」并互引 [Lxx]）——**v18.21.2 新增**。
-> **诚实边界**：「工具面在 ≠ 指引面在」——本卡写明了 subagent 才会主动用；**默认 3 源 + 备用 3 源**硬约束：主轮并行 3 源（`web_search` + `web_fetch` + 学术背书时 `search_papers`），饱和判停后才启用备用层（`firecrawl` / `search_semantic` / `search_google_scholar`），详见接入面文档 §四。
+> **诚实边界**：「工具面在 ≠ 指引面在」——本卡写明了 subagent 才会主动用；**v18.21.3 强约束**：主轮默认层不含 `web_search` 作"主推"，**仅作 URL 列表生成器**；饱和判停后才启用备用层（`web_search` + `firecrawl` / `search_semantic` / `search_google_scholar`），详见接入面文档 §3.5 + §四。
 
 - **专门检索**：具体企业行为/事件/人物/司法案件/行业典型
 - **产出**：`cases/案例卡.md`（按 `references/templates/案例卡-template.md` 模板）；**卡头必写「索引段」**（v2.5.2-dsh 补丁，每条 1 行：编号+事件名(年份)+一句话结论+支撑论点+事件状态，下游 T4/T5 先读索引按需读单条，不必整卡通读）；**索引段必须与正文条目一一对应——由 M 门 M-Form-10 机械校验**（v2.5.2-dsh.17）
