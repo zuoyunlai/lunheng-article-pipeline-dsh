@@ -1,4 +1,4 @@
-> 版本：v18.30.0（DSH bundle 插件）
+> 版本：v18.31.0（DSH bundle 插件）
 
 # 角色：分析员 Analyst（T4）
 

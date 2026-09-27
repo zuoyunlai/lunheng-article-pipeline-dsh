@@ -617,6 +617,39 @@ test('consistency-check ⑮⑯⑰：新规则必须真的会报（派发卡超�
   rmSync(d, { recursive: true, force: true })
 })
 
+// v18.31.0 MEA-2 收口：⑰' 由「`STRICT_PCT=1` 才启用」改为**默认开启**（开关已删）。
+// 判据（报告原文）：把一条仅含百分比、无样本数的句子写回文档 → 规则必红。
+test("consistency-check ⑰'：默认开启（口径三要素缺一即报）+ 三要素齐/白名单不误报", () => {
+  // 判据只看 ⑰' **这一条信号**（`定量断言缺三要素`），不看整体 exit：
+  //   `mkRepo()` 的镜像只带 `skills/` + 包级清单，不带五语 README → 整体 exit 恒为 1
+  //   （7 处与本规则无关的漂移）。用 exit 当判据会把「规则没跑」和「别处漂移」混在一起。
+  const { d, R } = mkRepo()
+  const tplPath = join(R, 'references', 'templates', '案例卡-template.md')
+  const base = readFileSync(tplPath, 'utf8')
+  const pct = () => {
+    const r = run([join(R, 'scripts', 'consistency-check.mjs')])
+    return { hit: /定量断言缺三要素/.test(r.out), out: r.out }
+  }
+  const inject = (body) => writeFileSync(tplPath, base + '\n## 注入试验\n\n' + body + '\n')
+
+  // ① 裸百分比（无口径/日期/样本）→ 必须报，且逐项列出缺哪几个
+  inject('本节降低 60% 成本。')
+  let r = pct()
+  assert.equal(r.hit, true, "⑰' 默认开启后裸百分比必须报（v18.22.0 时它默认关着，本批收口）")
+  assert.match(r.out, /缺：口径\+日期\+样本数/, '缺哪几项必须逐项列出，不能只说「缺三要素」')
+
+  // ② 同一句补上三要素 → 必须放行（证明放行是**内容级**的，不是「见 % 就报」）
+  inject('本节降低 60% 成本（口径 = 单源重试预算；v18.31.0 实测；n = 3 次重试）。')
+  r = pct()
+  assert.equal(r.hit, false, '口径/日期/样本数三者齐备必须放行：' + r.out.slice(0, 400))
+
+  // ③ 白名单：100%（覆盖类）/ 0%（边界类）不得误报
+  inject('本节提升 100% 覆盖率，同时降低 0% 成本。')
+  r = pct()
+  assert.equal(r.hit, false, '100%/0% 属白名单，不得误报：' + r.out.slice(0, 400))
+  rmSync(d, { recursive: true, force: true })
+})
+
 test('m-gate-check M-Exist-7：§6 成本指标必须含 `~NN[MKB]` 或「实测不可得」（v18.6.3 反哺：原只看「字段有内容」漏报，看板 17/21 token 列空）', () => {
   const { d, proj, fin, ev } = mkProject()
   writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
