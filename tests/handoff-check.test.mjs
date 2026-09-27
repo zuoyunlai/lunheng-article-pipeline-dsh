@@ -3,7 +3,7 @@
 // 规格真源：docs/审计与修订记录/交接门-handoff-check-规格-v1.md §9 验收判据（V2 证伪用例 + V3 不误伤）
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { writeFileSync, mkdirSync, rmSync } from 'node:fs'
+import { writeFileSync, mkdirSync, rmSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { SCRIPTS, run, parseJson, tmp } from './_fixtures.mjs'
 
@@ -194,21 +194,25 @@ test('参数错误：缺 --role / 非法 --role / 项目不存在 → exit 10', 
   rmSync(d, { recursive: true, force: true })
 })
 
-// ── v18.22.3 EFF-3：A8 复核报告「已读范围」声明（**本版刻意判软**）────────────────────────────
-// 为什么是软：实测 2026-09-26 本机 `run/**` 下 11 份既有 `复核报告-*.md` **0/11** 含该声明；
-//   判硬会让所有已交付项目一次性变红——按本仓「不对历史形态过度收紧」的既有原则（见 A4c 的同款处置：
-//   `被审正文:` 字段先做可见性），本版只做可见性，待新报告稳定含该节后收紧为硬。
+// ── v18.22.3 EFF-3：A8 复核报告「已读范围」声明（**v18.33.0 半收紧**）─────────────────────
+// 分档现状：**「有节但空」已收紧为硬（21）**；**「完全缺节」仍软**。
+//   收紧的那一档为何安全：实测 2026-09-27 扫 `run/**`，存量复核类报告 **0/6** 连这个节都没有
+//   → 「有节但空」只可能出现在新报告，收紧不牵连历史交付。
+//   仍软的那一档为何不硬：6 份存量全在此档，判硬会让已交付项目重跑时一次性变红（A4c 同款处置）；
+//   **触发条件已写死在软提示文案里** = 首次经 `templates/复核报告-template.md` 产出的报告通过本门后改硬。
 // 三条断言：① 缺声明 → 只进 soft（**不得**进 hard、**不得**影响退出码）；② 有声明+内容 → 不报；
-//   ③ **只有标签没有内容** → 仍报（「只写标签不算声明」）。
-test('A8 缺「已读范围」→ 只软提示，不判硬（v18.22.3 EFF-3 先做可见性）', () => {
+//   ③ **只有标签没有内容** → 进 hard（21）——这一档本批由软转硬。
+test('A8 缺「已读范围」→ 仍只软提示，不判硬（历史 6 份全在此档）', () => {
   const d = makeProject({
     'audits/复核报告-v1.md': '# 复核报告\n## 逐条判定\n| 编号 | 判定 |\n|---|---|\n| P0-1 | 已关闭 |\n',
   })
   const r = run([SCRIPT, '--project', d, '--role', 'T7', '--level', 'strict'])
   const j = parseJson(r)
   assert.ok(j.soft.some((x) => x.check === 'A8'), '应报 A8 软提示：' + JSON.stringify(j.soft))
-  assert.ok(!j.hard.some((x) => x.check === 'A8'), 'A8 本版**不得**判硬（否则既有 11 份报告全红）')
-  assert.notEqual(r.code, 21, 'A8 不得改变退出码（本版是可见性，不是闸门）')
+  assert.ok(!j.hard.some((x) => x.check === 'A8'), 'A8 这一档**不得**判硬（否则存量 6 份报告全红）')
+  assert.notEqual(r.code, 21, '缺声明这一档仍不得改变退出码')
+  // 触发条件必须写在文案里——否则「已排期的动作」会变成「算了」（本仓 A4c 的软档至今没收）
+  assert.match(j.soft.find((x) => x.check === 'A8').detail, /触发条件/, '软提示必须写明收紧的触发条件')
   rmSync(d, { recursive: true, force: true })
 })
 
@@ -222,13 +226,41 @@ test('A8 有「已读范围」+ 内容 → 不报', () => {
   rmSync(d, { recursive: true, force: true })
 })
 
-test('A8 只有标签没有内容 → 仍报（只写标签不算声明）', () => {
+test('A8 只有标签没有内容 → 判硬 21（v18.33.0：本档由软转硬）', () => {
   const d = makeProject({
     'audits/复核报告-v1.md': '# 复核报告\n## 已读范围\n\n## 逐条判定\n| 编号 | 判定 |\n|---|---|\n| P0-1 | 已关闭 |\n',
   })
-  const j = parseJson(run([SCRIPT, '--project', d, '--role', 'T7', '--level', 'strict']))
-  const a8 = j.soft.find((x) => x.check === 'A8')
-  assert.ok(a8, '空声明仍应报 A8：' + JSON.stringify(j.soft))
+  const r = run([SCRIPT, '--project', d, '--role', 'T7', '--level', 'strict'])
+  const j = parseJson(r)
+  const a8 = j.hard.find((x) => x.check === 'A8')
+  assert.ok(a8, '空声明必须判硬：' + JSON.stringify({ hard: j.hard, soft: j.soft }))
   assert.match(a8.detail, /为空/)
+  assert.equal(r.code, 21, '空声明这一档必须走 21（结构不合 → 续接补交）')
+  assert.ok(!j.soft.some((x) => x.check === 'A8'), '同一档不得既硬又软（会把「补交」读成「可放行」）')
+  rmSync(d, { recursive: true, force: true })
+})
+
+// v18.33.0 断链回归：A8 的锚点由「散文约定」变成「模板产物」后，**模板与门必须始终同源**——
+//   模板改了节标题（比如写成「## 读取范围」）而门还认「已读范围」，结果是**照模板填也过不了门**，
+//   且这个断裂在文档里看不出来（两边各自都「对」）。本用例把三处钉在一起：
+//   ① 模板里必须有门认的锚点；② 07 卡与派发话术都要指向模板；③ **把模板原样当复核报告喂给门 → A8 不得报**。
+test('A8 断链回归：模板含门认的锚点、两份文档指向它，且模板自身必须过 A8', () => {
+  const SKILL = join(SCRIPTS, '..')
+  const TPL = join(SKILL, 'references', 'templates', '复核报告-template.md')
+  const tpl = readFileSync(TPL, 'utf8')
+
+  // ① 锚点在场（与 handoff-check.mjs 的正则逐字同形）
+  assert.match(tpl, /(?:^#{2,4}\s*已读范围)|(?:^\s*[-*]?\s*\*\*已读范围\*\*)/m, '模板缺少 A8 认的「已读范围」节标题')
+  for (const f of ['references/agents/07-审计-auditor.md', 'references/pipeline-readme.md']) {
+    const t = readFileSync(join(SKILL, f), 'utf8')
+    assert.match(t, /复核报告-template\.md/, `${f} 必须指向复核报告模板（否则模板存在也没人用）`)
+  }
+
+  // ② 端到端：模板原样当复核报告 → A8 不得报（「照模板填即满足机检」这句话必须是真的）
+  const d = makeProject({ 'audits/复核报告-v1.md': tpl })
+  const r = run([SCRIPT, '--project', d, '--role', 'T7', '--level', 'strict'])
+  const j = parseJson(r)
+  assert.ok(!j.soft.some((x) => x.check === 'A8'), '模板自身不该触发 A8 软提示：' + JSON.stringify(j.soft))
+  assert.ok(!j.hard.some((x) => x.check === 'A8'), '模板自身不该触发 A8 硬失败：' + JSON.stringify(j.hard))
   rmSync(d, { recursive: true, force: true })
 })
