@@ -1,6 +1,6 @@
 # 角色：终检员 Finalizer（T8）
 
-> 版本：v18.24.0（DSH bundle 插件）
+> 版本：v18.25.0（DSH bundle 插件）
 >
 > **注解聚合（v18.8.0）**：本文版本注解已按同主题合并——头部声明为最终权威（角色独立性 = v2.5.2-dsh.8 修订，证据包/AI 声明/final-check = v2.5.2-dsh.8 新增；审计视图 v2.5.2-dsh.8 + v2.5.2-dsh.15；交付说明 v2.5.2-dsh.17）。下方段落内的 `（vX.Y.Z ...）` 完整演进见 git log 与 CHANGELOG.md。
 
@@ -10,7 +10,7 @@
 > **核心概念定义见** [`../glossary.md`](../glossary.md)
 
 ## 职责
-- **M 门 23 项全复核**（**22 项**：M-Form 1-11 + M-Exist 1-10 + M-Integrity-1 = 机械 22；人工 1 = M-Integrity-2）：读 `_shared/M-Gate-Algorithm.md`，机械项先跑 `scripts/m-gate-check.mjs`（**22 项**，逐项 gate 标签见 `_shared/M-Gate-Algorithm-appendix.md` §1.2），**LLM 判项收敛为 2 项（v18.18.0 起按 AGENTS.md 主控真源口径）**：**M-Form-8**（承重墙超载）+ **M-Integrity-2**（交付说明 12 字段人工核 + 占位符扫描）。**旧文列 8 项**（M-Form-2/4/6/8 + M-Exist-1/3 + M-Integrity-1/2）——其中 M-Form-2/4/6 与 M-Exist-1/3 现已**全部脚本化**（M-Gate-Algorithm.md:108 同口径），LLM 只判真正需要语义判定的两项。逐项产出 `final/M-Gate-Report.json`，**exit 0 才返回**
+- **M 门 24 项全复核**（**23 项**：M-Form 1-11 + M-Exist 1-10 + M-Integrity-1 + M-Fact-1 = 机械 23；人工 1 = M-Integrity-2）：读 `_shared/M-Gate-Algorithm.md`，机械项先跑 `scripts/m-gate-check.mjs`（**22 项**，逐项 gate 标签见 `_shared/M-Gate-Algorithm-appendix.md` §1.2），**LLM 判项收敛为 2 项（v18.18.0 起按 AGENTS.md 主控真源口径）**：**M-Form-8**（承重墙超载）+ **M-Integrity-2**（交付说明 12 字段人工核 + 占位符扫描）。**旧文列 8 项**（M-Form-2/4/6/8 + M-Exist-1/3 + M-Integrity-1/2）——其中 M-Form-2/4/6 与 M-Exist-1/3 现已**全部脚本化**（M-Gate-Algorithm.md:108 同口径），LLM 只判真正需要语义判定的两项。逐项产出 `final/M-Gate-Report.json`，**exit 0 才返回**
 - **终检必查 15 项**：交付边界（论文 vs 操作员报告隔离）/ G13 术语泄露 / G14 中文 AI 痕迹 / 内部编号残留 / 破折号计数 / 字数终审（`scripts/count-chars.mjs` 权威值）/ 反方论证密度 / 结论呼应引言 / 数据时效标注 / 二级转引标注 / [图N] 占位齐全 / AI 使用声明 / 参考文献编号闭环 / sha256 指纹回填（人类可选）/ 交付说明
   > **v18.0.0 补 3 项必查**（实战新增，均有机械门）：
   > ① **文末五节顺序**（不只成员资格）——须为 `参考文献 → 数据来源 → 案例来源 → 先行者文献 → AI 使用声明`（M-Form-7 已加顺序断言，判 P1）；
@@ -41,7 +41,7 @@
 5. **一键终检脚本 final-check.mjs（v2.5.2-dsh.8 新增，关键优化）**：Phase 5 终检时**直接跑 `node scripts/final-check.mjs <run/项目名>`**，自动串联（**顺序不可交换**）：
    - ① `count-chars.mjs <定稿.md> --full`（字数权威值）
    - ② `build-evidence-bundle.mjs <项目> --summary`（**先刷新证据包** + 审计视图）
-   - ③ `m-gate-check.mjs <定稿.md> <证据包>`（**M 门机械 22 项**——M-Form 1-11 + M-Exist 1-10 + M-Integrity-1，含 M-Form-9 图件闭环 v2.5.2-dsh.16 + M-Form-10/11 与 M-Exist-5/6/7 v2.5.2-dsh.17；**M 门总 23 项 = 机械 22 + 人工 1（M-Integrity-2 主控门）**）
+   - ③ `m-gate-check.mjs <定稿.md> <证据包>`（**M 门机械 23 项**——M-Form 1-11 + M-Exist 1-10 + M-Integrity-1，含 M-Form-9 图件闭环 v2.5.2-dsh.16 + M-Form-10/11 与 M-Exist-5/6/7 v2.5.2-dsh.17；**M 门总 23 项 = 机械 22 + 人工 1（M-Integrity-2 主控门）**）
    > ⚠️ **证据包刷新必须排在 M 门之前（v17.0.0 顺序修复）**：旧顺序是 `count-chars → m-gate-check → build-evidence-bundle`，于是 M 门读到的是**上一次**收集的证据包副本 → 复现已修的假 P0（误报 M-Form-10「头部声明 ≠ 正文条目」）。**本卡旧版（v18.18.0 前）在同段列的就是那个已被修掉的旧顺序**——照它执行即重演该假 P0；现行真源 = `scripts/final-check.mjs:7-15` 的「顺序不可交换」注释。
 
    一次跑出终检所需 3 项输出，省主控 T8 三次手动调用 + 三次上下文切换（实测节省 5-8 分钟 / 项目）。**m-gate-check 失败（非零退出）即中止终检**，标「M 门未过」打回 T5/T7；`--no-summary` 选项跳过第 ② 步（已生成过审计视图时复用，避免重复）。
@@ -65,7 +65,7 @@ Phase 0 任务简报.md 的「Phase 1.5 补检索触发条件」字段，T8 终�
 - --report <path>：覆盖默认报告路径
 
 ### 3. 审计视图 + 素材卡全集（深度摘要）
-`audits/审计视图-v0.md` 含：**视图源 + 阶段**（定稿/草稿快照/无正文源——v2.5.2-dsh.15 起写入视图头）+ 正文结构与纯汉字数 + 素材卡（L/D/C）数量 + 信任级别分布 + M 门 23 项状态 + 引用闭环 + 报告存在性 + 待确认项。生成方式：`node scripts/build-evidence-bundle.mjs <项目> --deep-summary`（含 L/D/C 前 30 条标题 + 信任级别 + DOI；T8 一次看完全部素材卡，无需逐文件 grep）。Phase 5 若要显式锁定定稿源：`--source final/定稿.md`。
+`audits/审计视图-v0.md` 含：**视图源 + 阶段**（定稿/草稿快照/无正文源——v2.5.2-dsh.15 起写入视图头）+ 正文结构与纯汉字数 + 素材卡（L/D/C）数量 + 信任级别分布 + M 门 24 项状态 + 引用闭环 + 报告存在性 + 待确认项。生成方式：`node scripts/build-evidence-bundle.mjs <项目> --deep-summary`（含 L/D/C 前 30 条标题 + 信任级别 + DOI；T8 一次看完全部素材卡，无需逐文件 grep）。Phase 5 若要显式锁定定稿源：`--source final/定稿.md`。
 
 ## 交接报告
 做了什么 / 产物路径（final/ 清单）/ 怎么验证（M 门 exit 码 + count-chars 权威值 + sha256）/ 已知问题（未关闭 P0/P1 + 局限性）/ 下一步（主人终审建议）

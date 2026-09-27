@@ -1,4 +1,4 @@
-> 版本：v18.24.0（DSH bundle 插件）
+> 版本：v18.25.0（DSH bundle 插件）
 
 
 # 论衡交付边界 + F 失败模式 + M 门 + 修订回环 + 阶段闸门（v2.2.8 抽离）
@@ -175,7 +175,7 @@
 
 ## M 机械化门控段（v2.2.0 + v2.2.1 扩展）
 
-- **M 门三类（v18.2.6 审计修复：项数收敛到唯一真源）**：**M 门总 23 项 = 机械 22 项（M-Form 1-11 + M-Exist 1-10 + M-Integrity-1，走 `scripts/m-gate-check.mjs`）+ 人工 1 项（M-Integrity-2，主控 T7.5 门）**——**M-Form 11 项 / M-Exist 10 项 / M-Integrity 2 项**。逐项定义真源 = `M-Gate-Algorithm.md` §M-Form / §M-Exist / §M-Integrity；**本节只给项数与真源指针、不复述逐项清单**（旧版此处复述逐项清单、并把三档小计全部写小，与真源长期漂移——同一事实两处维护的代价）。
+- **M 门三类（v18.2.6 审计修复：项数收敛到唯一真源）**：**M 门总 23 项 = 机械 23 项（M-Form 1-11 + M-Exist 1-10 + M-Integrity-1，走 `scripts/m-gate-check.mjs`）+ 人工 1 项（M-Integrity-2，主控 T7.5 门）**——**M-Form 11 项 / M-Exist 10 项 / M-Integrity 2 项**。逐项定义真源 = `M-Gate-Algorithm.md` §M-Form / §M-Exist / §M-Integrity；**本节只给项数与真源指针、不复述逐项清单**（旧版此处复述逐项清单、并把三档小计全部写小，与真源长期漂移——同一事实两处维护的代价）。
 - **T7 必跑**，exit 0 才能返回
 - 借鉴 vincentjiang06 objective/verify gate 硬约束理念的论衡化实现——「**形式合规 ≠ 存在性合规 ≠ 信任一致**」（v2.2.0 → v2.2.1 M 门三层验证）
 

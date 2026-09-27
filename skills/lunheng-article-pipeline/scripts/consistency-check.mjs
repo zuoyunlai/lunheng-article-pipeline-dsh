@@ -168,16 +168,19 @@ if (!gateModMissing) {
 }
 const GATE_DERIVED = (() => {
   const grab = (pre) => new Set([...gateSrc.matchAll(new RegExp(`gate:\\s*'(M-${pre}-\\d+)`, 'g'))].map((m) => m[1])).size;
-  const form = grab('Form'), exist = grab('Exist'), integ = grab('Integrity');
-  return { form, exist, integ, mech: form + exist + integ, total: form + exist + integ + 1 };  // + M-Integrity-2（主控 T7.5 人工门）
+  const form = grab('Form'), exist = grab('Exist'), integ = grab('Integrity'), fact = grab('Fact');
+  // v18.25.0（QLT-2）：新增 **M-Fact** 族（跨节事实一致性）。派生口径不变——四族相加 = 机械项数，
+  //   再 + M-Integrity-2（主控 T7.5 人工门）= 总数。**加族必须同批改三处**：本派生、⑳ 的语族清单
+  //   （`mgate-doc-rules.mjs` 的 kinds）、`M-Gate-Algorithm.md` 的同名节（节头括注 + ### 子节编号 1..N）。
+  return { form, exist, integ, fact, mech: form + exist + integ + fact, total: form + exist + integ + fact + 1 };
 })();
 // ⑥b 的口径检查（skills/** 与 docs/** 共用；由调用方传 rel 以便定位）
 function checkGateCounts(text, rel) {
-  const { form, exist, integ, mech, total } = GATE_DERIVED;
+  const { form, exist, integ, fact, mech, total } = GATE_DERIVED;
   const check = (re, idx, expected, label) => {
     const m = text.match(re);
     if (m && Number(m[idx]) !== expected) {
-      errors.push(`[P1 口径残留 M 门${label}] ${rel} 写 ${m[idx]}，脚本派生值应为 ${expected}（M-Form ${form} + M-Exist ${exist} + M-Integrity ${integ}）`);
+      errors.push(`[P1 口径残留 M 门${label}] ${rel} 写 ${m[idx]}，脚本派生值应为 ${expected}（M-Form ${form} + M-Exist ${exist} + M-Integrity ${integ} + M-Fact ${fact}）`);
     }
   };
   check(/M\s*门\s*(\d+)\s*项机械化/, 1, mech, '机械化项数');
@@ -191,6 +194,7 @@ function checkGateCounts(text, rel) {
   check(parenCount('M-Form'), 1, form, ' M-Form 括注项数');
   check(parenCount('M-Exist'), 1, exist, ' M-Exist 括注项数');
   check(parenCount('M-Integrity'), 1, integ + 1, ' M-Integrity 括注项数');   // + M-Integrity-2（主控 T7.5 人工门，未脚本化）
+  check(parenCount('M-Fact'), 1, fact, ' M-Fact 括注项数');                   // v18.25.0 QLT-2：新族（无人工门，故不 +1）
   // dsh.17 三次收紧：又两种写法此前漏检过（实测 AGENTS.md「M 门 20 项中 14 项已脚本化」与 08 卡「**15 项**：M-Form 1-…」）
   check(/M\s*门\s*(\d+)\s*项中\s*(\d+)\s*项已脚本化/, 1, total, '总项数（「N 项中 M 项已脚本化」写法）');
   check(/M\s*门\s*(\d+)\s*项中\s*(\d+)\s*项已脚本化/, 2, mech, '已脚本化项数');

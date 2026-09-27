@@ -735,7 +735,7 @@ test('m-gate-check M-Form-9：未启用配图记 N/A 不算失败（配图默认
   assert.ok(item, '应存在 M-Form-9 项')
   assert.equal(item.pass, true, '无图位无图件 → N/A pass')
   assert.match(item.detail, /N\/A/)
-  assert.equal(j.total, 22, '脚本机械项应为 22 项（M-Form 1-11 + M-Exist 1-10 + M-Integrity-1）')
+  assert.equal(j.total, 23, '脚本机械项应为 23 项（M-Form 1-11 + M-Exist 1-10 + M-Integrity-1 + M-Fact-1，v18.25.0 QLT-2 新增 M-Fact 族）')
   rmSync(d, { recursive: true, force: true })
 })
 
@@ -793,9 +793,9 @@ test('consistency-check ⑱：图件路径口径与「宣称的图件门」必�
   // ① 旧图件路径口径
   const t8 = join(R, 'references', 'agents', '08-终检-finalizer.md')
   writeFileSync(t8, readFileSync(t8, 'utf8') + '\n> 图件落在 `final/图N-标题.svg`。\n')
-  // ② M 门计数漂移（把 20 项写回 13 项）
+  // ② M 门计数漂移（把当前值写回 13 项）——**注入串必须跟着真源走**：M 门总数 v18.25.0 起为 24
   const gl = join(R, 'references', 'glossary.md')
-  writeFileSync(gl, readFileSync(gl, 'utf8').replace('M 门 23 项复核', 'M 门 13 项复核'))
+  writeFileSync(gl, readFileSync(gl, 'utf8').replace('M 门 24 项复核', 'M 门 13 项复核'))
   const r = run([join(R, 'scripts', 'consistency-check.mjs')])
   assert.equal(r.code, 1, '注入漂移后必须 exit 1')
   assert.match(r.out, /图件路径口径漂移/, '⑱ 必须捕获旧图件路径')
@@ -945,9 +945,9 @@ test('consistency-check ⑳+⑥b：M 门文档节头项数 / 编号跳号 / 文�
   {
     const { d, R } = mkRepo()
     const ag = join(R, 'AGENTS.md')
-    writeFileSync(ag, readFileSync(ag, 'utf8').replace('M 门 23 项中 22 项已脚本化', 'M 门 23 项中 14 项已脚本化'))
+    writeFileSync(ag, readFileSync(ag, 'utf8').replace('M 门 24 项中 23 项已脚本化', 'M 门 24 项中 14 项已脚本化'))
     const fin = join(R, 'references', 'agents', '08-终检-finalizer.md')
-    writeFileSync(fin, readFileSync(fin, 'utf8').replace('（**22 项**：M-Form 1-', '（**15 项**：M-Form 1-'))
+    writeFileSync(fin, readFileSync(fin, 'utf8').replace('（**23 项**：M-Form 1-', '（**15 项**：M-Form 1-'))
     const r = run([join(R, 'scripts', 'consistency-check.mjs')])
     assert.equal(r.code, 1, '旧写法漂移必须 exit 1')
     assert.match(r.out, /已脚本化项数/, '⑥b 必须捕获「N 项中 M 项已脚本化」写法')

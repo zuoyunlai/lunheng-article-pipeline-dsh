@@ -20,20 +20,22 @@ export function runMgateDocRules(ctx) {
     const secs = new Map();   // kind → { headerLine, header, declared, subs: [{ id, line, n }] }
     let cur = null;
     lines.forEach((l, i) => {
-      const h = l.match(/^## M-(Form|Exist|Integrity)\b/);
+      // v18.25.0（QLT-2）：语族清单加 **Fact**（M-Fact 事实一致性门）——加族时必须同步本正则、下面的
+      //   `for (const kind of [...])` 与 scriptN 映射，以及 `consistency-check.mjs` 的 GATE_DERIVED.fact。
+      const h = l.match(/^## M-(Form|Exist|Integrity|Fact)\b/);
       if (h) {
-        cur = h[1];   // 短名 Form/Exist/Integrity（节头写作「## M-Form 形式合规门」）
+        cur = h[1];   // 短名 Form/Exist/Integrity/Fact（节头写作「## M-Form 形式合规门」）
         secs.set(cur, { headerLine: i + 1, header: l, declared: null, subs: [] });
         const d = l.match(/（(\d+)\s*项(?:[，、；][^）]*)?）/);
         if (d) secs.get(cur).declared = Number(d[1]);
         return;
       }
-      const s = l.match(/^### (M-(?:Form|Exist|Integrity)-\d+):/);
+      const s = l.match(/^### (M-(?:Form|Exist|Integrity|Fact)-\d+):/);
       if (s && cur && s[1].startsWith(`M-${cur}-`)) {
         secs.get(cur).subs.push({ id: s[1], line: i + 1, n: Number(s[1].split('-')[2]) });
       }
     });
-    for (const kind of ['Form', 'Exist', 'Integrity']) {
+    for (const kind of ['Form', 'Exist', 'Integrity', 'Fact']) {
       const sec = secs.get(kind);
       if (!sec) {
         errors.push(`[P1 M 门文档缺节] ${gateRel} 缺少「## M-${kind}」节`);
@@ -50,7 +52,7 @@ export function runMgateDocRules(ctx) {
       if (nums.length && JSON.stringify(nums) !== JSON.stringify(expect)) {
         errors.push(`[P1 M 门编号跳号] ${gateRel} 「M-${kind}」子节编号 ${nums.join(',')} 非 1..${count} 连续（应为 ${expect.join(',')}）`);
       }
-      const scriptN = { Form: GATE_DERIVED.form, Exist: GATE_DERIVED.exist, Integrity: GATE_DERIVED.integ + 1 }[kind];
+      const scriptN = { Form: GATE_DERIVED.form, Exist: GATE_DERIVED.exist, Integrity: GATE_DERIVED.integ + 1, Fact: GATE_DERIVED.fact }[kind];
       if (count !== scriptN) {
         errors.push(`[P1 M 门文档↔脚本不一致] ${gateRel} 「M-${kind}」定义 ${count} 项，脚本侧实为 ${scriptN} 项（M-Integrity 含主控人工门 M-Integrity-2，故 = 脚本标签数 + 1）——加项/删项必须两边同步`);
       }

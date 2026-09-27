@@ -37,6 +37,7 @@ import { parseArgs as parseCliArgs, USAGE_CODE as CLI_USAGE_CODE } from './_lib/
 import { escapeRegExp, latestReport, PROTECT_CH, tableCells, isSeparatorRow, sectionRange, indexSection, CARD_SPECS, ENTRY_ID_RE, entryIds, idsByToken, walkMd } from './_lib/mgate-helpers.mjs';
 import { mExist1, mExist2, mExist3, mExist4, mExist5, mExist6, mExist7, mExist8, mExist9, mExist10 } from './_lib/mgate-gates/mexist-gates.mjs';  // M-Exist 门族（v18.3.1 审计 B2 阶段 1）
 import { mIntegrity1 } from './_lib/mgate-gates/mintegrity-gate.mjs';
+import { mFact1 } from './_lib/mgate-gates/mfact-gate.mjs';   // v18.25.0 QLT-2：M-Fact 族（跨节事实一致性）
 import { mForm1, mForm2, mForm3, mForm4, mForm5, mForm6, mForm7, mForm8, mForm9, mForm10, mForm11 } from './_lib/mgate-gates/mform-gates.mjs';  // M-Form 门族（v18.3.1 审计 B2 阶段 2）  // M-Integrity-1（v18.3.1 审计 B2 阶段 1）   // 定位与解析纯函数（v18.2.9，审计 B2 抽离）
 installExitGuard();   // 必须在任何 readFileSync 之前：fs 类异常 → 10，其余内部错误 → 70（避免与「1 = P1 内容失败」撞义）
 
@@ -208,6 +209,8 @@ const THRESHOLDS = Object.freeze({
   mform11RatioLong: 0.98, mform11RatioMid: 0.94, mform11RatioShort: 0.9,   // 加载率阈值（按正文档位分档）
   exist10MissingP0: 3, exist10MaxRows: 120,             // M-Exist-10 精简段：缺要素 → P0 阈值 / 行数上限
   exist3P0: 5, exist3P1: 2,                             // M-Exist-3 引用闭环档位
+  // v18.25.0（QLT-2）：新增 M-Fact 族（跨节事实一致性）。三键语义见下表同行注释（阈值表由本对象单向生成）。
+  mfact1Tolerance: 0.02, mfact1MinKeyHan: 4, mfact1AliasMinHits: 2,   // M-Fact-1 跨节事实一致性：数值容差 / 键最短汉字数 / 术语近形对各自最少出现次数
 })
 
 // === 定位与解析共用助手（v18.0.5 去重：同一推导此前在脚本内各写 2-9 份）===
@@ -314,6 +317,8 @@ mForm4(ctx);
 mForm6(ctx);
 mForm8(ctx);
 mForm9(ctx);
+
+mFact1(ctx);   // v18.25.0 QLT-2：M-Fact 族 —— 跨节事实一致性（数字跨节 + 术语近形）
 
 mExist1(ctx);
 
