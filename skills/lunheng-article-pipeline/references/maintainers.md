@@ -1,6 +1,6 @@
 # 维护者手册（maintainers.md）
 
-> 版本：v18.22.0｜**读者**：维护者/主人。**本文件不进任何运行期读清单**（角色/主控不读）；它承接 v18.8.0 文档瘦身从 SKILL.md 迁出的维护者向元信息（rank 考证 / guard 缺口 / 更正史）。改本文件不受「同一事实多处漂移」约束——运行期事实仍以 SKILL.md 为唯一真源，此处是背景与考证。
+> 版本：v18.22.1｜**读者**：维护者/主人。**本文件不进任何运行期读清单**（角色/主控不读）；它承接 v18.8.0 文档瘦身从 SKILL.md 迁出的维护者向元信息（rank 考证 / guard 缺口 / 更正史）。改本文件不受「同一事实多处漂移」约束——运行期事实仍以 SKILL.md 为唯一真源，此处是背景与考证。
 
 ## 一、技能来源 rank 考证（v18.0.0 对齐官方；v18.0.5 修两处官方事实）
 
@@ -108,3 +108,36 @@
   （v18.13.0 正是这么做才发现 5 项其实已修、1 项真未修）。
 - 因此脚本**只报「需人工回核」的项，绝不报「已完成」**；看到 `✓` 只代表**没有机械可见的漏项**，
   不代表修订已全部完成。把「提到」当「做完」正是 18.12.3 的错误。
+
+## 八、开发参考资料：官方资料入口与机械层（v18.22.1 CTX-2 从 `AGENTS.md` 迁入）
+
+> **为什么迁到这里**：`AGENTS.md` 是**技能目录内自动生效的指令**（每次加载都进上下文），而本节是**维护者决策时才查**的参考——运行期角色与主控都不需要它。按同一条判据（维护者向 → 本文件）整体外移，`AGENTS.md` 只留指针。
+
+> **判据（主人 2026-09-11 指示）**：凡涉及**包形态、插件契约、服务/事件、工具注册、打包发布、官方文档规范**的改动，**先查官方资料再动手**——不得凭记忆、也不得凭本包既有写法推断（既有写法本身可能与官方漂移）。
+
+**官方资料入口**（`dsh-plugin-guide` 技能；其包目录含 `guide/` + `references/official-docs/`）：
+
+| 需要什么 | 查哪里 |
+|---|---|
+| 契约速查（插件骨架 / core ctx API / 事件分发模式 / 硬规则） | `guide/quick-reference.md` |
+| 完整开发路径（新工具 / 新服务 / 拦截策略 / 打包发布） | `guide/plugin-dev-guide.md` |
+| 官方文档全文（215 页，中英成对） | `references/official-docs/docs/**` |
+| **skill 子系统契约**（frontmatter 键 / 本地发现 rank 表 / `resourceBase` / 目录只用 name+description） | `references/official-docs/docs/subsystems/skills.zh.md` |
+| 打包与层顺序（bundle vs plain cordis、`dsh.bundle.patch`、覆盖语义） | `references/official-docs/docs/user/develop/basic/publish.zh.md` |
+| 仓库约束 + **文档写作规范**（不用隐喻 / 不保留审查历史 / 一事实一处） | `references/official-docs/AGENTS.md` |
+| 精确服务与事件签名 | `references/official-docs/docs/subsystems/*.md`（生成式 Cordis API 区） |
+| 能力接缝（Service Definition / Provider / Consumer 三层） | `references/official-docs/docs/capability-seams.md` |
+
+**机械层（官方 CLI，随知识库分发）**：
+- `dsh-plugin-dev check` —— 14 项静态门（patch 合法性 / `package.json` 元数据 / 多语 README 一致性 / 工程红线）；**目标 0 fail / 0 warn**
+- `dsh-plugin-dev verify` —— `pnpm pack` 后装入干净 `DSH_HOME` profile 做安装+启动+卸载冒烟
+- `dsh-plugin-dev new <name>` —— 参数化脚手架（生成契约模板 / Schemastery Config / `cordis.patch.yml` / 五语 README）
+
+**冲突裁决顺序**：① 官方 `references/official-docs/**`（官方仓库原文）→ ② 本包 `AGENTS.md` / `SKILL.md` → ③ 其他文档。**官方与本包冲突时以官方为准**，并按上表判断应改本包哪一处；改完跑双门。
+
+**何时必须查官方资料**：改 `package.json` / `cordis.patch.yml` / `lib/**`；新增工具或服务；改 `SKILL.md` frontmatter；调整审计/门禁的**执行方式**（而非检查内容）；打包发布前。
+
+**本包与官方的已知刻意偏离**：见 [`glossary.md`](glossary.md) **§十二**（自用术语 + 文档约定 + 偏离理由与代价）——改动前先读该节，避免把「刻意设计」当成疏漏改掉。
+
+**仓库级打包面检查清单**（CI 的 `plugin-surface` job 承担，**v18.0.0 起无豁免**；本地复现见 `.github/workflows/ci.yml`）：`cordis.patch.yml` 合法性 / 行 id 唯一 / `dsh.bundle.patch` 指向 / `package.json` 元数据（`main` + `files` 含 `lib` + `packageManager`）/ 五语 README 一致性 / 工程红线。
+> **两条静态门抓不到、必须由测试兜的**：① 包入口执行路径（`tests/entry.test.mjs` 真跑 `apply`）；② 「patch 必须插入本包自注册行」（`tests/bundle-contract.test.mjs`）——教训 #152 / #154。

@@ -64,46 +64,24 @@ Phase 5 终检     → T8 终检（独立角色，主控 T0 以 T8 身份亲完�
 5. **改动位置（v18.0.1 新增，教训 #153）**：机制 / 角色卡 / 脚本 / 模板的改动**一律在真源仓库里做**（`<repo>/skills/lunheng-article-pipeline/`——那里才有 `tests/` 与两道仓库门），四道门全绿、提交之后**再同步到部署镜像**（项目技能根 `.dsh/skills/<name>/` 或用户技能根）。**不要反过来**：镜像不含 `tests/`，在镜像上改完再回流 = 跳过契约验证（实例：一处 `exit 10` 中止在镜像上自测通过、官方门全绿，合入仓库后 18 个用例红）。**判据：实现与测试同居的目录才是真源**。镜像里不得出现 `package.json` / `cordis.patch.yml` / `docs` / `examples` / `.git` / `lib` / 包级 README / `*.tgz`（`consistency-check` 规则⑨ 判 P1 污染）。
 6. **验证**：本修改走完后必 `grep` 关键词 + 结构性 grep（如本手册的「## 交接报告」所有角色卡齐整性）；改论衡机制/文档后额外跑两条门（v18.0.0 起为双门）：
    - `node scripts/consistency-check.mjs` —— 文档一致性（**规则表见脚本头注释**——v18.0.3 起此处不再抄数字，防「加规则忘改数字」；**exit 0 才提交**）
-   - `dsh-plugin-dev check` —— 包面静态门（14 项，清单见 §开发参考资料；**目标 0 fail / 0 warn**）
+   - `dsh-plugin-dev check` —— 包面静态门（14 项，清单见 `references/maintainers.md` §八；**目标 0 fail / 0 warn**）
    - `node --test "tests/**/*.test.mjs"` —— 随包脚本 + **组合包契约** + 入口回归（改脚本输出契约、`cordis.patch.yml`、`package.json` 时**必跑**）
    > **布局提示（v18.0.0）**：`consistency-check.mjs` 的 `REPO_ROOT` 自动探测两种布局（仓库布局 / 技能即包根）；旧版硬编码「向上两级」，在本机 `.dsh/skills/` 布局下会指向 `~/.dsh` 而 ENOENT。
    > **改「规范」时另查**（v18.0.5，冗余审计 §二.7）：`references/_shared/规范-机械门对照表.md`——**维护者文档**，逐条勾稽「规范写了什么 ↔ 机械门是否覆盖」（两问：有无门 / 是否覆盖全要件）。新增或修改任何规范/机检门时在该表加一行；它刻意不进运行期读清单（角色不读）。
    > **收口批必跑「差集 + 反向核验」**：仓库级脚本 **closeout-verify**（**不随包**）——宣布「修订已全部完成」**之前**必跑。两步：① **差集**（审计报告每个 `L-NN` 必须被某处修订记录/CHANGELOG 提及）；② **反向核验**（登记为「未做/延后」的项，其后梯队必须回标）。判据：**差集查漏，反向核验查「记录陈旧」**。⚠️ **边界**：只报「需人工回核」的项，**不判「已完成」**——语义那半必须逐条回代码/产物实测。原理与两次自证见 `references/maintainers.md` §七。
    > **文档涨了先看词预算门**（v18.1.0）：`repo-hygiene-check` 规则⑨ 对技能目录内 ≥12 KB 的 .md 逐文件设**棘轮上限**（上限按「当前字节向上取整到整 KB」）。**任何文档增长必须在同一次提交里抬升上限并写明理由**；`skills/lunheng-article-pipeline/scripts/` 外的仓库脚本改动不受此门约束。规则① 同时扩面到 `.js` 与**未跟踪文件**（`npm pack` 会打包未 `git add` 的新脚本）。
-   **仓库级打包面检查**由 CI 的 `plugin-surface` job 承担（**v18.0.0 起无豁免**；清单见 §开发参考资料，本地复现见 `.github/workflows/ci.yml`）。**两条静态门抓不到、必须由测试兜的**：① 包入口执行路径（`tests/entry.test.mjs` 真跑 `apply`）；② 「patch 必须插入本包自注册行」（`tests/bundle-contract.test.mjs`）——教训 #152 / #154
+   **仓库级打包面检查**由 CI 的 `plugin-surface` job 承担（**v18.0.0 起无豁免**）；**清单**与「**两条静态门抓不到、必须由测试兜的**」（包入口执行路径 / patch 自注册行，教训 #152 / #154）见 `references/maintainers.md` §八。
 
 7. **读中文文件一律显式 `-Encoding UTF8`（v18.2.5 新增）**：`Get-Content` 等文本读取必带该参数。
    > **判据：看到中文乱码，先怀疑读取端编码，不要先怀疑文件**（实测：合法 UTF-8 文案在 pwsh 默认解码下显示乱码，曾被误判为「子代理产物编码坏了」，险些错误重派）。
 
-## 开发参考资料（v18.0.0 新增，主人指示：官方资料为以后开发的重要参考）
+## 开发参考资料（维护者向，v18.22.1 CTX-2 已整体外移）
 
-> **判据（主人 2026-09-11 指示）**：凡涉及**包形态、插件契约、服务/事件、工具注册、打包发布、官方文档规范**的改动，**先查官方资料再动手**——不得凭记忆、也不得凭本包既有写法推断（既有写法本身可能与官方漂移）。
-
-**官方资料入口**（`dsh-plugin-guide` 技能；其包目录含 `guide/` + `references/official-docs/`）：
-
-| 需要什么 | 查哪里 |
-|---|---|
-| 契约速查（插件骨架 / core ctx API / 事件分发模式 / 硬规则） | `guide/quick-reference.md` |
-| 完整开发路径（新工具 / 新服务 / 拦截策略 / 打包发布） | `guide/plugin-dev-guide.md` |
-| 官方文档全文（215 页，中英成对） | `references/official-docs/docs/**` |
-| **skill 子系统契约**（frontmatter 键 / 本地发现 rank 表 / `resourceBase` / 目录只用 name+description） | `references/official-docs/docs/subsystems/skills.zh.md` |
-| 打包与层顺序（bundle vs plain cordis、`dsh.bundle.patch`、覆盖语义） | `references/official-docs/docs/user/develop/basic/publish.zh.md` |
-| 仓库约束 + **文档写作规范**（不用隐喻 / 不保留审查历史 / 一事实一处） | `references/official-docs/AGENTS.md` |
-| 精确服务与事件签名 | `references/official-docs/docs/subsystems/*.md`（生成式 Cordis API 区） |
-| 能力接缝（Service Definition / Provider / Consumer 三层） | `references/official-docs/docs/capability-seams.md` |
-
-**机械层（官方 CLI，随知识库分发）**：
-- `dsh-plugin-dev check` —— 14 项静态门（patch 合法性 / `package.json` 元数据 / 多语 README 一致性 / 工程红线）；**目标 0 fail / 0 warn**
-- `dsh-plugin-dev verify` —— `pnpm pack` 后装入干净 `DSH_HOME` profile 做安装+启动+卸载冒烟
-- `dsh-plugin-dev new <name>` —— 参数化脚手架（生成契约模板 / Schemastery Config / `cordis.patch.yml` / 五语 README）
-
-**冲突裁决顺序**：① 官方 `references/official-docs/**`（官方仓库原文）→ ② 本包 `AGENTS.md` / `SKILL.md` → ③ 其他文档。**官方与本包冲突时以官方为准**，并按上表判断应改本包哪一处；改完跑双门。
-
-**维护者向背景资料（v18.8.0 新增）**：rank 表考证 / guard 已知边界与部署处方 / 更正史 / 发布面事实，单一真源 = [`references/maintainers.md`](references/maintainers.md)——运行期角色不读；SKILL.md 只保留运行期要点 + 指针。
-
-**何时必须查官方资料**：改 `package.json` / `cordis.patch.yml` / `lib/**`；新增工具或服务；改 `SKILL.md` frontmatter；调整审计/门禁的**执行方式**（而非检查内容）；打包发布前。
-
-**本包与官方的已知刻意偏离**：见 [`references/glossary.md`](references/glossary.md) **§十二**（自用术语 + 文档约定 + 偏离理由与代价）——改动前先读该节，避免把「刻意设计」当成疏漏改掉。
+> **单一真源 = [`references/maintainers.md`](references/maintainers.md) §八**——**官方资料入口表**（契约速查 / 开发路径 / 官方文档全文 / skill 子系统契约 / 打包层序 / 文档写作规范 / 服务签名 / 能力接缝）+ **机械层**（`dsh-plugin-dev check` 14 项 / `verify` / `new`）+ **冲突裁决顺序**（官方 > 本包 > 其他）+ **何时必须查官方资料** + **本包与官方的刻意偏离指针** + **仓库级打包面检查清单**，全在该节。
+>
+> **判据（主人 2026-09-11 指示）**：凡涉及**包形态、插件契约、服务/事件、工具注册、打包发布、官方文档规范**的改动，**先查官方资料再动手**——不得凭记忆、也不得凭本包既有写法推断。
+>
+> **为什么外移**：本节是**维护者决策时才查**的参考，而 `AGENTS.md` 是**技能目录内自动生效的指令**（每次加载都进上下文）——运行期角色与主控都不需要它。按「维护者向 → `maintainers.md`」这一条判据整体迁出，此处只留指针。
 
 ## 记忆文件（运行时由主控在项目目录创建，非技能包内置）
 - `memory/YYYY-MM-DD.md` — 每日日志（记结论不记过程）

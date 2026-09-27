@@ -1,4 +1,6 @@
 // ⑮ 派发卡行数 / ⑯ 审计视图三方 / ⑰ 定量断言出处 / ⑱ 图件链路 / ⑲ 交接契约表
+// ⑳-㉗ 见本文件后段与 mgate-doc-rules.mjs / docs-version-rules.mjs
+// ㉘ SKILL.md 正文禁历史叙事句（v18.22.1 CTX-1 新增）
 // v18.3.1（审计 B2 阶段 3）：从 consistency-check.mjs 按规则族抽离，行为逐字等价（回归测试的
 //   注入验证用例 + 真源仓库自跑兜底）。共享态（errors / 派生源 / 版本真源等）由主脚本构建 ctx 传入。
 import { readFileSync, readdirSync, statSync, existsSync, writeFileSync, copyFileSync } from 'node:fs'
@@ -391,6 +393,42 @@ const anchorSlugsOf = (text) => {
           errors.push(`[P1 锚点悬空] ${rel}:${i + 1} → ${targetRel}#${anchor}（目标文件无此标题 slug；改标题后请同步所有引用）`);
         }
       }
+    });
+  }
+}
+
+// ── ㉘ SKILL.md 正文禁历史叙事句（v18.22.1 CTX-1 新增；主人定案 = v18.22.0 方案 CTX-1 的判据）────────
+//   为什么：`SKILL.md` 是**每次技能激活都进上下文**的常驻体（最贵文件），而「版本增量 / 历史成因」
+//   类叙事句只对维护者有意义——运行期角色读了白付 token，且会随版本累积**回涨**
+//   （v18.22.0 报告 §二.4a 实测：2026-09-09 拆分后 16,865 B → 2026-09-26 的 36,420 B = **+115.9%**）。
+//   v18.22.1 已把两段巨型增量摘要 + 6 处历史成因句迁出（实测 −3,090 B）；本规则防它被重新写回来。
+//
+//   规则：`SKILL.md` **正文**（去 frontmatter）不得出现下列历史叙事**标记词**：
+//     此前 / 曾经 / 旧版 / 已删 / 已移除 / 已作废 / 历史见 git log
+//   放行白名单（须同时满足）：该行含 `CHANGELOG.md` 指针 **且** 含「为什么 / 成因」——即「外移指针行」本身。
+//
+//   ⚠️ 词表刻意收窄（实测反证）：
+//     · **不含「原值」**——`script_exit_raw` 段写「（脚本原值，禁止修改）」是**技术术语**，
+//       纳入后实测在 SKILL.md 立即产生 1 处假阳性（v18.22.1 落规则时验出）；
+//     · **不含「增量」**——本仓库把它当**中性常用词**（「版本增量」「预算增量」），纳入同样假阳性；
+//     · **不含裸「曾」**——「曾」在正常叙述里合法（如「实战漏检过」改写后仍可能含），且 `曾` 单字
+//       太容易命中；故只取「曾经」。
+//   **边界如实声明**：本规则只抓**词形**，抓不到「换一种说法讲历史」（如「17 天前还是 16.9 KB」）；
+//   它是**回归网**，不是「证明正文已无历史叙事」的完成证明（与 `closeout-verify` 同款边界）。
+const HISTORY_TOKEN_RE = /此前|曾经|旧版|已删|已移除|已作废|历史见 git log/;
+{
+  const skillPath = join(ROOT, 'SKILL.md');
+  if (existsSync(skillPath)) {
+    const raw = readFileSync(skillPath, 'utf8');
+    // 去 frontmatter：`description` 是路由文案（官方目录只渲染 name + description），不在本规则范围
+    const fm = /^---\r?\n[\s\S]*?\r?\n---\r?\n/.exec(raw);
+    const offset = fm ? fm[0].split('\n').length - 1 : 0;
+    const body = fm ? raw.slice(fm[0].length) : raw;
+    body.split('\n').forEach((l, i) => {
+      const hit = HISTORY_TOKEN_RE.exec(l);
+      if (!hit) return;
+      if (l.includes('CHANGELOG.md') && /为什么|成因/.test(l)) return;   // 外移指针行：放行
+      errors.push(`[P2 SKILL.md 历史叙事句] SKILL.md:${offset + i + 1} 含「${hit[0]}」——常驻体只留现行口径；成因/逐版明细移 CHANGELOG.md 对应版本段，此处只留「一句话 + 指针」（规则 ㉘）`);
     });
   }
 }

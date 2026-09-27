@@ -2923,3 +2923,36 @@ test('v18.22.0 MEA-1：token-budget --roles 口径修复 — 默认过滤主会�
 
   rmSync(d, { recursive: true, force: true })
 })
+
+// ── v18.22.1 CTX-1 规则 ㉘：SKILL.md 正文禁历史叙事句（常驻体回涨防护）─────────────────────────
+// 为什么需要：SKILL.md 是**每次技能激活都进上下文**的常驻体（最贵文件），而「版本增量 / 历史成因」
+//   类叙事句只对维护者有意义——v18.22.0 报告 §二.4a 实测：拆分后 17 天从 16,865 B 回涨到 36,420 B
+//   （+115.9%）。v18.22.1 迁出约 3.1 KB 后加本规则，防它被写回来。
+// 三条断言（含两条反向，v18.15.0「门的覆盖靠负向输入证明」」）：
+//   ① 基线（夹具 SKILL.md 已是清干净态）不报 ㉘；
+//   ② 往**正文**注入一句历史叙事 → 必须报（门真的在工作）；
+//   ③ 往 **frontmatter（description）** 注入同一个词 → **不得**报（证明规则只扫正文，不误伤路由文案）。
+test('v18.22.1 CTX-1 ㉘：SKILL.md 正文出现历史叙事词必须报（且只扫正文、不扫 frontmatter）', () => {
+  const { d, R } = mkRepo()
+  const cc = join(R, 'scripts', 'consistency-check.mjs')
+  const skPath = join(R, 'SKILL.md')
+
+  // ① 基线
+  const base = run([cc]).out
+  assert.doesNotMatch(base, /SKILL\.md 历史叙事句/, '夹具基线不应报 ㉘（夹具 SKILL.md 已是清干净态）：' + base.slice(-300))
+
+  // ② 往正文注入 → 必红
+  const clean = readFileSync(skPath, 'utf8')
+  writeFileSync(skPath, clean + '\n> 旧版此处写的是另一套口径，已删。\n')
+  const bad = run([cc]).out
+  assert.match(bad, /\[P2 SKILL\.md 历史叙事句\]/, '㉘ 必须捕获正文里的历史叙事句：' + bad.slice(-400))
+
+  // ③ 把同一个词放进 frontmatter（description）→ 不得报（规则只扫正文）
+  const withFm = clean.replace(/^(description:\s*")/m, '$1旧版口径，已删。')
+  assert.notEqual(withFm, clean, '夹具假设 SKILL.md frontmatter 含 description 行')
+  writeFileSync(skPath, withFm)
+  const fmOut = run([cc]).out
+  assert.doesNotMatch(fmOut, /SKILL\.md 历史叙事句/, '㉘ 不得扫 frontmatter（description 是路由文案，不在本规则范围）：' + fmOut.slice(-300))
+
+  rmSync(d, { recursive: true, force: true })
+})
