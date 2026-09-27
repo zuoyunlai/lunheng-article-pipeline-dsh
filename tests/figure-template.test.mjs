@@ -32,10 +32,11 @@ test('模板 copy-ready：每个 svg 代码块都能直接落盘（0 problem / 0
     assert.equal(r.ok, true, `第 ${i + 1} 块结构不合格（照抄会被 md2html 判 exit 40）：${r.problems.join('；')}`)
     assert.deepEqual(r.warnings, [], `第 ${i + 1} 块有告警（复制到项目里就是 M-Form-9 的 P2）：${r.warnings.join('；')}`)
     assert.ok(r.bytes > 400, `第 ${i + 1} 块只有 ${r.bytes} B —— 不像是完整图件`)
-    // ⚠️ 必须单独查**根标签**（反向自证时实测到的坑）：`analyzeSvg` 的 `hasWH` 是在**全文**里找
-    //   `width=` / `height=`，而图里必然有 `<rect width=… height=…>` → 于是「根上既无 viewBox 也无
-    //   宽高」这种**真的会渲染塌陷**的形态，`analyzeSvg` 判 ok=true。共享校验器不动（它同时服务
-    //   md2html 与 M-Form-9，放宽/收紧都属另一批），本测试自己把根标签这一问补上。
+    // ⚠️ 这一问**曾经只能由本测试兜**：`analyzeSvg` 的 `hasWH` 当时是在**全文**里找 `width=` / `height=`，
+    //   而图里必然有 `<rect width=… height=…>` → 「根上既无 viewBox 也无宽高」这种真会渲染塌缩的形态
+    //   被判 ok=true。**v18.38.0 已把共用校验器本身收成根标签级**（见 `tests/svg-analyze.test.mjs` 的缺陷回归）。
+    //   本行**刻意保留**：它测的是**模板**（本文件）而不是校验器——两层各有各的守备面。共享校验器动了之后，
+    //   这条断言从「唯一的兜底」变成「模板侧的第二道」。
     const rootTag = b.match(/<svg\b[^>]*>/i)?.[0] || ''
     const rootOk = /viewBox\s*=/i.test(rootTag) || (/\bwidth\s*=/i.test(rootTag) && /\bheight\s*=/i.test(rootTag))
     assert.ok(rootOk, `第 ${i + 1} 块的**根标签**既无 viewBox 也无 width/height → 缩放不可控：${rootTag.slice(0, 90)}`)

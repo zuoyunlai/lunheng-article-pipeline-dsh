@@ -75,13 +75,24 @@ export function analyzeSvg(src) {
   const { text: sanitized, warnings } = sanitizeSvg(raw);
   const problems = [];
 
-  if (!/<svg[\s>]/i.test(raw)) problems.push('未找到 <svg> 根元素');
-  if (!/xmlns\s*=\s*["']http:\/\/www\.w3\.org\/2000\/svg["']/i.test(raw)) {
+  // ── v18.38.0：三项结构判定收**根标签级**（此前是「全文级」）────────────────────────
+  //   实测缺陷（v18.30.0 EFF-6 反向自证时撞到）：旧写法 `hasWH = /\bwidth\s*=/ && /\bheight\s*=/`
+  //   是在**全文**里找 width=/height=，而任何图里都必然有 `<rect width=… height=…>` →
+  //   「**根标签**既无 viewBox 也无 width/height」这种**真会渲染塌缩**的形态被判 `ok=true`。
+  //   而本包**文档一直声称的就是根级**（`operations.md` §配图生成规范「必须含 `<svg xmlns=…>` 根 +
+  //   `viewBox`（或 width/height）」、`audit-checklist-quickref.md` §图件核验、`format-export.md` 导出
+  //   前置校验、`M-Gate-Algorithm.md` §M-Form-9 四处同口径）——即**代码落后于它自己的契约**，本批让代码追上。
+  //   前置实测（2026-09-27 扫 `run/**` 全部 **75 张**现存图件）：根标签缺 viewBox 且缺宽高的 **0 张**、
+  //   根标签缺 xmlns 的 **0 张** → 收紧**不牵连任何存量产物**。
+  //   严重度**刻意不变**（viewBox/宽高 = problem、xmlns = warning），只是把判定对象从全文换成根标签。
+  const rootTag = (raw.match(/<svg\b[^>]*>/i) || [])[0] || '';
+  if (!rootTag) problems.push('未找到 <svg> 根元素');
+  if (rootTag && !/xmlns\s*=\s*["']http:\/\/www\.w3\.org\/2000\/svg["']/i.test(rootTag)) {
     warnings.push('缺少标准 xmlns="http://www.w3.org/2000/svg"（部分渲染器会拒绝渲染）');
   }
-  const hasViewBox = /viewBox\s*=/i.test(raw);
-  const hasWH = /\bwidth\s*=/i.test(raw) && /\bheight\s*=/i.test(raw);
-  if (!hasViewBox && !hasWH) problems.push('既无 viewBox 也无 width/height → 缩放不可控（PDF 易溢出/塌陷）');
+  const hasViewBox = /viewBox\s*=/i.test(rootTag);
+  const hasWH = /\bwidth\s*=/i.test(rootTag) && /\bheight\s*=/i.test(rootTag);
+  if (rootTag && !hasViewBox && !hasWH) problems.push('既无 viewBox 也无 width/height → 缩放不可控（PDF 易溢出/塌陷）');
   if (/<!ENTITY|<!DOCTYPE[^>]*\[/i.test(raw)) problems.push('含 DTD 内部子集 / ENTITY（XXE 风险，禁止）');
   if (/(?:xlink:href|href)\s*=\s*["']\s*(?:https?:)?\/\//i.test(raw)) {
     warnings.push('含外部资源引用（离线/PDF 渲染会失败，且构成外发）');

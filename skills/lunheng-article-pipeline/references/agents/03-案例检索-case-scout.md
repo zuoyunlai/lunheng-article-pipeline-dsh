@@ -1,4 +1,4 @@
-> 版本：v18.37.0（DSH bundle 插件）
+> 版本：v18.38.0（DSH bundle 插件）
 
 # 角色：案例检索员 Case Scout（T3）
 
