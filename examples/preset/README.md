@@ -13,7 +13,7 @@
 ```sh
 # 1. 在 profile 里声明 bundle 依赖（DSH 读 dsh.bundle.patch 找到 cordis.patch.yml 加载）
 dsh plugin --profile web add lunheng-article-pipeline@dsh   # 推荐：跟随最新 DSH 迭代版
-# 锁定具体版本：dsh plugin --profile web add lunheng-article-pipeline@18.27.0
+# 锁定具体版本：dsh plugin --profile web add lunheng-article-pipeline@18.28.0
 
 # 2. （可选，但要让三档工具真的挂上就必做）设三档 subagent 工具的 provider/model 环境变量
 #    v18.2.6 起：不设任何变量 = 三档行**根本不装载**（不再是「装载但全继承」）
@@ -115,3 +115,5 @@ dsh plugin --profile web update lunheng-article-pipeline@dsh
 # 入口安装的可选能力（原生只读工具 / 机制写保护 / /lunheng-status）随 ctx.effect 的 disposer 回收，不留残余
 dsh plugin --profile web remove lunheng-article-pipeline
 ```
+
+> **质量—成本实测（QLT-5）**：分档此前只有**成本定位**、无质量差异实测。观测性读数与**受控 A/B 设计**见 [`../../skills/lunheng-article-pipeline/references/_shared/模型路由.md`](../../skills/lunheng-article-pipeline/references/_shared/模型路由.md) 的质量—成本实测节；复算命令 = `node skills/lunheng-article-pipeline/scripts/token-budget.mjs --roles --by-model`。

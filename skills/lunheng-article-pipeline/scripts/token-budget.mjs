@@ -48,6 +48,7 @@ if (args.includes('-h') || args.includes('--help')) {
 --project <路径>   静态测量该项目的「读目标」：整读规模 vs 按需读规模（大纲 vs §11 / 三卡 vs 索引段 / 证据包 vs 审计视图 / 定稿+证据包 vs M 门 JSON）
 --roles            读 $DSH_HOME/storages/session_projcache/sessions/*.json，按论衡角色聚合真实 token（cacheRead / output / 步数 / 占比）。**v18.22.0 起默认不计入主会话**（--include-main 显式放开，兼容旧读数 + 便于调试主会话污染）
 --include-main     **v18.22.0**：把主会话一起纳入角色桶。默认 false（主会话 label 通常空，启发式容易误归类——先打未归类桶再人工判定）
+--by-model         **v18.28.0 QLT-5**：附带「按模型 / 按角色×模型」聚合（cacheRead / 步数 / **M/步**）——分档模型的「质量—成本」实测面。**只给结构性观测**：同角色跨模型的 M/步 差异主要来自「每步读进来多少」，不是「模型更聪明」；受控 A/B 需真跑（见 references/_shared/模型路由.md §四）
 --dsh-home <path>  指定 DSH_HOME（默认 $DSH_HOME 或 ~/.dsh）
 --json             输出 JSON（机器可读）
 -h, --help         本帮助
@@ -58,10 +59,10 @@ if (args.includes('-h') || args.includes('--help')) {
 // v18.2.9（第三方审计 A7）：参数解析迁移到 `_lib/cli-args.mjs` 唯一实现
 // v18.12.0（L-67）：用法错由 exit 1 改 exit 10——1 是 M 门的「P1 内容失败」，用法错被读成内容失败
 //   会让主控误触发 T5 修订轮（同族事故见 v18.0.5 exit-guard 的引入说明）。
-let wantJson, projArg, wantRoles, includeMain, dshHome;
+let wantJson, projArg, wantRoles, includeMain, wantByModel, dshHome;
 try {
   const parsed = parseCliArgs(args, {
-    flags: ['--json', '--roles', '--include-main'],
+    flags: ['--json', '--roles', '--include-main', '--by-model'],
     values: { '--project': 'run/项目', '--dsh-home': '~/.dsh' },
     maxPositionals: 0,
   });
@@ -69,6 +70,7 @@ try {
   projArg = parsed.opts['--project'];
   wantRoles = parsed.flags.has('--roles');
   includeMain = parsed.flags.has('--include-main');   // v18.22.0 MEA-1：默认 false
+  wantByModel = parsed.flags.has('--by-model');   // v18.28.0 QLT-5：附带「按模型 / 角色×模型」聚合（质量—成本对照的实测面）
   dshHome = parsed.opts['--dsh-home'] || process.env.DSH_HOME || join(homedir(), '.dsh');
 } catch (e) {
   if (e && e.code === CLI_USAGE_CODE) {
@@ -77,7 +79,7 @@ try {
   }
   throw e;
 }
-if (!projArg && !wantRoles) {
+if (!projArg && !wantRoles && !wantByModel) {
   console.error('需至少给一个模式：--project <run/项目> 或 --roles\n用法: node token-budget.mjs [--project <run/项目>] [--roles] [--json]');
   process.exit(10);
 }
@@ -200,6 +202,10 @@ if (wantRoles) {
           prompt: String(s.title?.val || '').slice(0, 80),
           steps: s.sessionStats?.val?.steps ?? null,
           cacheRead: t.cacheReadTokens || 0, uncached: t.uncachedInputTokens || 0, output: t.outputTokens || 0,
+          // v18.28.0 QLT-5：把该会话实际用的模型带出来（投影缓存的 modelSelection.lastUsed）——
+          //   「分档该不该配」此前只有成本定位的信念、无实测；带上模型后才可能做质量—成本对照。
+          model: String(s.modelSelection?.val?.lastUsed?.model || ''),
+          provider: String(s.modelSelection?.val?.lastUsed?.provider || ''),
         });
       } catch { /* 跳过坏文件 */ }
     }
@@ -207,7 +213,7 @@ if (wantRoles) {
     const cache = JSON.parse(readFileSync(legacy, 'utf8'));
     for (const [id, c] of Object.entries(cache.tables?.sessions || {})) {
       const t = (c.rows || c).tokenUsage?.val?.totals;
-      if (t) sessions.push({ id: id.slice(0, 8), label: '', prompt: '', steps: null, cacheRead: t.cacheReadTokens || 0, uncached: t.uncachedInputTokens || 0, output: t.outputTokens || 0 });
+      if (t) sessions.push({ id: id.slice(0, 8), label: '', prompt: '', steps: null, cacheRead: t.cacheReadTokens || 0, uncached: t.uncachedInputTokens || 0, output: t.outputTokens || 0, model: '', provider: '' });
     }
   }
   // v18.22.0 MEA-1：role 标注时记录匹配路径（'label' / 'title' / null），便于后续统计 fallback 命中数。
@@ -244,6 +250,36 @@ if (wantRoles) {
     steps: unmatched.reduce((a, s) => a + (s.steps || 0), 0),
     sharePct: total ? Number(((unmatchedTotal / total) * 100).toFixed(1)) : 0,
   }] : [];
+// v18.28.0 QLT-5（--by-model）：按模型 / 角色×模型聚合——分档「质量—成本」的**实测面**。
+//   **口径如实声明**：这是**观测性**数据（会话来自不同项目/篇幅/轮次），**不是受控 A/B**；
+//   同角色跨模型的 M/步 差异主要反映「每步读进来多少」而非「模型更聪明」。受控 A/B 见 模型路由.md §四。
+if (wantByModel) {
+  const aggBy = (keyFn) => {
+    const m = new Map();
+    for (const s of classified) {
+      if (!s.model) continue;
+      const k = keyFn(s);
+      if (!m.has(k)) m.set(k, { n: 0, cacheRead: 0, steps: 0, output: 0 });
+      const a = m.get(k); a.n++; a.cacheRead += s.cacheRead; a.steps += (s.steps || 0); a.output += s.output;
+    }
+    return [...m.entries()].sort((a, b) => b[1].cacheRead - a[1].cacheRead);
+  };
+  const MM = (n) => (n / 1e6).toFixed(1) + "M";
+  const byModelRows = aggBy((s) => s.model);
+  const byRoleModelRows = aggBy((s) => s.role + "|" + s.model).filter(([k]) => !k.startsWith("未归类"));
+  console.log("\n## 四、按模型（--by-model；观测性，非受控 A/B）");
+  console.log("  模型".padEnd(34) + "会话" + "cacheRead".padStart(11) + "步数".padStart(7) + "M/步".padStart(8));
+  for (const [k, a] of byModelRows) console.log("  " + k.padEnd(32) + String(a.n).padStart(4) + MM(a.cacheRead).padStart(11) + String(a.steps).padStart(7) + (a.steps ? (a.cacheRead / a.steps / 1e6).toFixed(2) : "-").padStart(8));
+  console.log("\n## 五、按角色 × 模型（同一角色跨模型才有可比性）");
+  console.log("  角色".padEnd(8) + "模型".padEnd(32) + "会话" + "cacheRead".padStart(11) + "步数".padStart(7) + "M/步".padStart(8));
+  for (const [k, a] of byRoleModelRows) {
+    const [role, mdl] = k.split("|");
+    console.log("  " + role.padEnd(6) + mdl.padEnd(32) + String(a.n).padStart(4) + MM(a.cacheRead).padStart(11) + String(a.steps).padStart(7) + (a.steps ? (a.cacheRead / a.steps / 1e6).toFixed(2) : "-").padStart(8));
+  }
+  report.byModel = byModelRows.map(([k, a]) => ({ model: k, ...a, perStep: a.steps ? +(a.cacheRead / a.steps).toFixed(0) : null }));
+  report.byRoleModel = byRoleModelRows.map(([k, a]) => ({ role: k.split("|")[0], model: k.split("|")[1], ...a, perStep: a.steps ? +(a.cacheRead / a.steps).toFixed(0) : null }));
+}
+
   report.roles = {
     dshHome,
     sessionsTotal: sessions.length,
@@ -265,6 +301,7 @@ const M = (n) => (n / 1e6).toFixed(2) + 'M';
 // 终端显示宽度：CJK 记 2 列（否则中文列会对不齐）
 const dispW = (s) => [...String(s)].reduce((a, c) => a + (/[\u1100-\u115f\u2e80-\ua4cf\ua960-\ua97f\uac00-\ud7ff\uf900-\ufaff\ufe10-\ufe19\ufe30-\ufe6f\uff00-\uff60\uffe0-\uffe6]/.test(c) ? 2 : 1), 0);
 const padW = (s, w) => String(s) + ' '.repeat(Math.max(0, w - dispW(s)));
+
 if (wantJson) {
   console.log(JSON.stringify(report, null, 2));
 } else {
