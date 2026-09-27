@@ -177,21 +177,26 @@ test('g-audit-check：参数错（未知参数 / 带值旗标缺值 / 文件不�
   rmSync(d, { recursive: true, force: true })
 })
 
-test('cite-coverage-check C-Redundancy：同段 ≥4 篇引用且无差异词 → **必须报 P1**（v18.23.0 假绿修复）', () => {
+test('cite-coverage-check C-Redundancy：同句 ≥4 篇引用且无差异词 → **必须报**（v18.23.0 假绿修复；v18.24.0 判级收窄为 P2 候选）', () => {
   const d = tmp()
   const refs = ['[L01] a', '[L02] b', '[L03] c', '[L04] d', '[L05] e'].join('\n')
   const build = (body) => {
     const f = join(d, `p${Math.abs(body.length)}.md`)
-    writeFileSync(f, `# 标题\n\n## 摘要\n\n正文若干。\n\n## 一、导论\n\n${body}\n\n## 参考文献\n\n${refs}\n`)
+    writeFileSync(f, `# 标题\n\n## 摘要\n\n摘要还引了 [L01][L02][L03][L04]（摘要罗列不算）。\n\n## 一、导论\n\n${body}\n\n## 参考文献\n\n${refs}\n`)
     return f
   }
   const cc = join(SCRIPTS, 'cite-coverage-check.mjs')
 
   // 假绿复现点：`refRegex` 无捕获组，旧代码 `L${x[1]}` 恒为 "Lundefined" → uniqueRefs 恒 1 → 永不触发
   const bad = parseJson(run([cc, build('有学者认为甲。[L01][L02][L03][L04][L05]')]))
-  assert.equal(bad.checks['C-Redundancy'].pass, false, '同段 5 篇不同引用且无差异词必须报（修复前恒 pass=true）')
-  assert.equal(bad.checks['C-Redundancy'].severity, 'P1')
+  assert.equal(bad.checks['C-Redundancy'].pass, false, '同句 5 篇不同引用且无差异词必须报（修复前恒 pass=true）')
+  assert.equal(bad.checks['C-Redundancy'].severity, 'P2', 'v18.24.0 判级收窄为 **P2 候选**（是否属「同质堆砌」是语义判断，判级归 T7）')
   assert.equal(bad.checks['C-Redundancy'].violations[0].refsCount, 5, '引用计数必须是 5（而非 1）：' + JSON.stringify(bad.checks['C-Redundancy'].violations))
+  assert.ok(bad.checks['C-Redundancy'].violations[0].sentence.includes('[L01]'), '须给出命中句原文，供 T7 直接判读（免回查全文）')
+
+  // 摘要里的并列引用**不算**（那是罗列证据基础，不是论点句）
+  const onlyAbstract = parseJson(run([cc, build('本节不含并列引用。')]))
+  assert.equal(onlyAbstract.checks['C-Redundancy'].pass, true, '摘要/关键词里的并列引用不得计入（实测某项目摘要 8 篇被误判）')
 
   // 指明了差异 → 不报（判据的否定侧）
   const ok = parseJson(run([cc, build('甲认为 A。[L01][L02][L03][L04] 与之不同，乙认为 B。')]))

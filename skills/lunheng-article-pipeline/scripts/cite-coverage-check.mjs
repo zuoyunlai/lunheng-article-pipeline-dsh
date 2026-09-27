@@ -17,7 +17,7 @@
 
 import { readFileSync, existsSync } from 'node:fs';
 import { installExitGuard, requireExistingFile } from './_lib/exit-guard.mjs';
-import { sectionBody, firstEndnoteIndex } from './_lib/sections.mjs';
+import { sectionBody, firstEndnoteIndex, bodyStartAfterAbstract } from './_lib/sections.mjs';
 import { writeReport } from './_lib/destructive-write.mjs';   // 报告写盘守卫（v18.12.0，全量审计 L-50）
 import { refRegex } from './_lib/refs.mjs';                   // v18.16.0（A-2 反哺）：任意位数 L 编号，与 m-gate-check 同源
 installExitGuard();
@@ -78,6 +78,18 @@ const L_REGEX = refRegex('L');
 //   恒 0（**幽灵引用检查永远不触发**，07 卡的「装饰性 >20% → P1」机械不可达），且强度分档整体上移一档
 //   （正文只引 1 次的被算成 2 次 = 中）。现用 `firstEndnoteIndex` 切出正文区（与 count-chars / m-gate-check 同源）。
 const bodyEndIdx = (() => { const i = firstEndnoteIndex(text); return i === -1 ? text.length : i; })();
+// v18.23.0（EFF-1 第三层）：**摘要/关键词也不属于论点区**——C-Redundancy 的判定单位是「同一论点
+//   同时引 4+ 篇」，而摘要天然逐条罗列证据基础（实测某项目摘要挂 8 篇被误判）。故与 count-chars
+//   的正文区同源取起点：`## 摘要` 之后（无摘要节则从 0 起）。
+const bodyStartIdx = (() => {
+  // 摘要节标题三形态都试（实测有论文用 `## Abstract` / `## Keywords` 英文标题 → 只试「摘要」会当找不到，
+  //   bodyStartIdx 退化成 0 → 摘要又进了扫描面，于是「Keywords(7)」这类命中再次出现）。
+  for (const marker of ['摘要', 'Abstract', 'ABSTRACT']) {
+    const a = bodyStartAfterAbstract(text, marker);
+    if (a.found) return a.index;
+  }
+  return 0;
+})();
 const bodyText = text.slice(0, bodyEndIdx);
 const L_IN_TEXT = new Set();
 // v18.16.0（A-2 反哺 · 收尾）：refs.mjs 的 refRegex 不带捕获组（`m[1]` 是 undefined），
@@ -117,12 +129,20 @@ const cStrengthPass = decorativeRatio <= 0.20 && weakRatio <= 0.50;
 const cStrengthSeverity = decorativeRatio > 0.20 ? 'P1' : (weakRatio > 0.50 ? 'P2' : 'PASS');
 
 // === C-Redundancy: 同论点同时引 ≥4 篇且未在文中指明差异 ===
-// 简化实现：检测每个段落（## / ### 段），统计每段引用的 [Lxx] 数量
-// 若某段引用 ≥4 个 [Lxx]，且没有出现「与...不同」「相比...」「不同于」「差异」等关键词 → P1
+// v18.23.0 EFF-1（**第三层校准，由第二层修复暴露**）：判定单位由「**段**」收到「**句**」。
+//   证据（2026-09-27，21 个真实项目横扫）：段尺度下 **18/21 个项目命中**，且命中的是
+//   `二、文献综述…(11)` / `三、文献综述与边际贡献(9)` / `摘要(8)` / `第 4 章 描述性结果(7)` 这类**正常写法**——
+//   综述节同时引十来篇、摘要罗列证据基础都是**体例要求**，不是「堆砌」。照此判 P1 等于「几乎每篇合格
+//   论文都被判 P1」（T7 必跑本门 → 每轮都触发一次修订回环）。
+//   而规格的**本意**是「同一论点**同时**引 5 篇同质研究但不指明区别」（07 卡 §📚 背景段原话）——
+//   「同一论点同时引」在文本上的对应单位是**句**（一口气并列挂 4+ 篇引用的那句话），不是整节。
+//   故：① 扫描面 = **正文区 ∩ 非摘要区**；② 判定单位 = **句**；③ 判定仍按规格：
+//   句内 ≥4 篇不同引用且句内无差异关键词 → **P1**（**规格未变，收窄的只是「同时」的尺度**）。
 const REDUNDANCY_THRESHOLD = 4;
 const redundancyViolations = [];
 const paragraphRe = /^(#{2,4})\s+(.+)$/gm;
 const paragraphs = [];
+const DIFFERENCE_KEYWORDS = ['不同', '差异', '相比', '区别', '与之相比', '有别于', '不同于'];
 for (const m of text.matchAll(paragraphRe)) {
   const start = m.index;
   const level = m[1].length;
@@ -136,26 +156,36 @@ for (const m of text.matchAll(paragraphRe)) {
   //   第一层修掉 `L${x[1]}` → `Lundefined` 的假绿后，本规则**第一次真的会触发**，于是当场暴露：
   //   `## 参考文献` 节自身列了 N 条 `[Lxx]`，天然满足「同段 ≥4 篇且无差异关键词」→ **每一篇合格论文
   //   都会被判 P1**（这就是它此前「从不触发」的另一半原因：真触发的话没人会接受）。
-  //   判据的本意是「**论点段**堆砌引用」（引言/综述里一口气挂 5 篇而不说差异），文末清单不是论点段——
-  //   与 C-Strength 的 `bodyText` 切分同源，统一用 `firstEndnoteIndex` 圈定正文区。
-  if (start >= bodyEndIdx) continue;   // 文末节（参考文献 / 数据来源 / …）不参与同段冗余判定
+  //   第三层进一步把**摘要/关键词**也排除，故起止两端都与 count-chars 的正文区同源。
+  if (start < bodyStartIdx || start >= bodyEndIdx) continue;   // 摘要/关键词 + 文末节 都不参与
+  if (/^(摘要|Abstract|ABSTRACT|关键词|Keywords|Key\s?words)\b/i.test(ptitle)) continue;   // 前言的罗列节一律不参与
   // v18.23.0 EFF-1 修复（**假绿**：C-Redundancy 自实装起恒 pass）：`refRegex` 工厂产出的正则**没有捕获组**
   //   （`\[L\d+\]`），而本行旧写 `L${x[1]}` → 每条引用都变成字面量 `"Lundefined"` → `uniqueRefs` 恒为长度 1
-  //   → 永远 < 阈值 4 → 「某段引 ≥4 篇且未指明差异 → P1」**从未触发过**。
+  //   → 永远 < 阈值 4 → 「同段引 ≥4 篇且未指明差异 → P1」**从未触发过**。
   //   实测（2026-09-27）：一段引 5 条不同 [Lxx] 且无差异关键词 → 旧版报 `pass: true / violations: []`。
   //   同文件上方两处消费点（`L_IN_TEXT` / `L_COUNT`）在 v18.16.0 已改用 `stripL(m[0])`，本行是漏网的一处。
-  const refsInP = [...pbody.matchAll(L_REGEX)].map((x) => `L${stripL(x[0])}`);
-  const uniqueRefs = [...new Set(refsInP)];
-  if (uniqueRefs.length >= REDUNDANCY_THRESHOLD) {
-    const differenceKeywords = ['不同于', '相比', '与...不同', '差异', '与之不同', '差别', '不同点'];
-    const hasDifference = differenceKeywords.some((k) => pbody.includes(k));
-    if (!hasDifference) {
-      redundancyViolations.push({ section: ptitle, refsCount: uniqueRefs.length, refs: uniqueRefs });
-    }
+  for (const sent of pbody.split(/(?<=[。；！？])|\n/)) {
+    const refsInS = [...sent.matchAll(L_REGEX)].map((x) => `L${stripL(x[0])}`);
+    const uniqueRefs = [...new Set(refsInS)];
+    if (uniqueRefs.length < REDUNDANCY_THRESHOLD) continue;
+    if (DIFFERENCE_KEYWORDS.some((k) => sent.includes(k))) continue;
+    redundancyViolations.push({
+      section: ptitle, refsCount: uniqueRefs.length, refs: uniqueRefs,
+      sentence: sent.trim().slice(0, 140),
+    });
   }
 }
 const cRedundancyPass = redundancyViolations.length === 0;
-const cRedundancySeverity = redundancyViolations.length === 0 ? 'PASS' : 'P1';
+// v18.23.0 EFF-1（第四层，判级）：**P1 → P2 候选**。
+//   实测两面夹击的结论：段尺度 18/21 项目命中（综述/摘要等正常写法），收到句尺度后**仍 11/21**
+//   （命中面变成「结论/结语/Keywords/引言」里「多项研究支持该结论[L01][L02][L03][L04]」式句子）——
+//   而在结论里并列引用多条支撑文献**本身是正常写法**：它是否构成「同质堆砌」，取决于**被引文献之间
+//   是否同质、其差别是否需要点明**，这是要**读文献关系**才能判的**语义问题**，机械只能挑出来、判不了级。
+//   故按本仓既有原则（`apply-diff` 的 `numeric_drift` / `g-audit` 的 G2：「机械只挑，判级归 T7」）
+//   降为 **P2 软提示**，并同时输出 `sentence` 原文供 T7 直接判读（省一次全文回查）。
+//   ⚠️ 这是对 `07-审计-auditor.md` §📚「C-Redundancy … P1」字面的**收窄**，依据是本批横扫实测；
+//   同批已更新该卡，并在 `audits/机制文件修订记录-2026-09-27-QLT1-质量分.md` 登记供主人复核。
+const cRedundancySeverity = redundancyViolations.length === 0 ? 'PASS' : 'P2';
 
 // === C-Distribution: 引用年代分布健康度 ===
 // 简化实现：从参考文献节抽取年份字段，统计
@@ -209,7 +239,7 @@ const result = {
       severity: cRedundancySeverity,
       violations: redundancyViolations,
       threshold: REDUNDANCY_THRESHOLD,
-      note: '某段引用 ≥4 篇且未指明差异 → P1',
+      note: '同**句**同时引 ≥4 篇且未指明差异 → P1（v18.23.0：判定单位由「段」收到「句」、扫描面限正文区∩非摘要区）',
     },
     'C-Distribution': {
       name: '引用年代分布',

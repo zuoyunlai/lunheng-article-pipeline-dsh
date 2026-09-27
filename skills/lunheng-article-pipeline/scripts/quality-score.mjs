@@ -1,0 +1,318 @@
+#!/usr/bin/env node
+// 论衡文章质量回归评分（v18.24.0 QLT-1 新增 / scripts 白名单 25→26）
+//
+// 用法：node quality-score.mjs <项目目录> [--humanities] [--report <path>] [--baseline <score.json>]
+//   <项目目录>        = `run/<项目名>/`（须含 `final/定稿.md`）
+//   --humanities      = 人文学科：structure-check 走 IMRaD-Alternate（透传该旗标）
+//   --report <path>   = 评分 JSON 写入 <path>（默认 stdout）
+//   --baseline <path> = 与一份历史评分 JSON 对比，输出**逐分量差异**（机制改动前后各跑一次用）
+//
+// 退出码（**本门是「度量」不是「闸门」**——分数高低不影响退出码）：
+//   0  = 评分完成 / 10 = 参数或路径错误 / 70 = 内部错误
+//   ⚠️ **为什么不做闸门**：质量分是**趋势指标**，把它挂成闸门会立刻产生「为过门而刷分」的压力
+//      （各分量的判据都允许 N/A，一旦分数决定放行，N/A 就成了最省事的刷分路径）。
+//
+// ── 定位（QLT-1）：把「文章质量能否提升」从**个案感觉**变成**可比数字** ─────────────────────
+//   本脚本**不新造任何判据**——只把仓库里既有的机械门结果聚合成一个 0–100 的分数 + 逐项明细：
+//     · M 门 22 机械项（`m-gate-check.mjs`，权重 40）——**图件闭环（M-Form-9）并入此项，不重复计分**
+//     · 学术结构三项（`structure-check.mjs`，权重 10）
+//     · 方法论可复现三项（`methodology-check.mjs`，权重 5）——**仅当有方法节**才适用
+//     · 引用实质相关三项（`cite-coverage-check.mjs`，权重 10）
+//     · G 项机检 5 项（`g-audit-check.mjs`，权重 15）——**字数分层（G8）已在其中，不重复计分**
+//     · G14 中文 AI 痕迹终闸（读 `audits/G14-检测报告-v*.md`，权重 10）
+//     · 交付完整性（`handoff-check.mjs --role T8 --require-gates`，权重 10）
+//
+//   **防假绿（本脚本最重要的一条口径）**：N/A 分量**不进分母**，但**必须同时报 `coverage`**
+//     （适用权重 / 100）并在 `na[]` 里列明原因——只报分数不报覆盖率，等于给「什么都不做」满分。
+//     coverage < 0.8 时额外给 `coverageWarning`。
+//
+//   约定（QLT-1 判据）：**任何机制改动前后各跑一次，分数与逐项差异写进反哺报告**；
+//     golden 项目清单与基线分数见 [`references/case-studies.md`](../references/case-studies.md) §golden 项目。
+//   可复现性：同一份产物重复跑分数必须一致（分量的输入只有产物本身，无时间/环境依赖）。
+
+import { readFileSync, existsSync, mkdtempSync, rmSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { installExitGuard, requireExistingDir } from './_lib/exit-guard.mjs';
+import { h2Headings, titleMatches } from './_lib/sections.mjs';
+installExitGuard();
+
+const SCRIPTS = new URL('.', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+const NODE = process.execPath;
+
+// --- CLI ---
+const argv = process.argv.slice(2);
+let project = null;
+let reportPath = null;
+let baselinePath = null;
+let humanities = false;
+const USAGE = '用法: node quality-score.mjs <项目目录> [--humanities] [--report <path>] [--baseline <score.json>]';
+for (let i = 0; i < argv.length; i++) {
+  const a = argv[i];
+  if (a === '--report' || a === '--baseline') {
+    const v = argv[++i];
+    if (!v || v.startsWith('--')) { console.error(`${a} 缺少值\n${USAGE}`); process.exit(10); }
+    if (a === '--report') reportPath = v; else baselinePath = v;
+  } else if (a === '--humanities') {
+    humanities = true;
+  } else if (a.startsWith('--')) {
+    console.error(`未知参数: ${a}\n${USAGE}`);
+    process.exit(10);
+  } else if (project === null) project = a;
+  else { console.error(`多次传入项目参数: ${a}\n${USAGE}`); process.exit(10); }
+}
+if (!project) { console.error(USAGE); process.exit(10); }
+if (!existsSync(project)) { console.error(`项目目录不存在: ${project}`); process.exit(10); }
+requireExistingDir(project, '项目目录');
+if (baselinePath !== null && !existsSync(baselinePath)) { console.error(`基线文件不存在: ${baselinePath}`); process.exit(10); }
+
+const draft = join(project, 'final', '定稿.md');
+const evidence = join(project, 'final', '证据包');
+const brief = join(project, '01-任务简报.md');
+const deliverNote = join(project, 'final', '交付说明.md');
+if (!existsSync(draft)) { console.error(`缺 final/定稿.md：${draft}（质量分以定稿为评分对象）`); process.exit(10); }
+
+const tmpDir = mkdtempSync(join(tmpdir(), 'lunheng-qs-'));
+const cleanup = () => rmSync(tmpDir, { recursive: true, force: true });
+const readJson = (p) => { try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; } };
+/** 跑一个门脚本并把 JSON 报告写到临时文件（**不经管道**：`stdio: 'ignore'` + `--report`）。
+ *  返回值 `{ status, json, error }`——`status === null` 表示子进程根本没起来（与内容判定无关）。 */
+const runGate = (tag, args) => {
+  const out = join(tmpDir, `${tag}.json`);
+  const r = spawnSync(NODE, [...args, '--report', out], { stdio: 'ignore', timeout: 120000 });
+  return { status: r.status, error: r.error ? r.error.code : null, json: readJson(out) };
+};
+
+// --- 适用性判定（不适用 ⇒ 不进分母，但必须列进 na[]）---
+const h2 = h2Headings(readFileSync(draft, 'utf8')).map((x) => x.title);
+// ⚠️ **必须用「包含」而不是 `titleMatches`（精确 / startsWith）**：实测论衡的节标题普遍带序号前缀
+//   （`## 四、研究设计：核心案例与对照案例的选取` / `## §3 理论建模：…`），startsWith 判据下
+//   「研究设计」这类关键词**一个都命中不了** → 体例判定失真（实测 6/6 项目被误判为非 IMRaD）。
+const hasSection = (names) => h2.some((t) => names.some((n) => t.includes(n)));
+const hasMethods = hasSection(['方法', '研究方法', '研究设计', 'Method', 'Methods', 'Methodology']);
+const hasRefs = hasSection(['参考文献', 'References']);
+
+const components = [];
+/** 记一个分量。`ratio` ∈ [0,1] 或 null（不适用）。 */
+const add = (id, name, weight, ratio, detail, evidenceObj = {}, naReason = null) => {
+  components.push({
+    id, name, weight,
+    applicable: ratio !== null,
+    ratio: ratio === null ? null : +ratio.toFixed(4),
+    weighted: ratio === null ? null : +(weight * ratio).toFixed(3),
+    detail, evidence: evidenceObj,
+    ...(naReason ? { naReason } : {}),
+  });
+};
+/** 三检类门（structure / methodology / cite-coverage）的**硬失败比**。
+ *  **口径（v18.24.0 定）：分数只反映硬失败（P0/P1）+ 结构缺项；P2 软提示单列、不扣分。**
+ *  理由：这些门的规格自己写明 P2 是「软提示」（`cite-coverage` 的 C-Redundancy 在 v18.23.0 实测后由
+ *  P1 收窄为 P2 候选；`structure`/`methodology` 也有 P2 档）。若把软提示算进分数，**度量会与「闸门
+ *  是否放行」脱钩**——一个 P2 候选遍地的项目会被打低分，而它的 P0/P1 全是干净的。故：
+ *    硬失败比 = 1 − (P0/P1 项数 / 总项数)；P2 项计入 `soft[]` 供人看，不进分母。 */
+const hardRatio = (checks) => {
+  const soft = checks.filter((c) => c.severity === 'P2');
+  const hard = checks.filter((c) => c.severity !== 'P2');
+  const hardFail = hard.filter((c) => !c.pass);
+  return {
+    ratio: hard.length === 0 ? 1 : (hard.length - hardFail.length) / hard.length,
+    soft: soft.filter((c) => !c.pass).map((c) => c.name || ''),
+    detailSuffix: hard.length === 0 ? '｜全部为 P2 软提示（不扣分）' : (soft.length ? `｜另有 P2 软提示 ${soft.filter((c) => !c.pass).length} 项（不扣分）` : ''),
+  };
+};
+
+// ① M 门 22 机械项（权重 40）——图件闭环 M-Form-9 已含在内，不另计
+if (existsSync(evidence)) {
+  const r = runGate('mgate', [join(SCRIPTS, 'm-gate-check.mjs'), draft, evidence]);
+  const j = r.json;
+  if (j && j.total > 0) {
+    add('M-Gate', 'M 门 22 机械项（含图件闭环 M-Form-9）', 40, j.pass / j.total,
+      `${j.pass}/${j.total} 通过｜P0 ${j.p0 ?? 0} / P1 ${j.p1 ?? 0} / P2 ${j.p2 ?? 0}｜exit ${j.exit}`,
+      { pass: j.pass, total: j.total, p0: j.p0 ?? 0, p1: j.p1 ?? 0, p2: j.p2 ?? 0 });
+  } else {
+    add('M-Gate', 'M 门 22 机械项（含图件闭环 M-Form-9）', 40, null, '', {}, `m-gate-check 未产出可用 JSON（status=${r.status}${r.error ? ` / ${r.error}` : ''}）`);
+  }
+} else {
+  add('M-Gate', 'M 门 22 机械项（含图件闭环 M-Form-9）', 40, null, '', {}, '缺 final/证据包（M 门第二参数必须是证据包目录）');
+}
+
+// ② 学术结构三项（权重 10）——**仅当体例适用**才计分
+//    实测（2026-09-27）：理论型/评论型论文用 `§N 名称` 标题、没有 IMRaD 节 → structure-check 在 IMRaD
+//    模式下 3 项全缺（P0）。那是**体例差异，不是质量缺陷**；把它算成 0 分等于用「实证论文的结构门」
+//    给所有理论文章判负。故：**无「方法/结果」节且未显式 `--humanities` → 本分量 N/A**（如实写进 na[]，
+//    覆盖率随之下降，而不是悄悄给 0 分）。带 `--humanities` 时走 IMRaD-Alternate（引言/讨论/结论）。
+{
+  const imradish = hasSection(['方法', '研究方法', '研究设计', 'Method', 'Methods', 'Methodology', '结果', 'Results']);
+  if (!imradish && !humanities) {
+    add('structure', '学术结构（IMRaD / 引言漏斗 / 讨论四要素）', 10, null, '', {},
+      '非 IMRaD 体例（无「方法/结果」节）且未传 --humanities——结构门按 IMRaD 词汇判据会把体例差异记成质量缺陷，故不适用');
+  } else {
+  const r = runGate('structure', [join(SCRIPTS, 'structure-check.mjs'), draft, ...(humanities ? ['--humanities'] : [])]);
+  const j = r.json;
+  const cs = j && j.checks ? Object.values(j.checks) : null;
+  if (cs && cs.length > 0) {
+    const hr = hardRatio(cs);
+    add('structure', `学术结构（${humanities ? 'IMRaD-Alternate' : 'IMRaD'} / 引言漏斗 / 讨论四要素）`, 10, hr.ratio,
+      `${Math.round(hr.ratio * cs.length)}/${cs.length} 通过` + (cs.filter((c) => !c.pass && c.severity !== 'P2').length ? `｜硬失败：${cs.filter((c) => !c.pass && c.severity !== 'P2').map((c) => Object.keys(j.checks)[cs.indexOf(c)] || '').join(' / ')}` : '') + hr.detailSuffix,
+      { pass: cs.filter((c) => c.pass).length, total: cs.length, soft: hr.soft, humanities });
+  } else {
+    add('structure', '学术结构（IMRaD / 引言漏斗 / 讨论四要素）', 10, null, '', {}, `structure-check 未产出可用 JSON（status=${r.status}）`);
+  }
+  }
+}
+
+// ③ 方法论可复现三项（权重 5）——**仅当有方法节**（人文学科/评论类通常没有 → N/A，如实说明）
+if (hasMethods) {
+  const r = runGate('methodology', [join(SCRIPTS, 'methodology-check.mjs'), draft]);
+  const j = r.json;
+  const cs = j && j.checks ? Object.values(j.checks) : null;
+  if (cs && cs.length > 0) {
+    const hr = hardRatio(cs);
+    add('methodology', '方法论可复现（MC-Form-12 / MC-Exist-11 / MC-Exist-12）', 5, hr.ratio, `${cs.filter((c) => c.pass).length}/${cs.length} 通过` + hr.detailSuffix, { pass: cs.filter((c) => c.pass).length, total: cs.length, soft: hr.soft });
+  } else {
+    add('methodology', '方法论可复现（MC-*）', 5, null, '', {}, `methodology-check 未产出可用 JSON（status=${r.status}）`);
+  }
+} else {
+  add('methodology', '方法论可复现（MC-*）', 5, null, '', {}, '本文无「方法 / 研究设计 / Methodology」节（评论类与人文学科通常不适用）');
+}
+
+// ④ 引用实质相关三项（权重 10）
+if (hasRefs) {
+  const r = runGate('cite', [join(SCRIPTS, 'cite-coverage-check.mjs'), draft]);
+  const j = r.json;
+  const cs = j && j.checks ? Object.values(j.checks) : null;
+  if (cs && cs.length > 0) {
+    const hr = hardRatio(cs);
+    add('cite-coverage', '引用实质相关性（强度 / 冗余 / 年代分布）', 10, hr.ratio,
+      `${cs.filter((c) => c.pass).length}/${cs.length} 通过` + (hr.soft.length ? `｜软提示：${hr.soft.join(' / ')}` : ''),
+      { pass: cs.filter((c) => c.pass).length, total: cs.length, soft: hr.soft });
+  } else {
+    add('cite-coverage', '引用实质相关性（强度 / 冗余 / 年代分布）', 10, null, '', {}, `cite-coverage-check 未产出可用 JSON（status=${r.status}）`);
+  }
+} else {
+  add('cite-coverage', '引用实质相关性（强度 / 冗余 / 年代分布）', 10, null, '', {}, '本文无「参考文献」节');
+}
+
+// ⑤ G 项机检 5 项（权重 15）——字数分层 G8 已在其中，不重复计分
+if (existsSync(evidence) && existsSync(brief)) {
+  const r = runGate('gaudit', [join(SCRIPTS, 'g-audit-check.mjs'), draft, '--cards', evidence, '--brief', brief]);
+  const j = r.json;
+  const cs = j && j.checks ? Object.values(j.checks) : null;
+  if (cs && cs.length > 0) {
+    // **SKIP（`checked: false`）不计入分母、也不计为通过**——它与「已检且通过」必须区分
+    const checked = cs.filter((c) => c.checked);
+    const skipped = cs.filter((c) => !c.checked);
+    if (checked.length === 0) {
+      add('g-audit', 'G 项机检 5 项（G8/G2/G11/G2.5/G0.5）', 15, null, '', {}, `5 项全部 SKIP：${skipped.map((c) => c.skipReason).join('；')}`);
+    } else {
+      // 与其余分量同口径：**只有 P0/P1 算硬失败**；P2 是候选（如 G8 超限、G2 未命中数字），单列不扣分
+      const hardFail = checked.filter((c) => c.severity === 'P0' || c.severity === 'P1');
+      const softList = checked.filter((c) => c.severity === 'P2');
+      add('g-audit', 'G 项机检 5 项（G8/G2/G11/G2.5/G0.5）', 15 * (checked.length / cs.length), (checked.length - hardFail.length) / checked.length,
+        `${checked.length - hardFail.length}/${checked.length} 项无硬失败（另有 ${skipped.length} 项 SKIP 按缺输入降权——**SKIP ≠ 通过**${softList.length ? `；P2 候选 ${softList.length} 项不扣分` : ''}）`,
+        { pass: checked.length - hardFail.length, checked: checked.length, skipped: skipped.length, p1: hardFail.length, soft: softList.map((c) => c.name) });
+    }
+  } else {
+    add('g-audit', 'G 项机检 5 项（G8/G2/G11/G2.5/G0.5）', 15, null, '', {}, `g-audit-check 未产出可用 JSON（status=${r.status}）`);
+  }
+} else {
+  add('g-audit', 'G 项机检 5 项（G8/G2/G11/G2.5/G0.5）', 15, null, '', {},
+    `缺 ${existsSync(evidence) ? '' : 'final/证据包 '}${existsSync(brief) ? '' : '01-任务简报.md'}`.trim());
+}
+
+// ⑥ G14 中文 AI 痕迹终闸（权重 10）——读报告，不做 LLM 判定
+{
+  const auditsDir = join(project, 'audits');
+  const files = existsSync(auditsDir) ? readdirSync(auditsDir).filter((f) => /^G14.*\.md$/.test(f)) : [];
+  if (files.length === 0) {
+    add('G14', 'G14 中文 AI 痕迹终闸（读 audits/G14-检测报告-*.md）', 10, null, '', {}, '无 G14 检测报告（主人可在 Phase 0 关闭 G14）');
+  } else {
+    const latest = files.sort().at(-1);
+    const text = readFileSync(join(auditsDir, latest), 'utf8');
+    // 判定优先取**最后一条整体判定行**；取不到则按「命中 N 类」的既定阈值反推（0-2 Pass / 3-4 Warning / ≥5 Fail）
+    let level = null; let how = '';
+    const verdictLines = [...text.matchAll(/(?:整体判定|本次判定|本轮判定|终闸判定|结论|判定)[^\n。]{0,40}?(Pass|Warning|Fail)/gi)];
+    if (verdictLines.length > 0) { level = verdictLines.at(-1)[1].replace(/^./, (c) => c.toUpperCase()); how = '读报告判定行'; }
+    const hit = text.match(/命中\s*(\d+)\s*类/);
+    if (!level && hit) {
+      const n = Number(hit[1]);
+      level = n <= 2 ? 'Pass' : (n <= 4 ? 'Warning' : 'Fail');
+      how = `按「命中 ${n} 类」与阈值反推（0-2 Pass / 3-4 Warning / ≥5 Fail）`;
+    }
+    if (!level) {
+      add('G14', 'G14 中文 AI 痕迹终闸', 10, null, '', { report: latest }, `报告 ${latest} 里读不到判定行也读不到「命中 N 类」（不猜）`);
+    } else {
+      const ratio = level === 'Pass' ? 1 : (level === 'Warning' ? 0.6 : 0);
+      add('G14', 'G14 中文 AI 痕迹终闸', 10, ratio, `${level}（${how}）${hit ? `｜命中 ${hit[1]} 类` : ''}`, { report: latest, level });
+    }
+  }
+}
+
+// ⑦ 交付完整性（权重 10）
+if (existsSync(deliverNote)) {
+  const r = spawnSync(NODE, [join(SCRIPTS, 'handoff-check.mjs'), '--project', project, '--role', 'T8', '--require-gates', '--level', 'strict'], { stdio: 'ignore', timeout: 120000 });
+  const code = r.status;
+  const ratio = code === 0 ? 1 : (code === 22 ? 0.5 : 0);
+  add('handoff', '交付完整性（T8 交接门 + 四门留痕）', 10, code === null ? null : ratio,
+    code === null ? '' : `handoff-check exit ${code}${code === 0 ? '（通过）' : code === 22 ? '（仅软提示）' : code === 20 ? '（产物缺失/0 字节）' : code === 21 ? '（结构·四门留痕不合）' : ''}`,
+    { exit: code }, code === null ? 'handoff-check 子进程未起来' : null);
+} else {
+  add('handoff', '交付完整性（T8 交接门 + 四门留痕）', 10, null, '', {}, '缺 final/交付说明.md');
+}
+
+// --- 汇总 ---
+const applicable = components.filter((c) => c.applicable);
+const wSum = applicable.reduce((s, c) => s + c.weight, 0);
+const wGot = applicable.reduce((s, c) => s + c.weighted, 0);
+const naW = components.filter((c) => !c.applicable).reduce((s, c) => s + c.weight, 0);
+const score = wSum > 0 ? +(100 * wGot / wSum).toFixed(1) : null;
+const coverage = +((100 - naW) / 100).toFixed(4);
+
+let baseline = null;
+if (baselinePath) {
+  const b = readJson(baselinePath);
+  if (!b) { console.error(`基线文件不是合法 JSON：${baselinePath}`); process.exit(10); }
+  const bById = new Map((b.components || []).map((c) => [c.id, c]));
+  baseline = {
+    path: baselinePath, score: b.score ?? null, coverage: b.coverage ?? null,
+    scoreDelta: (score !== null && typeof b.score === 'number') ? +(score - b.score).toFixed(1) : null,
+    perComponent: components.map((c) => {
+      const o = bById.get(c.id);
+      return {
+        id: c.id,
+        was: o ? o.ratio : null, now: c.ratio,
+        delta: (o && o.ratio !== null && c.ratio !== null) ? +(c.ratio - o.ratio).toFixed(4) : null,
+        note: o ? (o.applicable === false && c.applicable ? '本次变为适用' : (o.applicable && !c.applicable ? '本次变为不适用（须在报告里说明）' : null)) : '基线无此分量（新增分量）',
+      };
+    }),
+  };
+}
+
+const result = {
+  project,
+  version: 'v18.24.0',
+  score,
+  coverage,
+  ...(coverage < 0.8 ? { coverageWarning: `适用权重仅 ${Math.round(coverage * 100)}%——分数只覆盖了部分判据，**不得**当整体质量结论（na 列表见下）` } : {}),
+  weights: { applicable: wSum, na: naW },
+  components,
+  na: components.filter((c) => !c.applicable).map((c) => ({ id: c.id, weight: c.weight, reason: c.naReason || '未产出可用结果' })),
+  ...(baseline ? { baseline } : {}),
+  meta: {
+    timestamp: new Date().toISOString(),
+    description: '论衡文章质量回归评分 / v18.24.0 QLT-1 / scripts 白名单 25→26',
+    notes: '**度量不是闸门**（分数不影响退出码）。不新造判据：只聚合既有机械门结果。'
+      + 'N/A 分量不进分母但必须看 coverage；SKIP ≠ 通过。机制改动前后各跑一次，差异写进反哺报告。',
+  },
+};
+
+cleanup();
+const output = JSON.stringify(result, null, 2);
+if (reportPath) {
+  const { writeReport } = await import('./_lib/destructive-write.mjs');
+  writeReport(reportPath, output, { protect: [draft] });
+} else {
+  console.log(output);
+}
+process.exit(0);
