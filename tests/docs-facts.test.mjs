@@ -632,3 +632,145 @@ test('v18.37.0 三检索员卡同族收敛：源面/协议指向真源，且产�
     assert.match(t, /#三检索员并行独立运行/, `${c} 必须带锚点指向 glossary 的三检索员协议节`)
   }
 })
+
+/** 递归收集技能目录内的文本文件；**跳过 `tests/`**——那是断言自己的地方，不是被断言的内容。 */
+function walkSkillFiles(dir, exts) {
+  const out = []
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, e.name)
+    if (e.isDirectory()) {
+      if (e.name === 'tests') continue
+      out.push(...walkSkillFiles(p, exts))
+    } else if (exts.some((x) => e.name.endsWith(x))) out.push(p)
+  }
+  return out
+}
+
+/**
+ * M 门项 ID 的**代码真源**：各 gate 模块里的 `gate:` 标签。
+ * 刻意不从文档里抄清单——手抄清单正是会漂的那一份（本批实测：`M-Fact-1` 落地时无人补登本表）。
+ */
+function codeGateIds() {
+  const dir = join(SKILL, 'scripts', '_lib', 'mgate-gates')
+  const ids = new Set()
+  for (const f of readdirSync(dir)) {
+    if (!f.endsWith('.mjs')) continue
+    for (const m of readFileSync(join(dir, f), 'utf8').matchAll(/gate:\s*'(M-(?:Form|Exist|Integrity|Fact)-\d+)/g)) {
+      ids.add(m[1])
+    }
+  }
+  return ids
+}
+
+const TABLE_NAME = '规范-机械门对照表.md'
+
+/**
+ * 只取 §一 / §二 的**表行**（`|` 开头的行）——本表真正的「登记」区。
+ * ⚠️ 刻意**不取**表头注记与 §三：这两处会提到门号（作废号留档、漏登说明、旧行名举例），
+ *   若把它们算成「已登记」，两个用例都会被**自造污染**。反向自证实测过这一点：
+ *   删掉 `M-Fact-1` 那一行、把 09 卡改回悬空行名，两处都仍然绿——表头那句「补登 `M-Fact-1`」
+ *   与 §三 里那句旧行名把它们救了回来。（同族教训：断言的面比语义宽 = 假绿。）
+ */
+function sectionRows(table) {
+  const start = table.indexOf('## 一、')
+  const end = table.indexOf('## 三、')
+  assert.ok(start >= 0 && end > start, '对照表结构变了：找不到 §一 / §三 的分节标题，扫描面无从确定')
+  return table
+    .slice(start, end)
+    .split('\n')
+    .filter((l) => l.trimStart().startsWith('|'))
+    .join('\n')
+}
+
+// v18.40.0（对照表表体收敛）：收敛最危险的失败形态不是「没瘦下来」，而是**丢映射**——某行被合并或删掉后，
+//   某个机械门从此在本表里**没有落点**，读者以为「这门有人登记」，实际查不到（本批实测：`M-Fact-1`
+//   自 v18.25.0 落地起就没登记过，违反 §四.1，而没人发现）。本用例把「代码里的 M 门项」与「表里的登记」
+//   钉在一起，**方向是 表 ⊇ 代码**（表可以有代码没有的号：人工项 `M-Integrity-2`、作废号留档、撞号登记）。
+//   ⚠️ 反向断言（表 ⊆ 代码）刻意不做——那会把上述三类正当登记判成红。
+test('对照表 §一/§二 必须登记代码里出现的全部 M 门项 ID（v18.40.0 收敛守）', () => {
+  const table = readFileSync(join(SKILL, 'references', '_shared', TABLE_NAME), 'utf8')
+  const back = sectionRows(table) // §一 + §二 的表行（§三 是「仍无门」，不算登记）
+  assert.ok(back.length > 0, `对照表结构变了：§一/§二 里解析不到任何表行，本用例的扫描面无从确定`)
+  const ids = codeGateIds()
+
+  // 非真空守卫：四族都必须解析出门 ID。若某次重构改了 gate 模块的形状，`ids` 会变空集，
+  //   而「未登记集合为空」照样**真空通过**——那正是一条假绿（本仓已有多起同族教训）。
+  for (const fam of ['M-Form-', 'M-Exist-', 'M-Integrity-', 'M-Fact-']) {
+    assert.ok(
+      [...ids].some((i) => i.startsWith(fam)),
+      `未能从 scripts/_lib/mgate-gates/ 解析出任何 ${fam} 族的门 ID——解析口径已断，本用例会真空通过。`,
+    )
+  }
+
+  const missing = [...ids].filter((i) => !new RegExp(i.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![0-9])').test(back))
+  assert.deepEqual(
+    missing,
+    [],
+    `下列 M 门项在对照表 §一/§二 里查不到登记：${missing.join('、')}。` +
+      '新增门族 / 门项时必须在同一次提交里同步本表（§四.1），否则「这门有没有人登记」在下一次收敛里无从回答。' +
+      '修法：自基线起就有门的进 §一，历轮补上的进 §二。',
+  )
+})
+
+// v18.40.0：本表的两种「引用腐烂」，都在本批的读表过程中实测到——
+//   ① **引用了不存在的行**：`01 卡` / `07 卡` / `09 卡` 各写「与 `规范-机械门对照表.md` 行 `X` 同源」，
+//      而 `X` 这样的行在本表里没有（`M-Form-2 v2 分支` / `M-Exist-9 G 项实据` / `M-Exist-6.5 LLM 补充行`）。
+//      **读者追过去什么也找不到**，而文本看上去完全正常——这正是本仓「断链」教训的第 N 次复现。
+//   ② **引用了从未实装的门号**：`M-Form-2 v2` 分支被 5 处活文档当「机检」写（含协议层唯一出处，而那段
+//      协议**自己指着一个不存在的伪代码块**）。作废门号的危害不是「多写了一句」，而是**下游据此以为
+//      有机检兜底**（与 `M-Form-12` 假绿同族）。
+//   断言两半：a) 「行 `X`」的 `X` 必须能在表内逐字找到；b) 作废门号不得在表外以「机检」身份出现——
+//   **带否定标记的更正陈述允许**（同 `e-family-invariants.test.mjs` 的「无 M-Form-12」先例：
+//   文档规范要求更正记录写出旧值，一律禁字会误伤正当文本）。
+test('对照表引用守：行引用必须可解析，作废门号不得复活（v18.40.0 三悬空引用 + 一幻影门的回归）', () => {
+  const table = readFileSync(join(SKILL, 'references', '_shared', TABLE_NAME), 'utf8')
+  const registry = sectionRows(table) // 只有 §一/§二 的表行算「登记行」
+  const NEG = /不存在|未实装|幻影|无门|作废|没有|已删|从未/
+  const PHANTOM = 'M-Form-2 v2'
+  const CITE = /行\s*(?:`([^`]+)`|\*\*([^*]+)\*\*)/
+
+  const dangling = []
+  const resurrected = []
+  let citations = 0
+
+  for (const f of walkSkillFiles(SKILL, ['.md', '.mjs'])) {
+    const rel = relative(ROOT, f).split(sep).join('/')
+    const isTable = rel.endsWith(TABLE_NAME)
+    const lines = readFileSync(f, 'utf8').split('\n')
+    lines.forEach((ln, i) => {
+      const at = `${rel}:${i + 1}`
+      // ① 行引用可解析。**表自身除外**：它的散文在描述引用这件事（含占位符 `X`），不是在引用。
+      if (!isTable && ln.includes(TABLE_NAME)) {
+        const m = CITE.exec(ln)
+        if (m) {
+          citations += 1
+          const tok = (m[1] || m[2] || '').trim()
+          if (!registry.includes(tok)) dangling.push(`${at} 引用「${tok}」`)
+        }
+      }
+      // ② 作废门号不复活。
+      if (ln.includes(PHANTOM) && !NEG.test(ln)) resurrected.push(at)
+    })
+  }
+
+  assert.ok(
+    citations >= 1,
+    '本用例一条「行 `X`」引用都没扫到——正则口径已与文档写法脱节（或最后一处引用被改写）。' +
+      '请让口径跟上现行写法，**不要删掉本用例**（它是 ① 的唯一守卫）。',
+  )
+  assert.deepEqual(
+    dangling,
+    [],
+    `下列位置引用了对照表 §一/§二 里不存在的行名 / 门 ID：\n  ${dangling.join('\n  ')}\n` +
+      '修法（§四.7）：引用本表时用**门 ID** 锚（行名会随收敛改写），确要带行名就写成「§X 行 门 ID（行名）」，' +
+      '并确认那行真的在 §一/§二 里（§三 的「仍无门」行请按「§三 <行名>」引用，不要写成「行 X」）。',
+  )
+  assert.deepEqual(
+    resurrected,
+    [],
+    `下列位置把已作废的门号当「机检」写，而该门从未实装：\n  ${resurrected.join('\n  ')}\n` +
+      '若这是**更正陈述**（写明它不存在 / 未实装），请在同行给出否定标记；若是宣称它存在，' +
+      `改判为「无门 + 人工责任点」，并指向 ${TABLE_NAME} §三 首行。`,
+  )
+  assert.ok(table.includes(PHANTOM), `对照表 §三 首行的作废门号留档不得被删——它是「这个号为什么不能用」的唯一案卷`)
+})

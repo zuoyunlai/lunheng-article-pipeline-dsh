@@ -23,7 +23,8 @@
 //     · G8① 元数据残留 / G9① 临时编号 / G9② 过程语言 / G12 信任级别 → 已在 `m-gate-check.mjs`
 //       （M-Form-3 / M-Form-4 / M-Form-5 / M-Form-6），本脚本不重做；
 //     · G4 结构与篇幅骨架 → `structure-check.mjs`（S-IMRaD / S-Intro-Funnel / S-Discussion-4）；
-//     · G15 卷期页码完整率 → M-Form-2 v2 分支 + `cite-coverage-check.mjs`；
+//     · G15 卷期页码完整率 → **无门**（`M-Form-2 v2` 分支**不存在**，见
+//       `references/_shared/规范-机械门对照表.md` §三 首行）；闭环那一半归 `cite-coverage-check.mjs`；
 //     · G1 引用真实性 / G3 逻辑 / G5 学术规范 / G6 论据自标 / G7 原创性 / G10 术语一致 / G14 AI 痕迹
 //       → **判断力项**（须读语境），维持 LLM 判定，**不**下沉（刻意不加机检，理由同 09 卡 M3 先例）。
 //
