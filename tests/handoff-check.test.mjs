@@ -96,13 +96,16 @@ test('L-06 A4b 对照：审计 v2 与复核 v2 同轮 → 不报 A4b', () => {
   rmSync(d, { recursive: true, force: true })
 })
 
-test('L-06 A4c 软：审计报告缺「被审正文」声明 → 软提示（不判硬，22 个既有项目都缺该字段）', () => {
+test('L-06 A4c：审计报告缺「被审正文」声明 → **硬 21**（v18.36.0 主人裁定转硬；代价 = 22 份历史项目重跑会红，知情接受）', () => {
   const d = makeProject()
-  const j = parseJson(run([SCRIPT, '--project', d, '--role', 'T7', '--level', 'strict']))
-  const s = j.soft.find((x) => x.check === 'A4c')
-  assert.ok(s, '应给 A4c 软提示：' + JSON.stringify(j.soft))
-  assert.match(s.detail, /被审正文/)
-  assert.ok(!j.hard.some((x) => x.check === 'A4c'), 'A4c 缺声明不得判硬')
+  const r = run([SCRIPT, '--project', d, '--role', 'T7', '--level', 'strict'])
+  const j = parseJson(r)
+  const h = j.hard.find((x) => x.check === 'A4c' && /被审正文/.test(x.detail))
+  assert.ok(h, '缺声明必须判硬：' + JSON.stringify({ hard: j.hard, soft: j.soft }))
+  assert.match(h.detail, /被审正文/)
+  assert.match(h.detail, /审计报告-template\.md/, '硬失败必须指出闭合路径（照模板产出 / 补一行声明）')
+  assert.equal(r.code, 21, 'A4c ② 转硬后必须走 21（结构不合 → 续接补交）')
+  assert.ok(!j.soft.some((x) => x.check === 'A4c'), '同一档不得既硬又软（会把「补交」读成「可放行」）')
   rmSync(d, { recursive: true, force: true })
 })
 
@@ -204,12 +207,17 @@ test('参数错误：缺 --role / 非法 --role / 项目不存在 → exit 10', 
 //   ③ **只有标签没有内容** → 进 hard（21）——这一档本批由软转硬。
 test('A8 缺「已读范围」→ 仍只软提示，不判硬（历史 6 份全在此档）', () => {
   const d = makeProject({
+    'audits/审计报告-v1.md': '# 审计报告\n\n> 被审正文：`drafts/初稿-v1.md`\n\n## 逐条判定\n| 编号 | 判定 |\n|---|---|\n| P0-1 | 已关闭 |\n',
     'audits/复核报告-v1.md': '# 复核报告\n## 逐条判定\n| 编号 | 判定 |\n|---|---|\n| P0-1 | 已关闭 |\n',
   })
   const r = run([SCRIPT, '--project', d, '--role', 'T7', '--level', 'strict'])
   const j = parseJson(r)
   assert.ok(j.soft.some((x) => x.check === 'A8'), '应报 A8 软提示：' + JSON.stringify(j.soft))
   assert.ok(!j.hard.some((x) => x.check === 'A8'), 'A8 这一档**不得**判硬（否则存量 6 份报告全红）')
+  // ⚠️ fixture 里的审计报告**必须自带 `被审正文:` 声明**：A4c ② 自 v18.36.0 起判硬，
+  //   否则 exit 会变成 21，本用例对「A8 不改退出码」的断言就被**别的门**污染了（转硬当天实测立刻红）。
+  //   判据：**测一条规则的行为时，fixture 要让相邻规则保持安静**。
+  assert.ok(!j.hard.some((x) => x.check === 'A4c'), 'fixture 应让 A4c 保持安静：' + JSON.stringify(j.hard))
   assert.notEqual(r.code, 21, '缺声明这一档仍不得改变退出码')
   // 触发条件必须写在文案里——否则「已排期的动作」会变成「算了」（本仓 A4c 的软档至今没收）
   assert.match(j.soft.find((x) => x.check === 'A8').detail, /触发条件/, '软提示必须写明收紧的触发条件')
@@ -265,22 +273,27 @@ test('A8 断链回归：模板含门认的锚点、两份文档指向它，且�
   rmSync(d, { recursive: true, force: true })
 })
 
-// ── v18.34.0：A4c ②「被审正文:」软档 —— **无法收紧，改为把触发条件写死 + 补模板** ─────────────
-// 实测依据（2026-09-27 扫 `run/**`）：**22 份审计报告 22/22 都没有该字段**（规则 v18.12.2 才落地，
-//   最晚一份报告写于规则之前）→ 与 A8 那次不同，**没有「存量零落档」可以安全收紧**。
-// 故本批：① 软提示必须**写明触发条件**（可检索，防「已排期」变成「算了」）；② 补
-//   `templates/审计报告-template.md`，让「新报告天然含该字段」变成**产物形状**。
-// A4c 与 A8 的一处关键差别：A4c 要**真路径在盘**，所以**未填写的模板必然报**（这是对的——报告必须填真路径）。
-//   故断链用例验的是「**照模板填** ⇒ 不报」，而不是「模板原样不报」。
-test('A4c ②：缺「被审正文:」仍软，但软提示必须写明触发条件（防「已排期」变「算了」）', () => {
-  const d = makeProject({ 'audits/审计报告-v1.md': '# 审计报告\n## 结论\n通过。\n' })
-  const j = parseJson(run([SCRIPT, '--project', d, '--role', 'T7', '--level', 'strict']))
-  const a4c = j.soft.find((x) => x.check === 'A4c' && /被审正文/.test(x.detail))
-  assert.ok(a4c, '缺声明应报 A4c 软提示：' + JSON.stringify(j.soft))
-  assert.match(a4c.detail, /触发条件/, '软提示必须写明收紧的触发条件与可检索的名字')
-  assert.match(a4c.detail, /审计报告-template\.md/, '触发条件必须指向那个模板（否则后来者不知道去哪找）')
-  assert.ok(!j.hard.some((x) => x.check === 'A4c' && /被审正文/.test(x.detail)), '这一档本批不得判硬（存量 22/22 全落此档）')
-  rmSync(d, { recursive: true, force: true })
+// ── v18.34.0 起：A4c ②「被审正文:」—— **v18.36.0 按主人裁定由软转硬** ─────────────────────
+// 沿革：v18.12.2 判软（存量 22/22 无该字段）→ v18.34.0 写死触发条件 + 补模板让条件可达 →
+//   **v18.36.0 主人直接裁定转硬**（原话「4c ② 拦」），不等那个可观测事件；代价 = `run/**` 下
+//   22 份历史项目重跑本门会红，**主人知情并接受**。判据：该字段自 v18.12.2 起即规范要求，
+//   缺声明 = 报告不合规；且修复极轻（补一行声明）。
+// 两条分支都判硬：① 缺声明；② 声明指向的文件不在盘（后者存量 0 份，更无牵连）。
+test('A4c ② 两条分支都判硬：缺声明 / 声明指向不在盘 → 均 exit 21', () => {
+  // ① 缺声明
+  const d1 = makeProject({ 'audits/审计报告-v1.md': '# 审计报告\n## 结论\n通过。\n' })
+  let r = run([SCRIPT, '--project', d1, '--role', 'T7', '--level', 'strict'])
+  assert.ok(parseJson(r).hard.some((x) => x.check === 'A4c' && /被审正文/.test(x.detail)), '缺声明应判硬')
+  assert.equal(r.code, 21, '缺声明 → 21')
+  rmSync(d1, { recursive: true, force: true })
+
+  // ② 有声明但指向的文件不在盘（声明与实际不符 → 更硬的信号）
+  const d2 = makeProject({ 'audits/审计报告-v1.md': '# 审计报告\n\n> 被审正文：`drafts/初稿-v9.md`\n\n## 结论\n通过。\n' })
+  r = run([SCRIPT, '--project', d2, '--role', 'T7', '--level', 'strict'])
+  const h2 = parseJson(r).hard.find((x) => x.check === 'A4c' && /不在盘/.test(x.detail))
+  assert.ok(h2, '声明指向不在盘应判硬：' + r.out.slice(0, 400))
+  assert.equal(r.code, 21, '指向不在盘 → 21')
+  rmSync(d2, { recursive: true, force: true })
 })
 
 test('A4c ② 断链回归：模板含门认的锚点形状、两份文档指向它，且**照模板填**后门不报', () => {
