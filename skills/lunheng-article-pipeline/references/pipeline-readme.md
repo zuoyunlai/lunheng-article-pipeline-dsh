@@ -1,4 +1,4 @@
-> 版本：v18.28.0（DSH bundle 插件）
+> 版本：v18.29.0（DSH bundle 插件）
 
 
 # 论衡（lunheng-article-pipeline）— 通用深度长文多 Agent 流水线 运行手册（v2.2.14）
@@ -576,6 +576,8 @@ H. 党报话语堆砌（重要讲话精神等，全文 ≥3 处，政治学科�
 
 ### 文献检索员（并行①，T1）
 
+> **📇 来源索引（v18.29.0 EFF-5；**三步：查 → 抓 → 登记**）**：抓之前先跑 `node scripts/sources-index.mjs run/<项目> --query <关键词>`——**命中同 URL 就不必重抓**（直接用索引里的标题与摘要）；抓到后把每条来源**追加到你自己线的分片** `run/<项目>/sources/T1.jsonl`（**append-only、每线独占**，一行一条：`url` / `title` / `fetchedAt` / `summary` 四键必填——schema 真源 = `templates/sources-索引-template.md`）。**不要动别人的分片**（三线共写会互相覆盖；合并由主控在 Phase 2.5 跑 `--merge`）。交接报告须写「登记 N 条（其中复用 M 条）」+ `--check` 的 exit code。
+
 ```
 你是「文献检索员」。任务编号 T1。
 **你的完整职责/铁律见 references/agents/01-文献检索-literature-scout.md（v2.2.12 先读再干活）**
@@ -600,6 +602,8 @@ H. 党报话语堆砌（重要讲话精神等，全文 ≥3 处，政治学科�
 > **实战**：本项目 T1 交付 12 张扎实文献卡（含 Pettit 命门原文页）却**漏产先行者清单** → handoff-check exit 20 → 主控兜底补写 5 条（Pateman / Anderson / Gädeke / Mackenzie-Stoljar / 刘训练）后才 exit 0。
 
 ### 数据检索员（并行②，T2）
+
+> **📇 来源索引（v18.29.0 EFF-5；**三步：查 → 抓 → 登记**）**：抓之前先跑 `node scripts/sources-index.mjs run/<项目> --query <关键词>`——**命中同 URL 就不必重抓**（直接用索引里的标题与摘要）；抓到后把每条来源**追加到你自己线的分片** `run/<项目>/sources/T2.jsonl`（**append-only、每线独占**，一行一条：`url` / `title` / `fetchedAt` / `summary` 四键必填——schema 真源 = `templates/sources-索引-template.md`）。**不要动别人的分片**（三线共写会互相覆盖；合并由主控在 Phase 2.5 跑 `--merge`）。交接报告须写「登记 N 条（其中复用 M 条）」+ `--check` 的 exit code。
 
 ```
 你是「数据检索员」。任务编号 T2。
@@ -630,6 +634,8 @@ H. 党报话语堆砌（重要讲话精神等，全文 ≥3 处，政治学科�
 ```
 
 ### 案例检索员（并行③，T3，v2.3.0 重命名原 T6→T3）
+
+> **📇 来源索引（v18.29.0 EFF-5；**三步：查 → 抓 → 登记**）**：抓之前先跑 `node scripts/sources-index.mjs run/<项目> --query <关键词>`——**命中同 URL 就不必重抓**（直接用索引里的标题与摘要）；抓到后把每条来源**追加到你自己线的分片** `run/<项目>/sources/T3.jsonl`（**append-only、每线独占**，一行一条：`url` / `title` / `fetchedAt` / `summary` 四键必填——schema 真源 = `templates/sources-索引-template.md`）。**不要动别人的分片**（三线共写会互相覆盖；合并由主控在 Phase 2.5 跑 `--merge`）。交接报告须写「登记 N 条（其中复用 M 条）」+ `--check` 的 exit code。
 
 ```
 你是「案例检索员」。任务编号 **T3**（v2.3.0 重命名，原 T6）。

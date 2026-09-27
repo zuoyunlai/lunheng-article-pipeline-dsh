@@ -450,6 +450,9 @@ const EXIT_CONTRACT = {
   //   （缺 定稿 / 未知参数 / `--report` 缺值 / 基线文件不是合法 JSON）/ 70 = 内部错误。
   //   与 `fix-gates.mjs`（同样是「非闸门」）同族——**没有 1**：它不做内容判定。
   'quality-score.mjs': [0, 10, 70],
+  // v18.29.0（EFF-5）：sources-index 是**索引工具**（不是闸门）——0 = 成功 / **1 = `--check` 发现不合法行**
+  //   （它**确实做内容判定**：校验 JSONL 行 schema 与 url 形态，故 1 是正当语义、不是撞码）/ 10 = 参数或路径错 / 70 = 内部错误。
+  'sources-index.mjs': [0, 1, 10, 70],
   'structure-check.mjs': [0, 1, 2, 3, 10, 70],  // v18.18.11（A-7③ 一层内联后暴露）：本脚本与 methodology-check 同形（`allPass ? 0 : (hasP0 ? 2 : (hasP1 ? 1 : 3))`），旧表只登记 0/1/10/70，**2 与 3 都漏了**
   // v18.23.0（EFF-1）：g-audit-check 是 **G 项机检门**——与 structure-check / methodology-check /
   //   cite-coverage-check 三个战略门**同形同语义**：0 = 已检项全过 / 1 = 有 P1 / 2 = 有 P0 /
