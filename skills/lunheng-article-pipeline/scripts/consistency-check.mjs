@@ -495,9 +495,19 @@ for (const f of files) {
   }
 
   // ③c scripts/ 引用完整性：文档引用的脚本文件必须存在
+  //   v18.45.0 修**作用域缺陷**（本批新增一份仓库级脚本时实测撞到）：`scripts/` 前缀在文档里同时指两类脚本——
+  //     ① **随包脚本**（`<技能根>/scripts/`，如 `m-gate-check.mjs`）；
+  //     ② **仓库级脚本**（`<仓库根>/scripts/`，**不随包**，如 `no-write-check.mjs` / `closeout-verify.mjs`）。
+  //   旧实现只查 ①，于是「引用一个**确实存在**的仓库级脚本」被判「悬空」（本批 AGENTS.md 与 maintainers.md
+  //   各报 1 处假 P1）。这与本仓「门在看错对象」同族：**它断言的是「引用的脚本不存在」，却只在半个盘上找**。
+  //   ⚠️ **判据没有被放宽**：仍然报的只有**两个根都找不到**的真悬空（反向自证见
+  //   `audits/机制文件修订记录-2026-09-27-发布前固定动作no-write-check.md`）。
+  //   关联约定：随包文档引用仓库级脚本时**必须写明「不随包」**——否则装包用户按图索骥会扑空。
   const scriptRefs = [...text.matchAll(/scripts\/([a-z0-9\-]+\.mjs)/g)].map((mm) => mm[1]);
   for (const s of new Set(scriptRefs)) {
-    if (!existsSync(join(ROOT, 'scripts', s))) {
+    const inPack = existsSync(join(ROOT, 'scripts', s));
+    const inRepo = REPO_ROOT !== null && REPO_ROOT !== ROOT && existsSync(join(REPO_ROOT, 'scripts', s));
+    if (!inPack && !inRepo) {
       errors.push(`[P1 scripts 悬空引用 scripts/${s}] ${rel}`);
     }
   }
