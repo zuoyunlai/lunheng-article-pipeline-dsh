@@ -10,7 +10,7 @@
 //   本文件锁「修好之后门真的会红」——①③④⑤ 各一条负向用例，另加 L-04/L-44 的判定口径。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { writeFileSync, mkdirSync, rmSync } from 'node:fs'
+import { writeFileSync, readFileSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { SCRIPTS, run, parseJson, tmp } from './_fixtures.mjs'
 
@@ -191,11 +191,74 @@ test('L-44：命中硬 P0 红线时 T8 裁定**不得**用于放行', () => {
   } finally { rmSync(dir, { recursive: true, force: true }) }
 })
 
-test('L-10：两份闸门记录都没写 handoff-check 的 exit → 记软提示（P2，不再是完全无人检查）', () => {
-  const { dir, draft, ev } = mkProject({ t75Rows: FULL_T75(), handoff: false, report: { script_exit_raw: 3, exit: 3 } })
+test('L-10：两份闸门记录都没写 handoff-check 的 exit → 记**备注**（`noteBits`，**不改 pass**），且文案给出闭合动作', () => {
+  // ⚠️ 夹具要让**相邻规则保持安静**：M 门行实据写 `exit 0` → 报告机械值必须也是 0，
+  //    否则「实据与产物不符」那条 P0 会顶上来，把本条要测的 noteBits 静默性掩盖掉（首版即踩此坑）。
+  const { dir, draft, ev } = mkProject({ t75Rows: FULL_T75(), handoff: false, report: { script_exit_raw: 0, exit: 0 } })
   try {
     const { it } = m5(dir, draft, ev)
     assert.match(String(it.detail), /handoff/, 'detail 应点名 handoff-check 缺失：' + JSON.stringify(it))
+    // v18.42.0（主人裁定「B」= 路径 ②，保持软档）：把「软」这件事**钉住**——
+    //   旧断言只查 `/handoff/` 出现（太弱：把 noteBits 改成 findings 也照样通过，等于静默转硬）。
+    assert.equal(it.pass, true, 'noteBits **不得**改变 pass——它是可见性提示，不是判负：' + JSON.stringify(it))
+    assert.equal(it.severity, '通过', 'noteBits 不得抬 severity（否则「保持软档」这句话就是假的）：' + it.severity)
+    // 判据要精确到**段落标记**：detail 的硬问题段以「硬问题：」开头——若只查 `/硬问题/` 这个裸词，
+    //   本条自己的文案里解释缘由时提到「硬问题」就会把断言逼成假的（首版即如此）。
+    assert.doesNotMatch(String(it.detail), /硬问题：/, '本条不得出现在硬问题段（该段以「硬问题：」起）')
+    // 软档的**闭合动作**必须写在文案里（路径 ② 的要求：把触发条件与闭合方式写进软提示）
+    assert.match(String(it.detail), /闭合动作/, '软提示必须给出闭合动作，否则读者只知道「缺」而不知道怎么闭合')
+    assert.match(String(it.detail), /handoff-check --role Tn → exit N/, '闭合动作须含**可照抄**的实据写法')
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+// v18.42.0：本批的核心结论是一个**结构性限制**，必须被测试钉住，否则后来者会「顺手把这一行加进模板」
+//   而不知道那是静默收紧：
+//     · M-Exist-5 的检查项清单**从模板表派生**（「模板为真源，逐项都要有行」）→ **给模板加一行 = 收紧**；
+//     · 实测（2026-09-27，22 个项目）：加行会让 9/10 个项目新增「缺行」硬问题、1 个跨档（只加 T7.5 表仍有 7/10）。
+//   故本条断言「模板的 T2.5/T7.5 **表行**里不得出现 handoff/交接门」——要加表行，必须先请主人裁定（代价已量清，
+//   登记在 `maintainers.md` §九）。**注意**：模板**散文**（blockquote）里给出的示例行**不算**检查项，
+//   那是本批「散文层可达化」的落点，下面一条用例单独守卫它。
+test('v18.42.0 钉子：闸门记录模板的**检查项表**不得含 handoff 行（加表行 = 静默收紧存量）', () => {
+  const tpl = readFileSync(join(SCRIPTS, '..', 'references', 'templates', '闸门记录-template.md'), 'utf8').split('\n')
+  // 复刻 m-gate-check 的收集语义：按 `## T2.5` / `## T7.5` 分节；进入表后遇到非 `|` 行 → 本节收集结束
+  const items = { 'T2.5': [], 'T7.5': [] }
+  let cur = null; let inTable = false; let done = false
+  for (const l of tpl) {
+    const h = l.match(/^#{2,4}\s*(T2\.5|T7\.5)\b/)
+    if (h) { cur = h[1]; inTable = false; done = false; continue }
+    if (/^#{2,4}\s/.test(l)) { cur = null; inTable = false; done = false; continue }
+    if (!cur || done) continue
+    if (!/^\s*\|/.test(l)) { if (inTable) done = true; continue }
+    inTable = true
+    if (!/检查项|^检查$/.test(l)) items[cur].push(l)
+  }
+  for (const [sec, rows] of Object.entries(items)) {
+    assert.ok(rows.length >= 5, `${sec} 段应能解析出模板检查项（实测 ${rows.length} 行）——解析口径断了，本钉子会真空通过`)
+    assert.equal(
+      rows.filter((r) => /handoff|交接门/i.test(r)).length,
+      0,
+      `${sec} 的检查项表里出现了 handoff 行。**加这一行 = 一次静默收紧**：M-Exist-5 按「模板为真源，逐项都要有行」对账，`
+        + '实测（2026-09-27）会让 9/10 个项目新增「缺行」硬问题、1 个跨档（只加 T7.5 表仍有 7/10）。'
+        + '若确要收，先请主人裁定（代价已量清，见 `references/maintainers.md` §九），再改本断言。'
+        + '散文层已给出可照抄的示例行——那是零代价的可达化路径。',
+    )
+  }
+})
+
+test('v18.42.0：模板**散文**里的示例行不得被当成检查项（合规记录仍须通过）', () => {
+  const tplPath = join(SCRIPTS, '..', 'references', 'templates', '闸门记录-template.md')
+  const tpl = readFileSync(tplPath, 'utf8')
+  assert.match(tpl, /交接门 handoff-check exit/, '模板散文应保留可照抄的示例行（散文层可达化的落点）')
+  // 端到端复核：模板带这段散文时，一项不缺的合规记录**仍须通过**（若示例行被收成模板项，
+  //   「逐项都要有行」会立刻报「检查项缺「交接门 handoff-check exit」」→ 该用例红）。
+  const { dir, draft, ev } = mkProject({
+    t75Rows: FULL_T75([{ item: '交接门 handoff-check exit', ev: 'handoff-check --role T7 → exit 0', res: '✓' }]),
+    report: { script_exit_raw: 0, exit: 0 },
+  })
+  try {
+    const { it } = m5(dir, draft, ev)
+    assert.equal(it.pass, true, '合规记录（含 handoff 行）应通过：' + JSON.stringify(it))
+    assert.doesNotMatch(String(it.detail), /检查项缺「交接门/, '模板散文里的示例行不得被收成检查项')
   } finally { rmSync(dir, { recursive: true, force: true }) }
 })
 
