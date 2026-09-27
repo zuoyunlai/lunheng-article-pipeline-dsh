@@ -609,3 +609,26 @@ test('v18.35.0 瘦身：02 卡迁出的内容必须在目标文档里真的存�
   assert.match(card, /templates\/数据卡-template\.md/, '02 卡必须指向数据卡模板')
   assert.match(card, /外部检索源接入面\.md/, '02 卡必须指向接入面文档')
 })
+
+// v18.37.0（同族瘦身批）：把 02 卡的收敛手法**推到 01/03 卡**——三张检索员卡从此共用同一套真源。
+//   本用例钉住三件事：① 三卡都指向接入面（源面）与 glossary 并行协议节；② 三卡**都不再复述**
+//   引擎降级链（那是接入面的单一真源）；③ 每卡都保留自己的**产出格式契约**「交接报告必报一行」
+//   （刻意不从卡片外移：T1/T3 卡各有一份且无机检兜，省它只值百余字节，丢了要等 T7 才发现）。
+test('v18.37.0 三检索员卡同族收敛：源面/协议指向真源，且产出格式契约仍在卡内', () => {
+  const SKILL_DIR = join(ROOT, 'skills', 'lunheng-article-pipeline')
+  const cards = ['01-文献检索-literature-scout.md', '02-数据检索-data-scout.md', '03-案例检索-case-scout.md']
+  for (const c of cards) {
+    const t = readFileSync(join(SKILL_DIR, 'references', 'agents', c), 'utf8')
+    assert.match(t, /外部检索源接入面\.md/, `${c} 必须指向接入面文档（源面单一真源）`)
+    assert.ok(
+      !/引擎降级链\s*bing/.test(t),
+      `${c} 不得再复述引擎降级链（该链的单一真源 = 外部检索源接入面.md §2.2；v18.37.0 已收敛）`,
+    )
+    assert.match(t, /检索预算：已用 N 步/, `${c} 必须保留「交接报告必报一行」的产出格式契约（刻意不外移）`)
+  }
+  // 三卡与 glossary 的跨线协议：01/03 是通过「不产对方的卡」表述，02 是直连锚点
+  for (const c of ['02-数据检索-data-scout.md', '03-案例检索-case-scout.md']) {
+    const t = readFileSync(join(SKILL_DIR, 'references', 'agents', c), 'utf8')
+    assert.match(t, /#三检索员并行独立运行/, `${c} 必须带锚点指向 glossary 的三检索员协议节`)
+  }
+})
