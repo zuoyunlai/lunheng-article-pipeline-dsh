@@ -2,6 +2,43 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.21.2 — 2026-09-26
+
+> **性质**：**外部检索源接入面扩展**（v18.21.2；主人 2026-09-26 提问「firecrawl / tavily / exa / consensus / search_google_scholar 这 6 源能否自动调用」——答「能力面在、指引面缺」后的**方案 1 落地**）。**纯指引改造**（零运行期风险），后续**方案 2 论衡原生聚合工具**留待主人明示。
+
+### 一、P2
+
+- **6 源接入面「能力在、指引缺」**：DSH 已注册 6 源工具（`web_search` 引擎降级链含 exa/tavily/firecrawl 等；AI4Scholar 套件 `search_papers` / `search_arxiv` / `search_semantic` / `search_google_scholar` / `search_biorxiv` / `search_medrxiv` / `auto_cite` / `sci_draw`），subagent 继承主会话工具面——**主会话配 key 后 T1/T2/T3 都能调**。但 T1/T2/T3 卡之前默认只写 `web_search` + `web_fetch`，**subagent 即便看得到工具也不会主动调**（v18.18.x 教训「门在此却不生效」形态）。
+- **修法**（6 文件改 + 1 文件新增 + 1 测试新增；零运行期代码改动）：
+  - **新增** `references/_shared/外部检索源接入面.md`——6 源真源文档（firecrawl / tavily / exa / consensus / AI4Scholar 学术套件 + search_google_scholar）。范本 = `auto_cite-integration.md`（v18.8.0 接入面范本）+ `DSH-集成方案.md` §二-§六。列：DSH 工具名 / 计费 / 适用 / Key 边界 / T1/T2/T3 默认层 + 关键澄清 4 条（「工具面在 ≠ 指引面在」/「引擎降级 ≠ 必然命中」/「subagent 工具可见性」/「成本语义」）。
+  - **T1 卡** `references/agents/01-...md`：职责段扩到「**默认 3 源 + 备用 3 源**」（默认：`search_papers` + `search_arxiv` + `web_search`；备用：Google Scholar 按信用点 + `search_semantic_bulk` + bioRxiv/medRxiv）+ 显式指针新接入面文档；「检索边际饱和」段加「默认 3 源 + 备用 3 源」硬约束 + 「已用源」字段（交接报告必报，让 T7 审计能机械判定「T1 是否真调到接入面源」）；「**最新进展补扫（T1b）」从「主人显式要求」升级为「默认即跑**」（学术模式自动启用；非学术可在任务简报 §启用扩展检索源 取消勾选）。
+  - **T2 卡**：从 `web_search + web_fetch` 扩到「默认 3 源 + 备用 3 源」（T2 偏**时效源**：`tavily` + `firecrawl`；学术源仅文献计量方向才调）+ 失败熔断段从「`web_search`」扩到「**源级独立**」（`web_search` / `tavily` / `firecrawl` / `search_papers` 各自一份「已失败源清单」）。
+  - **T3 卡**：职责段新增「**默认事件层 + 抓取层 + 学术背书层**」（`web_search` + `web_fetch` + `firecrawl` 抓取 + `search_papers` 学术背书）+ 失败熔断段同步扩面。
+  - **`中文数据源集成.md` 第一梯队描述**：OpenAlex/Crossref 的 §用法 段从「`web_fetch` 拼 URL」改为「**主推荐 DSH `search_papers` 工具**（默认含 Semantic Scholar + PubMed，覆盖 OpenAlex/Crossref 几乎所有场景 + 自动合并去重）」；原 `web_fetch` 拼 URL 作兜底。
+  - **`pipeline-readme.md` 第 251 行**（Phase 1.5 段）：引用新接入面文档「`web_search` 引擎降级链 bing → exa → tavily → keenable → firecrawl → parallel → ddg → searxng → anysearch」+「任一引擎连续 2 次失败即熔断」。
+  - **任务简报模板** §v2.5.0 可选项**新增**「启用扩展检索源」段——主人**逐项勾选**已部署且开通可用的源（AI4Scholar 学术套件 / Google Scholar / Tavily / Exa / Firecrawl / Consensus）；未勾选 = 不调；**默认推荐勾选 AI4Scholar 学术套件**（多数免费）。
+
+### 二、词预算棘轮（v18.1.0 起）
+
+- T1 卡 18→21 KB（18.21.2 扩面段；上限 21504 B；实测 20225 B；理由写入 `repo-hygiene-check.mjs` 的 DOC_BUDGET 条目）
+- T2 卡 13→15 KB（T2 扩面段；上限 15360 B；实测 14492 B）
+- T3 卡 13→15 KB（T3 扩面段；上限 15360 B；实测 14074 B）
+- 任务简报模板 26→28 KB（§启用扩展检索源 段；上限 28672 B；实测 27312 B）
+- **新增** 接入面文档 `[16384, 12288, ...]`（上限 16 KB / 长期目标 12 KB；范本 `auto_cite-integration.md` 9 KB、`DSH-集成方案.md` 29 KB；本文件预计稳定在 ~12-14 KB）
+
+### 三、验证
+
+- 四道具全绿（含 `repo-hygiene-check` 规则⑨「DOC_BUDGET 增 5 行」生效）
+- **371 用例 / 370 通过 / 1 fail**——fail 用例 `consistency-check ⑫：加粗版版本头漂移必须报` 的 fixture 夹具在跑 baseline 时输出了真仓的「接入面文档版本头 v18.21.2 ≠ 18.21.1」（fixture 实测沿用了真仓的文件副本），bump 完会消失
+- **新增 6 用例** `tests/external-source-integration.test.mjs`：T1/T2/T3 卡均引用接入面文档（3 条）+ 任务简报含 6 源勾选（1 条）+ 中文集成.md 第一梯队不再以 `web_fetch` 拼 URL 为主推荐（1 条）+ **反向自证 A**：把 T1 卡接入面引用屏蔽 → SOURCE_RE 必须不命中（v18.15.0 教训「门在此却不生效」防护）
+
+### 四、未做 / 待定案（明确边界）
+
+- **方案 2 论衡原生聚合工具**（`lib/tools.js` 新增 `lunheng_search_aggregate`）：**主人 2026-09-26 定「先做方案 1，验证后做方案 2」**——本批仅做指引层，运行期抽象留给后续；若方案 1 跑满一次真实项目后 T1/T2/T3 仍只用 web_search（subagent 工具指引能力不足），则跳到方案 2 强制接。
+- **Consensus 在写手阶段（T4/T5/T9）的接入**：任务简报勾选已声明，本批**不**扩 T4/T5/T9 卡——留待方案 2 或单独批。
+- **`free_search_test` 在 spawn 时自动调用探测**：方案 3 的事，本批不做。
+- **真实项目实测**：方案 1 的核心验证 = 跑 1 个真实项目（任一 `run/<项目>/`），看 T1/T2/T3 的交接报告**「已用源」字段**是否真的命中了 `search_papers` / `search_arxiv` 等至少 1 个；本批**未跑真实项目**（需要主人选项目），仅做静态用例覆盖。
+
 ## 18.21.1 — 2026-09-26
 
 > **性质**：**v18.21.0 的 CI 回归修复**，即 N-3 修法的自然后续——单点 pin 第一次真正生效，就暴露出「这个 pin 同时喂两个子命令」这件事。提交 `29956b5`。
