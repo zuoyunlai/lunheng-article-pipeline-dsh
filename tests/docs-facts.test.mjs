@@ -665,6 +665,23 @@ function codeGateIds() {
 const TABLE_NAME = '规范-机械门对照表.md'
 
 /**
+ * 交接门判据码的**代码真源**：`handoff-check.mjs` 里 `addHard/addSoft('X', …)` 的码。
+ * 与 `codeGateIds()` 同一判据：清单从代码派生，不从文档抄（抄的那份会漂——`M-Fact-1` 就是这么漏登的）。
+ * 本文件只断言 **代码 ⇒ 表** 这一个方向；**反向（表 ⇒ 代码）刻意不设断言**——表内**合法**保留
+ * 作废号与否定式提及（如「本脚本**没有** B5」这句更正说明就含 `B5`），反向断言会把正当文本判红
+ * （本仓既有判据：对禁令/清点类断言不得为迁就文本而放宽，也不得误伤更正记录）。
+ */
+function handoffCodes() {
+  const src = readFileSync(join(SKILL, 'scripts', 'handoff-check.mjs'), 'utf8')
+  const codes = new Set()
+  for (const m of src.matchAll(/add(?:Hard|Soft)\(\s*'([AB][0-9a-z]*)'/g)) codes.add(m[1])
+  return codes
+}
+
+/** 在**登记区**（§一/§二 的表行）里按标识符边界找一个码：`A4` 不得被 `A4b/A4c` 命中，反之亦然。 */
+const inRegistry = (registry, token) => new RegExp(`(?<![A-Za-z0-9])${token}(?![0-9a-z])`).test(registry)
+
+/**
  * 只取 §一 / §二 的**表行**（`|` 开头的行）——本表真正的「登记」区。
  * ⚠️ 刻意**不取**表头注记与 §三：这两处会提到门号（作废号留档、漏登说明、旧行名举例），
  *   若把它们算成「已登记」，两个用例都会被**自造污染**。反向自证实测过这一点：
@@ -709,6 +726,39 @@ test('对照表 §一/§二 必须登记代码里出现的全部 M 门项 ID（v
     `下列 M 门项在对照表 §一/§二 里查不到登记：${missing.join('、')}。` +
       '新增门族 / 门项时必须在同一次提交里同步本表（§四.1），否则「这门有没有人登记」在下一次收敛里无从回答。' +
       '修法：自基线起就有门的进 §一，历轮补上的进 §二。',
+  )
+})
+
+// v18.43.0（主人「继续」→ 承 v18.40.0 的事前拦截）：把「新门必须登记」的断言**扩到第二个门族**。
+//   为什么是 handoff 码族：它是除 M 门之外**唯一**「每条码都是一条规范判据 + 可从代码机械派生」的族
+//   （15 条：A0/A1/A2/A3/A4/A4b/A4c/A5/A6/A7/A8/B1/B2/B3/B4）。本批实测缺口 = **7 条未登记**
+//   （A0/A3/A4/A5/B2/B3/B4）——与 `M-Fact-1` 漏登同族：判据落地时没人回头看这张表。
+//   **覆盖面边界（如实）**：脚本门族（`structure-check` / `methodology-check` / `quality-score` /
+//   `readability` / `g-audit-check` 各项）与 ①②③… 规则号族**刻意不设**完整性断言——实测 27 个随包脚本里
+//   22 个是工具类（`count-chars` / `md2html` / `model-routing` / `token-budget` …），本来就不是勾稽对象；
+//   要覆盖它们只能靠一份无意义的豁免清单，那会把断言变成噪声（同「断言的面比语义宽 = 假绿」的反面）。
+test('对照表 §一/§二 必须登记 handoff-check 的全部 A/B 判据码（v18.43.0 扩面）', () => {
+  const table = readFileSync(join(SKILL, 'references', '_shared', TABLE_NAME), 'utf8')
+  const registry = sectionRows(table)
+  assert.ok(registry.length > 0, '对照表结构变了：§一/§二 里解析不到表行')
+  const codes = handoffCodes()
+
+  // 非真空守卫：两族都要解析出码（只解析出 A 族也能让「未登记集合为空」真空通过）
+  for (const fam of ['A', 'B']) {
+    assert.ok(
+      [...codes].some((c) => c.startsWith(fam)),
+      `未能从 scripts/handoff-check.mjs 解析出任何 ${fam} 族判据码——解析口径已断，本用例会真空通过。`,
+    )
+  }
+
+  const missing = [...codes].filter((c) => !inRegistry(registry, c))
+  assert.deepEqual(
+    missing,
+    [],
+    `下列交接门判据码在对照表 §一/§二 里查不到登记：${missing.join('、')}。` +
+      '新增判据码（`addHard`/`addSoft`）时必须在同一次提交里同步本表（§四.1）——' +
+      '本批就是这么发现 7 条漏登的（A0/A3/A4/A5/B2/B3/B4）。' +
+      '**只断言「代码 ⇒ 表」**：反向不设断言，因为表内合法保留作废号与否定的更正说明。',
   )
 })
 
