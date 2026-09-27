@@ -132,7 +132,19 @@ for (const m of text.matchAll(paragraphRe)) {
   const end = next ? next.index : text.length;
   const ptitle = m[2].trim();
   const pbody = text.slice(start, end);
-  const refsInP = [...pbody.matchAll(L_REGEX)].map((x) => `L${x[1]}`);
+  // v18.23.0 EFF-1 第二层修复（**由第一层修复暴露**）：扫描面必须是**正文区**。
+  //   第一层修掉 `L${x[1]}` → `Lundefined` 的假绿后，本规则**第一次真的会触发**，于是当场暴露：
+  //   `## 参考文献` 节自身列了 N 条 `[Lxx]`，天然满足「同段 ≥4 篇且无差异关键词」→ **每一篇合格论文
+  //   都会被判 P1**（这就是它此前「从不触发」的另一半原因：真触发的话没人会接受）。
+  //   判据的本意是「**论点段**堆砌引用」（引言/综述里一口气挂 5 篇而不说差异），文末清单不是论点段——
+  //   与 C-Strength 的 `bodyText` 切分同源，统一用 `firstEndnoteIndex` 圈定正文区。
+  if (start >= bodyEndIdx) continue;   // 文末节（参考文献 / 数据来源 / …）不参与同段冗余判定
+  // v18.23.0 EFF-1 修复（**假绿**：C-Redundancy 自实装起恒 pass）：`refRegex` 工厂产出的正则**没有捕获组**
+  //   （`\[L\d+\]`），而本行旧写 `L${x[1]}` → 每条引用都变成字面量 `"Lundefined"` → `uniqueRefs` 恒为长度 1
+  //   → 永远 < 阈值 4 → 「某段引 ≥4 篇且未指明差异 → P1」**从未触发过**。
+  //   实测（2026-09-27）：一段引 5 条不同 [Lxx] 且无差异关键词 → 旧版报 `pass: true / violations: []`。
+  //   同文件上方两处消费点（`L_IN_TEXT` / `L_COUNT`）在 v18.16.0 已改用 `stripL(m[0])`，本行是漏网的一处。
+  const refsInP = [...pbody.matchAll(L_REGEX)].map((x) => `L${stripL(x[0])}`);
   const uniqueRefs = [...new Set(refsInP)];
   if (uniqueRefs.length >= REDUNDANCY_THRESHOLD) {
     const differenceKeywords = ['不同于', '相比', '与...不同', '差异', '与之不同', '差别', '不同点'];
