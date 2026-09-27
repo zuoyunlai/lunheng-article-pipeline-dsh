@@ -5,6 +5,8 @@
 //   注入验证用例 + 真源仓库自跑兜底）。共享态（errors / 派生源 / 版本真源等）由主脚本构建 ctx 传入。
 import { readFileSync, readdirSync, statSync, existsSync, writeFileSync, copyFileSync } from 'node:fs'
 import { join, relative, dirname } from 'node:path'
+// v18.22.2 CTX-3：slug 单一真源（与 ref-get.mjs 共用）
+import { anchorSlugsOf } from '../anchor-slug.mjs'
 
 // ⑲ 交接契约表真源（v18.6.0 上提为模块级常量并 export）：原内联在 runContentRules 函数体内，
 //    handoff-check.mjs 需 import 派生「角色 → 必需产物」；数组是纯静态清单、不依赖 ctx，上提后行为不变。
@@ -343,20 +345,10 @@ if (STRICT_PCT) {
 //     ① 目标文件必须存在；② 锚点必须命中目标文件的「标题 slug 集」或**显式 `<a id="…">`**。
 //   slug 口径（与 GitHub 实测校准一致）：小写 → 去 emoji 与标点 → 每个空格转一个 `-`（**不折叠、不裁剪**）。
 //   历史归档目录整体豁免（`docs/审计与修订记录|验证记录`、`audits/反哺报告-*`、`archive/`）。
-const anchorSlugsOf = (text) => {
-  const slugs = new Set();
-  // GitHub 实测口径（本机两个真实仓库交叉验证：`## ☁️ Installation` ↔ `#-installation`；
-  //   `## Usage & Billing` ↔ `#usage--billing`）：
-  //   ① 小写；② **只保留** 字母 / 数字 / 组合符 / 空格 / `-` / `_`（其余一律删，含 `.` `→` `（）—，`);
-  //   ③ **每个空格转一个 `-`**（不折叠、不裁剪 —— 故 emoji 标题会得到**前导** `-`，
-  //      被删标点两侧的两个空格会得到 `--`）。
-  const slugify = (s) => String(s).toLowerCase()
-    .replace(/[^\p{L}\p{N}\p{M} _-]/gu, '')
-    .replace(/ /g, '-');
-  for (const m of text.matchAll(/^#{1,6}\s+(.+?)\s*$/gm)) slugs.add(slugify(m[1]));
-  for (const m of text.matchAll(/<a\s+id="([^"]+)"/g)) slugs.add(m[1]);
-  return slugs;
-};
+// v18.22.2 CTX-3：slug 实现抽到 `_lib/anchor-slug.mjs`（与本包的 `ref-get.mjs` **共用同一份**）——
+//   此前这里是唯一实现，而 ref-get 也需要同一口径；两处各写一份必然漂移（本仓最反感的形态）。
+//   slug 三条口径（小写 / 只保留字母数字组合符空格与 `-` `_` / **每个空格转一个 `-`、不折叠不裁剪**）
+//   与「不要顺手优化」的理由，见该文件头注释。
 {
   const HIST = /^(?:docs\/(?:审计与修订记录|验证记录)\/|audits\/反哺报告-|archive\/)/;
   const mdFiles = [];
