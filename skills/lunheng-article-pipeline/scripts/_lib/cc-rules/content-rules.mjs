@@ -80,7 +80,8 @@ if (existsSync(pipelinePath) && readFileSync(pipelinePath, 'utf8').includes('审
   }
 }
 
-// ⑰ 定量节省断言必须有出处（v2.5.2-dsh.15 新增）：防「省 60%+」这类**无算式、无实测**的数字在文档间自我繁殖——
+// ⑰ 定量节省断言必须有出处（v2.5.2-dsh.15 新增，**v18.22.0 保留**）：
+//    旧规则只匹配「省 X%」——保留**默认开启**（保护既有契约；tests/scripts.test.mjs:583 注入「省 77%」反向自证依赖这条）。
 //    同行或邻行给出算式（=）、对照（vs）、实测/对比/基线 才放行；否则请补算式或改定性表述。
 for (const f of active) {
   const rel = relative(ROOT, f).replaceAll('\\', '/');
@@ -92,6 +93,52 @@ for (const f of active) {
     if (/[=＝]|vs|实测|对比|基线|算式/.test(ctx)) return;
     errors.push(`[P2 定量断言缺出处] ${rel}:${i + 1} 声称「${m[0]}」但同行/邻行无算式或实测出处——请补算式，或改为定性表述`);
   });
+}
+
+// ⑰' 定量断言口径三要素扩面（**v18.22.0 MEA-2 新增**）：
+//    v18.22.0 实测对照发现 docs/usage.md / docs/token-optimization-plan.md / docs/troubleshooting.md 等
+//    多处含百分比/倍数断言却无口径三要素。旧版 ⑰ 只匹配「省 X%」，本扩面匹配
+//    「任何百分比 / 倍数 / 占比 / 增长」类断言，要求 ±5 行窗口**同时含 口径/日期/样本数 三者**。
+//
+//    **v18.22.0 边界**：本规则**默认不开启**——只接受 `STRICT_PCT=1` 环境变量显式启用
+//    （避免 CI 因已发布文档里的「省 60%」「约 85%」类历史断言立刻挂）。
+//    v18.22.2（下一批 CTX-1/CTX-2）会同步修这些文档 + 把本规则改回默认开启。
+//
+//    判据一句：**百分比 / 倍数断言 + 无三要素 = 假绿**（v18.15.0「门在此却不生效」+ v18.18.x「已修只覆盖当时盯住的那一处」）。
+//
+//    阈值：百分号 % / 「X 倍」/ 「占比 X%」/ 「增长 X%」/ 「降低 X%」/ 「提升 X%」/ 「降幅 X%」；
+//    白名单 = 「100%」覆盖类 + 「0%」边界类（避免误报「100% 覆盖」/「0% 退化」）。
+//    放行关键字（满足任一即放行）：
+//      口径：行内含「口径|分母|基线|n\s*=|N\s*=|vs\s|对比|实测|算式」
+//      日期：±5 行内含「YYYY-MM(-DD)?|v\d+\.\d+(\.\d+)?|\d+\.\d+\.\d+|截至|运行至」
+//      样本：±5 行内含「\d+\s*(?:个|条|次|M|会话|项目|笔|例|回|轮|MB|KB)」
+//
+//    已知误报可能：散句缩写（避免规则本身冗长故截短）。
+const STRICT_PCT = process.env.STRICT_PCT === '1' || process.env.STRICT_PCT === 'true'
+                 || process.argv.includes('--strict-pct');
+if (STRICT_PCT) {
+  for (const f of active) {
+    const rel = relative(ROOT, f).replaceAll('\\', '/');
+    const lines = readFileSync(f, 'utf8').split('\n');
+    lines.forEach((l, i) => {
+      const m = l.match(/(?:省(?:略)?|降低|降幅|提升|增长|占比|约)\s*\d+(?:\.\d+)?\s*(?:%|倍)|^\s*\d+(?:\.\d+)?\s*(?:%|倍)/);
+      if (!m) return;
+      const num = m[0].match(/\d+(?:\.\d+)?/);
+      if (num && (num[0] === '100' || num[0] === '0')) return;
+      const win = [];
+      for (let j = Math.max(0, i - 5); j <= Math.min(lines.length - 1, i + 5); j++) win.push(lines[j]);
+      const ctx = win.join('\n');
+      const hasCaliber = /口径|分母|基线|n\s*=|N\s*=|vs\s|对比|实测|算式/.test(ctx);
+      const hasDate = /\d{4}-\d{2}(?:-\d{2})?|v\d+\.\d+|v\d+\.\d+\.\d+|\d+\.\d+\.\d+|截至|运行至/.test(ctx);
+      const hasSample = /\d+\s*(?:个|条|次|M|会话|项目|笔|例|回|轮|MB|KB)/.test(ctx);
+      if (hasCaliber && hasDate && hasSample) return;
+      const missing = [];
+      if (!hasCaliber) missing.push('口径');
+      if (!hasDate) missing.push('日期');
+      if (!hasSample) missing.push('样本数');
+      errors.push(`[P2 定量断言缺三要素] ${rel}:${i + 1} 声称「${m[0]}」但 ±5 行窗口缺：${missing.join('+')}（按 v18.22.0 MEA-2 扩面：百分比/倍数断言必须同时含 口径/日期/样本数 三者；旧版 ⑰ 默认开）`);
+    });
+  }
 }
 
 // ⑱ 图件链路口径（v2.5.2-dsh.16 新增，第三方 SVG 链路审计）：

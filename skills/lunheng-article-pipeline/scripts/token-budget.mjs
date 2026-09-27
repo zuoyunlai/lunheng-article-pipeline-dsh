@@ -21,6 +21,18 @@
 // ⚠️ token 口径（**估算区间，非计费值**）：
 //   汉字 ≈ 0.6~1.0 token/字（BPE 对中文的常见区间）；ASCII ≈ 1 token / 4 字符。
 //   精确值请用 `token-cost.mjs` 读会话投影里的**真实 tokenUsage**（本脚本 `--roles` 即读它）。
+//
+// ⚠️ v18.22.0 MEA-1（口径修复）：
+//   旧版只按 ROLE 正则匹配 `label` / `title` —— 不过滤主会话，导致 3 条主会话
+//   （cacheRead 359.9M = 分母 55.2%）被错算进 T7 桶，读出"T7 占 69.1%"假象。
+//   实测复算：真 T7 ≈76.0M（11.7%）；真 T5 ≈99.5M（15.3%）；二者同量级。
+//   现加四条：① `--include-main` 开关（默认 false：主会话不计入角色桶）；
+//            ② label 优先 / title fallback，并打印 fallback 命中数；
+//            ③ 未归类会话数 + 未归类 cacheRead 占比（防分母悄悄缩水）；
+//            ④ 输出头加"口径三要素"（分母定义 / 日期 / 样本数），跨日期对比前必对口径。
+//   与 MEA-2 配套：成本断言必须在文档里带 口径 / 日期 / 样本数（见 content-rules.mjs ⑰ 扩面）。
+//
+//   回滚：删除 `includeMain` / fallbackHits / unmatched / 三要素头 共四处。
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { homedir } from 'node:os';
@@ -31,10 +43,11 @@ installExitGuard();
 
 const args = process.argv.slice(2);
 if (args.includes('-h') || args.includes('--help')) {
-  console.log(`用法: node token-budget.mjs [--project <run/项目>] [--roles] [--json] [--dsh-home <path>]
+  console.log(`用法: node token-budget.mjs [--project <run/项目>] [--roles] [--json] [--include-main] [--dsh-home <path>]
 
 --project <路径>   静态测量该项目的「读目标」：整读规模 vs 按需读规模（大纲 vs §11 / 三卡 vs 索引段 / 证据包 vs 审计视图 / 定稿+证据包 vs M 门 JSON）
---roles            读 $DSH_HOME/storages/session_projcache/sessions/*.json，按论衡角色聚合真实 token（cacheRead / output / 步数 / 占比）
+--roles            读 $DSH_HOME/storages/session_projcache/sessions/*.json，按论衡角色聚合真实 token（cacheRead / output / 步数 / 占比）。**v18.22.0 起默认不计入主会话**（--include-main 显式放开，兼容旧读数 + 便于调试主会话污染）
+--include-main     **v18.22.0**：把主会话一起纳入角色桶。默认 false（主会话 label 通常空，启发式容易误归类——先打未归类桶再人工判定）
 --dsh-home <path>  指定 DSH_HOME（默认 $DSH_HOME 或 ~/.dsh）
 --json             输出 JSON（机器可读）
 -h, --help         本帮助
@@ -45,16 +58,17 @@ if (args.includes('-h') || args.includes('--help')) {
 // v18.2.9（第三方审计 A7）：参数解析迁移到 `_lib/cli-args.mjs` 唯一实现
 // v18.12.0（L-67）：用法错由 exit 1 改 exit 10——1 是 M 门的「P1 内容失败」，用法错被读成内容失败
 //   会让主控误触发 T5 修订轮（同族事故见 v18.0.5 exit-guard 的引入说明）。
-let wantJson, projArg, wantRoles, dshHome;
+let wantJson, projArg, wantRoles, includeMain, dshHome;
 try {
   const parsed = parseCliArgs(args, {
-    flags: ['--json', '--roles'],
+    flags: ['--json', '--roles', '--include-main'],
     values: { '--project': 'run/项目', '--dsh-home': '~/.dsh' },
     maxPositionals: 0,
   });
   wantJson = parsed.flags.has('--json');
   projArg = parsed.opts['--project'];
   wantRoles = parsed.flags.has('--roles');
+  includeMain = parsed.flags.has('--include-main');   // v18.22.0 MEA-1：默认 false
   dshHome = parsed.opts['--dsh-home'] || process.env.DSH_HOME || join(homedir(), '.dsh');
 } catch (e) {
   if (e && e.code === CLI_USAGE_CODE) {
@@ -196,23 +210,53 @@ if (wantRoles) {
       if (t) sessions.push({ id: id.slice(0, 8), label: '', prompt: '', steps: null, cacheRead: t.cacheReadTokens || 0, uncached: t.uncachedInputTokens || 0, output: t.outputTokens || 0 });
     }
   }
-  const classified = sessions.map((s) => ({ ...s, role: (ROLE.find(([, re]) => re.test(s.label) || re.test(s.prompt)) || [null])[0] }));
-  const sub = classified.filter((s) => s.role);
+  // v18.22.0 MEA-1：role 标注时记录匹配路径（'label' / 'title' / null），便于后续统计 fallback 命中数。
+  const classified = sessions.map((s) => {
+    const byLabel = ROLE.find(([, re]) => re.test(s.label));
+    const byTitle = byLabel ? null : ROLE.find(([, re]) => re.test(s.prompt));
+    const hit = byLabel || byTitle || [null];
+    return { ...s, role: hit[0], roleBy: byLabel ? 'label' : (byTitle ? 'title' : null) };
+  });
+  // v18.22.0 MEA-1：子代理过滤（默认）/ 主会话放开（--include-main）
+  //   「子代理」判定：subagent.identity.label 非空。空 label 的会话**可能是主会话也可能是没 label 的子代理**——
+  //   默认保守，按主会话处理（不计入角色桶，进「未归类」）。
+  const isSubagent = (s) => typeof s.label === 'string' && s.label.length > 0;
+  const scoped = includeMain ? classified : classified.filter(isSubagent);
+  const sub = scoped.filter((s) => s.role);
+  const fallbackHits = sub.filter((s) => s.roleBy === 'title').length;
+  // v18.22.0 MEA-1：未归类桶（防分母悄悄缩水）
+  const unmatched = scoped.filter((s) => !s.role);
   const total = sub.reduce((a, s) => a + s.cacheRead, 0);
+  const unmatchedTotal = unmatched.reduce((a, s) => a + s.cacheRead, 0);
   const byRole = new Map();
   for (const s of sub) {
     if (!byRole.has(s.role)) byRole.set(s.role, { n: 0, cacheRead: 0, uncached: 0, output: 0, steps: 0 });
     const a = byRole.get(s.role);
     a.n++; a.cacheRead += s.cacheRead; a.uncached += s.uncached; a.output += s.output; a.steps += s.steps || 0;
   }
+  // v18.22.0 MEA-1：未归类聚合（同名结构 byRole，便于统一输出）
+  const unmatchedBucket = unmatched.length > 0 ? [{
+    role: '未归类',
+    n: unmatched.length,
+    cacheRead: unmatchedTotal,
+    uncached: 0,
+    output: 0,
+    steps: unmatched.reduce((a, s) => a + (s.steps || 0), 0),
+    sharePct: total ? Number(((unmatchedTotal / total) * 100).toFixed(1)) : 0,
+  }] : [];
   report.roles = {
     dshHome,
     sessionsTotal: sessions.length,
+    sessionsInScope: scoped.length,       // v18.22.0 MEA-1：纳入分析的范围
     sessionsClassified: sub.length,
+    sessionsUnmatched: unmatched.length,  // v18.22.0 MEA-1：未归类数
+    fallbackHits,                        // v18.22.0 MEA-1：title fallback 命中数
+    includeMain,                         // v18.22.0 MEA-1：当前口径开关
     subagentCacheRead: total,
     byRole: [...byRole.entries()]
       .map(([role, a]) => ({ role, ...a, sharePct: total ? Number(((a.cacheRead / total) * 100).toFixed(1)) : 0 }))
       .sort((x, y) => y.cacheRead - x.cacheRead),
+    unmatched: unmatchedBucket,           // v18.22.0 MEA-1：未归类桶
   };
 }
 
@@ -240,14 +284,33 @@ if (wantJson) {
   }
   if (report.roles) {
     console.log(`\n## 二、真实 token 分布（会话投影聚合：${report.roles.dshHome}）\n`);
-    console.log(`  会话 ${report.roles.sessionsTotal} 个（可识别为论衡角色 ${report.roles.sessionsClassified} 个）｜子代理 cacheRead 合计 ${M(report.roles.subagentCacheRead)}\n`);
+    // v18.22.0 MEA-1：输出头加**口径三要素**（分母 / 日期 / 样本数），跨日期对比前必对口径。
+    console.log(`# token 预算实测（${report.date}）`);
+    console.log(`# 口径（v18.22.0）：${report.roles.includeMain ? '**主会话计入**（--include-main）' : '**仅子代理**（默认：subagent.identity.label 非空才纳入；主会话进未归类桶）'}`);
+    console.log(`# 样本：${report.roles.sessionsTotal} 个会话 → 纳入分析 ${report.roles.sessionsInScope} 个 → 归类 ${report.roles.sessionsClassified} 个 → 未归类 ${report.roles.sessionsUnmatched} 个｜title fallback 命中 ${report.roles.fallbackHits} 次`);
+    console.log(`# 分母 = 子代理 cacheRead 合计 ${M(report.roles.subagentCacheRead)}\n`);
     console.log('  ' + padW('角色', 16) + padW('会话', 6) + padW('cacheRead', 12) + padW('占比', 9) + padW('output', 10) + '步数');
     console.log('  ' + '-'.repeat(64));
     for (const r of report.roles.byRole) {
       console.log('  ' + padW(r.role, 14) + padW(r.n, 6) + padW(M(r.cacheRead), 12)
         + padW(r.sharePct + '%', 9) + padW((r.output / 1e3).toFixed(0) + 'K', 10) + r.steps);
     }
-    console.log('\n  注：占比分母 = 可识别为论衡角色的子代理 cacheRead（主控与其它插件的子代理不计入）——');
-    console.log('      这与「单项目实测」口径不同，跨项目聚合会因各项目 T5 轮数不同而低于单项目峰值。');
+    // v18.22.0 MEA-1：未归类桶（如有才打）
+    if (report.roles.unmatched && report.roles.unmatched.length > 0) {
+      for (const r of report.roles.unmatched) {
+        console.log('  ' + padW(r.role, 14) + padW(r.n, 6) + padW(M(r.cacheRead), 12)
+          + padW(r.sharePct + '%', 9) + padW((r.output / 1e3).toFixed(0) + 'K', 10) + r.steps);
+      }
+    }
+    // v18.22.0 MEA-1：fallback 命中率提示（让启发式承认为启发式）
+    console.log(`\n  注：占比分母 = 可识别为论衡角色的子代理 cacheRead（主控与其它插件的子代理不计入）——`);
+    console.log(`      这与「单项目实测」口径不同，跨项目聚合会因各项目 T5 轮数不同而低于单项目峰值。`);
+    if (report.roles.fallbackHits > 0) {
+      console.log(`  注：${report.roles.fallbackHits} 个会话用 title fallback 匹配（label 不命中 → title 命中）——视为启发式归类，主人 review 时请重点检查这 ${report.roles.fallbackHits} 个。`);
+    }
+    if (report.roles.sessionsUnmatched > 0) {
+      const unmatchShare = report.roles.subagentCacheRead ? ((report.roles.unmatched[0].cacheRead / report.roles.subagentCacheRead) * 100).toFixed(1) : 0;
+      console.log(`  注：未归类 ${report.roles.sessionsUnmatched} 个会话（cacheRead 占比 ${unmatchShare}%）——本次读数受 ${unmatchShare}% 污染；若该值偏高，请检查 ROLE 正则。`);
+    }
   }
 }
