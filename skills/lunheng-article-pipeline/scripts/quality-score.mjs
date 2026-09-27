@@ -35,7 +35,8 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { installExitGuard, requireExistingDir } from './_lib/exit-guard.mjs';
-import { h2Headings, titleMatches } from './_lib/sections.mjs';
+import { h2Headings, titleMatches, firstEndnoteIndex, bodyStartAfterAbstract } from './_lib/sections.mjs';
+import { evaluate as readabilityEvaluate } from './_lib/readability.mjs';   // v18.26.0 QLT-3：可读性剖面（第 8 分量）
 installExitGuard();
 
 const SCRIPTS = new URL('.', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
@@ -127,11 +128,11 @@ if (existsSync(evidence)) {
   const r = runGate('mgate', [join(SCRIPTS, 'm-gate-check.mjs'), draft, evidence]);
   const j = r.json;
   if (j && j.total > 0) {
-    add('M-Gate', 'M 门 22 机械项（含图件闭环 M-Form-9）', 40, j.pass / j.total,
+    add('M-Gate', 'M 门 23 机械项（含图件闭环 M-Form-9 + M-Fact-1）', 38, j.pass / j.total,
       `${j.pass}/${j.total} 通过｜P0 ${j.p0 ?? 0} / P1 ${j.p1 ?? 0} / P2 ${j.p2 ?? 0}｜exit ${j.exit}`,
       { pass: j.pass, total: j.total, p0: j.p0 ?? 0, p1: j.p1 ?? 0, p2: j.p2 ?? 0 });
   } else {
-    add('M-Gate', 'M 门 22 机械项（含图件闭环 M-Form-9）', 40, null, '', {}, `m-gate-check 未产出可用 JSON（status=${r.status}${r.error ? ` / ${r.error}` : ''}）`);
+    add('M-Gate', 'M 门 23 机械项（含图件闭环 M-Form-9 + M-Fact-1）', 38, null, '', {}, `m-gate-check 未产出可用 JSON（status=${r.status}${r.error ? ` / ${r.error}` : ''}）`);
   }
 } else {
   add('M-Gate', 'M 门 22 机械项（含图件闭环 M-Form-9）', 40, null, '', {}, '缺 final/证据包（M 门第二参数必须是证据包目录）');
@@ -145,7 +146,7 @@ if (existsSync(evidence)) {
 {
   const imradish = hasSection(['方法', '研究方法', '研究设计', 'Method', 'Methods', 'Methodology', '结果', 'Results']);
   if (!imradish && !humanities) {
-    add('structure', '学术结构（IMRaD / 引言漏斗 / 讨论四要素）', 10, null, '', {},
+    add('structure', '学术结构（IMRaD / 引言漏斗 / 讨论四要素）', 8, null, '', {},
       '非 IMRaD 体例（无「方法/结果」节）且未传 --humanities——结构门按 IMRaD 词汇判据会把体例差异记成质量缺陷，故不适用');
   } else {
   const r = runGate('structure', [join(SCRIPTS, 'structure-check.mjs'), draft, ...(humanities ? ['--humanities'] : [])]);
@@ -157,7 +158,7 @@ if (existsSync(evidence)) {
       `${Math.round(hr.ratio * cs.length)}/${cs.length} 通过` + (cs.filter((c) => !c.pass && c.severity !== 'P2').length ? `｜硬失败：${cs.filter((c) => !c.pass && c.severity !== 'P2').map((c) => Object.keys(j.checks)[cs.indexOf(c)] || '').join(' / ')}` : '') + hr.detailSuffix,
       { pass: cs.filter((c) => c.pass).length, total: cs.length, soft: hr.soft, humanities });
   } else {
-    add('structure', '学术结构（IMRaD / 引言漏斗 / 讨论四要素）', 10, null, '', {}, `structure-check 未产出可用 JSON（status=${r.status}）`);
+    add('structure', '学术结构（IMRaD / 引言漏斗 / 讨论四要素）', 8, null, '', {}, `structure-check 未产出可用 JSON（status=${r.status}）`);
   }
   }
 }
@@ -169,12 +170,12 @@ if (hasMethods) {
   const cs = j && j.checks ? Object.values(j.checks) : null;
   if (cs && cs.length > 0) {
     const hr = hardRatio(cs);
-    add('methodology', '方法论可复现（MC-Form-12 / MC-Exist-11 / MC-Exist-12）', 5, hr.ratio, `${cs.filter((c) => c.pass).length}/${cs.length} 通过` + hr.detailSuffix, { pass: cs.filter((c) => c.pass).length, total: cs.length, soft: hr.soft });
+    add('methodology', '方法论可复现（MC-Form-12 / MC-Exist-11 / MC-Exist-12）', 4, hr.ratio, `${cs.filter((c) => c.pass).length}/${cs.length} 通过` + hr.detailSuffix, { pass: cs.filter((c) => c.pass).length, total: cs.length, soft: hr.soft });
   } else {
-    add('methodology', '方法论可复现（MC-*）', 5, null, '', {}, `methodology-check 未产出可用 JSON（status=${r.status}）`);
+    add('methodology', '方法论可复现（MC-*）', 4, null, '', {}, `methodology-check 未产出可用 JSON（status=${r.status}）`);
   }
 } else {
-  add('methodology', '方法论可复现（MC-*）', 5, null, '', {}, '本文无「方法 / 研究设计 / Methodology」节（评论类与人文学科通常不适用）');
+  add('methodology', '方法论可复现（MC-*）', 4, null, '', {}, '本文无「方法 / 研究设计 / Methodology」节（评论类与人文学科通常不适用）');
 }
 
 // ④ 引用实质相关三项（权重 10）
@@ -184,7 +185,7 @@ if (hasRefs) {
   const cs = j && j.checks ? Object.values(j.checks) : null;
   if (cs && cs.length > 0) {
     const hr = hardRatio(cs);
-    add('cite-coverage', '引用实质相关性（强度 / 冗余 / 年代分布）', 10, hr.ratio,
+    add('cite-coverage', '引用实质相关性（强度 / 冗余 / 年代分布）', 8, hr.ratio,
       `${cs.filter((c) => c.pass).length}/${cs.length} 通过` + (hr.soft.length ? `｜软提示：${hr.soft.join(' / ')}` : ''),
       { pass: cs.filter((c) => c.pass).length, total: cs.length, soft: hr.soft });
   } else {
@@ -204,12 +205,12 @@ if (existsSync(evidence) && existsSync(brief)) {
     const checked = cs.filter((c) => c.checked);
     const skipped = cs.filter((c) => !c.checked);
     if (checked.length === 0) {
-      add('g-audit', 'G 项机检 5 项（G8/G2/G11/G2.5/G0.5）', 15, null, '', {}, `5 项全部 SKIP：${skipped.map((c) => c.skipReason).join('；')}`);
+      add('g-audit', 'G 项机检 5 项（G8/G2/G11/G2.5/G0.5）', 12, null, '', {}, `5 项全部 SKIP：${skipped.map((c) => c.skipReason).join('；')}`);
     } else {
       // 与其余分量同口径：**只有 P0/P1 算硬失败**；P2 是候选（如 G8 超限、G2 未命中数字），单列不扣分
       const hardFail = checked.filter((c) => c.severity === 'P0' || c.severity === 'P1');
       const softList = checked.filter((c) => c.severity === 'P2');
-      add('g-audit', 'G 项机检 5 项（G8/G2/G11/G2.5/G0.5）', 15 * (checked.length / cs.length), (checked.length - hardFail.length) / checked.length,
+      add('g-audit', 'G 项机检 5 项（G8/G2/G11/G2.5/G0.5）', 12 * (checked.length / cs.length), (checked.length - hardFail.length) / checked.length,
         `${checked.length - hardFail.length}/${checked.length} 项无硬失败（另有 ${skipped.length} 项 SKIP 按缺输入降权——**SKIP ≠ 通过**${softList.length ? `；P2 候选 ${softList.length} 项不扣分` : ''}）`,
         { pass: checked.length - hardFail.length, checked: checked.length, skipped: skipped.length, p1: hardFail.length, soft: softList.map((c) => c.name) });
     }
@@ -217,7 +218,7 @@ if (existsSync(evidence) && existsSync(brief)) {
     add('g-audit', 'G 项机检 5 项（G8/G2/G11/G2.5/G0.5）', 15, null, '', {}, `g-audit-check 未产出可用 JSON（status=${r.status}）`);
   }
 } else {
-  add('g-audit', 'G 项机检 5 项（G8/G2/G11/G2.5/G0.5）', 15, null, '', {},
+  add('g-audit', 'G 项机检 5 项（G8/G2/G11/G2.5/G0.5）', 12, null, '', {},
     `缺 ${existsSync(evidence) ? '' : 'final/证据包 '}${existsSync(brief) ? '' : '01-任务简报.md'}`.trim());
 }
 
@@ -246,6 +247,32 @@ if (existsSync(evidence) && existsSync(brief)) {
       const ratio = level === 'Pass' ? 1 : (level === 'Warning' ? 0.6 : 0);
       add('G14', 'G14 中文 AI 痕迹终闸', 10, ratio, `${level}（${how}）${hit ? `｜命中 ${hit[1]} 类` : ''}`, { report: latest, level });
     }
+  }
+}
+
+// ⑧ 可读性剖面（权重 10）——v18.26.0 QLT-3 接入（报告 §三.4 QLT-3 + §五.1 步骤 7）
+//   **为什么要有它**：G14 是**禁用式**链路（禁词/禁式），检测不到「为过门而写得机械」；分布式指标补这一维。
+//   口径：四个指标（句长标准差 / >60 字长句占比 / 每 300 字新术语数 / 被动句占比），阈值**由 21 份真实定稿标定**
+//   （标定表见 references/checkers/可读性-checker.md）；**最高只判 P2**（文风不是正确性）。
+//   本分量**不适用**于极短稿（<20 句时标准差无统计意义 → readabilityEvaluate 内部已按句数设阈）。
+{
+  const text = readFileSync(draft, 'utf8');
+  const a = bodyStartAfterAbstract(text);
+  const e = firstEndnoteIndex(text);
+  const body = text.slice(a.found ? a.index : 0, e === -1 ? text.length : e);
+  const r = readabilityEvaluate(body);
+  const m = r.metrics;
+  if (m.sentences < 20) {
+    add('readability', '可读性剖面（4 指标，阈值 = 21 份定稿标定）', 10, null, '', { metrics: m },
+      `句数不足（${m.sentences} < 20）——标准差与占比无统计意义，故不适用`);
+  } else {
+    add('readability', '可读性剖面（4 指标，阈值 = 21 份定稿标定）', 10, r.pass ? 1 : 0,
+      `句长标准差 ${m.sentenceLenStd}｜>60 字长句 ${(m.longSentenceRatio * 100).toFixed(1)}%｜每 300 字新术语 ${m.termRatePer300}｜被动句 ${(m.passiveRatio * 100).toFixed(1)}%`
+      + (r.pass ? '（四指标均在标定界内）' : `｜**P2 软提示（不扣分）**：${r.hits.join('；')}`),
+      { metrics: m, hits: r.hits, soft: r.pass ? [] : ['可读性剖面'] });
+    // **P2 不计入分母**：与其余分量同口径——分数只反映硬失败；文风异常单列给人看
+    components[components.length - 1].ratio = 1;
+    components[components.length - 1].weighted = 10;
   }
 }
 
@@ -301,7 +328,7 @@ const result = {
   ...(baseline ? { baseline } : {}),
   meta: {
     timestamp: new Date().toISOString(),
-    description: '论衡文章质量回归评分 / v18.24.0 QLT-1 / scripts 白名单 25→26',
+    description: '论衡文章质量回归评分 / v18.26.0 QLT-1+QLT-3 / scripts 白名单 25→26',
     notes: '**度量不是闸门**（分数不影响退出码）。不新造判据：只聚合既有机械门结果。'
       + 'N/A 分量不进分母但必须看 coverage；SKIP ≠ 通过。机制改动前后各跑一次，差异写进反哺报告。',
   },

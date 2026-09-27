@@ -1,11 +1,11 @@
 ---
 name: "lunheng-article-pipeline"
-version: "18.25.0"
-description: "论衡 v18.25.0：DSH 原生多 Agent 深度长文流水线（学术论文 / 商业评论 / 行业分析 / 公众号）。9 个独立角色 T1-T9 + 主控；三角验证 + M 门 + G 审计 + 修订回环双轨（≤2 轮纠错 + 至多 +1 深化） + 期刊匹配 + auto_cite 预标注 + 内嵌 11 个 /lunheng 斜杠命令。适用：≥2000 字、证据须可追溯的长文（4 个人在环节点、**数小时**）。**不适用**：<2000 字短文与即时问答；文学创作；需数学推导或实验设计的理工科论文；营销软文；需一手数据而未投喂素材。版本增量见 CHANGELOG.md。"
+version: "18.26.0"
+description: "论衡 v18.26.0：DSH 原生多 Agent 深度长文流水线（学术论文 / 商业评论 / 行业分析 / 公众号）。9 个独立角色 T1-T9 + 主控；三角验证 + M 门 + G 审计 + 修订回环双轨（≤2 轮纠错 + 至多 +1 深化） + 期刊匹配 + auto_cite 预标注 + 内嵌 11 个 /lunheng 斜杠命令。适用：≥2000 字、证据须可追溯的长文（4 个人在环节点、**数小时**）。**不适用**：<2000 字短文与即时问答；文学创作；需数学推导或实验设计的理工科论文；营销软文；需一手数据而未投喂素材。版本增量见 CHANGELOG.md。"
 whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 description（v18.0.5：官方目录只渲染 name + description，本字段对模型不可见，保留仅供工具链与维护者阅读）。"
 ---
 
-> 版本：v18.25.0（DSH bundle 插件）
+> 版本：v18.26.0（DSH bundle 插件）
 > **逐版明细与历史成因外移（v18.22.1 CTX-1）**：本文件只留**现行口径**；逐版明细与成因（v18.12.1 / v18.12.0 / v18.11.0 / v18.10.0 / v18.8.0 / v18.7.x …）全部在**仓库根 `CHANGELOG.md`** 同名版本段——该文件**不在随包目录内**（npm 发布物与纯技能目录部署都没有它），读不到就跳过，**不要当成断链**。
 > **v2.5.2-dsh.8 角色语义定案（主人指令）**：**9 个角色 T1-T9 各自独立、不可相互替代**——T8 终检不是「主控兼做的杂活」而是独立角色（有独立角色卡），只是执行者由主控担任（**主控 = T0 调度 + T8 终检执行双重身份**），不 spawn 子代理；**T9 审稿可选、默认选中、学术论文必选**。
 
@@ -52,7 +52,7 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
   > **`meta-synthesize.mjs`（v18.10.0 战略反哺新增 / P2-1）**：元分析协议生成器（PRISMA 流程 + 效应量识别 + 异质性诊断），详见 [`references/agents/04-分析-analyst.md`](references/agents/04-分析-analyst.md) §元分析协议生成触发条件。
   > **`ref-get.mjs`（v18.22.2 CTX-3 新增）**：**按需读抽取器**——`node scripts/ref-get.mjs <文件.md> <#锚点>` 只打该节的**真字节数 + 正文**；`--list` 列全部锚点（标题锚点 + 显式 `<a id>`）与各自字节数；`--json` 机器可读。**两条硬边界**：① 锚点未命中 = **exit 10 + 可用锚点清单**（绝不返回空节——空节会被读成「这一节已读过」）；② 锚点解析与 `consistency-check` 规则 ㉗ **共用 `_lib/anchor-slug.mjs`**（slug 三条口径单点）。为什么需要：`M-Gate-Algorithm.md` 97 KB / `pipeline-readme.md` 97 KB，「找节」本身接近一次整读（成本模型 = 步数 × 每步上下文）。
   > **`g-audit-check.mjs`（v18.23.0 EFF-1 新增）**：T7 的 **G 项机检门**——`node scripts/g-audit-check.mjs <正文.md> --cards <证据包目录> --brief <01-任务简报.md>`，**只机检 M 门与三个战略门（structure / methodology / cite-coverage）都没覆盖的 5 个 G 子项**：G8 字数偏差 / G2 数据溯源候选 / G11 数据时效评级 / G2.5 案例卡逐条 / G0.5 第一人称具体经历，输出**逐项 JSON**（`checked / pass / severity / detail / evidence`，命中项带行号与上下文）。exit `0` 全过 / `1` P1 / `2` P0 / `3` 仅 P2·**任一项 SKIP**（缺输入未检 ≠ 通过，须人工复核）/ `10` 参数错 / `70` 内部错误。**三条边界（如实声明）**：① G2 命中项是**候选清单**（是否属常识/推算/衍生计算 → T7 逐条定性）；② **判断力项（G1/G3/G5/G6/G7/G10/G14）刻意不下沉**；③ 覆盖口径**刻意不与 M 门重复计入**（同源项见 `references/_shared/audit-checklist-quickref.md` §同源规则）。**用法**：T7 报告**直接引用该 JSON 的行号与数字作为实据，不再重新论证**（v18.23.0 EFF-1 的步数收敛落点）。
-  > **`quality-score.mjs`（v18.24.0 QLT-1 新增）**：**文章质量回归评分（度量，不是闸门）**——`node scripts/quality-score.mjs run/<项目> [--humanities] [--report <path>] [--baseline <旧评分.json>]`，聚合既有机械门结果成一个 0–100 分 + 逐分量明细（M 门 40 / structure 10 / methodology 5 / cite-coverage 10 / g-audit 15 / G14 10 / handoff 10）。**三条口径**：① **分数只反映硬失败**（P0/P1 与结构缺项），P2 软提示单列**不扣分**；② **N/A 分量不进分母但要连着 `coverage` 读**（<0.8 会给 `coverageWarning`）——体例不适用（无 IMRaD 节 / 无方法节）如实标 N/A，**不给 0 分**；③ **分数高低不影响退出码**（exit `0` 完成 / `10` 参数错 / `70` 内部错）——挂成闸门会立刻产生「为过门而刷分」的压力。**golden 基线与读法**见 [`references/case-studies.md`](references/case-studies.md) §golden 项目。
+  > **`quality-score.mjs`（v18.24.0 QLT-1 新增）**：**文章质量回归评分（度量，不是闸门）**——`node scripts/quality-score.mjs run/<项目> [--humanities] [--report <path>] [--baseline <旧评分.json>]`，聚合既有机械门结果成一个 0–100 分 + 逐分量明细（M 门 38 / structure 8 / methodology 4 / cite-coverage 8 / g-audit 12 / G14 10 / handoff 10 / **readability 10**，合计 100）。**三条口径**：① **分数只反映硬失败**（P0/P1 与结构缺项），P2 软提示单列**不扣分**；② **N/A 分量不进分母但要连着 `coverage` 读**（<0.8 会给 `coverageWarning`）——体例不适用（无 IMRaD 节 / 无方法节）如实标 N/A，**不给 0 分**；③ **分数高低不影响退出码**（exit `0` 完成 / `10` 参数错 / `70` 内部错）——挂成闸门会立刻产生「为过门而刷分」的压力。**golden 基线与读法**见 [`references/case-studies.md`](references/case-studies.md) §golden 项目。
 - ❌ **不做**：凭据访问 / 浏览器自动化 / 定时任务（除白名单脚本与验证命令外，主控默认不执行任意 shell，LLM 推理判定）。
 - 🔒 **机制文件写保护（v18.1.0 部分机械化）**：`SKILL.md` / `AGENTS.md` / `references/**` / `scripts/**` / `cordis.patch.yml` 属**机制文件**——任何角色（含主控与子代理）**不得**用 write/edit 改动；改进动议只写 `audits/反哺报告-vN.md`，由主人在 host shell apply。**改机制文件 = P0 违规，本次交付作废**。bundle 部署下由入口注册的全局 `ctx.tools.guard()` 机制否决（主人授权走 `LUNHENG_ALLOW_MECH_EDIT=1` 或插件行 config）；已知边界与部署处方见 [`references/maintainers.md`](references/maintainers.md) §二（运行期只需记住：guard 不覆盖 pwsh）。
 - 🧾 **闸门必须留机械证据**：T2.5/T7.5 与 M 门**不得只凭自述**——附脚本 exit code + 产物路径。exit：`0` 通过 / `1` P1 / `2` P0 / `3` 仅 P2·soft·SKIP（需复核，不得当通过）/ `10` 参数路径错（含异常路径，`exit-guard` 统一映射，**不得与 P1 混用**）/ **`30` `--adjudicate` 裁定被拒**（红线命中 / 证伪四件套不全 / 缺 `true_p0`-`true_p1`；v18.12.0 L-05，**拒绝裁定 ≠ 内容失败**）/ `70` 内部错误。`model-routing.mjs` 用 `4`＝需人工决定；`handoff-check.mjs` 用 `20/21/22`（收报验收，见下 §⚡）；非闸门工具不共用本语义（见 `docs/troubleshooting.md §8`）。
@@ -93,7 +93,7 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 
 ## ⚡ 启动速查表
 
-- 版本：v18.25.0｜角色：T0 主控（= T8 终检执行者）＋ T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / T8 终检（主控亲执行）/ T9 审稿（默认选中，学术必选）
+- 版本：v18.26.0｜角色：T0 主控（= T8 终检执行者）＋ T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / T8 终检（主控亲执行）/ T9 审稿（默认选中，学术必选）
 - Phase：0 定题 → 1 检索(T1∥T2∥T3) → 1.5 补检索(可选,spawn T1) → 2 分析 → 2.5 大纲(人) → 3 写作 → 3.5 洞察(人) → 3.6 批判 → 4 审计 → **4.2 修订回环(≤2 轮+A 轨)** → 4.5 审稿+G14终闸 → 5 终检(人)
   > **本行的权威性**：本行是主控排 `todo_write` 的**唯一 Phase 真源**；机检规则 **㉔** 断言「流水线全景出现的 Phase 编号 ⊆ 本行」。**流水线全景仍是 1.5 / 4.2 的详述真源**（`Phase 1.5` 定向补检索 / `Phase 4.2 修订`）。
 - G14 时点（**v18.2.8 删早闸，三层防御**）：**① T5 v1 自检（零 spawn）→ ② 修订轮收尾自查（零 spawn）→ ③ 终闸 4.5 与 T9 并行（唯一一次 spawn，报告 = 最终版本真源）**
