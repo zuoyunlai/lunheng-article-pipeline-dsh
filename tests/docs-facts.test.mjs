@@ -568,3 +568,44 @@ test('定案 ③：审计分片粒度只许按 G 组，且「章节切」不得�
     )
   }
 })
+
+// v18.35.0（瘦身批）：02 卡把三块内容**收敛成指针 / 迁移到真源**。瘦身最危险的失败形态不是「没瘦下来」，
+//   而是**指针指向空气**——读者追过去发现内容既不在卡片、也不在目标文档里（安静地删内容）。
+//   本用例把搬运的两端钉在一起：目标处必须真的有，且卡片侧不得再留**定义**（只许留指针里的名字）。
+test('v18.35.0 瘦身：02 卡迁出的内容必须在目标文档里真的存在（防「瘦身变删内容」）', () => {
+  const SKILL_DIR = join(ROOT, 'skills', 'lunheng-article-pipeline')
+  const card = readFileSync(join(SKILL_DIR, 'references', 'agents', '02-数据检索-data-scout.md'), 'utf8')
+  const glossaryText = readFileSync(join(SKILL_DIR, 'references', 'glossary.md'), 'utf8')
+  const tpl = readFileSync(join(SKILL_DIR, 'references', 'templates', '数据卡-template.md'), 'utf8')
+  const sources = readFileSync(join(SKILL_DIR, 'references', '_shared', '外部检索源接入面.md'), 'utf8')
+
+  // ① 三检索员「五条实现」→ glossary（此前只有 02 卡写，T1/T3 卡看不到）
+  for (const k of ['上下文隔离', '写入隔离', '读取协议', '冲突解决', '降级隔离']) {
+    assert.ok(glossaryText.includes(k), `glossary 缺「${k}」——02 卡已把五条实现迁出，目标处必须真有`)
+  }
+  assert.match(card, /#三检索员并行独立运行/, '02 卡必须**带锚点**指向 glossary 的并行协议节（否则「单一真源」不可达）')
+
+  // ② 数据卡两个字段子项 → 模板（定义必须在模板里；卡片只许留名字）
+  //   ⚠️ 标记要**覆盖语义**，不能只覆盖名字：第一版对「原始位置」只断言 `附表号`，而 mutation
+  //   「删掉其中的理由（防抓取小数位截断）」**没有变红**——名字还在、语义已缺。（同族教训：断言太弱=假绿。）
+  for (const [k, markers] of [
+    ['样本转述出处层级', ['待复核', '三级']],
+    ['原始位置', ['附表号', '截断']],
+  ]) {
+    assert.ok(tpl.includes(k), `数据卡模板缺字段「${k}」`)
+    for (const m of markers) {
+      assert.ok(tpl.includes(m), `数据卡模板的「${k}」缺语义标记「${m}」——迁了名字没迁语义`)
+    }
+  }
+
+  // ③ T2 重试预算的成本口径 → 接入面 §4.5，**含那条自我更正**（迁移不得丢记录）
+  assert.ok(
+    sources.includes('18.9M') && sources.includes('无法复验'),
+    '接入面缺「18.9M 无法复验」这条自我更正——它是 02 卡瘦身时被迁出的，不能随卡片瘦身一起消失',
+  )
+  assert.ok(!card.includes('18.9M'), '02 卡不该再引用那个已失效的数字')
+
+  // ④ 指针在场：卡片必须真的指向两个真源
+  assert.match(card, /templates\/数据卡-template\.md/, '02 卡必须指向数据卡模板')
+  assert.match(card, /外部检索源接入面\.md/, '02 卡必须指向接入面文档')
+})
