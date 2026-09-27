@@ -15,7 +15,7 @@ import { join } from 'node:path'
 import { SCRIPTS, run, parseJson, tmp } from './_fixtures.mjs'
 
 /** 造一个「T7.5 已就绪」的最小项目：draft + 证据包 + audits 闸门记录 + final/M-Gate-Report.json */
-const mkProject = ({ t75Rows, report = { script_exit_raw: 2, exit: 2 }, withT25 = true, handoff = true }) => {
+const mkProject = ({ t75Rows, report = { script_exit_raw: 2, exit: 2 }, withT25 = true, handoff = true, omitHandoffRow = false }) => {
   const dir = tmp('lunheng-mexist5-')
   const fin = join(dir, 'final'); const ev = join(fin, '证据包'); const au = join(dir, 'audits')
   mkdirSync(ev, { recursive: true }); mkdirSync(au, { recursive: true })
@@ -23,29 +23,38 @@ const mkProject = ({ t75Rows, report = { script_exit_raw: 2, exit: 2 }, withT25 
   writeFileSync(draft, '# 标题\n\n## 摘要\n\n正文 [L01] [D01]。\n\n## 参考文献\n\n- [L01] x\n\n## 数据来源\n\n- [D01] y\n\n## 案例来源\n\n- [C01] z\n\n## 先行者文献\n\n- [先01] w\n\n## AI 使用声明\n\n- AI。\n')
   writeFileSync(join(au, '审计报告-v1.md'), '# 审计报告\n\n## 结论\n\n通过\n')
   writeFileSync(join(fin, 'M-Gate-Report.json'), JSON.stringify(report, null, 2))
-  const handoffEv = handoff ? 'handoff-check --role T7 → exit 0' : 'exit 0'
+  // v18.46.0：模板 T2.5/T7.5 两表都新增了「交接门 handoff-check exit」行（主人「依次全部修订」，
+  //   接受了 10/10 存量新增「缺行」硬问题 + 1 跨档的代价）。**夹具必须跟着模板走**，否则「模板为真源，
+  //   逐项都要有行」会把本套用例全部判「缺行」。`handoff` 参数改控**这一行**的实据：
+  //   `true`（默认）= 合规写法（含 exit）；`false` = 行在但**未给 exit** → 独家触发硬档①（下方 L-10 用例）。
+  //   ⚠️ 故意不用「（未跑）」这种纯自述——那会**额外**触发「实据非机械证据」而干扰判据定位。
+  const handoffEv = handoff ? 'handoff-check --role T7 → exit 0' : 'scripts/handoff-check.mjs --role T7（未运行）'
+  const HANDOFF_ROW_T75 = { item: '交接门 handoff-check exit（按被验收角色）', ev: handoffEv, res: '✓' }
   if (withT25) {
-    // 模板 T2.5 段的全 8 项（缺项会被 L-54 修好的「模板为真源，逐项都要有行」判 P0）
+    // 模板 T2.5 段的全 9 项（缺项会被「模板为真源，逐项都要有行」判 P0）
     writeFileSync(join(au, '闸门记录-T2.5.md'), [
       '# 阶段闸门记录 — T2.5', '',
       '| 检查项 | 实据（路径 / exit code / 命令） | 结论 | 失败原因 |',
       '|---|---|---|---|',
       '| 数据卡文件存在 | data/数据卡.md | ✓ | |',
-      `| 数据条目数（双格式并集去重） | ${handoffEv} | ✓ | |`,
+      '| 数据条目数（双格式并集去重） | data/数据卡.md 35 条 | ✓ | |',
       '| 任务简报数据需求总数 | 01-任务简报.md §研究问题 | ✓ | |',
       '| 数据条目数 ≥ 需求总数 | 35 ≥ 30 | ✓ | |',
       '| 信任级别完整性（M-Form-6） | m-gate-check.mjs → M-Form-6 通过 | ✓ | |',
       '| 引用闭环（M-Exist-3：[Dxx] 正文 ↔ 数据卡条目） | m-gate-check.mjs → M-Exist-3 通过 | ✓ | |',
       '| 数据卡头部声明 vs 实际计数 | data/数据卡.md 头部 35 == 实际 35 | ✓ | |',
       '| 证据包哈希占位符（可选验证） | final/交付说明.md 含占位符 | ✓ | |',
+      `| 交接门 handoff-check exit（按被验收角色） | ${handoffEv} | ✓ | |`,
       '',
     ].join('\n'))
   }
+  // T7.5：模板 8 项 + 战略门留痕行；**交接门行按模板要求自动补**（除非调用方自己在 extra 里给了）
+  const t75All = (omitHandoffRow || t75Rows.some((r) => /交接门|handoff/i.test(r.item))) ? t75Rows : [...t75Rows, HANDOFF_ROW_T75]
   writeFileSync(join(au, '闸门记录-T7.5.md'), [
     '# 阶段闸门记录 — T7.5', '',
     '| 检查项 | 实据（路径 / exit code / 命令） | 结论 | 失败原因 |',
     '|---|---|---|---|',
-    ...t75Rows.map((r) => `| ${r.item} | ${r.ev} | ${r.res} | ${r.why || ''} |`),
+    ...t75All.map((r) => `| ${r.item} | ${r.ev} | ${r.res} | ${r.why || ''} |`),
     '',
   ].join('\n'))
   return { dir, draft, ev }
@@ -73,7 +82,6 @@ const FULL_T75 = (extra = []) => [
   STRATEGY_ROW,
   ...extra,
 ]
-
 // v18.12.0（L-33）回归：三个战略门脚本的留痕判据（零留痕 P1 / 部分 P2 / 无 exit P2）
 //   注意：这几条用 `report.exit = 0`（默认夹具的 2 会额外触发两条 M 门对账 P0，把 severity 抬到 P0——
 //   那两条是别的判据，会掩盖本判据的档位）。故本组断言看**判据文本**与计数，severity 另按需看。
@@ -191,34 +199,42 @@ test('L-44：命中硬 P0 红线时 T8 裁定**不得**用于放行', () => {
   } finally { rmSync(dir, { recursive: true, force: true }) }
 })
 
-test('L-10：两份闸门记录都没写 handoff-check 的 exit → 记**备注**（`noteBits`，**不改 pass**），且文案给出闭合动作', () => {
-  // ⚠️ 夹具要让**相邻规则保持安静**：M 门行实据写 `exit 0` → 报告机械值必须也是 0，
-  //    否则「实据与产物不符」那条 P0 会顶上来，把本条要测的 noteBits 静默性掩盖掉（首版即踩此坑）。
+test('L-10（v18.46.0 起判硬）：该行**在**但实据没给 exit → 硬判；软档文案不得残留', () => {
+  // ⚠️ **v18.46.0 起本条已被更强的判定接管**（主人「依次全部修订」接受了加模板行的代价）：
+  //   模板 T2.5/T7.5 两表都新增「交接门 handoff-check exit」行 → 「都没提」这个形态现在**必然**同时命中
+  //   「检查项缺行」硬问题，而 `noteBits` 软档已**退役**（保留会与缺行**同源双计**）。
+  //   故本用例改为钉住**退役后的真实行为**——它比原来更强：缺行判硬、行在但无 exit 也判硬。
+  //   （沿革：v18.12.0 L-10 立软档 → v18.42.0 主人裁定「B」保持软 → v18.46.0 收硬并退役软档。）
   const { dir, draft, ev } = mkProject({ t75Rows: FULL_T75(), handoff: false, report: { script_exit_raw: 0, exit: 0 } })
   try {
     const { it } = m5(dir, draft, ev)
-    assert.match(String(it.detail), /handoff/, 'detail 应点名 handoff-check 缺失：' + JSON.stringify(it))
-    // v18.42.0（主人裁定「B」= 路径 ②，保持软档）：把「软」这件事**钉住**——
-    //   旧断言只查 `/handoff/` 出现（太弱：把 noteBits 改成 findings 也照样通过，等于静默转硬）。
-    assert.equal(it.pass, true, 'noteBits **不得**改变 pass——它是可见性提示，不是判负：' + JSON.stringify(it))
-    assert.equal(it.severity, '通过', 'noteBits 不得抬 severity（否则「保持软档」这句话就是假的）：' + it.severity)
-    // 判据要精确到**段落标记**：detail 的硬问题段以「硬问题：」开头——若只查 `/硬问题/` 这个裸词，
-    //   本条自己的文案里解释缘由时提到「硬问题」就会把断言逼成假的（首版即如此）。
-    assert.doesNotMatch(String(it.detail), /硬问题：/, '本条不得出现在硬问题段（该段以「硬问题：」起）')
-    // 软档的**闭合动作**必须写在文案里（路径 ② 的要求：把触发条件与闭合方式写进软提示）
-    assert.match(String(it.detail), /闭合动作/, '软提示必须给出闭合动作，否则读者只知道「缺」而不知道怎么闭合')
-    assert.match(String(it.detail), /handoff-check --role Tn → exit N/, '闭合动作须含**可照抄**的实据写法')
+    assert.match(String(it.detail), /交接门/, 'detail 应点名交接门：' + JSON.stringify(it))
+    assert.equal(it.pass, false, '行在但实据未给 exit → 判硬（旧软档已退役）：' + JSON.stringify(it))
+    assert.match(String(it.detail), /硬问题：/, '须落在硬问题段，而不是备注段')
+    assert.doesNotMatch(String(it.detail), /暂判软|未计入 pass/, '软档文案不得残留（退役即删）')
   } finally { rmSync(dir, { recursive: true, force: true }) }
 })
 
-// v18.42.0：本批的核心结论是一个**结构性限制**，必须被测试钉住，否则后来者会「顺手把这一行加进模板」
-//   而不知道那是静默收紧：
-//     · M-Exist-5 的检查项清单**从模板表派生**（「模板为真源，逐项都要有行」）→ **给模板加一行 = 收紧**；
-//     · 实测（2026-09-27，22 个项目）：加行会让 9/10 个项目新增「缺行」硬问题、1 个跨档（只加 T7.5 表仍有 7/10）。
-//   故本条断言「模板的 T2.5/T7.5 **表行**里不得出现 handoff/交接门」——要加表行，必须先请主人裁定（代价已量清，
-//   登记在 `maintainers.md` §九）。**注意**：模板**散文**（blockquote）里给出的示例行**不算**检查项，
-//   那是本批「散文层可达化」的落点，下面一条用例单独守卫它。
-test('v18.42.0 钉子：闸门记录模板的**检查项表**不得含 handoff 行（加表行 = 静默收紧存量）', () => {
+test('v18.46.0：记录**缺**「交接门 handoff-check exit」行 → 被「模板为真源」判硬（软档的替代判定）', () => {
+  const { dir, draft, ev } = mkProject({
+    t75Rows: FULL_T75(),
+    omitHandoffRow: true,      // ⚠️ 夹具默认会按模板补这一行——测「缺行」必须显式关掉它
+    report: { script_exit_raw: 0, exit: 0 },
+  })
+  try {
+    const { it } = m5(dir, draft, ev)
+    assert.equal(it.pass, false, '缺该行必须判硬：' + JSON.stringify(it))
+    assert.match(String(it.detail), /检查项缺「交接门 handoff-check exit/, '错误须点名缺的是哪一行：' + it.detail)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+// v18.46.0（主人「依次全部修订」）：v18.42.0 那条钉子（「模板表**不得**含 handoff 行」）完成了它的使命——
+//   它当时的措辞就是「**若确要收，先请主人裁定**（代价已量清）」。主人裁定收，故本条**反向改写**为：
+//   **模板的 T2.5/T7.5 两张检查项表都必须含 handoff 行**，且行名要能被门的 branch-① 判据识别
+//   （含「交接门」或「handoff」——否则那一行填了 exit 也不会被认出来）。
+//   钉住它的理由：这一行是「软档退役」的**唯一承重件**——删了它，整个要求会**静默退回**到无判定状态
+//   （既无缺行硬问题、也无 branch-①），而没有任何别的东西会响。
+test('v18.46.0 钉子：闸门记录模板的**两张**检查项表都必须含「交接门 handoff-check exit」行', () => {
   const tpl = readFileSync(join(SCRIPTS, '..', 'references', 'templates', '闸门记录-template.md'), 'utf8').split('\n')
   // 复刻 m-gate-check 的收集语义：按 `## T2.5` / `## T7.5` 分节；进入表后遇到非 `|` 行 → 本节收集结束
   const items = { 'T2.5': [], 'T7.5': [] }
@@ -234,14 +250,11 @@ test('v18.42.0 钉子：闸门记录模板的**检查项表**不得含 handoff �
   }
   for (const [sec, rows] of Object.entries(items)) {
     assert.ok(rows.length >= 5, `${sec} 段应能解析出模板检查项（实测 ${rows.length} 行）——解析口径断了，本钉子会真空通过`)
-    assert.equal(
-      rows.filter((r) => /handoff|交接门/i.test(r)).length,
-      0,
-      `${sec} 的检查项表里出现了 handoff 行。**加这一行 = 一次静默收紧**：M-Exist-5 按「模板为真源，逐项都要有行」对账，`
-        + '实测（2026-09-27）会让 9/10 个项目新增「缺行」硬问题、1 个跨档（只加 T7.5 表仍有 7/10）。'
-        + '若确要收，先请主人裁定（代价已量清，见 `references/maintainers.md` §九），再改本断言。'
-        + '散文层已给出可照抄的示例行——那是零代价的可达化路径。',
-    )
+    const hits = rows.filter((r) => /handoff|交接门/i.test(r))
+    assert.equal(hits.length, 1, `${sec} 的检查项表**必须恰好含一行** handoff 行（实测 ${hits.length} 行）——`
+      + '它是 v18.46.0「软档退役」的唯一承重件：删了它，要求会静默退回无判定状态（既无缺行硬问题、也无 branch-①）。')
+    // 行名必须能被门的 branch-① 判据认出（该判据 = `/handoff|交接门/i.test(item)`）
+    assert.match(hits[0], /交接门 handoff-check exit/, `${sec} 的 handoff 行名须含「交接门 handoff-check exit」：${hits[0].trim()}`)
   }
 })
 

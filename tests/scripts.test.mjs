@@ -1413,9 +1413,14 @@ test('m-gate-check M-Exist-5：闸门记录表（漏项 / 自述当实据 / ✗ 
     const seg = tpl.split(new RegExp(`^## ${gate.replace('.', '\\.')}`, 'm'))[1].split(/^## /m)[0]
     return seg.split('\n').filter((l) => /^\s*\|/.test(l)).slice(2).map((l) => l.split('|')[1].trim()).filter(Boolean)
   }
+  // v18.46.0：模板 T2.5/T7.5 新增「交接门 handoff-check exit」行（主人「依次全部修订」）——该行的实据
+  //   **必须含 exit**（门的 branch-① 判据要求 0/20/21/22 之一），故此处单独给它合规写法；
+  //   其余行仍用通用实据（本用例要测的是「漏项 / 自述当实据 / ✗ 无原因 / 与报告矛盾」四条）。
+  const evFor = (gate, item, fallback) =>
+    /交接门/.test(item) ? `handoff-check --role ${gate === 'T7.5' ? 'T7' : 'T2'} → exit 0` : fallback
   const build = (gate, evTxt = 'final/证据包/数据卡.md', res = '✓', why = '') =>
     `# 闸门记录 ${gate}\n\n| 检查项 | 实据（路径 / exit code） | 结论 | 失败原因 |\n|---|---|---|---|\n`
-    + itemsOf(gate).map((i) => `| ${i} | ${evTxt} | ${res} | ${why} |`).join('\n') + '\n'
+    + itemsOf(gate).map((i) => `| ${i} | ${evFor(gate, i, evTxt)} | ${res} | ${why} |`).join('\n') + '\n'
     // v18.12.0（L-33）：T7.5 记录另须留**三个战略门脚本**的 exit（模板里没有这一行，它是 M-Exist-5 的
     //   独立判据）——真实项目本该手写此行，故合规夹具也补上；缺它的负向用例见 mexist5-binding.test.mjs。
     + (gate === 'T7.5'

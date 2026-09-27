@@ -169,4 +169,10 @@ jobs:
         # route.test.mjs（22 用例）此前**不在任何自动触发点**：根 test 脚本只 glob `tests/**`，
         # 本工作流 grep `lunheng-commands` 0 命中。它只靠人手动跑，等于没有回归网。
         # 该 glob 与 package.json 的 `test` / `test:no-isolation` 三处同形（判据 = 用例总数 289）。
-        run: node --test "tests/**/*.test.mjs" "skills/*/tests/**/*.test.mjs"
+        #
+        # v18.46.0：**用 no-write-check 包住同一条命令**——它先对全仓文件做 sha256 快照，再跑下面这条
+        #   完全相同的测试命令，最后比对（有改写 → exit 1 并逐文件点名）。
+        #   **代价 = 0**：跑的还是同一次套件，不增加运行时长；换来的是一道**此前没有的**守卫——
+        #   「测试或工具偷偷写进真仓库」（忘了用临时夹具 / 把「检查」实现成「修复」/ 路径推导偏到真源树）。
+        #   它同时是 v18.44.0 那起**未定位成因**的改写事故在 CI 侧的固定观察点。
+        run: node scripts/no-write-check.mjs -- node --test "tests/**/*.test.mjs" "skills/*/tests/**/*.test.mjs"
