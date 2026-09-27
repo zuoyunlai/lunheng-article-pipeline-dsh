@@ -28,16 +28,18 @@
 //     · G1 引用真实性 / G3 逻辑 / G5 学术规范 / G6 论据自标 / G7 原创性 / G10 术语一致 / G14 AI 痕迹
 //       → **判断力项**（须读语境），维持 LLM 判定，**不**下沉（刻意不加机检，理由同 09 卡 M3 先例）。
 //
-//   本脚本检 5 项（均有确定判据）：
+//   本脚本检 6 项（均有确定判据）：
 //     · G8-CharCount    字数偏差（纯汉字 vs 任务简报目标篇幅；**只判候选 P2，不判 P0**——豁免权在主人）
 //     · G2-DataProv     正文定量数字 ↔ 素材卡命中（**候选清单**，是否属推算/常识归 T7）
 //     · G11-Timeliness  数据卡时效评级（🔴 必须给出理由）
 //     · G2.5-CaseCheck  案例卡逐条（≥2 独立来源 / 时间窗口 / 检索截止）
 //     · G0.5-FirstPerson 第一人称具体经历（破坏客观基调，词表固定）
+//     · G15-VolIssue   文献卡卷期页码/双字段齐备（**模式相关**：简报启用「引用数量与质量控制」才适用；
+//                      **候选清单，刻意不设完整率阈值**——理由见该段注释）
 //
 // ⚠️ **边界（如实声明）**：本脚本是**候选生成器 + 确定判据执行器**，不是「G 项全自动判定」。
 //   G2 的命中项**必须由 T7 逐条定性**（M-Exist-9 的实据要求仍由审计报告承担）；
-//   字数项在缺 `--brief` 时判 SKIP，**绝不**拿默认目标假装核过。
+//   字数项与 G15-VolIssue 在缺 `--brief` 时判 SKIP，**绝不**拿默认目标假装核过。
 
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -55,7 +57,8 @@ let file = null;
 let cardsDir = null;
 let briefPath = null;
 let reportPath = null;
-const USAGE = '用法: node g-audit-check.mjs <正文.md> [--cards <目录>] [--brief <任务简报.md>] [--report <path>] [--json]';
+let qlt = false;   // G15-VolIssue 的模式开关（显式声明，见该段注释）
+const USAGE = '用法: node g-audit-check.mjs <正文.md> [--cards <目录>] [--brief <任务简报.md>] [--qlt] [--report <path>] [--json]';
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
   if (a === '--cards' || a === '--brief' || a === '--report') {
@@ -64,6 +67,8 @@ for (let i = 0; i < argv.length; i++) {
     if (a === '--cards') cardsDir = v;
     else if (a === '--brief') briefPath = v;
     else reportPath = v;
+  } else if (a === '--qlt') {
+    qlt = true;   // G15-VolIssue 的模式开关（见该段注释：模式相关的项**只能由调用方显式声明**，不从简报字面推断）
   } else if (a === '--json') {
     continue;   // JSON 是默认且唯一输出形态；本旗标为调用方兼容保留
   } else if (a.startsWith('--')) {
@@ -211,6 +216,140 @@ const g2 = (() => {
       ? `正文定量声明全部在素材卡命中（卡：${Object.keys(cards).join(' / ')}）`
       : `${hits.length} 处定量数字未在素材卡命中 → **候选清单，须 T7 逐条定性**（是否属常识/推算/衍生计算）`,
     evidence: { candidateCount: hits.length, candidates: hits.slice(0, CAP), truncated: hits.length > CAP, cardCount: cardTexts.length },
+  };
+})();
+
+// === G15-VolIssue：文献卡卷期页码 / 双字段齐备（**模式相关**；候选清单，**不设完整率阈值**）===
+// 立项（v18.41.0）：本条此前是一处**幻影门**——`01 卡` 声称「机检判别（`M-Form-2 v2 分支`）：文献卡缺
+//   卷期页码必填字段 → P1」，而 `mform-gates.mjs` 的 `mForm2` 只核「文末必需五节存在性」，全脚本搜
+//   `apa_priority`/`卷期`/`待补卷期` **零命中**（v18.40.0 实测）。v18.40.0 先把五处活引用改判为
+//   「无门 + 人工责任点」，本批把它**实装成真门**——要件与阈值的定义见下两条。
+//
+// **要件（真源 = `01 卡` §卷期页码双写契约，v18.9.0 实战反哺）**，按类型三分：
+//   · [J] 期刊：DOI + 卷(期): 起-止页
+//   · [M] 专著：ISBN + DOI（**双写**；v18.9.0 实测 6 条 [Lxx] 只写 ISBN、无 DOI）
+//   · [EB/OL] 等电子类：URL + 访问日期
+//   ⚠️ **两处规范的要件不等价（本实现取 01 卡，理由写明）**：`M-Gate-Algorithm.md` §M-Form-2 的 v18.8.0
+//     扩展段另有一句更宽的措辞「4 项中至少 3 项：作者 + 年份 + 期刊/出版者 + 卷期页码**或** DOI/URL」。
+//     二者对期刊的要求不同（01 卡 = DOI 与卷期页码**都要**；协议段 = 二者**其一**即可）。取 01 卡，因为
+//     它有实战依据（那 6 条缺 DOI 的条目正是它的立项来源），且本条立项正是指向它；该分歧已在
+//     `07 卡` §G 项机检段与 `规范-机械门对照表.md` 该行写明。
+//
+// **四条如实边界（均为 v18.41.0 实测标定，不是设计偏好）**：
+//   ① **刻意不设「完整率阈值」**：全库实测 27 份真源文献卡 / 314 条 [Lxx]，该比值同时受两个自变量影响——
+//      **契约新旧**（卷期页码契约自 v18.9.0 才有）与**模式开关**（全库仅 1 份简报启用本模式）。任何固定
+//      百分比都会是**凭直觉的数字**（旧文档写的「卷期页码完整率 ≥95% = Pass」从未标定，本批一并改判）。
+//      故本项**只出候选清单**、不给比值判级。
+//   ② **模式相关，且模式只能由调用方显式声明（`--qlt`）**——**不从简报字面推断**。这一条是实测逼出来的：
+//      首版按「简报里出现 `引用数量与质量控制`/`卷期页码完整`」放行，实测 `数字社交-关系重构` 的简报写的是
+//      「☐ **APA 优先输出 + 卷期页码完整性**：**默认关闭**（…）；若启用须主人二次确认」——**方框是未勾选的、
+//      明写默认关闭**，而字面匹配照样放行 → 对一个从未启用该模式的项目产出 6 组 P2 候选（**假阳性**）。
+//      判据：**匹配到标签 ≠ 匹配到启用状态**（与「任何按字面扫描的门都会把『引述被纠正内容』当成那内容本身」
+//      同族；也与 `M-Exist-9` 刻意不判 G15 的理由一致——那道门看不到简报，判了就会对未启用的项目假阳性）。
+//      故本项的模式开关是 CLI 旗标（同 `structure-check --humanities` / `handoff-check --require-gates` 的先例），
+//      由读得到简报语义的调用方（主控/T7）显式传。未传 → SKIP（而 SKIP ≠ 通过，exit 3 仍须人工复核）。
+//   ③ **类型判定要认四种真实排版**（否则合规卡会被判红）：标题即著录串 / 著录串在 `**GB/T 7714**：` 体例行 /
+//      字段分行（`**卷/期/页码**`·`**DOI**`）/ 类型行（`**类型**: 期刊文章 [J]`）。类型**判不出就不判罚**
+//      （计入 evidence 的 `untyped`，如实暴露覆盖面）；合并标签 `出版XX/期刊` 视为**类型不可判**（它在真实
+//      卡里两种类型都用——实测 `共锁` 的期刊与专著同用该标签）。
+//   ④ 严重度**只到 P2 候选**（新分布式指标 + 两处规范要件不等价）——判级归 T7。
+const DOI_RE = /10\.\d{4,9}\/[^\s，。；)）]+/i;
+const URL_RE = /https?:\/\/\S+/i;
+const ISBN_RE = /ISBN[\s:：]*[\dXx][\dXx\-\s]{8,}/i;
+const VOLISSUE_RE = /(?:vol\.?\s*\d+\s*,?\s*no\.?\s*\d+|\d+\s*\(\s*\d+\s*\)|\d{4}\s*[,，]\s*\d+\s*\(\s*\d+\s*\))/i;
+const PAGES_RE = /\b\d{1,4}\s*[-–—]\s*\d{1,4}\b|pp?\.\s*\d+/i;
+const ACCESS_RE = /\d{4}[-/年]\d{1,2}[-/月]\d{1,2}|访问日期|引用日期|检索日期/;
+// 字段标签**带左边界**（`(?<![\w/／])`）：防 `**出版社/期刊**：` 被 `期刊` 与 `出版社` 双双命中
+//   （与规则 ㉙ 的 `G14 主项` 反例同族：标识符左边界不设防 = 把相邻标签读成自己）。
+// ⚠️ **如实标注（v18.41.0 反向自证实测）**：对**真实存在的那一种**合并标签（`出版X/期刊`），真正拦住它的
+//   是下面的 `LABEL_MIXED`——它在 `LABEL_J/LABEL_M` **之前** `return null`。故本条左边界是**纵深防御**
+//   （覆盖 `LABEL_MIXED` 未列举的其它斜杠连写标签），**不是承重规则**：反向自证里「去掉左边界」那个变异
+//   因此**不产生任何行为变化**（不可达变异），已用双变异（同时去掉 `LABEL_MIXED`）证明守卫确实在挡。
+const LABEL_J = /(?<![\w/／])期刊[\s*_`]{0,4}[:：]/;
+const LABEL_M = /(?<![\w/／])出版(?:社|者|地)[\s*_`]{0,4}[:：]/;
+const LABEL_E = /(?<![\w/／])(?:URL|网址|链接)[\s*_`]{0,4}[:：]/i;
+const LABEL_MIXED = /出版(?:社|者|地)\s*\/\s*期刊[\s*_`]{0,4}[:：]/;   // 合并标签 → 类型不可判（**承重**）
+const g15 = (() => {
+  const NAME = '文献卡卷期页码/双字段齐备（[J] DOI+卷期起止页 / [M] ISBN+DOI / [EB/OL] URL+访问日期）';
+  // 模式未启用 → **N/A（不适用）**，与 **SKIP（适用但缺输入）** 刻意分开：
+  //   SKIP 计入 skipped → exit 3（「不算核过」）；N/A 不进 skipped → 不改变退出码。
+  //   理由：本项在模式未启用时**本就不在核对范围内**，若也计 skipped，则全库 24/25 个项目
+  //   都会被推成 exit 3「须人工复核」——那是一种噪声式假阳性，且会让 exit 0 事实上不可达。
+  //   （同族先例：M 门的 `N/A：尚无审计报告` 也按「不适用」处理，不按失败处理。）
+  if (!qlt) {
+    return { name: NAME, checked: false, applicable: false, pass: null, severity: 'N/A',
+      skipReason: '模式未启用（未传 `--qlt`）→ 本项不适用；主办在简报启用「引用数量与质量控制」时传 `--qlt` 才核对',
+      evidence: { card: cards['文献卡'] ? cards['文献卡'].path : null, brief: briefPath } };
+  }
+  const card = cards['文献卡'];
+  if (!card) {
+    return { name: NAME, checked: false, pass: null, severity: 'SKIP',
+      skipReason: '已传 `--qlt` 但未传 `--cards` 或目录内无文献卡：无法比对（不假装通过）', evidence: {} };
+  }
+  const entries = entriesOf(card.text, 'L');
+  if (entries.length === 0) {
+    return { name: NAME, checked: false, pass: null, severity: 'SKIP',
+      skipReason: '文献卡内未找到 [Lxx] 条目', evidence: { card: card.path } };
+  }
+  /** 类型判定：显式标记优先 → 单一字段标签 → 合并标签/无线索 = 不可判（null）。 */
+  const typeOf = (t) => {
+    if (/\[(?:EB\/OL|DB\/OL|R|N|D|Z|C)\]/.test(t)) return 'E';
+    if (/\[J\]/.test(t)) return 'J';
+    if (/\[M\]/.test(t)) return 'M';
+    if (LABEL_MIXED.test(t)) return null;
+    if (LABEL_J.test(t)) return 'J';
+    if (LABEL_M.test(t)) return 'M';
+    if (LABEL_E.test(t)) return 'E';
+    return null;
+  };
+  const issues = [];
+  const untyped = [];
+  const counts = { J: 0, M: 0, E: 0 };
+  for (const e of entries) {
+    const t = e.text;
+    const type = typeOf(t);
+    if (!type) { untyped.push(e.id); continue; }
+    counts[type] += 1;
+    const hasDoi = DOI_RE.test(t), hasIsbn = ISBN_RE.test(t), hasUrl = URL_RE.test(t);
+    const hasVol = VOLISSUE_RE.test(t), hasPages = PAGES_RE.test(t), hasAccess = ACCESS_RE.test(t);
+    const miss = [];
+    if (type === 'J') {
+      if (!hasDoi) miss.push('DOI');
+      if (!hasVol) miss.push('卷(期)');
+      if (!hasPages) miss.push('起-止页');
+    } else if (type === 'M') {
+      if (!hasIsbn) miss.push('ISBN');
+      if (!hasDoi) miss.push('DOI');
+    } else {
+      if (!hasUrl) miss.push('URL');
+      if (!hasAccess) miss.push('访问日期');
+    }
+    if (miss.length > 0) {
+      const label = type === 'J' ? '期刊' : (type === 'M' ? '专著' : '电子类');
+      issues.push({ id: e.id, type, missing: miss, reason: `${label}缺 ${miss.join(' + ')}` });
+    }
+  }
+  const CAP = 30;
+  return {
+    name: NAME, checked: true, pass: issues.length === 0, severity: issues.length === 0 ? 'PASS' : 'P2',
+    detail: issues.length === 0
+      ? `[J] ${counts.J} / [M] ${counts.M} / [电子类] ${counts.E} 条字段齐备`
+        + (untyped.length > 0 ? `（另有 ${untyped.length} 条**类型判不出**，未计入判罚）` : '')
+      : `${issues.length} 条未满足契约字段 → **候选清单，判级归 T7**（已判类型：[J] ${counts.J} / [M] ${counts.M}`
+        + ` / [电子类] ${counts.E}；类型判不出 ${untyped.length} 条未计入）`,
+    evidence: {
+      entries: entries.length, counts, untypedCount: untyped.length, untyped: untyped.slice(0, CAP),
+      issueCount: issues.length, issues: issues.slice(0, CAP), truncated: issues.length > CAP,
+      // 完整率**只作信息呈现**（G15 报告要写「卷期页码完整率」时可用它），**不作判级依据**——
+      //   分母刻意只用「类型可判」的条目（判不出的不该被算成不合格）。
+      rate: (() => {
+        const typed = counts.J + counts.M + counts.E;
+        const complete = typed - issues.length;
+        return { complete, typed, ratio: typed > 0 ? +(complete / typed).toFixed(3) : null, note: '仅信息；本项不设阈值' };
+      })(),
+      card: card.path, brief: briefPath,
+      note: '本项**刻意不设完整率阈值**：实测该比值同时受「卷期页码契约自 v18.9.0 才有」与「模式开关（全库仅 1 份简报启用）」两个自变量影响，任何固定百分比都是凭直觉的数字（旧文档「≥90% / ≥95% = Pass」从未标定，v18.41.0 删除）。要件真源 = 01 卡 §卷期页码双写契约；协议层 §M-Form-2 的措辞更宽，二者不等价，已在 07 卡与对照表写明。',
+    },
   };
 })();
 
@@ -366,31 +505,34 @@ const checks = {
   'G11-Timeliness': g11,
   'G2.5-CaseCheck': g25,
   'G0.5-FirstPerson': g05,
+  'G15-VolIssue': g15,
 };
 const vals = Object.values(checks);
 const hasP0 = vals.some((c) => c.checked && c.severity === 'P0');
 const hasP1 = vals.some((c) => c.checked && c.severity === 'P1');
 const hasP2 = vals.some((c) => c.checked && c.severity === 'P2');
-const skipped = vals.filter((c) => !c.checked).length;
+// `skipped` = **适用但缺输入**（不算核过 → exit 3）；`na` = **按模式不适用**（不进退出码，见 G15-VolIssue 段注释）
+const skipped = vals.filter((c) => !c.checked && c.applicable !== false).length;
+const na = vals.filter((c) => c.applicable === false).length;
 const allPass = !hasP0 && !hasP1 && !hasP2 && skipped === 0;
 const exitCode = hasP0 ? 2 : (hasP1 ? 1 : (hasP2 || skipped > 0 ? 3 : 0));
 
 const result = {
   file,
-  version: 'v18.23.0',
+  version: 'v18.41.0',
   inputs: { brief: briefPath, cardsDir, cardsFound: Object.fromEntries(Object.entries(cards).map(([k, v]) => [k, v.path])) },
   checks,
   overall: {
-    pass: allPass, exitCode, skipped,
+    pass: allPass, exitCode, skipped, na,
     p0: vals.filter((c) => c.severity === 'P0' && c.checked).length,
     p1: vals.filter((c) => c.severity === 'P1' && c.checked).length,
     p2: vals.filter((c) => c.severity === 'P2' && c.checked).length,
   },
   meta: {
     timestamp: new Date().toISOString(),
-    description: '论衡 G 项机检门 / v18.23.0 EFF-1 / scripts 白名单 24→25',
-    notes: '只机检 M 门与三个战略门未覆盖的 5 个 G 子项；判断力项（G1/G3/G5/G6/G7/G10/G14）维持 LLM 判定。'
-      + 'G2 命中项是**候选**，须 T7 逐条定性；SKIP ≠ 通过（exit 3 必须人工复核）。',
+    description: '论衡 G 项机检门 / v18.41.0（EFF-1 起；本版新增 G15-VolIssue）/ scripts 白名单 24→25',
+    notes: '只机检 M 门与三个战略门未覆盖的 6 个 G 子项；判断力项（G1/G3/G5/G6/G7/G10/G14）维持 LLM 判定。'
+      + 'G2 与 G15-VolIssue 的命中项是**候选**，须 T7 逐条定性；SKIP ≠ 通过（exit 3 必须人工复核）。',
   },
 };
 

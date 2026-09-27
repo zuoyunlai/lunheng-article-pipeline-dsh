@@ -226,3 +226,129 @@ test('parseTargetCandidates：粗体字段形态与「篇幅」标题抢先命�
   // ④ 单值版行为不变（G5 阻塞线依赖它）
   assert.equal(parseTargetChars('- **篇幅**：1.2 万 字').value, 12000, '数量级单位照旧')
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v18.41.0 G15-VolIssue：把「卷期页码完整率」从**幻影门**变成真门
+//
+// 立项：`01 卡` 曾宣称「机检判别（`M-Form-2 v2 分支`）：文献卡缺卷期页码必填字段 → P1」，而该门从未实装
+//   （v18.40.0 实测）。本批实装。要件真源 = `01 卡` §卷期页码双写契约。
+// 本组用例钉住的是**测出来的六件事**（每一件都对应一次真实校准，不是设计偏好）：
+//   ① 模式开关是**显式旗标**，不从简报字面推断（首版按标签放行 → 对「默认关闭」的项目产出 6 组假阳性）；
+//   ② 模式未启用 = **N/A**（不适用），不是 SKIP——否则 N/A 会把 24/25 个项目推成 exit 3，exit 0 不可达；
+//   ③ 四种真实排版都要认（标题即著录串 / `**GB/T 7714**：` 体例行 / 字段分行 / 合并标签）；
+//   ④ **合并标签 `出版XX/期刊` 类型不可判 → 不判罚**（左边界不设防会把相邻标签读成自己，同 ㉙ 反例）；
+//   ⑤ 缺字段只判 **P2 候选**，且**刻意不给完整率阈值**；
+//   ⑥ 用**历史上真实出现过的缺字段写法**撞门（[M] 只写 ISBN 无 DOI = v18.9.0 实战那 6 条；中文译著两缺）。
+const g15 = (j) => j.checks['G15-VolIssue']
+
+test('g-audit-check G15：模式未启用 → **N/A（不适用，不推高退出码）**；与 SKIP（适用但缺输入）刻意分开', () => {
+  const { d, draft, brief, cards } = mkFixture()
+  const r = run([G, draft, '--cards', cards, '--brief', brief])
+  const j = parseJson(r)
+  assert.equal(g15(j).checked, false)
+  assert.equal(g15(j).severity, 'N/A', '模式未启用 = 不适用：' + JSON.stringify(g15(j)))
+  assert.equal(g15(j).applicable, false)
+  assert.equal(j.overall.na, 1, 'N/A 须单独计数')
+  assert.equal(j.overall.skipped, 0, 'N/A **不得**计入 skipped——否则每个项目都被推成 exit 3')
+  assert.equal(r.code, 0, '模式未启用时本项不该影响退出码：' + r.out.slice(-200))
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('g-audit-check G15：**假阳性回归**——简报写「默认关闭」时，即使传了 --brief 也不得判级', () => {
+  // 实测原型：`数字社交-关系重构` 的简报写「☐ **APA 优先输出 + 卷期页码完整性**：**默认关闭**（…）；
+  //   若启用须主人二次确认」——方框未勾选、明写默认关闭。首版按 `/卷期页码完整/` 字面放行 → 6 组假 P2。
+  //   判据：**匹配到标签 ≠ 匹配到启用状态**。
+  const 卡 = '# 文献卡\n\n### [L01] X. T[J]. AJS, 1973, 78(6): 1360-1380.\n'   // 缺 DOI
+  const { d, draft, brief, cards } = mkFixture({
+    文献卡: 卡,
+    brief: '- ☐ **APA 优先输出 + 卷期页码完整性**：默认关闭（保留 GB/T 7714-2015 为唯一引用格式）；若启用须主人二次确认\n- **篇幅**：**500 字**\n',
+  })
+  const r = run([G, draft, '--cards', cards, '--brief', brief])
+  const j = parseJson(r)
+  assert.equal(g15(j).severity, 'N/A', '简报里出现标签 ≠ 模式已启用：' + JSON.stringify(g15(j)))
+  assert.equal(g15(j).evidence.issues, undefined, 'N/A 时不得产出任何候选清单')
+  assert.notEqual(r.code, 3, '模式未启用不得把项目推成 exit 3')
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('g-audit-check G15：传 --qlt 才真跑；缺字段判 P2 候选，齐备判 PASS', () => {
+  const 卡 = [
+    '# 文献卡',
+    '',
+    '### [L01] Granovetter M S. The strength of weak ties[J]. AJS, 1973, 78(6): 1360-1380. DOI: 10.1086/225469.',
+    '',
+    '### [L02] 缺 DOI 的期刊条目[J]. 中国社会科学, 2009(03): 69-86.',
+    '',
+    '### [L03] Tilly C. Stories[M]. Lanham: Rowman & Littlefield, 2002. ISBN: 9780847697496.',
+    '',
+  ].join('\n')
+  const { d, draft, brief, cards } = mkFixture({ 文献卡: 卡 })
+  const r = run([G, draft, '--cards', cards, '--brief', brief, '--qlt'])
+  const j = parseJson(r)
+  assert.equal(g15(j).checked, true, '传了 --qlt 必须真跑：' + JSON.stringify(g15(j)))
+  assert.equal(g15(j).severity, 'P2', '有缺字段 → P2 候选（判级归 T7）')
+  assert.equal(g15(j).evidence.counts.J, 2, 'L01/L02 应判为期刊')
+  assert.equal(g15(j).evidence.counts.M, 1, 'L03 应判为专著')
+  const ids = g15(j).evidence.issues.map((x) => x.id)
+  assert.deepEqual(ids.sort(), ['L02', 'L03'], 'L02 缺 DOI、L03 缺 DOI（专著双写）应被标，L01 齐备不标')
+  assert.match(g15(j).evidence.note, /刻意不设完整率阈值/, '阈值口径须写死在证据里')
+  // 完整率**只作信息**：要能算（G15 报告要写「卷期页码完整率」），但分母只含类型可判的条目，
+  //   且它绝不参与判级（整体严重度仍由「有没有 issue」决定）。
+  assert.deepEqual(g15(j).evidence.rate, { complete: 1, typed: 3, ratio: 0.333, note: '仅信息；本项不设阈值' },
+    '完整率须可算且只含类型可判条目（3 条里 1 条齐备）：' + JSON.stringify(g15(j).evidence.rate))
+  assert.equal(j.overall.p0, 0, '本项**永不**产出 P0/P1——新分布式指标只到候选')
+  assert.equal(j.overall.p1, 0)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('g-audit-check G15：四种真实排版都要认（否则合规卡会被判红）', () => {
+  const 卡 = [
+    '# 文献卡',
+    '',
+    '### [L01] Granovetter M S. The strength of weak ties[J]. AJS, 1973, 78(6): 1360-1380. DOI: 10.1086/225469.',
+    '### [L02] 未成年人网络保护条例（国务院令第 766 号）',
+    '- **GB/T 7714**：国务院. 未成年人网络保护条例: 国务院令第766号[EB/OL]. (2023-10-16)[2026-08-17]. https://www.gov.cn/x.html.',
+    '### [L03] 栏目型条目（字段分行，实测 `中国新能源车出口` 项目形态）',
+    '- **期刊**：Academic Journal of Business & Management',
+    '- **卷/期/页码**：vol. 6, no. 11, pp. 20-28',
+    '- **DOI**：10.25236/AJBM.2024.061120',
+    '### [L04] 合并标签条目（实测 `共锁` 项目：期刊与专著同用 `出版社/期刊`）',
+    '- **出版社/期刊**: Harvard University Press',
+    '- **年份**: 1997',
+    '',
+  ].join('\n')
+  const { d, draft, brief, cards } = mkFixture({ 文献卡: 卡 })
+  const r = run([G, draft, '--cards', cards, '--brief', brief, '--qlt'])
+  const j = parseJson(r)
+  const ev = g15(j).evidence
+  assert.equal(g15(j).pass, true, '四条都实质合规（L02 走体例行 / L03 走字段分行 / L04 类型不可判）→ 不得判红：' + JSON.stringify(ev.issues))
+  assert.deepEqual(ev.counts, { J: 2, M: 0, E: 1 }, 'L01 [J] / L02 [EB/OL] / L03 由 `期刊` 字段推为 [J]')
+  assert.deepEqual(ev.untyped, ['L04'], '合并标签 `出版XX/期刊` 类型不可判 → 不计入判罚，但须如实暴露在 untyped 里')
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('g-audit-check G15：用**历史上真实出现的缺字段写法**撞门 + 传了 --qlt 却无卡 → SKIP（exit 3）', () => {
+  const 卡 = [
+    '# 文献卡',
+    '',
+    '### [L01] Krasner S D. Sovereignty: Organized Hypocrisy[M]. Princeton: Princeton University Press, 1999. DOI: 10.1515/9781400823260',
+    '### [L02] 伯纳德·鲍桑葵. 美学史[M]. 张今, 译. 北京: 商务印书馆, 1985.',
+    '',
+  ].join('\n')
+  const { d, draft, brief, cards } = mkFixture({ 文献卡: 卡 })
+  const r = run([G, draft, '--cards', cards, '--brief', brief, '--qlt'])
+  const j = parseJson(r)
+  const byId = Object.fromEntries(g15(j).evidence.issues.map((x) => [x.id, x.missing]))
+  assert.deepEqual(byId.L01, ['ISBN'], '实测形态：英文专著有 DOI 无 ISBN（v18.9.0 双写契约要求二者都有）')
+  assert.deepEqual(byId.L02, ['ISBN', 'DOI'], '实测形态：中文译著两缺（1985 年商务印书馆译本确实无 DOI）')
+
+  // 传了 --qlt 但没有文献卡 → 这是**适用但缺输入** → SKIP（计入 skipped → exit 3），不是 N/A
+  const noCard = mkFixture({ 文献卡: null })
+  const r2 = run([G, noCard.draft, '--cards', noCard.cards, '--brief', noCard.brief, '--qlt'])
+  const j2 = parseJson(r2)
+  assert.equal(g15(j2).severity, 'SKIP', '缺输入 = SKIP（不算核过）：' + JSON.stringify(g15(j2)))
+  assert.equal(g15(j2).applicable, undefined, 'SKIP 不得带 applicable:false（那是 N/A 的语义）')
+  assert.equal(r2.code, 3, 'SKIP 必须 exit 3')
+  rmSync(d, { recursive: true, force: true })
+  rmSync(noCard.d, { recursive: true, force: true })
+})

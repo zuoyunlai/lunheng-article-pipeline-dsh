@@ -18,7 +18,9 @@
 //     · 学术结构三项（`structure-check.mjs`，权重 10）
 //     · 方法论可复现三项（`methodology-check.mjs`，权重 5）——**仅当有方法节**才适用
 //     · 引用实质相关三项（`cite-coverage-check.mjs`，权重 10）
-//     · G 项机检 5 项（`g-audit-check.mjs`，权重 15）——**字数分层（G8）已在其中，不重复计分**
+//     · G 项机检 6 项（`g-audit-check.mjs`，权重 15）——**字数分层（G8）已在其中，不重复计分**；
+//       ⚠️ **G15（卷期页码）是模式相关项**（须 `--qlt`）——本脚本**不传该旗标**，故它按 `N/A` 处理：
+//       **N/A 不进分母**（与 SKIP「适用但缺输入 → 降权」分清），即本分量实际按 5 项计分。
 //     · G14 中文 AI 痕迹终闸（读 `audits/G14-检测报告-v*.md`，权重 10）
 //     · 交付完整性（`handoff-check.mjs --role T8 --require-gates`，权重 10）
 //
@@ -195,30 +197,39 @@ if (hasRefs) {
   add('cite-coverage', '引用实质相关性（强度 / 冗余 / 年代分布）', 10, null, '', {}, '本文无「参考文献」节');
 }
 
-// ⑤ G 项机检 5 项（权重 15）——字数分层 G8 已在其中，不重复计分
+// ⑤ G 项机检 6 项（权重 15）——字数分层 G8 已在其中，不重复计分；G15 为模式相关项、按 N/A 不进分母
+/** 未拿到 g-audit JSON 时的分量名（条目数只在能读到 JSON 时才可能因 N/A 变化，这里用脚本的项数口径）。 */
+const LABEL_NA = 'G 项机检 6 项（G8/G2/G11/G2.5/G0.5/G15）';
 if (existsSync(evidence) && existsSync(brief)) {
   const r = runGate('gaudit', [join(SCRIPTS, 'g-audit-check.mjs'), draft, '--cards', evidence, '--brief', brief]);
   const j = r.json;
   const cs = j && j.checks ? Object.values(j.checks) : null;
   if (cs && cs.length > 0) {
-    // **SKIP（`checked: false`）不计入分母、也不计为通过**——它与「已检且通过」必须区分
-    const checked = cs.filter((c) => c.checked);
-    const skipped = cs.filter((c) => !c.checked);
+    // **N/A（`applicable: false`，按模式不适用）与 SKIP（`checked: false`，适用但缺输入）必须分清**：
+    //   · N/A **不进分母**、不降权、不扣分（如未传 `--qlt` 的 G15——本脚本刻意不传，见文件头 ⑤ 注）；
+    //   · SKIP 按缺输入降权（`SKIP ≠ 通过`）。
+    //   （v18.41.0：此前只有 SKIP 一种，新增 N/A 后若仍按 `cs.length` 当分母，每个未启用该模式的
+    //     项目都会被凭空扣掉 1/6 的 G 项机检分——那会让质量分基线整体漂移。）
+    const na = cs.filter((c) => c.applicable === false);
+    const applicable = cs.filter((c) => c.applicable !== false);
+    const checked = applicable.filter((c) => c.checked);
+    const skipped = applicable.filter((c) => !c.checked);
+    const LABEL = `G 项机检 ${applicable.length} 项（G8/G2/G11/G2.5/G0.5/G15）`;
     if (checked.length === 0) {
-      add('g-audit', 'G 项机检 5 项（G8/G2/G11/G2.5/G0.5）', 12, null, '', {}, `5 项全部 SKIP：${skipped.map((c) => c.skipReason).join('；')}`);
+      add('g-audit', LABEL, 12, null, '', {}, `${applicable.length} 项全部 SKIP：${skipped.map((c) => c.skipReason).join('；')}`);
     } else {
-      // 与其余分量同口径：**只有 P0/P1 算硬失败**；P2 是候选（如 G8 超限、G2 未命中数字），单列不扣分
+      // 与其余分量同口径：**只有 P0/P1 算硬失败**；P2 是候选（如 G8 超限、G2 未命中数字、G15 缺字段），单列不扣分
       const hardFail = checked.filter((c) => c.severity === 'P0' || c.severity === 'P1');
       const softList = checked.filter((c) => c.severity === 'P2');
-      add('g-audit', 'G 项机检 5 项（G8/G2/G11/G2.5/G0.5）', 12 * (checked.length / cs.length), (checked.length - hardFail.length) / checked.length,
-        `${checked.length - hardFail.length}/${checked.length} 项无硬失败（另有 ${skipped.length} 项 SKIP 按缺输入降权——**SKIP ≠ 通过**${softList.length ? `；P2 候选 ${softList.length} 项不扣分` : ''}）`,
-        { pass: checked.length - hardFail.length, checked: checked.length, skipped: skipped.length, p1: hardFail.length, soft: softList.map((c) => c.name) });
+      add('g-audit', LABEL, 12 * (checked.length / applicable.length), (checked.length - hardFail.length) / checked.length,
+        `${checked.length - hardFail.length}/${checked.length} 项无硬失败（另有 ${skipped.length} 项 SKIP 按缺输入降权——**SKIP ≠ 通过**；N/A ${na.length} 项按模式不适用、不进分母${softList.length ? `；P2 候选 ${softList.length} 项不扣分` : ''}）`,
+        { pass: checked.length - hardFail.length, checked: checked.length, skipped: skipped.length, na: na.length, applicable: applicable.length, p1: hardFail.length, soft: softList.map((c) => c.name) });
     }
   } else {
-    add('g-audit', 'G 项机检 5 项（G8/G2/G11/G2.5/G0.5）', 15, null, '', {}, `g-audit-check 未产出可用 JSON（status=${r.status}）`);
+    add('g-audit', LABEL_NA, 15, null, '', {}, `g-audit-check 未产出可用 JSON（status=${r.status}）`);
   }
 } else {
-  add('g-audit', 'G 项机检 5 项（G8/G2/G11/G2.5/G0.5）', 12, null, '', {},
+  add('g-audit', LABEL_NA, 12, null, '', {},
     `缺 ${existsSync(evidence) ? '' : 'final/证据包 '}${existsSync(brief) ? '' : '01-任务简报.md'}`.trim());
 }
 

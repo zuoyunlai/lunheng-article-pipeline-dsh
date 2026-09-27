@@ -55,7 +55,7 @@
 
 <若启用「引用数量与质量控制」模式，追加 G15 行；未启用则本行留空并注明「未启用该模式」。>
 
-**G 项机检预跑（v18.23.0 EFF-1）**：`node scripts/g-audit-check.mjs <被审正文> --cards final/证据包 --brief 01-任务简报.md --report <tmp.json>` 的 5 项机检结果**就是对应 G 子项的实据**，直接引用其 JSON，不必人工从头推导。
+**G 项机检预跑（v18.23.0 EFF-1；v18.41.0 起 6 项）**：`node scripts/g-audit-check.mjs <被审正文> --cards final/证据包 --brief 01-任务简报.md [--qlt] --report <tmp.json>` 的 6 项机检结果**就是对应 G 子项的实据**，直接引用其 JSON，不必人工从头推导。（`--qlt` = 简报启用了「引用数量与质量控制」时才传，用于 `G15-VolIssue`；未传时该项为 `N/A`（不适用），**不是**「已核通过」。）
 
 ## 三、问题清单（P0 / P1 / P2）
 
