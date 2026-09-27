@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // 论衡 G 项机检门（v18.23.0 EFF-1 新增 / scripts 白名单 24→25）
 //
-// 用法：node g-audit-check.mjs <正文.md> [--cards <目录>] [--brief <任务简报.md>] [--report <path>] [--json]
+// 用法：node g-audit-check.mjs <正文.md> [--cards <目录>] [--brief <任务简报.md>] [--qlt] [--report <path>] [--json]
 //   --cards <目录>  = 素材卡所在目录（`final/证据包/` 或项目根；脚本自行回退找 `literature/文献卡.md` 等）
-//   --brief <文件>  = 任务简报（G8 字数判定需要「目标篇幅」）
+//   --brief <文件>  = 任务简报（G8 字数判定需要「目标篇幅」；G15 另读其中的 `QLT=on|off` 标记）
+//   --qlt           = 核对模式相关项 G15-VolIssue（**唯一开关**；依据 = 简报的 `QLT=on` 标记，不按散文标签推断）
 //   --report <path> = JSON 结果写入 <path>（默认 stdout）
 //   --json          = 兼容保留（JSON 本就是默认也是唯一输出形态）
 //
@@ -23,8 +24,10 @@
 //     · G8① 元数据残留 / G9① 临时编号 / G9② 过程语言 / G12 信任级别 → 已在 `m-gate-check.mjs`
 //       （M-Form-3 / M-Form-4 / M-Form-5 / M-Form-6），本脚本不重做；
 //     · G4 结构与篇幅骨架 → `structure-check.mjs`（S-IMRaD / S-Intro-Funnel / S-Discussion-4）；
-//     · G15 卷期页码完整率 → **无门**（`M-Form-2 v2` 分支**不存在**，见
-//       `references/_shared/规范-机械门对照表.md` §三 首行）；闭环那一半归 `cite-coverage-check.mjs`；
+//     · G15 卷期页码完整率 → **本脚本的 `G15-VolIssue`**（v18.41.0 实装：模式相关，须 `--qlt`；
+//       逐条列出缺字段的 [Lxx]，候选 P2、**不设阈值**）；闭环那一半归 `cite-coverage-check.mjs`。
+//       （v18.40.0 前此处写「无门」——那是当时如实；`M-Form-2 v2` 那个号已作废，案卷见
+//        `references/_shared/规范-机械门对照表.md` §二 末行。**v18.43.0 更正：本行曾是同批未传播到的陈旧断言之一**。）
 //     · G1 引用真实性 / G3 逻辑 / G5 学术规范 / G6 论据自标 / G7 原创性 / G10 术语一致 / G14 AI 痕迹
 //       → **判断力项**（须读语境），维持 LLM 判定，**不**下沉（刻意不加机检，理由同 09 卡 M3 先例）。
 //
@@ -271,15 +274,31 @@ const LABEL_E = /(?<![\w/／])(?:URL|网址|链接)[\s*_`]{0,4}[:：]/i;
 const LABEL_MIXED = /出版(?:社|者|地)\s*\/\s*期刊[\s*_`]{0,4}[:：]/;   // 合并标签 → 类型不可判（**承重**）
 const g15 = (() => {
   const NAME = '文献卡卷期页码/双字段齐备（[J] DOI+卷期起止页 / [M] ISBN+DOI / [EB/OL] URL+访问日期）';
+  // **模式标记（唯一依据，v18.43.0）**：任务简报里的显式 `QLT=on` / `QLT=off`。
+  //   刻意**不**按散文标签推断——v18.41.0 实测：简报写「☐ APA 优先输出 + 卷期页码完整性：**默认关闭**」
+  //   时，按标签字面放行会对**未启用**该模式的项目产出 6 组假 P2。**放行权只在旗标，依据只在标记**：
+  //     · 旗标是调用方的显式声明（读得到简报语义的是人/主控/T7，不是脚本）；
+  //     · 标记让「简报说启用了、却没人传旗标」这件事**可见**（不静默跳过）——这是 v18.43.0 补的接口债。
+  const marker = (() => {
+    if (!briefPath) return null;
+    try {
+      const m = /(?<![A-Za-z0-9_])QLT\s*=\s*(on|off)(?![A-Za-z0-9_])/i.exec(readFileSync(briefPath, 'utf8'));
+      return m ? m[1].toLowerCase() : null;
+    } catch { return null; }
+  })();
   // 模式未启用 → **N/A（不适用）**，与 **SKIP（适用但缺输入）** 刻意分开：
   //   SKIP 计入 skipped → exit 3（「不算核过」）；N/A 不进 skipped → 不改变退出码。
   //   理由：本项在模式未启用时**本就不在核对范围内**，若也计 skipped，则全库 24/25 个项目
   //   都会被推成 exit 3「须人工复核」——那是一种噪声式假阳性，且会让 exit 0 事实上不可达。
   //   （同族先例：M 门的 `N/A：尚无审计报告` 也按「不适用」处理，不按失败处理。）
   if (!qlt) {
+    const mismatch = marker === 'on';
     return { name: NAME, checked: false, applicable: false, pass: null, severity: 'N/A',
-      skipReason: '模式未启用（未传 `--qlt`）→ 本项不适用；主办在简报启用「引用数量与质量控制」时传 `--qlt` 才核对',
-      evidence: { card: cards['文献卡'] ? cards['文献卡'].path : null, brief: briefPath } };
+      skipReason: '模式未启用（未传 `--qlt`）→ 本项不适用；主办在简报启用「引用数量与质量控制」时传 `--qlt` 才核对'
+        + (mismatch
+          ? ' ⚠️ **但任务简报标了 `QLT=on`** —— 本项因此**没有被核对**（这正是本条要防的「静默不跑」）：补传 `--qlt` 即闭合。'
+          : ''),
+      evidence: { card: cards['文献卡'] ? cards['文献卡'].path : null, brief: briefPath, qltMarker: marker, qltMarkerMismatch: mismatch } };
   }
   const card = cards['文献卡'];
   if (!card) {
@@ -347,6 +366,11 @@ const g15 = (() => {
         const complete = typed - issues.length;
         return { complete, typed, ratio: typed > 0 ? +(complete / typed).toFixed(3) : null, note: '仅信息；本项不设阈值' };
       })(),
+      qltMarker: marker,
+      qltMarkerMismatch: marker === 'off',
+      markerNote: marker === 'off'
+        ? '⚠️ 任务简报标了 `QLT=off`，而调用方仍显式传了 `--qlt` —— 本项**按调用方要求**核对（旗标优先）；若属误传，去掉旗标即可回到「不适用」'
+        : (marker === null && briefPath ? '任务简报未写 `QLT=` 标记（本标记 v18.43.0 起才进模板）——本项按调用方旗标核对' : undefined),
       card: card.path, brief: briefPath,
       note: '本项**刻意不设完整率阈值**：实测该比值同时受「卷期页码契约自 v18.9.0 才有」与「模式开关（全库仅 1 份简报启用）」两个自变量影响，任何固定百分比都是凭直觉的数字（旧文档「≥90% / ≥95% = Pass」从未标定，v18.41.0 删除）。要件真源 = 01 卡 §卷期页码双写契约；协议层 §M-Form-2 的措辞更宽，二者不等价，已在 07 卡与对照表写明。',
     },

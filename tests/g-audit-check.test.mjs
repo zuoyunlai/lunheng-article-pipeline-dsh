@@ -352,3 +352,54 @@ test('g-audit-check G15：用**历史上真实出现的缺字段写法**撞门 +
   rmSync(d, { recursive: true, force: true })
   rmSync(noCard.d, { recursive: true, force: true })
 })
+
+// v18.43.0（主人「继续」→ 接口债 D）：G15-VolIssue 的模式判定此前**只**靠调用方旗标，而「简报启用了该模式」
+//   这件事没有任何机器可读的表达 → 项目**可以静默不跑**本项（判 N/A 而无人注意）。本批补上：
+//     · 简报侧：模板新增**唯一依据**的显式标记 `QLT=on` / `QLT=off`；
+//     · 脚本侧：读标记，**只读标记**（不按散文标签推断——v18.41.0 实测过那条路会产生成组假阳性）；
+//     · 不一致可见：标 `on` 却没传旗标 → 仍判 N/A，但**在 skipReason 里点名**（不静默）；
+//                  标 `off` 却传了旗标 → **旗标优先**照跑，并注明「按调用方要求核对」。
+test('g-audit-check G15：标记 `QLT=on` 但未传 `--qlt` → 仍 N/A，**但必须点名这处不一致**（不许静默不跑）', () => {
+  const { d, draft, cards } = mkFixture({
+    文献卡: '# 文献卡\n\n### [L01] X. T[J]. AJS, 1973, 78(6): 1360-1380. DOI: 10.1086/225469.\n',
+    brief: '- **启用标记**：`QLT=on`\n- **篇幅**：**500 字**\n',
+  })
+  const r = run([G, draft, '--cards', cards, '--brief', join(d, '01-任务简报.md')])
+  const j = parseJson(r)
+  assert.equal(g15(j).severity, 'N/A', '没传旗标仍是 N/A（模式开关只在调用方）：' + JSON.stringify(g15(j)))
+  assert.equal(g15(j).evidence.qltMarker, 'on')
+  assert.equal(g15(j).evidence.qltMarkerMismatch, true, '标记与旗标不一致须显式记录')
+  assert.match(String(g15(j).skipReason), /QLT=on/, '须点名简报标了 on')
+  assert.match(String(g15(j).skipReason), /没有被核对/, '须写明「本项没有被核对」——否则读者会当成「已核通过」')
+  assert.equal(j.overall.na, 1)
+  assert.equal(j.overall.skipped, 0, 'N/A 仍不得推高退出码')
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('g-audit-check G15：标记 `QLT=off` 但传了 `--qlt` → **旗标优先**照跑，并注明依据是调用方', () => {
+  const { d, draft, brief, cards } = mkFixture({
+    文献卡: '# 文献卡\n\n### [L01] X. T[J]. AJS, 1973, 78(6): 1360-1380. DOI: 10.1086/225469.\n',
+    brief: '- **启用标记**：`QLT=off`\n- **篇幅**：**500 字**\n',
+  })
+  const r = run([G, draft, '--cards', cards, '--brief', brief, '--qlt'])
+  const j = parseJson(r)
+  assert.equal(g15(j).checked, true, '旗标是调用方的显式声明，优先于标记：' + JSON.stringify(g15(j)))
+  assert.equal(g15(j).evidence.qltMarker, 'off')
+  assert.match(String(g15(j).evidence.markerNote), /QLT=off/, '须注明「简报标 off，本项按调用方要求核对」')
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('g-audit-check G15：**标记不是散文标签**——简报写「卷期页码完整性：默认关闭」也不得被读成启用', () => {
+  // 这条钉住 v18.41.0 那次实测（成组假阳性）在**标记层**的复现路径：标记必须逐字是 `QLT=on|off`。
+  const { d, draft, brief, cards } = mkFixture({
+    文献卡: '# 文献卡\n\n### [L01] X. T[J]. AJS, 1973, 78(6): 1360-1380.\n',
+    brief: '- ☐ **APA 优先输出 + 卷期页码完整性**：默认关闭（保留 GB/T 7714-2015 为唯一引用格式）\n- **篇幅**：**500 字**\n',
+  })
+  const r = run([G, draft, '--cards', cards, '--brief', brief])
+  const j = parseJson(r)
+  assert.equal(g15(j).severity, 'N/A')
+  assert.equal(g15(j).evidence.qltMarker, null, '散文标签不得被读成标记（这是 v18.41.0 的假阳性来源）')
+  assert.equal(g15(j).evidence.qltMarkerMismatch, false, '无标记 → 不得产生「不一致」噪音（老简报不受影响）')
+  assert.doesNotMatch(String(g15(j).skipReason), /QLT=/, '无标记时不得在文案里塞标记相关的话')
+  rmSync(d, { recursive: true, force: true })
+})

@@ -682,6 +682,49 @@ function handoffCodes() {
 const inRegistry = (registry, token) => new RegExp(`(?<![A-Za-z0-9])${token}(?![0-9a-z])`).test(registry)
 
 /**
+ * `g-audit-check.mjs` 实际检几项——从它的 `checks` 对象**键数**派生（唯一真源是代码，不是文档）。
+ * ⚠️ 这条守卫来自一次**真实的漏传**：v18.41.0 把机检从 5 项扩到 6 项（并加了 `--qlt`）后同步了 6 处文档，
+ *   却漏了 `references/pipeline-readme.md` 的 T7 派发话术那一行（它仍写「5 项机检」且没有旗标）——
+ *   而那次全库 grep 用的是 `-Path references\**\*.md`，在 pwsh 里 `**` **只匹配一层中间目录**，
+ *   `references/` 下**直属**的 .md 根本没被扫到。故「N 项机检」这类数字断言值得直接机械化。
+ */
+function gAuditItemCount() {
+  const src = readFileSync(join(SKILL, 'scripts', 'g-audit-check.mjs'), 'utf8')
+  const block = /const checks = \{([\s\S]*?)\n\}/.exec(src)
+  assert.ok(block, 'g-audit-check.mjs 的 `const checks = {…}` 形状变了——派生口径已断，本用例会真空通过')
+  const n = [...block[1].matchAll(/^\s*'[^']+':/gm)].length
+  assert.ok(n >= 5, `从 checks 对象只派生到 ${n} 项（<5）——派生口径可疑，拒绝在噪声上断言`)
+  return n
+}
+
+// v18.43.0：把「机检项数」这类**会在多处被引用、且已经漂过一次**的数字钉住。
+//   判据：凡在同一行提到 `g-audit` 的文档，行内写的「N 项机检 / N 项已有 / N 个 G 子项」必须 == 代码实际项数。
+//   为什么值得一条独立守卫：这类数字**天生多处引用**（派发话术 / 角色卡 / 速查表 / 报告模板 / 对照表），
+//   而扩项是**偶发动作**——改的人只盯自己手边那几处，漏掉的地方没有任何门会响（本批实测漏了 1 处）。
+test('文档里的「机检 N 项」必须等于 g-audit-check 的实际项数（v18.43.0 防漏传）', () => {
+  const n = gAuditItemCount()
+  const claims = []
+  for (const f of walkSkillFiles(SKILL, ['.md'])) {
+    const rel = relative(ROOT, f).split(sep).join('/')
+    readFileSync(f, 'utf8').split('\n').forEach((ln, i) => {
+      if (!/g-audit/.test(ln)) return
+      for (const m of ln.matchAll(/(\d+)\s*(项机检|项已有|个 G 子项|项 G 项机检)/g)) {
+        claims.push({ at: `${rel}:${i + 1}`, num: Number(m[1]), raw: m[0] })
+      }
+    })
+  }
+  assert.ok(claims.length >= 4, `只扫到 ${claims.length} 处「N 项」声明——扫描口径已与文档写法脱节，本用例会真空通过`)
+  const bad = claims.filter((c) => c.num !== n)
+  assert.deepEqual(
+    bad,
+    [],
+    `下列位置的机检项数与代码不符（代码实际 = ${n} 项）：\n  ${bad.map((c) => `${c.at} 写「${c.raw}」`).join('\n  ')}\n` +
+      '扩项/减项时必须同批更新**所有**引用处——这份引用面天生分散（派发话术 / 07 卡 / 速查表 / 报告模板 / 对照表 / SKILL.md），' +
+      'v18.41.0 就漏了 `pipeline-readme.md` 的 T7 派发话术。',
+  )
+})
+
+/**
  * 只取 §一 / §二 的**表行**（`|` 开头的行）——本表真正的「登记」区。
  * ⚠️ 刻意**不取**表头注记与 §三：这两处会提到门号（作废号留档、漏登说明、旧行名举例），
  *   若把它们算成「已登记」，两个用例都会被**自造污染**。反向自证实测过这一点：
