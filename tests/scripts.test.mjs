@@ -196,6 +196,32 @@ test('consistency-check ⑨：.dsh 镜像与真源 size 相同但内容不同时
   rmSync(d, { recursive: true, force: true })
 })
 
+test('consistency-check ⑩b：脚本名尾随数字（如 `eff4-probe2.mjs`）**不得**被当成脚本计数断言（v18.22.3 假阳性修复，双侧锁）', () => {
+  const { d, repo, R } = mkRepo()
+  const cc = join(repo, 'skills', 'lunheng-article-pipeline', 'scripts', 'consistency-check.mjs')
+  const probe = join(R, 'references', '_shared', '__tmp-10b.md')
+
+  // ① 假阳性侧：句子里只是**引用了一个尾随数字的脚本名**，没有任何计数断言 → 不得报
+  //    （旧式 `(\d+)\s*\.mjs` 把 `probe2.mjs` 的 `2.mjs` 读成「写 2 个」——实测 v18.22.3 修订记录因此判红）
+  writeFileSync(probe, '# 临时\n\n本表由 eff4-probe2.mjs 复跑得到同一结果（临时脚本，不入库）。\n')
+  const fpOut = run([cc]).out
+  assert.doesNotMatch(
+    fpOut,
+    /脚本计数漂移\][^\n]*__tmp-10b\.md/,
+    '脚本名尾随数字被误判成计数断言（假阳性）：' + fpOut.slice(-400),
+  )
+
+  // ② 真阳性侧：同一文件写**真**计数断言 → 必须照旧报（证明修复没有削弱覆盖面）
+  writeFileSync(probe, '# 临时\n\n白名单共 11 个脚本。\n')
+  const tpOut = run([cc]).out
+  assert.match(
+    tpOut,
+    /脚本计数漂移\][^\n]*__tmp-10b\.md/,
+    '真计数漂移必须仍然被报（假阳性修复不得顺带放行真漂移）：' + tpOut.slice(-400),
+  )
+  rmSync(d, { recursive: true, force: true })
+})
+
 test('m-gate-check M-Exist-7：§6 成本指标必须含 `~NN[MKB]` 或「实测不可得」（v18.6.3 反哺：原只看「字段有内容」漏报，看板 17/21 token 列空）', () => {
   const { d, proj, fin, ev } = mkProject()
   writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')

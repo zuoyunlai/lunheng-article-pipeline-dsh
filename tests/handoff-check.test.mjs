@@ -193,3 +193,42 @@ test('参数错误：缺 --role / 非法 --role / 项目不存在 → exit 10', 
   assert.equal(run([SCRIPT, '--project', d, '--role', 'T1', '--level', 'bogus']).code, 10)
   rmSync(d, { recursive: true, force: true })
 })
+
+// ── v18.22.3 EFF-3：A8 复核报告「已读范围」声明（**本版刻意判软**）────────────────────────────
+// 为什么是软：实测 2026-09-26 本机 `run/**` 下 11 份既有 `复核报告-*.md` **0/11** 含该声明；
+//   判硬会让所有已交付项目一次性变红——按本仓「不对历史形态过度收紧」的既有原则（见 A4c 的同款处置：
+//   `被审正文:` 字段先做可见性），本版只做可见性，待新报告稳定含该节后收紧为硬。
+// 三条断言：① 缺声明 → 只进 soft（**不得**进 hard、**不得**影响退出码）；② 有声明+内容 → 不报；
+//   ③ **只有标签没有内容** → 仍报（「只写标签不算声明」）。
+test('A8 缺「已读范围」→ 只软提示，不判硬（v18.22.3 EFF-3 先做可见性）', () => {
+  const d = makeProject({
+    'audits/复核报告-v1.md': '# 复核报告\n## 逐条判定\n| 编号 | 判定 |\n|---|---|\n| P0-1 | 已关闭 |\n',
+  })
+  const r = run([SCRIPT, '--project', d, '--role', 'T7', '--level', 'strict'])
+  const j = parseJson(r)
+  assert.ok(j.soft.some((x) => x.check === 'A8'), '应报 A8 软提示：' + JSON.stringify(j.soft))
+  assert.ok(!j.hard.some((x) => x.check === 'A8'), 'A8 本版**不得**判硬（否则既有 11 份报告全红）')
+  assert.notEqual(r.code, 21, 'A8 不得改变退出码（本版是可见性，不是闸门）')
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('A8 有「已读范围」+ 内容 → 不报', () => {
+  const d = makeProject({
+    'audits/复核报告-v1.md': '# 复核报告\n## 已读范围\n- `drafts/修订说明-v1.md`；被审正文 §3.2、§5.1；未读其他节。\n\n## 逐条判定\n| 编号 | 判定 |\n|---|---|\n| P0-1 | 已关闭 |\n',
+  })
+  const j = parseJson(run([SCRIPT, '--project', d, '--role', 'T7', '--level', 'strict']))
+  assert.ok(!j.soft.some((x) => x.check === 'A8'), '有声明不得再报 A8：' + JSON.stringify(j.soft))
+  assert.ok(!j.hard.some((x) => x.check === 'A8'))
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('A8 只有标签没有内容 → 仍报（只写标签不算声明）', () => {
+  const d = makeProject({
+    'audits/复核报告-v1.md': '# 复核报告\n## 已读范围\n\n## 逐条判定\n| 编号 | 判定 |\n|---|---|\n| P0-1 | 已关闭 |\n',
+  })
+  const j = parseJson(run([SCRIPT, '--project', d, '--role', 'T7', '--level', 'strict']))
+  const a8 = j.soft.find((x) => x.check === 'A8')
+  assert.ok(a8, '空声明仍应报 A8：' + JSON.stringify(j.soft))
+  assert.match(a8.detail, /为空/)
+  rmSync(d, { recursive: true, force: true })
+})
