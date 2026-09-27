@@ -10,7 +10,7 @@
   // —— 脚本机械段（每次运行重写）——
   "draft": "<被审正文路径>",
   "date": "YYYY-MM-DD",
-  "total": 22,                    // 恒 = 机械项数（M-Form 11 + M-Exist 10 + M-Integrity-1）
+  "total": 22,                    // 恒 = 机械项数（M-Form 11 + M-Exist 11 + M-Integrity-1）
   "pass": 0, "p0": 0, "p1": 0, "p2": 0,
   "soft": 0,                      // severity === "LLM 兜底" 的失败项数（不计硬失败，但计入 anyFail）
   "skips": 0,                     // pass === "SKIP" 的项数
@@ -38,10 +38,10 @@
 | `results[].pass` | `true` / `false` / `"SKIP"` | **三态**。`"SKIP"` 目前只有 M-Exist-1（文末缺失、M-Form-2 已失败时让位）；`SKIP` 计入 `skips` → 判 `exit 3`，**不得当通过** |
 | `results[].severity` | `"P0"`/`"P1"`/`"P2"`/`"通过"`/`"LLM 兜底"`/`"SKIP"` | 硬失败 = severity ∈ {P0,P1,P2} 且 `pass:false`；`LLM 兜底` 单独进 `soft` 桶 |
 | `results[].detail` | 文本 | 人读；**`[报告后激活]`** 前缀见 §1.4 |
-| `total` | 整数 | 恒 22（机械项）。**M 门总项数 23 = 机械 22 + 人工 1（M-Integrity-2）** |
+| `total` | 整数 | 恒 22（机械项）。**M 门总项数 23 = 机械 24 + 人工 1（M-Integrity-2）** |
 | `--summary` 下的 `results` | 子集 | 仅保留**硬失败项**（`pass !== true && severity !== "LLM 兜底"`）——**不是完整报告，不得直接当闸门口径**（取闸门结论须跑不带 `--summary` 的一次） |
 
-### 1.2 机械 23 项 gate 标签（逐字；`m-gate-check.mjs` 的 `gate:` 值即真源）
+### 1.2 机械 24 项 gate 标签（逐字；`m-gate-check.mjs` 的 `gate:` 值即真源）
 
 | 组 | 项数 | gate 标签 |
 |---|---|---|
@@ -51,7 +51,7 @@
 
 > ⚠️ **标签措辞的两条清仓判据**（v18.2.6 教训）：
 > ① **M-Exist-3 是「引用闭环」而非「信任级别一致性」**——该门只对账正文 `[Dxx]` ↔ 数据卡条目；信任级别由 M-Form-6（独立信任级别段）+ G12（审计层）承担。曾有 15+ 处文档与 `templates/闸门记录-template.md` 的两行机检表沿用旧语义，形成「会被机检、但没有任何检查在跑」的**假绿**。
-> ② **M-Form-5 = 过程语言残留**（>10 处 = P0），**不是字数核验**——M 门 24 项里没有字数项；字数归 G8（真源 `references/_shared/字数判定表.md`）。
+> ② **M-Form-5 = 过程语言残留**（>10 处 = P0），**不是字数核验**——M 门 25 项里没有字数项；字数归 G8（真源 `references/_shared/字数判定表.md`）。
 
 ### 1.3 退出码（与 `SKILL.md` §执行能力边界 逐字一致）
 

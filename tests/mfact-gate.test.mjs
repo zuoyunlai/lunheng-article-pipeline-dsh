@@ -42,7 +42,7 @@ test('M-Fact-1：注入「摘要 86% / 正文 68%」同一表述 → 必红且�
   assert.equal(item.severity, 'P0', '任一出现落在摘要/结论节 → P0（规格如此）')
   assert.equal(item.conflicts[0].key, '平台抽成')
   assert.deepEqual(item.conflicts[0].values, [86, 68])
-  assert.equal(total, 23, `M 门机械项数应为 23（含 M-Fact-1）：实测 ${total}`)
+  assert.equal(total, 24, `M 门机械项数应为 24（含 M-Fact-1 与 M-Exist-11）：实测 ${total}`)
   rmSync(c.d, { recursive: true, force: true })
 })
 

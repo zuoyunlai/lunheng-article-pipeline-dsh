@@ -35,7 +35,7 @@ import { installExitGuard, requireExistingFile, requireExistingDir } from './_li
 import { writeReport } from './_lib/destructive-write.mjs';   // 报告写盘守卫（v18.12.0，全量审计 L-50）
 import { parseArgs as parseCliArgs, USAGE_CODE as CLI_USAGE_CODE } from './_lib/cli-args.mjs';      // 参数解析唯一实现（v18.2.9，审计 A7）
 import { escapeRegExp, latestReport, PROTECT_CH, tableCells, isSeparatorRow, sectionRange, indexSection, CARD_SPECS, ENTRY_ID_RE, entryIds, idsByToken, walkMd } from './_lib/mgate-helpers.mjs';
-import { mExist1, mExist2, mExist3, mExist4, mExist5, mExist6, mExist7, mExist8, mExist9, mExist10 } from './_lib/mgate-gates/mexist-gates.mjs';  // M-Exist 门族（v18.3.1 审计 B2 阶段 1）
+import { mExist1, mExist2, mExist3, mExist4, mExist5, mExist6, mExist7, mExist8, mExist9, mExist10, mExist11 } from './_lib/mgate-gates/mexist-gates.mjs';  // M-Exist 门族（v18.3.1 审计 B2 阶段 1）
 import { mIntegrity1 } from './_lib/mgate-gates/mintegrity-gate.mjs';
 import { mFact1 } from './_lib/mgate-gates/mfact-gate.mjs';   // v18.25.0 QLT-2：M-Fact 族（跨节事实一致性）
 import { mForm1, mForm2, mForm3, mForm4, mForm5, mForm6, mForm7, mForm8, mForm9, mForm10, mForm11 } from './_lib/mgate-gates/mform-gates.mjs';  // M-Form 门族（v18.3.1 审计 B2 阶段 2）  // M-Integrity-1（v18.3.1 审计 B2 阶段 1）   // 定位与解析纯函数（v18.2.9，审计 B2 抽离）
@@ -339,6 +339,8 @@ mExist8(ctx);
 mExist9(ctx);
 
 mExist10(ctx);
+mExist11(ctx);   // v18.27.0 QLT-4：反方论证闭合（论点—证据—反方表）
+
 
 mExist2(ctx);
 

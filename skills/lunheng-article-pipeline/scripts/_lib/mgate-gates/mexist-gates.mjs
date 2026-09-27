@@ -1303,3 +1303,136 @@ if (dataCard) {
 
 }
 
+// M-Exist-11 反方论证闭合（v18.27.0 QLT-4 新增）——追加到 mexist-gates.mjs 末尾
+//
+// 依据（报告 §三.4 QLT-4 实测证据）：`SKILL.md` §核心原则 3 要求「每个核心论点配可能的反驳 + 回应策略」，
+//   但**判定权在 T6（LLM）**，无任何机械检查 → 「反方论证被写成一句套话」不可检测。
+//
+// 本项机检：`analysis/分析大纲.md` 里的「**论点—证据—反方**」表，逐行核两件事——
+//   ① 反方锚点 / 回应锚点**非空**（缺 → P1）；
+//   ② 锚点**能定位到被审正文里的真实段落**（指向不存在 → P1）。
+//
+// **边界如实声明（三条，都是刻意的）**：
+//   1. **表缺失 → `pass: true` + `severity: 'P2'` + 「N/A 且未检」**（与 M-Exist-10 的缺文件形态同一先例）：
+//      该表是 v18.27.0 起的新模板要求，**老项目不判死**；同时不得读成「通过」（severity 与 detail 都写明未检）。
+//   2. **机械只保证「表里每一行的锚点都真实存在」**——「哪些论点算核心论点」「表是否把核心论点收全」是
+//      **语义判断**（要读大纲与正文），归 T6/T7；本项**不假装**能判这个（否则就会像 C-Redundancy 那样：
+//      规格字面看起来在工作、实际靠一个词猜语义）。
+//   3. 锚点解析只认**标题**（H2/H3）里的编号或标题片段——不认正文里的任意句子：锚点是「段」级定位，
+//      允许指向句中会让「指向存在的段落」变成「这句话在全文出现过」= 形同虚设。
+
+/** 在正文里定位锚点：返回命中的标题（无则 null）。锚点写法容错：`§3.2` / `3.2` / `#标题` / 标题片段。 */
+const resolveAnchorIn = (anchorRaw, docText) => {
+  const a = String(anchorRaw ?? '').trim().replace(/^#/, '').replace(/^§/, '');
+  if (!a) return null;
+  // 标题行：`## …` / `### …`（与 _lib/sections.mjs 同规则，但此处只需文本）
+  const heads = [...docText.matchAll(/^#{2,4}[ \t\u3000]+(\S.*?)[ \t\u3000]*$/gm)].map((m) => m[1].trim());
+  const num = a.match(/\d+(?:\.\d+)*/);
+  for (const h of heads) {
+    if (h.includes(a)) return h;                                   // 标题片段直接包含
+    if (num && h.includes(num[0])) return h;                       // 编号命中（§3.2 → 标题里的 3.2）
+  }
+  return null;
+};
+
+/** 从大纲里取「论点—证据—反方」表的数据行（表头须含四类列名）。返回 `{ rows, headerFound }`。 */
+const readArgumentTable = (outlineText) => {
+  const lines = outlineText.split('\n');
+  const reCell = (s) => s.split('|').map((x) => x.trim());
+  const hasCol = (head, alts) => alts.some((k) => head.some((c) => c.includes(k)));
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    if (!/^\s*\|.*\|\s*$/.test(l)) continue;
+    const head = reCell(l).slice(1, -1);
+    const ok = hasCol(head, ['论点']) && hasCol(head, ['证据']) && hasCol(head, ['反方', '反驳']) && hasCol(head, ['回应']);
+    if (!ok) continue;
+    // 列下标（-1 表示缺列，前面 ok 已保证都存在）
+    const idx = {
+      论点: head.findIndex((c) => c.includes('论点')),
+      反方: head.findIndex((c) => c.includes('反方') || c.includes('反驳')),
+      回应: head.findIndex((c) => c.includes('回应')),
+    };
+    const rows = [];
+    for (let j = i + 1; j < lines.length; j++) {
+      const r = lines[j];
+      if (!/^\s*\|.*\|\s*$/.test(r)) break;                          // 表结束
+      if (/^\s*\|[\s:|-]+\|\s*$/.test(r)) continue;                  // 分隔行
+      const cells = reCell(r).slice(1, -1);
+      if (cells.every((c) => c === '' || /^-+$/.test(c))) continue;
+      rows.push({ line: j + 1, 论点: cells[idx.论点] ?? '', 反方: cells[idx.反方] ?? '', 回应: cells[idx.回应] ?? '' });
+    }
+    return { rows, headerFound: true };
+  }
+  return { rows: [], headerFound: false };
+};
+
+export function mExist11(ctx) {
+  const { draftPath, evDir, text, results } = ctx;
+  try {
+    const projDir = dirname(dirname(draftPath));
+    const outline = [join(projDir, 'analysis', '分析大纲.md'), join(evDir, '分析大纲.md')]
+      .find((p) => existsSync(p)) || null;
+    if (!outline) {
+      results.push({
+        gate: 'M-Exist-11 反方论证闭合（论点—证据—反方表）',
+        pass: true,
+        detail: 'N/A 且**未检**：未找到 analysis/分析大纲.md（若为轻量档主动省 T4，须按 SKILL.md 连带规则记豁免）。**不得读成通过**——反方论证闭合本项未核',
+        severity: 'P2',
+      });
+      return;
+    }
+    const outlineText = readFileSync(outline, 'utf8');
+    const { rows, headerFound } = readArgumentTable(outlineText);
+    if (!headerFound) {
+      results.push({
+        gate: 'M-Exist-11 反方论证闭合（论点—证据—反方表）',
+        pass: true,
+        detail: 'N/A 且**未检**：分析大纲里未找到「论点—证据—反方」四列表（v18.27.0 起为 `分析大纲-template` 的表格要求；'
+          + '老项目与轻量档不判死）。**不得读成通过**——「核心论点是否都有反方论证」本项未核',
+        severity: 'P2',
+      });
+      return;
+    }
+    if (rows.length === 0) {
+      results.push({
+        gate: 'M-Exist-11 反方论证闭合（论点—证据—反方表）',
+        pass: false, severity: 'P1',
+        detail: '「论点—证据—反方」表存在但**没有任何数据行**——表头在、内容空（形态上有表、实质为零）',
+      });
+      return;
+    }
+    // **判级只留可确证形态**（v18.27.0 实测校准，第四次沿用同一模式）：
+    //   实测某真实项目的「反方/回应」列里写的是**内容本身**（如「回应：承认旧路径失效是本文起点而非终点…」），
+    //   而不是锚点——把这类**散文式单元格**判 P1 会重演 C-Redundancy 的错（规格字面看起来对、却判了正当写法）。
+    //   三条判定：① 空/占位 → **P1**（缺锚点，确定）；② 像锚点（短、无句末标点）但解析不到 → **P1**（指向不存在，确定）；
+    //   ③ **散文式单元格**（>30 字或含 。；）→ **P2 候选**（「疑似把反方内容写在锚点列」——这算不算合规是语义问题，归 T6/T7）。
+    const isProse = (v) => [...v].length > 30 || /[。；]/.test(v);
+    const issues = [];
+    for (const r of rows) {
+      const label = (r.论点 || `第${r.line}行`).slice(0, 24);
+      for (const [k, v] of [['反方', r.反方], ['回应', r.回应]]) {
+        if (!v || /^[-—–/\s]+$/.test(v)) { issues.push({ line: r.line, severity: 'P1', reason: `「${label}」缺${k}锚点` }); continue; }
+        if (isProse(v)) { issues.push({ line: r.line, severity: 'P2', reason: `「${label}」的${k}列疑似写了**内容**而非锚点（${v.slice(0, 20)}…）——须 T6/T7 判定该写法是否可接受` }); continue; }
+        if (!resolveAnchorIn(v, text)) issues.push({ line: r.line, severity: 'P1', reason: `「${label}」的${k}锚点「${v.slice(0, 30)}」在被审正文的标题里找不到对应段落` });
+      }
+    }
+    const p1 = issues.filter((x) => x.severity === 'P1');
+    results.push({
+      gate: 'M-Exist-11 反方论证闭合（论点—证据—反方表）',
+      pass: p1.length === 0,
+      severity: p1.length > 0 ? 'P1' : (issues.length > 0 ? 'P2' : '通过'),
+      detail: p1.length > 0
+        ? `${issues.length} 处锚点问题（P1 ${p1.length} / P2 候选 ${issues.length - p1.length}）：` + issues.slice(0, 3).map((x) => `L${x.line} ${x.reason}`).join('；')
+        : (issues.length > 0
+          ? `${issues.length} 处 **P2 候选**（无 P1）：` + issues.slice(0, 2).map((x) => `L${x.line} ${x.reason}`).join('；')
+          : `表 ${rows.length} 行，反方/回应锚点齐全且均能在被审正文标题里定位（**「核心论点是否收全」属语义判断，归 T6/T7**）`),
+      ...(issues.length ? { anchorIssues: issues } : {}),
+    });
+  } catch (e) {
+    results.push({
+      gate: 'M-Exist-11 反方论证闭合（论点—证据—反方表）',
+      pass: 'SKIP', severity: 'LLM 兜底',
+      detail: `本项执行异常（${e && e.message ? e.message : e}）——按「未检」记，不得当通过`,
+    });
+  }
+}

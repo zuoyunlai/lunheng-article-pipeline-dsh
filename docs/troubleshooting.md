@@ -1,6 +1,6 @@
 # 故障排查（troubleshooting）
 
-> 版本：v18.26.0（DSH 原生插件，发布于 2026-09-25；详见 CHANGELOG）
+> 版本：v18.27.0（DSH 原生插件，发布于 2026-09-25；详见 CHANGELOG）
 
 安装/验证失败时按「症状 → 原因 → 处置」对照。
 
@@ -182,7 +182,7 @@ node --test "tests/**/*.test.mjs"                                    # 随包脚
 
 ## 16. 新增机检项报了错怎么看（M-Form-10/11 与 M-Exist-5/6/7，v2.5.2-dsh.17）
 
-M 门现为 **24 项**（**机械 23 项**由 `scripts/m-gate-check.mjs` 判定：M-Form 1-11 + M-Exist 1-10 + M-Integrity-1 + M-Fact-1 佐证；另 **1 项主控人工门** M-Integrity-2）。脚本实测 `total = 23`。v2.5.2-dsh.17 新增 4 项，报错含义与修法：
+M 门现为 **24 项**（**机械 24 项**由 `scripts/m-gate-check.mjs` 判定：M-Form 1-11 + M-Exist 1-11 + M-Integrity-1 + M-Fact-1 佐证；另 **1 项主控人工门** M-Integrity-2）。脚本实测 `total = 23`。v2.5.2-dsh.17 新增 4 项，报错含义与修法：
 
 | 项 | 报错样例 | 含义与修法 |
 |---|---|---|
