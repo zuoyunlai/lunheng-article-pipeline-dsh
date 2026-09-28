@@ -156,3 +156,52 @@ test('quality-score：报告文件真的写盘（--report）且不改动被评�
   assert.equal(readFileSync(f.draft, 'utf8'), before, '评分不得改动被评产物')
   rmSync(f.d, { recursive: true, force: true })
 })
+
+// ── v18.48.0（反哺 F-AM / F-AR）：G14 分量读数两条口径的回归锁 ──
+// 锁的口径：
+//   ① **判定词大小写归一**（F-AM）——报告里写全大写 `PASS` 时，不得被读成「非 Pass」而把分量打成 0
+//      （实测：题2 分档臂 69.2 应为 80.9；不修则 A/B 会得出「分档臂崩跌 15.4 分」的错误结论）；
+//   ② **判定行 ↔ 8 类摘要表必须交叉校验**（F-AR）——不一致时**暴露冲突证据**，**不静默改分**
+//      （实测：对照臂题1 判定行写 Warning／命中 3 类，而其类别表只列 1 类命中 → 按闸门阈值应为 Pass）。
+const mkG14 = (body) => {
+  const f = mkQProject({ g14: false })
+  writeFileSync(join(f.aud, 'G14-检测报告-v9.md'), body)
+  return f
+}
+const g14Row = (label, cls, hit, state) => `| ${label} | ${cls} | ${hit} | ≥3 | ${state} |\n`
+
+test('quality-score（F-AM）：判定行写**全大写** `PASS` → G14 分量仍须为 1（大小写归一）', () => {
+  const f = mkG14('# G14\n\n**整体判定**：⚠️ **PASS**（命中 0 类）\n\n'
+    + '| 维度 | 类别 | 命中 | 阈值 | 状态 |\n|---|---|---|---|---|\n'
+    + g14Row('学术模板语', 'G14-A', '否', '✅ Pass'))
+  const j = parseJson(run([Q, f.proj]))
+  const g = j.components.find((c) => c.id === 'G14')
+  assert.equal(g.ratio, 1, '全大写 PASS 归一后应等于 Pass → ratio 1（修复前会读成 0）')
+})
+
+test('quality-score（F-AR）：判定行与类别表不一致 → 暴露 g14_verdict_conflict，且**不静默改分**', () => {
+  const f = mkG14('# G14\n\n**整体判定**：⚠️ **Warning**（命中 3 类）\n\n'
+    + '| 维度 | 类别 | 命中 | 阈值 | 状态 |\n|---|---|---|---|---|\n'
+    + g14Row('学术模板语', 'G14-A', '否', '✅ Pass')
+    + g14Row('句式同质化', 'G14-B', '否', '✅ Pass')
+    + g14Row('学术套话高频', 'G14-C', '**否（擦边）**', '✅ Pass')
+    + g14Row('三项排比', 'G14-E', '**是**', '⚠️ **命中** 4 处'))
+  const j = parseJson(run([Q, f.proj]))
+  const g = j.components.find((c) => c.id === 'G14')
+  assert.ok(g.evidence.g14_verdict_conflict, '应暴露 g14_verdict_conflict 证据字段')
+  assert.equal(g.evidence.g14_verdict_conflict.tableLevel, 'Pass', '表命中 1 类 → 反推应为 Pass')
+  assert.equal(g.ratio, 0.6, '**不静默改分**：仍按判定行给 Warning 的分量（由 T8/主人裁定）')
+})
+
+test('quality-score（F-AR 反向控制组）：判定行与类别表**一致** → 不得误报冲突', () => {
+  const f = mkG14('# G14\n\n**整体判定**：⚠️ **Warning**（命中 3 类）\n\n'
+    + '| 维度 | 类别 | 命中 | 阈值 | 状态 |\n|---|---|---|---|---|\n'
+    + g14Row('句式同质化', 'G14-B', '**形式命中 / 实质归一豁免**', '⚠️ 形式命中')
+    + g14Row('学术套话高频', 'G14-C', '**是**', '❌ **HIT**')
+    + g14Row('三项排比', 'G14-E', '**是**', '❌ **HIT** 22 处累计'))
+  const j = parseJson(run([Q, f.proj]))
+  const g = j.components.find((c) => c.id === 'G14')
+  assert.equal(g.evidence.g14_verdict_conflict, undefined,
+    '表命中 3 类 = 判定行档位（Warning）→ 不得报冲突（防「狼来了」把冲突标记变成噪音）')
+  assert.equal(g.ratio, 0.6, '档位不变 → 分量仍为 0.6')
+})

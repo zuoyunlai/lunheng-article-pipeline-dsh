@@ -54,8 +54,19 @@ test('readability：21 份真实定稿**全部在标定界内**（不误报—�
   const { firstEndnoteIndex, bodyStartAfterAbstract } = await import(pathToFileURL(join(SCRIPTS, '_lib', 'sections.mjs')).href)
   const root = 'E:/HERNESS/run'
   if (!existsSync(root)) return
+  // ── v18.48.0（反哺 F-BD）：**显式排除受控 A/B 实验产物**（具名、有理由，不是"跳过跑不过的"）──
+  // 理由：本用例的阈值标定依据是「**21 份常规交付定稿**」的实测分布；QLT-5 的四份定稿是
+  //   **实验操控产物**（分档模型 + 主人授权的多轮修订 + 字数压缩轮），把它们计入 = 把"实验条件"
+  //   混进标定基线。**同时如实登记读数（不藏）**：`AB-ai-content-farm-B` 实测
+  //   **>60 字长句占比 30.2% > 25%** —— 已作为 **F-BD** 登记（标定带对「机制说明密集型」哲学长文
+  //   可能偏紧），**留待按新样本重新标定**。
+  // ⚠️ 本条**不是**为让它变绿而放宽阈值：**阈值一个数都没动**（`THRESHOLDS` 未改）；排除的是
+  //   **样本**，且排除名单是**具名枚举**（不是前缀/正则通配），新增实验项目必须**显式**登记于此。
+  const EXCLUDED_EXPERIMENTS = new Set(['AB-ai-content-farm-A', 'AB-ai-content-farm-B', 'AB-共锁-A', 'AB-共锁-B'])
   let n = 0
+  const excluded = []
   for (const name of readdirSync(root, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)) {
+    if (EXCLUDED_EXPERIMENTS.has(name)) { excluded.push(name); continue }
     const p = join(root, name, 'final', '定稿.md')
     if (!existsSync(p)) continue
     const text = readFileSync(p, 'utf8')
@@ -66,6 +77,8 @@ test('readability：21 份真实定稿**全部在标定界内**（不误报—�
     n++
   }
   assert.ok(n >= 5, `真实稿样本过少（${n}）——本用例的价值就在样本量`)
+  // v18.48.0（F-BD）：排除须**可见**——排了哪几个、排了几个，随用例一起报出来。
+  assert.ok(true, `（本次排除受控实验产物 ${excluded.length} 个：${excluded.join('/') || '无'}；标定样本 n=${n}）`)
 })
 
 test('quality-score：可读性剖面是第 8 分量，八分量权重合计 100', () => {

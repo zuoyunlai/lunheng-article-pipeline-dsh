@@ -119,3 +119,48 @@ test('裁定值 == 机械值时无需四件套（仅作形式化裁定）', () =
     assert.equal(j.verdict_stale, false)
   } finally { rmSync(f.dir, { recursive: true, force: true }) }
 })
+
+// ── v18.48.0（反哺 F-AV）：陈旧旗标**单调性** + 裁定段按**自述指纹**判有效性 ──
+// 实测缺陷（题1 臂 B 的 `.bak` 快照序列作证）：
+//   ① `verdict_stale` 不在 keep 列表、每次重算，判据只是「`prev.verdict_scope.draft_sha256` == 本次指纹」
+//      → **同一正文上第二次运行**必然把上一轮置的 `true` **重置为 false**；
+//   ② 裁定段的有效性由「上一次输出恰好也指向新稿」**推定**，而不是看它**自己声明**绑定哪一版
+//      → 一度出现「报告自称 `verdict_stale: false` 且绑定新稿，而 `_t8_conclusion.note` 自述绑定旧稿」。
+test('m-gate-check（F-AV①）：verdict_stale 为 true 的报告 → 再次运行**不得**被重置为 false（单调）', () => {
+  const f = mkClean()
+  try {
+    run([M(), f.draft, f.ev, '--report', f.report])                                  // 落机械值
+    const adj = adjFile(f.dir, { true_p0: 0, true_p1: 0, verdict: 'x', llm_review: FOUR })
+    run([M(), f.draft, f.ev, '--report', f.report, '--adjudicate', adj])             // 写成裁定态
+    const base = readReport(f.report)
+    assert.equal(base.verdict_stale, false, '前提：裁定后应为未过期')
+    // 造出「已过期」的历史态（正文与指纹都不变，只有旗标为 true）——这正是旧版会被"洗白"的形态
+    base.verdict_stale = true
+    base.verdict_stale_reason = '（测试构造）先前判定为陈旧'
+    writeFileSync(f.report, JSON.stringify(base, null, 2))
+    run([M(), f.draft, f.ev, '--report', f.report])                                  // 同稿再跑
+    const after = readReport(f.report)
+    assert.equal(after.verdict_stale, true, '单调：旧版会重置为 false，那正是 F-AV 的实测缺陷')
+    assert.match(String(after.verdict_stale_reason || ''), /单调|陈旧|true/, '应保留/说明陈旧原因')
+  } finally { rmSync(f.dir, { recursive: true, force: true }) }
+})
+
+test('m-gate-check（F-AV②）：裁定段自述绑定的指纹与正文不符 → 必须判为过期（不得只信 verdict_scope）', () => {
+  const f = mkClean()
+  try {
+    run([M(), f.draft, f.ev, '--report', f.report])
+    const adj = adjFile(f.dir, { true_p0: 0, true_p1: 0, verdict: 'x', llm_review: FOUR })
+    run([M(), f.draft, f.ev, '--report', f.report, '--adjudicate', adj])
+    const base = readReport(f.report)
+    assert.equal(base.verdict_stale, false, '前提：裁定后应为未过期')
+    // 关键构造：`verdict_scope` 仍指向**本稿**（旧版据此放行），但裁定段 **note 自述绑定的是另一版**
+    base._t8_conclusion.note = '本裁定就 final/定稿.md（sha256 ' + 'a'.repeat(64) + '）作出。'
+    writeFileSync(f.report, JSON.stringify(base, null, 2))
+    run([M(), f.draft, f.ev, '--report', f.report])
+    const after = readReport(f.report)
+    assert.equal(after.verdict_stale, true,
+      '裁定段自述绑定别的正文 → 必须判过期（旧版只看 verdict_scope，会误判为有效）')
+    assert.match(String(after.verdict_stale_reason || ''), /自述绑定|不符/, '过期原因须点名"自述绑定的指纹"')
+    assert.notEqual(after.exit, 0, '过期后不得继续沿用旧裁定值')
+  } finally { rmSync(f.dir, { recursive: true, force: true }) }
+})

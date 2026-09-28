@@ -243,10 +243,48 @@ if (existsSync(evidence) && existsSync(brief)) {
     const latest = files.sort().at(-1);
     const text = readFileSync(join(auditsDir, latest), 'utf8');
     // 判定优先取**最后一条整体判定行**；取不到则按「命中 N 类」的既定阈值反推（0-2 Pass / 3-4 Warning / ≥5 Fail）
-    let level = null; let how = '';
+    // **v18.48.0（反哺 F-AM，题2 分档臂实测）**：判定词**整体大小写归一**。
+    //   旧版只把**首字母**大写（`.replace(/^./, upper)`）→ 报告里写全大写 `PASS` 时归一结果仍是 `PASS`，
+    //   与下方 `level === 'Pass'` 的**严格比较**不符 → 该分量被误判为 **0**（实测：同一份报告 L8/L270/L299
+    //   三处均判 Pass，仅末段 L415 写「均 PASS」即触发）→ 若不修，A/B 会得出「分档臂题2 崩跌 15.4 分」的
+    //   **错误结论**（修正后 69.2 → 80.9）。**判据：凡"读报告得出档位"，判定词必须归一化后再比较。**
+    const normLevel = (s) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+    let level = null; let how = ''; let conflict = null;
     const verdictLines = [...text.matchAll(/(?:整体判定|本次判定|本轮判定|终闸判定|结论|判定)[^\n。]{0,40}?(Pass|Warning|Fail)/gi)];
-    if (verdictLines.length > 0) { level = verdictLines.at(-1)[1].replace(/^./, (c) => c.toUpperCase()); how = '读报告判定行'; }
+    if (verdictLines.length > 0) { level = normLevel(verdictLines.at(-1)[1]); how = '读报告判定行'; }
     const hit = text.match(/命中\s*(\d+)\s*类/);
+    // **v18.48.0（反哺 F-AR，对照臂题1 实测）**：**判定行 ↔ 8 类摘要表 交叉校验**。
+    //   旧版只读判定行 → 实测存在「判定行写 `命中 3 类 / Warning`，而**同一报告的类别表只列 1 类命中**」的
+    //   自相矛盾报告（对照臂题1：表中 E 命中、C 擦边未命中、其余 6 类未命中 → 按闸门阈值应为 Pass），
+    //   分数被**不自洽的判定行**带着走（该分量权重 10 → 差 **±4.0 分**）。
+    //   **本节只暴露冲突、不静默改分**：8 类表跨模板形态不统一（至少三种表头），自动改写分的风险高于收益
+    //   → 输出 `g14_verdict_conflict` 证据字段交 T8/主人裁定。**判据：读数冲突要可见，不要替人做选择。**
+    // **计量单位 = 「类」而非「行」**：闸门判定的分母是 8 个**类别**，而同一类别在报告里可能出现在
+    // 多张表中（§一 摘要表 + §二/§五 逐类详表）→ 必须按**互异字母**计数，否则行数会把档位推高一档。
+    const tableHits = new Map();   // letter -> 判定方式（cell/row），供人工判断可靠性
+    const clean = (s) => String(s).replace(/[*_`\s]/g, '');
+    for (const line of text.split('\n')) {
+      const lm = line.match(/[|｜]\s*\**G14-([A-H])\b/);
+      if (!lm) continue;
+      const cells = line.split(/[|｜]/).map((s) => s.trim());
+      // 表形态跨模板不统一 → **优先按列判**（命中列 = cells[3]、状态列 = cells[5]，两套实测模板同形），
+      // 列不足时退回整行启发式，并在证据里标记 `by`（便于人工判断该条可靠性）。
+      let isHit; let by;
+      if (cells.length >= 6) {
+        const c3 = clean(cells[3]); const c5 = clean(cells[5]);
+        isHit = (/命中|^是/.test(c3) || /HIT|❌/.test(c5)) && !/^否|未命中|Pass|N\/A|不适用/.test(c3 + c5);
+        by = 'cell';
+      } else {
+        isHit = /HIT|❌|命中/.test(line);
+        by = 'row';
+      }
+      if (isHit && !tableHits.has(lm[1])) tableHits.set(lm[1], by);
+    }
+    if (level && tableHits.size > 0) {
+      const n = tableHits.size;
+      const tableLevel = n <= 2 ? 'Pass' : (n <= 4 ? 'Warning' : 'Fail');
+      if (tableLevel !== level) conflict = { declared: level, tableLevel, tableHits: [...tableHits.keys()].sort(), by: [...tableHits.values()] };
+    }
     if (!level && hit) {
       const n = Number(hit[1]);
       level = n <= 2 ? 'Pass' : (n <= 4 ? 'Warning' : 'Fail');
@@ -256,7 +294,10 @@ if (existsSync(evidence) && existsSync(brief)) {
       add('G14', 'G14 中文 AI 痕迹终闸', 10, null, '', { report: latest }, `报告 ${latest} 里读不到判定行也读不到「命中 N 类」（不猜）`);
     } else {
       const ratio = level === 'Pass' ? 1 : (level === 'Warning' ? 0.6 : 0);
-      add('G14', 'G14 中文 AI 痕迹终闸', 10, ratio, `${level}（${how}）${hit ? `｜命中 ${hit[1]} 类` : ''}`, { report: latest, level });
+      add('G14', 'G14 中文 AI 痕迹终闸', 10, ratio,
+        `${level}（${how}）${hit ? `｜命中 ${hit[1]} 类` : ''}`
+          + (conflict ? `｜⚠️ **判定行与类别表不一致**：判定行 = ${conflict.declared}；类别表命中 ${conflict.tableHits.length} 类（${conflict.tableHits.join('/')}）→ 反推 = ${conflict.tableLevel} 。**未自动改分**（表结构跨模板不统一），请据本证据字段裁定（反哺 F-AR）` : ''),
+        { report: latest, level, ...(conflict ? { g14_verdict_conflict: conflict } : {}) });
     }
   }
 }

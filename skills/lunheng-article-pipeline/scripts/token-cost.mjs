@@ -20,6 +20,7 @@
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import os from 'node:os';
+import { zstdDecompressSync } from 'node:zlib';   // v18.48.0（F-AW）：活会话存储为**多帧 zstd**，须逐帧解
 import { installExitGuard } from './_lib/exit-guard.mjs';   // 退出码硬化（v18.0.5）：fs 类异常 → 10，内部错误 → 70
 import { parseArgs as parseCliArgs, USAGE_CODE as CLI_USAGE_CODE } from './_lib/cli-args.mjs';  // 参数解析唯一实现（v18.2.9，审计 A7）
 installExitGuard();
@@ -192,14 +193,66 @@ if (opt.tree && !opt.ids) {
   process.exit(10);   // v18.12.0（L-67）：未给任何模式 = 用法错 → 10
 }
 
+// ── v18.48.0（反哺 F-AW / F-D）：**第三数据源 = 活会话存储**（仅对缓存里找不到的 id 回落） ──
+// 实测缺口（本机 2026-09-28）：`storages/session_projcache/` **停在 09-21**（185 个文件），而实验期
+//   （09-28）实际跑了 **500 个会话** → `--project` 抽到了 UUID 却 `matchedSessionCount: 0` / **exit 10**。
+//   即：**投影缓存是"某次投影的产物"，不是会话真源**；真源是
+//   `$DSH_HOME/sessions/<workspace>/<id>/session.v3.jsonl.zstd`（每行一条事件，**多帧 zstd**）。
+// 本节**只做补充**（不替换缓存口径）：对缓存未命中的 id 回落活存储，逐帧解压后累加
+//   `assistant/message.data.usage`，适配成与投影缓存**同形**的记录 → 下游消费代码零改动。
+// **判据：成本读数的"会话集真源"必须可回答"这个会话的用量从哪读到"——缓存读不到就回落真源，而不是报 0。**
+const liveStoreRoot = join(opt.dshHome, 'sessions');
+const liveCache = {};
+const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
+const readLiveUsage = (id) => {
+  if (!existsSync(liveStoreRoot)) return null;
+  let dir = null;
+  for (const ws of readdirSync(liveStoreRoot)) {
+    const cand = join(liveStoreRoot, ws, id);
+    if (existsSync(cand) && statSync(cand).isDirectory()) { dir = cand; break }
+  }
+  if (!dir) return null;
+  const f = join(dir, 'session.v3.jsonl.zstd');
+  if (!existsSync(f)) return null;
+  let buf;
+  try { buf = readFileSync(f) } catch { return null }
+  const offs = [];
+  for (let i = 0; i + 3 < buf.length; i++) if (buf.compare(ZSTD_MAGIC, 0, 4, i, i + 4) === 0) offs.push(i);
+  const frames = offs.length
+    ? offs.map((o, k) => buf.subarray(o, k + 1 < offs.length ? offs[k + 1] : buf.length))
+    : [buf];
+  let text = '';
+  for (const fr of frames) { try { text += zstdDecompressSync(fr).toString('utf8') } catch { /* 单帧坏不影响其余帧 */ } }
+  const t = { uncachedInputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0 };
+  let seen = 0;
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    let r; try { r = JSON.parse(line) } catch { continue }
+    if (r.type === 'assistant/message' && r.data && r.data.usage) {
+      const u = r.data.usage;
+      t.uncachedInputTokens += u.inputTokens || 0;
+      t.cacheReadTokens += u.cacheReadTokens || 0;
+      t.cacheWriteTokens += u.cacheWriteTokens || 0;
+      t.outputTokens += u.outputTokens || 0;
+      seen++;
+    }
+  }
+  if (seen === 0) return null;
+  return { rows: { tokenUsage: { val: { totals: t } } }, __source: 'live-session-store' };
+};
+
 const totals = { uncachedInputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0 };
 const rows = [];
 let matchedSessions = 0;   // v18.2.6：命中的会话数（区分「真的 0 用量」与「id 根本查不到」）
+let matchedFromLive = 0;   // v18.48.0（F-AW）：其中有多少个来自活会话存储回落
 for (const id of opt.ids) {
-  const rec = sessions[id] || sessions[id.replace(/^session-/, '')] || sessions[`session-${id}`];
+  const bare = id.replace(/^session-/, '');
+  const rec = sessions[id] || sessions[bare] || sessions[`session-${id}`]
+    || (liveCache[bare] !== undefined ? liveCache[bare] : (liveCache[bare] = readLiveUsage(bare)));
   const usage = rec?.rows?.tokenUsage?.val?.totals;
   if (!usage) { rows.push({ session: id, label: '无用量记录', tokens: null }); continue; }
   matchedSessions++;
+  if (rec.__source === 'live-session-store') matchedFromLive++;
   for (const k of Object.keys(totals)) totals[k] += usage[k] || 0;
   rows.push({ session: id, label: (id === opt.ids[0] ? '主控' : '子代理'), tokens: { ...usage } });
 }
@@ -225,6 +278,10 @@ const out = {
   sessionCount: opt.ids.length,
   // v18.2.6：把「命中数」显式给出来——0 就是「查不到」，不是「用量为 0」
   matchedSessionCount: matchedSessions,
+  // v18.48.0（F-AW）：命中的会话里有多少个来自**活会话存储回落**（缓存未命中）——
+  //   这个数不为 0 就说明**投影缓存对这个项目是陈旧的**，读报表的人必须知道数据来自哪个源。
+  matchedFromLiveStore: matchedFromLive,
+  dataSourceDesc: cacheDesc,
   tokens: { uncachedInput: totals.uncachedInputTokens, cacheRead: totals.cacheReadTokens, cacheWrite: totals.cacheWriteTokens, output: totals.outputTokens, total: totalTokens },
   costEstimateUsd: Number(costUsd.toFixed(2)),
   pricesPerMillion: opt.prices,

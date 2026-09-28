@@ -171,16 +171,40 @@ if (!existsSync(destDir)) mkdirSync(destDir, { recursive: true });
 
 let copied = 0, missing = 0;
 const missingSrcs = [];   // v18.2.6（B-2 ②）：记下**哪些源**缺失，好在报错里点名（旧版只给一个总数）
+// ── v18.48.0（反哺 F-R）：**0 字节源守卫 + 拷贝后大小校验** ──
+// 实测事实：某项目的 `final/证据包/修订说明-v2.md` = **0 B**，而源 `drafts/修订说明-v2.md` 完好（31 307 B），
+//   且 `manifest.json` 的 mtime 停在旧时点。**成因 = 拷贝时撞上写手正在写该源文件**——`copyFileSync` 不是
+//   原子的，读到半截（甚至尚未写入）就落下一份 0 B 副本；而 manifest 照**该副本**的 sha256 记账 →
+//   下游 **M-Exist-2「清单复算通过」内部自洽，反而证明不了一份坏副本是坏的**（"证据包"最不该有的失效形态）。
+// **判据：凡"复制并记账"的动作，必须先证明源非空、再证明副本与源等大；否则宁可报缺失。**
+const zeroSrcs = [];        // 被拒绝的 0 字节源（多为并发写入窗口）
+const sizeMismatch = [];    // 拷贝后大小与源不符（磁盘满 / 中断 / 并发截断）
+const copyChecked = (src, dest, rel) => {
+  let srcSize;
+  try { srcSize = statSync(src).size } catch { sizeMismatch.push(`${rel}（源不可 stat）`); return false }
+  if (srcSize === 0) { zeroSrcs.push(rel); console.log(`⛔ 拒绝复制 0 字节源（文件可能正在被写入）: ${rel}`); return false }
+  copyFileSync(src, dest);
+  let destSize = -1;
+  try { destSize = statSync(dest).size } catch { /* 落到下方统一判 */ }
+  if (destSize !== srcSize) {
+    sizeMismatch.push(`${rel}（源 ${srcSize} B ≠ 副本 ${destSize} B）`);
+    console.log(`⛔ 副本大小与源不符: ${rel}（源 ${srcSize} B / 副本 ${destSize} B）`);
+    return false;
+  }
+  return true;
+};
 for (const [rel, name] of RULES) {
   const src = join(project, rel);
-  if (existsSync(src)) {
-    copyFileSync(src, join(destDir, name));
+  if (!existsSync(src)) {
+    missing++;
+    missingSrcs.push(rel);
+    console.log(`· 跳过(不存在): ${rel}`);
+  } else if (copyChecked(src, join(destDir, name), rel)) {
     copied++;
     console.log(`✓ ${rel} -> 证据包/${name}`);
   } else {
     missing++;
-    missingSrcs.push(rel);
-    console.log(`· 跳过(不存在): ${rel}`);
+    missingSrcs.push(rel);   // 0 字节 / 大小不符：计入缺失（原因已在上方 ⛔ 行点名）
   }
 }
 
@@ -189,9 +213,13 @@ const draftsDir = join(project, 'drafts');
 if (existsSync(draftsDir)) {
   for (const f of readdirSync(draftsDir)) {
     if (/^修订说明-.*\.md$/.test(f)) {
-      copyFileSync(join(draftsDir, f), join(destDir, f));
-      copied++;
-      console.log(`✓ drafts/${f} -> 证据包/${f}`);
+      if (copyChecked(join(draftsDir, f), join(destDir, f), `drafts/${f}`)) {
+        copied++;
+        console.log(`✓ drafts/${f} -> 证据包/${f}`);
+      } else {
+        missing++;
+        missingSrcs.push(`drafts/${f}`);   // v18.48.0（F-R）：0 字节 / 大小不符也计缺失
+      }
     }
   }
 }
@@ -201,14 +229,16 @@ const reportPicks = {};
 for (const [dir, prefix] of LATEST_REPORTS) {
   const hit = latestVersioned(dir, prefix);
   reportPicks[prefix] = hit;
-  if (hit) {
-    copyFileSync(join(project, dir, hit.name), join(destDir, hit.name));
+  if (hit && copyChecked(join(project, dir, hit.name), join(destDir, hit.name), `${dir}/${hit.name}`)) {
     copied++;
     console.log(`✓ ${dir}/${hit.name} -> 证据包/${hit.name}（取最大版本 v${hit.n}）`);
-  } else {
+  } else if (!hit) {
     missing++;
     missingSrcs.push(`${dir}/${prefix}-vN.md`);
     console.log(`· 跳过(不存在): ${dir}/${prefix}-vN.md`);
+  } else {
+    missing++;
+    missingSrcs.push(`${dir}/${hit.name}`);   // v18.48.0（F-R）：副本不合格也计缺失
   }
 }
 
@@ -220,10 +250,14 @@ if (existsSync(figDir)) {
   const figDest = join(destDir, '图件');
   if (!existsSync(figDest)) mkdirSync(figDest, { recursive: true });
   for (const f of readdirSync(figDir).filter((x) => x.toLowerCase().endsWith('.svg')).sort()) {
-    copyFileSync(join(figDir, f), join(figDest, f));
-    figFiles.push(f);
-    copied++;
-    console.log(`✓ final/图件/${f} -> 证据包/图件/${f}`);
+    if (copyChecked(join(figDir, f), join(figDest, f), `final/图件/${f}`)) {
+      figFiles.push(f);
+      copied++;
+      console.log(`✓ final/图件/${f} -> 证据包/图件/${f}`);
+    } else {
+      missing++;
+      missingSrcs.push(`final/图件/${f}`);   // v18.48.0（F-R）：0 字节 SVG / 大小不符也计缺失
+    }
   }
 }
 
@@ -288,10 +322,27 @@ const MANIFEST_NAME = 'manifest.json';
     copied,
     missing,
     missingSrcs,
+    // v18.48.0（反哺 F-R）：把「被拒绝的源」变成**可复算的断言**——只要这两项非空，
+    //   本包就不是一份完整证据包；下游（T8/主人）必须看得见，而不是靠一份 0 字节副本自证清白。
+    ...(zeroSrcs.length ? { zeroByteSrcs: zeroSrcs } : {}),
+    ...(sizeMismatch.length ? { sizeMismatch } : {}),
     files: entries,
   };
   writeWithSafety(join(destDir, MANIFEST_NAME), JSON.stringify(manifest, null, 2) + '\n', { inPlace: true });
   console.log(`✓ 证据包清单 -> ${join('证据包', MANIFEST_NAME)}（${entries.length} 个文件记 sha256；M-Exist-2 据此复算）`);
+}
+
+// ── v18.48.0（反哺 F-R）：被拒绝源的**显式摘要** ──
+// 为什么**不改退出码**：本脚本的退出码语义已被下游（`final-check.mjs` 的串联、闸门记录、T8 流程）依赖，
+//   改变它属于**接口变更**，超出"补一个守卫"的范围。可见性由「⛔ 摘要块 + manifest 两个字段」提供，
+//   **判定**留给门（M-Exist-2 数 0 字节文件）与人。若同时出现多个被拒源，几乎一定是**并发写入窗口**——
+//   正确动作是**等写手停笔后重跑本脚本**，而不是带着半份包往下走。
+if (zeroSrcs.length || sizeMismatch.length) {
+  console.error(`\n⛔ 证据包**不完整**：拒绝 ${zeroSrcs.length} 个 0 字节源、${sizeMismatch.length} 个大小不符源`);
+  for (const z of zeroSrcs) console.error(`   · 0 字节（可能正在被写入）: ${z}`);
+  for (const m of sizeMismatch) console.error(`   · 大小不符: ${m}`);
+  console.error('   → **不要**拿这份包继续走 T8；等源文件写完（或写手 settle）后**重跑本脚本**。');
+  console.error('   → 已写入 manifest.json 的 `zeroByteSrcs` / `sizeMismatch` 字段，供机械复核。');
 }
 
 console.log(`\n证据包生成完成: 复制 ${copied} 个文件, 跳过 ${missing} 个缺失源.`);

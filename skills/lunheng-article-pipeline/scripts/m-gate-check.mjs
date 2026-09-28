@@ -435,11 +435,32 @@ if (reportPath) {
         if (Object.keys(keep).length > 0) {
           out = { ...report, ...keep, script_exit_raw: report.exit };
           const prevSha = prev.verdict_scope?.draft_sha256;
-          const sameDraft = typeof prevSha === 'string' && prevSha === draftSha256;
-          if (sameDraft && hardRedLineHits.length === 0) {
+          // ── v18.48.0（反哺 F-AV）：陈旧旗标**单调化** + 裁定段按**其自述指纹**判有效性 ──
+          // 实测缺陷：`verdict_stale` **不在 keep 列表**、每次重算，判据又只是
+          //   「`prev.verdict_scope.draft_sha256` 是否等于本次指纹」→ 于是**同一正文上第二次运行**
+          //   必然把上一轮置的 `true` **重置为 false**（第一次运行把 verdict_scope 写成了新指纹，
+          //   第二次运行读到「一致」即放行）→ 一度出现「报告自称 `verdict_stale: false` 且绑定新稿指纹，
+          //   而 `_t8_conclusion.note` 自述绑定**旧稿**」的三方互斥状态 ——
+          //   **绑定旧正文的 T8 裁定，被挂在新正文的报告上、且自称"未过期"**（有 `.bak` 快照序列机械作证）。
+          // 两条修正：① `verdict_stale` 一旦为 `true` **不得**被非裁定路径重置（单调；只有 `--adjudicate` 可清）；
+          //          ② 裁定段的有效性**按它自己声明的指纹**判（note 内写有 `sha256 <hex>`），
+          //             而不是由「上一次输出恰好也指向新稿」来推定。
+          const prevStale = prev.verdict_stale === true;
+          const declaredRaw = String(prev._t8_conclusion?.note || '').match(/sha256\s*[:：]?\s*([0-9a-fA-F]{12,64})/);
+          const declaredSha = declaredRaw ? declaredRaw[1].toLowerCase() : null;
+          const declaredOk = !declaredSha || draftSha256.toLowerCase().startsWith(declaredSha.slice(0, 12));
+          const sameDraft = typeof prevSha === 'string' && prevSha === draftSha256 && declaredOk;
+          if (sameDraft && hardRedLineHits.length === 0 && !prevStale) {
             if (typeof prev.exit === 'number') out.exit = prev.exit; // 保留 T8 裁定值（正文未变，裁定仍有效）
             out.verdict_stale = false;
             console.error(`· 已保留既有 T8 裁定段（exit=${out.exit}，本次脚本值 script_exit_raw=${report.exit}；正文指纹一致）`);
+          } else if (sameDraft && hardRedLineHits.length === 0) {
+            // 正文与裁定段都指向本稿，但**上一轮已判为陈旧** → 旗标单调，不撤销（须走 `--adjudicate` 才能清）
+            if (typeof prev.exit === 'number') out.exit = prev.exit;
+            out.verdict_stale = true;
+            out.verdict_stale_reason = prev.verdict_stale_reason
+              || '既有报告的 `verdict_stale` 已为 true → **单调保留**（v18.48.0 F-AV①）；须经 `--adjudicate` 写入新裁定方可清除';
+            console.error('⚠️ 既有报告的 verdict_stale 已是 true → **单调保留**（旧版会把它重置为 false）；如需放行，请 T8 重新裁定后经 `--adjudicate` 写入。');
           } else if (sameDraft) {
             // v18.12.0（L-44）：指纹一致但**本次机械运行命中硬 P0 红线** → 红线不可被 LLM 兜底。
             //   旧版在此直接采纳 prev.exit，等于让红线随裁定一起被冲掉（审计实测：删掉 `## 案例来源`
@@ -455,9 +476,11 @@ if (reportPath) {
           } else {
             // 正文已变（或旧报告无指纹）→ 旧裁定不再适用于本版正文：保留裁定原文供追溯，但落盘用**机械值**
             out.verdict_stale = true;
-            out.verdict_stale_reason = prevSha
-              ? `被审正文已变更（旧 sha256=${prevSha.slice(0, 12)}…，本次=${draftSha256.slice(0, 12)}…）→ 旧 T8 裁定不适用于本版正文`
-              : '既有报告无 verdict_scope 指纹（v18.0.5 之前写入）→ 无法证明裁定适用于本版正文';
+            out.verdict_stale_reason = !declaredOk
+              ? `T8 裁定段**自述绑定的指纹**（${String(declaredSha).slice(0, 12)}…）与本版正文（${draftSha256.slice(0, 12)}…）不符 → 旧裁定不适用于本版正文（v18.48.0 F-AV②）`
+              : (prevSha
+                ? `被审正文已变更（旧 sha256=${prevSha.slice(0, 12)}…，本次=${draftSha256.slice(0, 12)}…）→ 旧 T8 裁定不适用于本版正文`
+                : '既有报告无 verdict_scope 指纹（v18.0.5 之前写入）→ 无法证明裁定适用于本版正文');
             console.error(
               `⚠️ T8 裁定已过期：${out.verdict_stale_reason}\n` +
                 `   落盘 exit 改用本次机械值 ${report.exit}（旧裁定值 ${prev.exit ?? 'n/a'} 仅在 _t8_conclusion 中保留供追溯）；` +
