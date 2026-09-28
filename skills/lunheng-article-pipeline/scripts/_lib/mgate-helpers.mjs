@@ -22,6 +22,24 @@ export const latestReport = (dir, prefix) => {
   return cands.length ? { path: join(dir, cands[0].f), n: cands[0].n, name: cands[0].f } : null;
 };
 
+/**
+ * **按同号**取版本化报告（v18.52.0 反哺 F-BA）：`audits/审计报告-vN.md` ↔ `audits/复核报告-vN.md` 的
+ *   **配对键是编号 N**，不是「最新」。
+ *
+ * 为什么需要它：旧口径把「最新复核报告」与「最新审计报告」**硬配对**，而 B 轨轮次之后「最新复核报告」的
+ *   **验证对象**可能不是审计任务书——实测（QLT-5 题2 臂 B）：`复核报告-v2.md` 验证的是
+ *   `analysis/批判报告-v2.md` §3.4 的关闭条件，于是 M-Exist-4 按字面判「复核报告 v2 未覆盖 10 个审计编号」
+ *   = **判定字面成立、语义错位**（那 10 项的关闭真源是 `复核报告-v1.md`）。
+ *
+ * 边界：取不到同号时**不返回任何东西**（调用方退回 `latestReport`）——本函数只提供配对键，不做兜底选择，
+ *   免得「同号优先」在实现里悄悄变成「同号或最新随便哪个」。
+ */
+export const reportByNumber = (dir, prefix, n) => {
+  if (!dir || !existsSync(dir) || !Number.isInteger(n)) return null;
+  const f = `${prefix}-v${n}.md`;
+  return existsSync(join(dir, f)) ? { path: join(dir, f), n, name: f } : null;
+};
+
 /** markdown 表格保护符（保护「转义竖线 \|」与「行内代码块内的竖线」不被裸 split 切错）。 */
 export const PROTECT_CH = '\u0001'
 

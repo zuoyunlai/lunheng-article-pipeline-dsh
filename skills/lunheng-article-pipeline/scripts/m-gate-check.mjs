@@ -395,6 +395,52 @@ const hardRedLineHits = results
   .map((r) => `${String(r.gate).split(' ')[0]}(${r.severity})`);
 const anyFail = results.some((r) => r.pass === false);
 const exitCode = p0 > 0 ? 2 : (p1 > 0 ? 1 : (anyFail || skips > 0 ? 3 : 0));
+
+// === v18.52.0（反哺 F-BB）：换稿重裁的**中间态**识别 —— 报告曾忠实记录「只存在几秒」的状态 ===
+// 实测缺陷：主控**先改** `audits/闸门记录-T7.5.md` 的指纹互锁值、**后重写** `final/M-Gate-Report.json`，
+//   紧接着那次 `--adjudicate` 运行正好落在中间态（闸门记录已指向新稿 `f267d06a…`，而磁盘上的报告仍绑定
+//   旧稿 `193993010373`）→ M-Exist-5 的「闸门 ↔ 报告」指纹互锁**短暂判 P0** → **该瞬时值被"如实"写进交付
+//   报告**（`script_exit_raw = 2 / P0 1 / P2 2`）；**重跑一次**后真值 = `3 / P0 0 / P1 0 / P2 3`。
+//   即：交付件的机械面本应是**稳定态**，却记录了一个中间态。
+// 判据（本块）：**闸门记录已指向本稿** 且 **磁盘上既有报告仍绑定旧稿** ⇒ 本次运行落在「换稿重裁窗口」，
+//   M-Exist-5 的互锁是对着**旧报告**判的，其 P0/P1 可能在下一次运行消失。
+// 边界（刻意）：**不改判定、不改退出码**——把中间态洗白比记录它更坏；本块只**如实标注**，并把「取稳定态」
+//   交给消费侧（T8/主控，见 `agents/08-终检-finalizer.md`）：`transient: true` 的报告其机械值**不构成权威**。
+const sha12 = (s) => String(s || '').toLowerCase().slice(0, 12);
+const transientInfo = (() => {
+  if (!reportPath) return null;                      // 未落盘（stdout 模式）→ 无「上一次写入」可言
+  let prev = null;
+  try { if (existsSync(reportPath)) prev = JSON.parse(readFileSync(reportPath, 'utf8')); } catch { prev = null; }
+  const prevRun = prev ? (Number.isInteger(prev.write_run) ? prev.write_run : 1) : 0;
+  const writeRun = prevRun + 1;
+  if (!prev) return { write_run: writeRun, transient: false };
+  const prevSha = prev.verdict_scope?.draft_sha256;
+  // 闸门记录里的「实据 sha256」——取法与 M-Exist-5 的互锁**同源**（同一正则，免得两处口径分叉）
+  const projDirT = dirname(dirname(draftPath));
+  let recSha = null, recWhich = null;
+  for (const gid of ['T7.5', 'T2.5']) {
+    try {
+      const m = readFileSync(join(projDirT, 'audits', `闸门记录-${gid}.md`), 'utf8').match(/sha256[^\da-f]{0,6}([0-9a-f]{12,64})/i);
+      if (m) { recSha = m[1]; recWhich = gid; break; }
+    } catch { /* 记录不存在或不含指纹 → 不构成中间态判据（本块不因此判负） */ }
+  }
+  const draftChanged = typeof prevSha === 'string' && prevSha !== draftSha256;
+  const recPointsHere = !!recSha && sha12(recSha) === sha12(draftSha256);
+  if (draftChanged && recPointsHere) {
+    return {
+      write_run: writeRun,
+      transient: true,
+      transient_reason:
+        `换稿重裁窗口：闸门记录-${recWhich} 已指向本稿（sha256 ${sha12(draftSha256)}…），`
+        + `而磁盘上既有报告仍绑定旧稿（sha256 ${sha12(prevSha)}…）→ 本次 M-Exist-5 的指纹互锁是对着**旧报告**判的，`
+        + `其 P0/P1 可能在下次运行消失。**本次机械值不构成权威**：请确认闸门记录与报告都已更新后再跑一次取稳定态（v18.52.0 F-BB）`,
+    };
+  }
+  return { write_run: writeRun, transient: false };
+})();
+if (transientInfo?.transient) {
+  console.error(`⚠️ 本次运行处于**换稿重裁中间态**（v18.52.0 F-BB）：${transientInfo.transient_reason}`);
+}
 // v18.12.0（L-05）：进程退出码默认 = 机械值；`--adjudicate` 成功写入裁定时改为**裁定值**
 //   （否则会重演「报告 exit=0 而进程 exit=2」——审计把这称作「产物说放行、退出码说 P0」）。
 let finalExit = exitCode;
@@ -413,6 +459,14 @@ const report = {
   //   为什么两件都给：`draft_name` 供人读与路径核对，`draft_sha256` 供内容核对（防「按名字审的
   //   其实是改过的稿」）。`handoff-check` 的 A4c 与未来的一致性规则都读这两个字段。
   verdict_scope: { draft_name: relativeBase, draft_sha256: draftSha256, draft_bytes: draftBytes },
+  // v18.52.0（反哺 F-BB）：写入次序留痕 + 中间态标注（判据见上方 transientInfo 块）
+  ...(transientInfo
+    ? {
+      write_run: transientInfo.write_run,
+      transient: transientInfo.transient,
+      ...(transientInfo.transient_reason ? { transient_reason: transientInfo.transient_reason } : {}),
+    }
+    : {}),
 };
 console.log(JSON.stringify(report, null, 2));
 if (reportPath) {

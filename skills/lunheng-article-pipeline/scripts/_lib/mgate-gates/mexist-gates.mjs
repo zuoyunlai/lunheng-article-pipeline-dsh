@@ -6,7 +6,7 @@ import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs'
 import { basename, join, dirname } from 'node:path'
 import { createHash } from 'node:crypto'   // v18.12.0（L-15）：M-Exist-2 复算证据包清单的 sha256
 import { refsOf, dataCardIds, expandRefRanges } from '../refs.mjs'
-import { latestReport, tableCells, isSeparatorRow, walkMd, sectionRange } from '../mgate-helpers.mjs'
+import { latestReport, reportByNumber, tableCells, isSeparatorRow, walkMd, sectionRange } from '../mgate-helpers.mjs'
 
 // === M-Exist-1 文末四节双向对比（v2.5.2-dsh.5 脚本化 + 严重度评级）===
 export function mExist1(ctx) {
@@ -177,7 +177,23 @@ try {
   const projectDir2 = dirname(dirname(draftPath));
   const auditsDir = auditsDirOf({ withEv: true });
   const audit = latestReport(auditsDir, '审计报告');
-  const review = latestReport(auditsDir, '复核报告');
+  // ── v18.52.0（反哺 F-BA）：配对键 = **编号 N**，不是「最新」 ──────────────────────────────
+  // 实测缺陷：旧口径 `latest × latest` 硬配对。B 轨轮次之后「最新复核报告」的**验证对象**可以不是审计
+  //   任务书——题2 臂 B 的 `复核报告-v2.md` 验证的是 `analysis/批判报告-v2.md` §3.4 的关闭条件，于是门按
+  //   字面判「复核报告 v2 未覆盖 10 个审计编号」：**判定字面成立、语义错位**（那 10 项的关闭真源是 v1）。
+  // 本版取法：**同号候选 + 最新候选都查，任一覆盖即通过**（同号优先用于展示配对依据）。为什么是「任一」
+  //   而不是「同号存在就用同号」：后者会把「同号那份写得不全、最新那份补上了」判成 P1 = 制造一类**新的
+  //   假阳性**；而本门要防的是「**没有任何一份复核报告覆盖这些编号**」，两条候选都不覆盖时照样报。
+  const reviewLatest = latestReport(auditsDir, '复核报告');
+  const reviewSame = audit ? reportByNumber(auditsDir, '复核报告', audit.n) : null;
+  const reviewCands = [reviewSame, reviewLatest]
+    .filter(Boolean)
+    .filter((r, i, a) => a.findIndex((x) => x.path === r.path) === i);
+  const review = reviewCands[0] || null;   // 兼容既有引用：仅用于「有没有复核报告」这类存在性判断
+  const reviewPairDesc = !audit ? ''
+    : reviewSame && reviewLatest && reviewSame.path !== reviewLatest.path
+      ? `配对候选：同号 ${reviewSame.name} / 最新 ${reviewLatest.name}`
+      : (review ? `配对候选：${review.name}（${reviewSame ? `同号 v${audit.n}` : '无同号 → 退回最新'}）` : '无复核报告');
   const revNotes = existsSync(join(projectDir2, 'drafts'))
     ? readdirSync(join(projectDir2, 'drafts')).filter((f) => /^修订说明-.*\.md$/.test(f)) : [];
 
@@ -214,6 +230,7 @@ try {
     const iId = colOf(/编号/), iSev = colOf(/严重度/), iLoc = colOf(/改哪里|位置/), iAct = colOf(/怎么改|动作/), iAcc = colOf(/验收/), iStat = colOf(/关闭状态|状态/);
     const findings = [];
     const soft = [];
+    let pairNote = '';   // v18.52.0（F-BA）：配对依据与覆盖结论（进 detail，供读者判断「凭什么配对」）
     if (isReject) {
       if (hIdx === -1 || !header) findings.push('结论为「打回修订」但缺「## 修订任务书」段或表格表头');
       else if ([iId, iSev, iLoc, iAct, iAcc, iStat].some((x) => x === -1)) {
@@ -235,10 +252,24 @@ try {
         const dup = ids.filter((x, i) => ids.indexOf(x) !== i);
         if (dup.length) findings.push(`编号重复：${[...new Set(dup)].join(',')}——同报告内编号必须唯一（跨轮新增须续号，不得复用）`);
         if (ids.length === 0) soft.push('修订任务书表格无有效条目行');
-        if (review) {
-          const rid = new Set([...readFileSync(review.path, 'utf8').matchAll(/P[012][-\u2011]?[0-9A-Da-d]+/g)].map((m) => m[0].replace(/\u2011/g, '-')));
-          const miss = [...new Set(ids)].filter((x) => !rid.has(x.replace(/\u2011/g, '-')));
-          if (miss.length) findings.push(`复核报告 ${review.name} 未覆盖 ${miss.length} 个审计编号：${miss.slice(0, 5).join(',')}`);
+        if (reviewCands.length) {
+          // v18.52.0（F-BA）：逐候选查覆盖，**任一覆盖即通过**；都不覆盖时按「第一个候选的缺项」报（供人核对）
+          const want = [...new Set(ids)].map((x) => x.replace(/\u2011/g, '-'));
+          let coveredBy = null;
+          let missBest = null;
+          for (const c of reviewCands) {
+            const rid = new Set([...readFileSync(c.path, 'utf8').matchAll(/P[012][-\u2011]?[0-9A-Da-d]+/g)].map((m) => m[0].replace(/\u2011/g, '-')));
+            const miss = want.filter((x) => !rid.has(x));
+            if (!miss.length) { coveredBy = c; break; }
+            if (!missBest) missBest = { c, miss };
+          }
+          if (coveredBy) {
+            // detail 里必须写出**凭什么配对**（旧版只写「审计 ↔ 复核」，读者看不出依据）
+            pairNote = `闭环成立：${coveredBy.name} 覆盖 ${want.length} 个编号`
+              + `（${coveredBy.path === reviewSame?.path ? `同号配对 v${audit.n}` : '配对候选：最新复核报告'}）`;
+          } else {
+            findings.push(`复核报告 ${reviewCands.map((c) => c.name).join(' / ')} 未覆盖 ${missBest.miss.length} 个审计编号：${missBest.miss.slice(0, 5).join(',')}`);
+          }
         } else if (revNotes.length) {
           findings.push(`已有修订说明（${revNotes.length} 份）但缺同号复核报告——修订复核必须落盘 audits/复核报告-v${audit.n}.md`);
         }
@@ -250,8 +281,9 @@ try {
       pass: !hard && soft.length === 0,
       detail: [
         `审计报告 ${audit.name}${review ? ` ↔ 复核报告 ${review.name}` : '（无复核报告）'}`,
+        reviewPairDesc,
         isReject ? (header ? `任务书 ${rows.length} 行` : '结论为打回') : '结论非打回（无需任务书）',
-        hard ? `硬问题：${findings.slice(0, 3).join('；')}` : '条目契约与闭环成立',
+        hard ? `硬问题：${findings.slice(0, 3).join('；')}` : (pairNote || '条目契约与闭环成立'),
         soft.length ? `软提示：${soft.slice(0, 2).join('；')}` : '',
       ].filter(Boolean).join(' ｜ '),
       severity: hard ? (findings.length > 2 ? 'P0' : 'P1') : (soft.length ? 'P2' : '通过'),
