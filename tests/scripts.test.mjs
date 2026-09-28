@@ -619,6 +619,43 @@ test('consistency-check ⑮⑯⑰：新规则必须真的会报（派发卡超�
 
 // v18.31.0 MEA-2 收口：⑰' 由「`STRICT_PCT=1` 才启用」改为**默认开启**（开关已删）。
 // 判据（报告原文）：把一条仅含百分比、无样本数的句子写回文档 → 规则必红。
+// v18.47.0：⑰' 的**扫描面扩到 repo 级 `docs/**`**（此前只扫技能根）。
+//   起因：审计报告点名「`docs/**` 不在 ⑰' 扫描面内」→ `docs/token-optimization-plan.md` 的裸百分比无人管。
+//   **先量后扩**：窄触发 + docs/** 只 4 处（全在一份文件、都带 n=）；而**放宽触发**（覆盖「占…的 N%」）
+//   在技能根新增 14 处**全是阈值声明**（「占比 >3%」「上界 25%」）→ **放宽被否决**（阈值本就不需要三要素）。
+//   本用例钉住扩面后的三条行为：docs/ 里裸百分比必报、补三要素必放行、**历史留痕目录豁免**。
+test("consistency-check ⑰'：repo 级 docs/** 在扫描面内（v18.47.0 扩面）+ 历史留痕豁免", () => {
+  const { d, repo, R } = mkRepo()
+  const cc = join(R, 'scripts', 'consistency-check.mjs')
+  const docs = join(repo, 'docs')
+  mkdirSync(docs, { recursive: true })
+  const sig = () => /定量断言缺三要素/.test(run([cc]).out)
+
+  // ① docs/ 下的裸百分比 → 必须报（扩面前这条**完全不报**）
+  writeFileSync(join(docs, 'plan.md'), '# plan\n\n本节降低 60% 成本。\n')
+  assert.equal(sig(), true, "docs/** 下的裸百分比必须被 ⑰' 抓到（v18.47.0 扩面）")
+
+  // ② 同一句补上三要素 → 放行（内容级放行，与技能根同口径）
+  writeFileSync(join(docs, 'plan.md'), '# plan\n\n本节降低 60% 成本（口径 = 单源重试预算；v18.47.0 实测；n = 3 次重试）。\n')
+  assert.equal(sig(), false, '三要素齐备必须放行：' + run([cc]).out.slice(0, 300))
+
+  // ③ **历史留痕目录豁免**（docs/审计与修订记录/）——显式设计，不是「今天恰好没命中」
+  const arch = join(docs, '审计与修订记录')
+  mkdirSync(arch, { recursive: true })
+  writeFileSync(join(arch, 'old-record.md'), '# 旧记录\n\n本节降低 60% 成本。\n')
+  assert.equal(sig(), false, '历史留痕（docs/审计与修订记录/**）按既有先例豁免——那里引述当年裸百分比是正当文本')
+
+  // ④ **钉子：阈值 / 规格声明不受本规则管辖**（钉住 v18.47.0 **否决**的那次放宽）
+  //    实测：把触发正则放宽到「占比…N%」会在技能根新增 14 处命中，**全是阈值声明**
+  //    （「占比 >3%」破折号判据 / 「上界 25%」可读性阈值 / 「>80% 警告」早期框架锁定）——
+  //    而 ⑰' 管的是「**听起来像实测的断言**」，阈值本就不需要口径三要素。
+  //    故本断言把「不许放宽触发」钉住：谁放宽，这里立刻红，并被迫先解决「断言 vs 阈值」的判别问题。
+  rmSync(arch, { recursive: true, force: true })
+  writeFileSync(join(docs, 'plan.md'), '# plan\n\n| 破折号滥用 | 占比 >3%（单一判据） |\n| 长句占比 | 上界 25% |\n')
+  assert.equal(sig(), false, '阈值/规格声明（占比 >3% / 上界 25%）不得被 ⑰\' 误报——放宽触发已在 v18.47.0 被实测否决')
+  rmSync(d, { recursive: true, force: true })
+})
+
 test("consistency-check ⑰'：默认开启（口径三要素缺一即报）+ 三要素齐/白名单不误报", () => {
   // 判据只看 ⑰' **这一条信号**（`定量断言缺三要素`），不看整体 exit：
   //   `mkRepo()` 的镜像只带 `skills/` + 包级清单，不带五语 README → 整体 exit 恒为 1

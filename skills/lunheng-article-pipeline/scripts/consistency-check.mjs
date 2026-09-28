@@ -161,6 +161,18 @@ const files = walk(ROOT);
 const isArchive = (f) => f.includes(join('references', '_shared', 'archive'));
 const isLegacyProtocol = (f) => f.endsWith('执行韧化协议-v2.1.0.md');
 const active = files.filter((f) => !isArchive(f) && !isLegacyProtocol(f));
+// v18.47.0：repo 级 `docs/**` 的活跃文件清单（排除历史留痕）——⑰' 扩面用（见下方 ctx 注释）。
+//   与 `files` 同源判据：`walk(REPO_ROOT/docs)` + `isArchive`；REPO_ROOT 缺失时给空数组（不影响既有行为）。
+//   ⚠️ 另加**一类显式豁免**：`docs/审计与修订记录/**`（历史留痕）。
+//     为什么必须显式写：① 本仓 `isArchive` 只覆盖技能内的 `references/_shared/archive`，**不覆盖**这个目录
+//     ——若不写，历史记录会被内容规则扫（今天恰好 0 命中，属**运气**而非设计）；② 规则 ⑬ 对 `docs/`
+//     已有先例——「历史章节（版本历史 / 演进 / 里程碑等）整体跳过」；③ 历史记录里**引述**当年的裸百分比
+//     是正当文本（「引述被纠正内容」族的已知误报形态）。**判据：历史留痕按既有先例豁免，不靠「今天没命中」。**
+const isHistoricalDocs = (f) => f.replaceAll('\\', '/').includes('docs/审计与修订记录');
+const docsActive = (() => {
+  if (!REPO_ROOT || !existsSync(join(REPO_ROOT, 'docs'))) return [];
+  return walk(join(REPO_ROOT, 'docs')).filter((f) => f.endsWith('.md') && !isArchive(f) && !isHistoricalDocs(f));
+})();
 
 // M 门口径派生真源（v2.5.2-dsh.16）：规则 ⑥b 的数字全部从 m-gate-check.mjs 的 gate 标签算出，规则自身不会过期
 //   v18.3.1（审计 B2 阶段 1）：M-Exist 门族 + M-Integrity-1 已抽离到 `_lib/mgate-gates/`——
@@ -588,6 +600,12 @@ for (const f of files) {
 const ctx = {
   ROOT, REPO_ROOT, files, active, skillText, gateSrc, GATE_DERIVED, gateModMissing,
   checkGateCounts, SEMVER, normVer, pkgVer, inlineTagTargets, isArchive, UPSTREAM_SPEC_VERSIONS, walk, errors,
+  // v18.47.0：**repo 级 `docs/**`（排除历史留痕）**——供 ⑰'（口径三要素）扩面用。
+  //   为什么只有 ⑰' 用它：`docs/` 是**随包发布**的面向用户文档（`docs/introduction.md` 由 bump-version 维护），
+  //   而 ⑰' 防的正是「听起来像实测的百分比」——这两者撞在一起（实测：`docs/token-optimization-plan.md`
+  //   有 4 处裸百分比）。**其余内容规则刻意不跟着扩**：它们是「脚本计数 / 阶段数 / 版本点位」等，
+  //   对 `docs/` 的命中面**未标定**，凭一条规则的理由扩整族的扫描面 = 让别的规则去咬没量过的盘。
+  docsActive,
 };
 runScriptRules(ctx);
 runDocsVersionRules(ctx);
