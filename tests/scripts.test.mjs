@@ -2780,16 +2780,32 @@ test('v18.3.1 审计 B9：M-Form-7 文末混入非白名单节必须 P0（防 P0
   rmSync(d, { recursive: true, force: true })
 })
 
-test('v18.3.1 审计 B9：M-Form-8 论点段缺 [Lxx] 必须 P0（防 P0 降 P1）', () => {
+test('v18.3.1 审计 B9 / v18.50.0 主人裁定③：M-Form-8 缺 [Lxx] **分三档**（真缺口仍 P0）', () => {
+  // **本条被有意改口径，改的是"判定标准"而非"断言强度"**——原意必须完整保留：
+  //   · 原（v18.3.1 审计 B9）：论点段缺 [Lxx] → **P0**（防 P0 降 P1），防的是**真缺口被降档**；
+  //   · 现（v18.50.0）：主人 2026-09-28 裁定取 **③ 分三档** —— 零证据→P0 / 单类证据→P1 / **≥2 类证据但缺 [L]→P2**。
+  //     改的理由（实测）：描述性研究的「描述性结果 / 案例深描」节以 [D]/[C] 承重时三角验证**已成立**，
+  //     一律判 P0 会让**写作风格**而非研究质量决定致命度（题1 两臂同门被判不同量级）。
+  //   · **B9 的原意未被削弱**：零证据（cov=0）仍是 P0 —— 本条**新增反向控制组**把它钉死。
   const { d, fin, ev } = mkProject()
   setupCards(ev)
   const draft = join(fin, '定稿.md')
+  // ① ≥2 类证据（[D]+[C]）但未回引 [Lxx] → P2（旧口径 P0；本次裁定降档）
   writeFileSync(draft, '# 标题\n\n## 摘要\n\n摘要若干字。\n\n## 一、导论\n\n'
     + '正文 [D01] [C01]。'.repeat(12)
     + DRAFT_OK.slice(DRAFT_OK.indexOf('\n\n## 参考文献')))
-  const it = gateOf(draft, ev, 'M-Form-8')
+  let it = gateOf(draft, ev, 'M-Form-8')
   assert.equal(it.pass, false)
-  assert.equal(it.severity, 'P0', '论点段缺 [Lxx] 应 P0：' + it.detail)
+  assert.equal(it.severity, 'P2', '≥2 类证据但缺 [L] 应 P2（主人裁定③）：' + it.detail)
+  assert.match(String(it.detail), /有证据但缺 \[Lxx\]/, 'detail 须单列该档计数：' + it.detail)
+  // ② **反向控制组（B9 原意）**：零证据段仍必须 P0 —— 真缺口不得被本次放宽带走
+  writeFileSync(draft, '# 标题\n\n## 摘要\n\n摘要若干字。\n\n## 一、导论\n\n'
+    + '本段叙述刻意不引用任何素材编号，只为撑满节长以进入 M-Form-8 扫描。'.repeat(8)
+    + DRAFT_OK.slice(DRAFT_OK.indexOf('\n\n## 参考文献')))
+  it = gateOf(draft, ev, 'M-Form-8')
+  assert.equal(it.pass, false)
+  assert.equal(it.severity, 'P0', '**零证据段仍必须 P0**（v18.3.1 B9 的原意）：' + it.detail)
+  assert.match(String(it.detail), /段缺任意证据/, 'detail 须写明是「缺任意证据」：' + it.detail)
   rmSync(d, { recursive: true, force: true })
 })
 

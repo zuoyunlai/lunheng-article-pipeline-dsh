@@ -61,9 +61,28 @@ test('m-gate-check（F-AG 集成）：文末用区间写法时，中间条目**�
   } finally { rmSync(f.d, { recursive: true, force: true }) }
 })
 
-// ── F-AH（**本批已撤回，转主人裁定**）：改「缺 [L] 必 P0」= 推翻 v18.3.1 审计 B9 的刻意加固 ──
-//   证据见 	ests/scripts.test.mjs 的 B9 用例（它明确锁「防 P0 降 P1」）；三套defensible口径待主人择一：
-//   ① 保持 P0（现状）；② 零证据→P0 / 有证据缺[L]→P2；③ 零证据→P0 / 单类证据→P1 / ≥2类证据缺[L]→P2。
+// ── F-AH（**v18.50.0 落地** · 主人 2026-09-28 裁定取「③ 分三档」） ──
+//   零证据→P0（真缺口）/ 单类证据→P1（既有「覆盖<2类」规则）/ **≥2 类证据但缺 [L]→P2**。
+//   本条与 `tests/scripts.test.mjs` 的 B9 用例**成对**：那条钉「零证据仍 P0」（B9 原意不得被放宽带走），本条钉「≥2 类证据降 P2」。
+test('m-gate-check（F-AH）：节有**两类**证据但未回引 [Lxx] → **不得判 P0**（旧版判 P0）', () => {
+  const f = mkProj('## 四、描述性结果\n\n' + LONG + ' 见 [D01] 与 [C01]。\n')
+  try {
+    const r = gate(f, 'M-Form-8')
+    assert.notEqual(r.severity, 'P0', '有 ≥2 类证据的节不构成三角验证缺口：' + r.detail)
+    assert.equal(r.pass, false, '仍须 pass=false 才会被计入 P2（主脚本按 pass===false 筛）')
+    assert.equal(r.severity, 'P2', '降为 P2 软提示：' + r.severity + '｜' + r.detail)
+    assert.match(String(r.detail), /有证据但缺 \[Lxx\]/, 'detail 须区分「缺证据」与「缺文献回引」：' + r.detail)
+  } finally { rmSync(f.d, { recursive: true, force: true }) }
+})
+
+test('m-gate-check（F-AH 反向控制组）：节**零证据**仍须判 P0（放宽不得伤到防护核心）', () => {
+  const f = mkProj('## 五、案例深描\n\n' + LONG + ' 此处刻意不引用任何素材编号。\n')
+  try {
+    const r = gate(f, 'M-Form-8')
+    assert.equal(r.severity, 'P0', '零证据段是真缺口，必须仍判 P0：' + r.detail)
+    assert.match(String(r.detail), /段缺任意证据/, 'detail 须写明是「缺任意证据」：' + r.detail)
+  } finally { rmSync(f.d, { recursive: true, force: true }) }
+})
 
 // ── F-T：标题序号前缀（纯前缀口径 → `## 4 描述性结果` 一个都匹配不上 → 整节判缺） ──
 test('sections（F-T）：titleMatches 容忍序号前缀，且**不误伤**「第一作者声明」这类真词头', async () => {

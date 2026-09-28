@@ -420,7 +420,28 @@ try {
     const hasD = /\[D\d+\]/.test(secProse);
     const hasC = /\[C\d+\]/.test(secProse);
     const cov = (hasL ? 1 : 0) + (hasD ? 1 : 0) + (hasC ? 1 : 0);
-    if (!hasL) { mform8Findings.L_missing++; mform8Findings.details.push(`段缺[Lxx]: ${sec.split('\n')[0].slice(0, 30)}`); }
+    // ── v18.50.0（反哺 F-AH · **主人裁定取方案 ③**）：「缺 [L]」**分三档**，不再一律 P0 ──
+    // 为什么改：旧口径把「**段缺任意证据**」与「**有证据但未回引 [Lxx]**」都算进 `L_missing` → 一律 P0。
+    //   实测不公：题1（**描述性研究**）的 `## 4 描述性结果` / `## 5 案例深描` 以 `[D]/[C]` 承重
+    //   （方法学上正当、三角验证已成立），却因「每节必含 [L]」判 P0；而对照臂同门判「通过」——
+    //   **只因为它的写手恰好在结果节回引了文献** → 差异源于**写作风格而非研究质量**。
+    // ⚠️ 但这条 P0 是 **v18.3.1 审计 B9 刻意收硬的**（原意「防 P0 降 P1」）→ 故**不擅自改**，
+    //   已报主人裁定；主人 2026-09-28 选 **③ 分三档**：
+    //     · **零证据**（cov === 0）→ 仍记 `L_missing` ⇒ **P0**（**B9 的原意图完整保留**：真缺口不得降档）；
+    //     · **单类证据**（cov === 1）→ 由既有的「覆盖 <2 类」规则 ⇒ **P1**（本档**无需新代码**）；
+    //     · **≥2 类证据但缺 [L]**（cov ≥ 2）→ ⇒ **P2 软提示**（三角验证已成立，只是未回引文献）。
+    if (!hasL) {
+      if (cov === 0) {
+        mform8Findings.L_missing++;
+        mform8Findings.details.push(`段缺任意证据: ${sec.split('\n')[0].slice(0, 30)}`);
+      } else if (cov < 2) {
+        mform8Findings.thinNoL = (mform8Findings.thinNoL || 0) + 1;
+        mform8Findings.details.push(`段仅 ${cov} 类证据且缺 [Lxx]（P1 档）: ${sec.split('\n')[0].slice(0, 30)}`);
+      } else {
+        mform8Findings.noLOnly = (mform8Findings.noLOnly || 0) + 1;
+        mform8Findings.soft.push(`「${secTitle.slice(0, 20)}」有 ${cov} 类证据但未回引 [Lxx]（三角验证已成立，P2 提示）`);
+      }
+    }
     if (cov < 2) mform8Findings.weak++;
     // 裸断言段（v18.3.0 方案 G 下沉）：长段落零引用 → P2 软提示（机械只挑可疑，定罪归 G3/G6）
     const secHan = countHan(secProse);
@@ -586,9 +607,14 @@ try {
   }
 
   const wallHard = wall8.overload.length > 0 || wall8.ghost.length > 0;
-  let mform8Pass = (mform8Findings.L_missing === 0 && mform8Findings.weak === 0 && !wallHard);
+  // v18.50.0（F-AH · 主人裁定 ③）：`noLOnly`（**≥2 类证据**但缺 [L]）降为 **P2**；
+  //   单类证据那一档由既有 `weak`（覆盖 <2 类）承担 → P1；零证据仍在 `L_missing` → P0。
+  //   `pass` 必须为 false 才会被主脚本计入 P2（主脚本按 `pass === false` 筛、再按 severity 分档）。
+  const noLOnly8 = mform8Findings.noLOnly || 0;
+  let mform8Pass = (mform8Findings.L_missing === 0 && mform8Findings.weak === 0 && !wallHard && noLOnly8 === 0);
   let mform8Severity = mform8Findings.L_missing > 0 ? 'P0'
-    : (wallHard || mform8Findings.weak > 0 ? 'P1' : '通过');
+    : (wallHard || mform8Findings.weak > 0 ? 'P1'
+      : (noLOnly8 > 0 ? 'P2' : '通过'));
   // v18.2.5 新增：wallBit 附带**实际选中的清单表头**（让「锚点选错表」这类问题自带证据、可事后核对）。
   const wallHeadBit = wall8.checked && wall8.headRow
     ? `（清单锚点表头：${wall8.headRow.slice(0, 46)}${wall8.headRow.length > 46 ? '…' : ''}）`
@@ -606,7 +632,9 @@ try {
     gate: 'M-Form-8 三角验证',
     pass: mform8Pass,
     detail: [
-      `${mform8Findings.total} 段：${mform8Findings.L_missing} 段缺 L，${mform8Findings.weak} 段覆盖 <2 类${mform8Findings.details.length ? `（${mform8Findings.details.slice(0, 3).join('; ')}）` : ''}`,
+      `${mform8Findings.total} 段：${mform8Findings.L_missing} 段缺任意证据，${mform8Findings.weak} 段覆盖 <2 类`
+        + `${noLOnly8 ? `，${noLOnly8} 段有证据但缺 [Lxx]（P2）` : ''}`
+        + `${mform8Findings.details.length ? `（${mform8Findings.details.slice(0, 3).join('; ')}）` : ''}`,
       wallBit,
       wallBit2,
       wall8.parseError || '',   // v18.2.6：解析异常**无条件**出现在 detail（不再无痕跳过）
