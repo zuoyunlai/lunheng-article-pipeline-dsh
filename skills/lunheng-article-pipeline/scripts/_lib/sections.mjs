@@ -120,8 +120,30 @@ export const allHeadings = (text) => {
 /** 标题行的**下一行**起点偏移（取节体用；导出给 `segment-chars.mjs` 复用，避免各写一份）。 */
 export const bodyStartOfHeading = (text, headingIndex) => nextLineAfter(text, headingIndex)
 
-/** 标题是否属于某节：**全等或前缀**（如「参考文献（共 12 条）」仍算参考文献节）——与既有门口径一致。 */
-export const titleMatches = (title, marker) => title === marker || title.startsWith(marker)
+/**
+ * 标题是否属于某节：**全等、前缀，或「序号前缀 + marker」**。
+ *
+ * v18.49.0（反哺 F-T）：旧实现是**纯前缀**口径（`title === marker || title.startsWith(marker)`），
+ *   于是**带序号的标题一个都匹配不上**：`## 4 描述性结果` / `## 4.1 结果` / `## 四、结果` 对 marker「结果」
+ *   全部返回 false → `structure-check` / `methodology-check` 把**整节判缺**。
+ *   **实测影响（非推测）**：题1（描述性研究，正文用 `## 4 描述性结果` 这类带序号标题）被判
+ *   `structure` exit 2 / `methodology` exit 2；题2（概念论证型）因走 N/A 而免疫 →
+ *   **同一门对不同体例的计分影响不对称**，且读数差异源于排版格式而非研究质量。
+ *   双重实证：T7 控制探针（只改 5 个标题字面 → exit 2→1）+ T9-m 独立复现。
+ *
+ * **判据**：序号是**排版前缀**，不是标题语义的一部分，比对前应剥离。
+ * 剥离规则从严（防误伤）：数字/中文数字前缀**后面必须紧跟分隔符或空白**——
+ *   `「4 描述性结果」`（空格）✓、`「四、结果」`（顿号）✓、`「4.1 结果」`✓；
+ *   而 `「第一作者声明」`（「一」后紧跟汉字「作」）**不剥离**。
+ */
+export const titleMatches = (title, marker) => {
+  if (title === marker || title.startsWith(marker)) return true
+  const stripped = String(title).replace(
+    /^\s*(?:第\s*)?(?:[0-9]+(?:\.[0-9]+)*|[一二三四五六七八九十]+)\s*(?:[、.．:：)）]|\s)\s*/,
+    '',
+  )
+  return stripped === marker || stripped.startsWith(marker)
+}
 
 /** 标题行末的下一行起点（用于「取标题之后的段体」）。 */
 const nextLineAfter = (text, headingIndex) => {

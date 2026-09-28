@@ -23,3 +23,32 @@ export const refsOf = (text, kind) => String(text ?? '').match(refRegex(kind)) |
 
 /** 数据卡编号集合（去重、按出现顺序）：用于 M-Form-6 / M-Exist-3 / 规范化脚本。 */
 export const dataCardIds = (text) => [...new Set([...String(text ?? '').matchAll(/\[D(\d+)\]/g)].map((m) => m[1]))]
+
+// ── v18.49.0（反哺 F-AG）：**范围写法展开**（本文件成为唯一真源） ──
+// 为什么需要它：文末节把条目写成**区间**（`[D01]–[D12]`）时，**只按单编号正则匹配会只命中首尾两项**，
+//   中间的 D02–D11 全被判「漏引 / 引了没读」——实测题1 的「漏引 13」中 **10 条**纯属区间写法所致；
+//   而 detail 只报「漏引 N」，主控与写手极易误判成「缺条目」去补条目（治标不治本、白绕一圈）。
+// 语义（与 M-Form-11 原有的局部实现一致，故此处**上提为同源**，两处不再各写一份）：
+//   · 仅在同一字母内展开（`[L01]-[D08]` 属笔误，不展开）；
+//   · 起止倒序、或跨度 > 30 视为笔误 → **不展开**并计入 `bad`（由调用方如实报出，不静默吞掉）；
+//   · 展开时**按起始编号的位数补零**（`[D01]-[D12]` → `[D01]…[D12]`）。
+/** 展开文本中的编号区间写法 → { extra: Set<string>, bad: string[] }。 */
+export const expandRefRanges = (seg) => {
+  const extra = new Set()
+  const bad = []
+  for (const m of String(seg ?? '').matchAll(/\[([LDC])(\d+)\]\s*[-–—~至]\s*\[([LDC])(\d+)\]/g)) {
+    const [, a, n1, b, n2] = m
+    if (a !== b) { bad.push(m[0]); continue }
+    const lo = Number(n1), hi = Number(n2)
+    if (hi < lo || hi - lo > 30) { bad.push(m[0]); continue }
+    for (let i = lo; i <= hi; i++) extra.add(`[${a}${String(i).padStart(n1.length, '0')}]`)
+  }
+  return { extra, bad }
+}
+
+/** 某类型编号集合 —— **含区间写法展开**（替代裸 `new Set(text.match(refRegex(kind)))`）。 */
+export const refsSetExpanded = (text, kind) => {
+  const { extra } = expandRefRanges(text)
+  const own = [...extra].filter((id) => id.startsWith(`[${kind}`))
+  return new Set([...(String(text ?? '').match(refRegex(kind)) || []), ...own])
+}

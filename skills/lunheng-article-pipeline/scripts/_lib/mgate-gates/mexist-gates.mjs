@@ -5,7 +5,7 @@
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs'
 import { basename, join, dirname } from 'node:path'
 import { createHash } from 'node:crypto'   // v18.12.0（L-15）：M-Exist-2 复算证据包清单的 sha256
-import { refsOf, dataCardIds } from '../refs.mjs'
+import { refsOf, dataCardIds, expandRefRanges } from '../refs.mjs'
 import { latestReport, tableCells, isSeparatorRow, walkMd, sectionRange } from '../mgate-helpers.mjs'
 
 // === M-Exist-1 文末四节双向对比（v2.5.2-dsh.5 脚本化 + 严重度评级）===
@@ -15,7 +15,15 @@ if (firstIdx === -1) {
   results.push({ gate: 'M-Exist-1 引用双向对比', pass: 'SKIP', detail: '文末缺失，M-Form-2 失败优先', severity: 'SKIP' });
 } else {
   const intext = new Set((bodyProse.match(refRe) || []).map(norm));
-  const endRefs2 = new Set((endnote.match(refRe) || []).map(norm));
+  // ── v18.49.0（反哺 F-AG）：文末节**支持区间写法** `[D01]–[D12]` ──
+  //   旧实现只按单编号正则匹配 → 区间**只命中首尾两项**，中间的 D02–D11 全被判「漏引」。
+  //   实测题1 的「漏引 13」中 **10 条**纯属此因（诊断脚本 `run/_AB-QLT5/diag-mexist1.mjs` 复算过）。
+  //   展开逻辑与 M-Form-11 **同源**（已上提至 `refs.mjs:expandRefRanges`，两处不再各写一份）。
+  const { extra: endRangeIds2, bad: badRanges2 } = expandRefRanges(endnote);
+  const endRefs2 = new Set([...(endnote.match(refRe) || []), ...endRangeIds2].map(norm));
+  const rangeNote2 = badRanges2.length
+    ? `⚠️ 文末节含无法展开的范围写法：${badRanges2.slice(0, 3).join(' ')}（起止倒序 / 跨字母 / 跨度>30 → 请改为逐条列项）`
+    : '';
   const leaked = [...intext].filter((r) => !endRefs2.has(r));
   const orphan2 = [...endRefs2].filter((r) => !intext.has(r));
   // v18.2.2（主人授权修订；依据 2026-09-12 全量测试反哺）：**诊断增强**——
@@ -141,6 +149,7 @@ if (firstIdx === -1) {
       mExist1Hint,
       `漏引 ${leaked.length} / 硬孤儿 ${hardOrphans.length}（[先NN] 对照孤儿 ${xianOrphans.length} 个已软处理）`,
       preservedHint,
+      rangeNote2,
       xianNote,
       nonStdNote,
       extNote,
@@ -449,14 +458,19 @@ try {
           //   软档退役后该状态量**无人读**，已删。判据保留：**有该行但没给 exit → 依然判硬**。
         }
         if (/M\s*门/.test(item)) {
-          // ① 实据里的 `exit N` 必须等于报告的机械值（防「写个像证据的字符串」）
-          const mExit = ev.match(/exit\s*[=:：]?\s*(\d+)/i);
+          // ① 实据里的 `exit N` 必须等于报告的**机械值**或**有效裁定值**（防「写个像证据的字符串」）
+          //   ── v18.49.0（反哺 F-AL）：旧实现只取**第一个** `exit N` 并强制等于 `script_exit_raw`（机械值）──
+          //   但闸门记录的实据行**引用裁定值是正当的**（「有效裁定值 0」正是 T8 放行后的真实状态），
+          //   于是写 `exit 0` 会被判 P0「实据与产物不符」，写手只能退回写机械值——**两个都是权威值，却只认一个**。
+          //   现规则：**取实据中出现的全部 `exit N`**，**只要有一个**等于机械值或有效裁定值即通过；
+          //   全部不等才判 P0，且 detail 把两个可接受值都点出来（不再让写手靠猜）。
+          const exits5 = [...ev.matchAll(/exit\s*[=:：]?\s*(\d+)/gi)].map((m) => Number(m[1]));
           if (!repPath5) {
             findings5.push(`${gateId}「${item}」判 ✓，但未找到 final/M-Gate-Report.json——结论无产物可核（实据绑定失败）`);
           } else if (rj5) {
-            if (mExit && Number(mExit[1]) !== mechExit5) {
+            if (exits5.length && !exits5.some((n) => n === mechExit5 || n === effectiveExit5)) {
               contradict5 = true;
-              findings5.push(`${gateId}「${item}」实据写 exit=${mExit[1]}，而 M-Gate-Report.json 的机械值 script_exit_raw=${mechExit5}——实据与产物不符（P0）`);
+              findings5.push(`${gateId}「${item}」实据写 exit=${exits5.join('/')}，而 M-Gate-Report.json 的机械值 script_exit_raw=${mechExit5}、有效裁定值 exit=${effectiveExit5}——两者皆不符，实据与产物不一致（P0）`);
             }
             if (effectiveExit5 !== 0) {
               contradict5 = true;
@@ -692,13 +706,21 @@ try {
       //   「刊名都在库里」在输出里完全同形 —— 「杜撰刊名」这条检查**静默失效**而报告照常显示
       //   「评分自洽、期刊匹配可复算」。现按既有做法记入 soft6，并说明该子检查已降级。
       try { dbText = readFileSync(join(skillRoot, 'references', '_shared', '期刊数据库.md'), 'utf8'); }
-      catch (e) { soft6.push(`期刊数据库（references/_shared/期刊数据库.md）读取失败 → 「杜撰刊名」检查已降级为本项跳过：${e.message}`); }
+      catch (e) { soft6.push(`期刊数据库（references/_shared/期刊数据库.md）读取失败 → 「刊名是否在本库内」子检查已降级为本项跳过：${e.message}`); }
       const pct = (s) => { const m = String(s || '').match(/(\d+(?:\.\d+)?)\s*%/); return m ? Number(m[1]) : null; };
       for (const r of jRows) {
         const name = (r[0] || '').replace(/[*《》\s]/g, '');
         if (!name) { findings6.push('期刊匹配表有行缺刊名'); continue; }
         if (dbText && !dbText.includes(name.slice(0, Math.max(2, name.length - 1)))) {
-          soft6.push(`「${r[0]}」在 期刊数据库.md 中查不到（疑似杜撰刊名，须以数据库为准）`);
+          // ── v18.49.0（反哺 F-AU）：**措辞降级**——旧文案「疑似杜撰刊名」把「本库覆盖不全」写成了
+          //   「作者编造」。实测反例：《哲学研究》《政治学研究》**均为真实的中文核心刊物**（CSSCI / 北大核心），
+          //   仅因未收录于 `references/_shared/期刊数据库.md` 即被指「疑似杜撰」→ **对作者的失实指控**。
+          //   判据：**「本库查不到」只支持「未在本库内找到」这一个结论**；「杜撰」需要「格式非法 / 明显不存在」
+          //   这类独立证据，而本检查**没有**那种证据。故措辞降级，并显式输出本库规模，防「查不到」被读成「不存在」。
+          const dbScale = (dbText.match(/^\s*[-|]\s*《/gm) || []).length;
+          soft6.push(`「${r[0]}」**未在** references/_shared/期刊数据库.md 内找到`
+            + `（**不等于该刊不存在**——本库为精选集${dbScale ? `，当前收录约 ${dbScale} 条` : ''}，不穷尽全部刊物；`
+            + `请人工核验其收稿范围与字数要求后再定稿）`);
         }
         const comp = pct(r[iComp]), theme = pct(r[iTheme]), style = pct(r[iStyle]);
         if (comp === null || theme === null || style === null) {
