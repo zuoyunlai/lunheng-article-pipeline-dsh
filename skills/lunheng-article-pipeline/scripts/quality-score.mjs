@@ -28,7 +28,7 @@
 // 定位（下文为 v18.24.0 原始口径，读数与三口径不变，仅正名）：
 //   把「文章合规能否维持」从**个案感觉**变成**可比数字** —— 本脚本**不新造任何判据**，
 //   只把仓库里既有的机械门结果聚合成一个 0–100 的分数 + 逐项明细：
-//     · M 门 22 机械项（`m-gate-check.mjs`，权重 40）——**图件闭环（M-Form-9）并入此项，不重复计分**
+//     · M 门机械项（`m-gate-check.mjs`，权重 38）——**图件闭环（M-Form-9）与 M-Fact-1 并入此项，不重复计分**
 //     · 学术结构三项（`structure-check.mjs`，权重 10）
 //     · 方法论可复现三项（`methodology-check.mjs`，权重 5）——**仅当有方法节**才适用
 //     · 引用实质相关三项（`cite-coverage-check.mjs`，权重 10）
@@ -140,19 +140,27 @@ const hardRatio = (checks) => {
   };
 };
 
-// ① M 门 22 机械项（权重 40）——图件闭环 M-Form-9 已含在内，不另计
+// ① M 门机械项（权重 38）——图件闭环 M-Form-9 / M-Fact-1 均含在内，不另计
+//    v18.57.x（审计修订 P2）：同一分量此前在三个分支下有三种写法（38 / 38 / 40），且名称硬编码的
+//    项数与本门实际入账数不一致（写过 22 / 23，实测 total 为 24）。两处后果都是**同一个分量看起来
+//    像两个分量**：`--baseline` 并排两份报告时，读者会以为评分结构变了。
+//    现：**名称不再硬编码项数**（改由 detail 的 `pass/total` 承载真实值，本门加项时不必再改这里），
+//    且三个分支统一 weight=38。**不改 38 → 40**：那会改动每个既有项目的分数与 golden 基线；
+//    而 40 → 38 只影响「缺证据包」这一 N/A 场景的 coverage，方向是让该分量自洽。
+const MGATE_WEIGHT = 38;
+const MGATE_NAME = 'M 门机械项（含图件闭环 M-Form-9 + M-Fact-1）';
 if (existsSync(evidence)) {
   const r = runGate('mgate', [join(SCRIPTS, 'm-gate-check.mjs'), draft, evidence]);
   const j = r.json;
   if (j && j.total > 0) {
-    add('M-Gate', 'M 门 23 机械项（含图件闭环 M-Form-9 + M-Fact-1）', 38, j.pass / j.total,
+    add('M-Gate', MGATE_NAME, MGATE_WEIGHT, j.pass / j.total,
       `${j.pass}/${j.total} 通过｜P0 ${j.p0 ?? 0} / P1 ${j.p1 ?? 0} / P2 ${j.p2 ?? 0}｜exit ${j.exit}`,
       { pass: j.pass, total: j.total, p0: j.p0 ?? 0, p1: j.p1 ?? 0, p2: j.p2 ?? 0 });
   } else {
-    add('M-Gate', 'M 门 23 机械项（含图件闭环 M-Form-9 + M-Fact-1）', 38, null, '', {}, `m-gate-check 未产出可用 JSON（status=${r.status}${r.error ? ` / ${r.error}` : ''}）`);
+    add('M-Gate', MGATE_NAME, MGATE_WEIGHT, null, '', {}, `m-gate-check 未产出可用 JSON（status=${r.status}${r.error ? ` / ${r.error}` : ''}）`);
   }
 } else {
-  add('M-Gate', 'M 门 22 机械项（含图件闭环 M-Form-9）', 40, null, '', {}, '缺 final/证据包（M 门第二参数必须是证据包目录）');
+  add('M-Gate', MGATE_NAME, MGATE_WEIGHT, null, '', {}, '缺 final/证据包（M 门第二参数必须是证据包目录）');
 }
 
 // ② 学术结构三项（权重 10）——**仅当体例适用**才计分

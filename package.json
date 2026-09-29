@@ -56,6 +56,9 @@
     "check:surface": "node scripts/plugin-surface-check.mjs",
     "check:hygiene": "node scripts/repo-hygiene-check.mjs",
     "check:pack-smoke": "node scripts/pack-smoke.mjs",
+    "check:link": "node scripts/link-check.mjs",
+    "check:closeout": "node scripts/closeout-verify.mjs",
+    "check:no-write": "node scripts/no-write-check.mjs",
     "test": "node --test --test-timeout=180000 \"tests/**/*.test.mjs\" \"skills/*/tests/**/*.test.mjs\"",
     "test:no-isolation": "node --test --test-isolation=none --test-timeout=180000 \"tests/**/*.test.mjs\" \"skills/*/tests/**/*.test.mjs\""
   },

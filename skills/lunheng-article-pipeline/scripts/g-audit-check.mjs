@@ -163,9 +163,9 @@ const hasField = (text, name) => fieldRe(name).test(text);
 //     ① 简报的「篇幅」字段可能是**已失效的早期值**——实测某真实项目简报写 16000 字，而定稿 40,008 字，
 //        同一项目的 `status.md` / `交付说明.md` 明文记「**主人已确认字数不作硬规定**」→ 越限**已获授权**，
 //        此时判罚是**假阳性**（且是最贵的那种：把已授权的交付判红）。
-//     ② 因此「越限是否算缺陷」不是零判断力项——它取决于「主人是否豁免」。本脚本只给实测比值与档位，
-//        判级归 T7（若简报自身已写豁免词，直接 SKIP 并说明）。
-const WAIVER_RE = /字数不作硬规定|不作硬规定|字数不设限|不设字数|字数不限|字数豁免|不设上限|篇幅不限/;
+//     ② 越限是否已获豁免只接受简报中的机器标记 `WAIVER=on`；散文说明供 T7 阅读，但不自动改变检查状态。
+//        省略或 `WAIVER=off` 均继续计算候选，避免否定句/引用/历史叙述触发假豁免。
+const WAIVER_MARKER_RE = /(?<![A-Za-z0-9_])WAIVER\s*=\s*(on|off)(?![A-Za-z0-9_])/i;
 // **例外通道标记（唯一依据，2026-09-29 主人定案）**：任务简报里的显式 `BUF=on` / `BUF=off`。
 //   与 G15 的 `QLT=on` **同形同源**——刻意**不**按散文或勾选框判断（同族的实测教训：G15 首版
 //   按标签字面放行，对未启用该模式的项目产出 6 组假阳性）。本标记**只浮出、不判级**：
@@ -180,9 +180,10 @@ const g8 = (() => {
       skipReason: '未传 --brief：无法取得目标篇幅（不拿默认目标假装核过）', evidence: { hanChars } };
   }
   const briefText = readFileSync(briefPath, 'utf8');
-  if (WAIVER_RE.test(briefText)) {
+  const waiverMarker = (() => { const m = WAIVER_MARKER_RE.exec(briefText); return m ? m[1].toLowerCase() : null; })();
+  if (waiverMarker === 'on') {
     return { name: '字数偏差（正文纯汉字 vs 任务简报篇幅字段）', checked: false, pass: null, severity: 'SKIP',
-      skipReason: '任务简报已声明字数豁免（不作硬规定）——本项不判级', evidence: { hanChars, brief: briefPath } };
+      skipReason: '任务简报标记 WAIVER=on：本项由主人显式豁免', evidence: { hanChars, waiverMarker, brief: briefPath } };
   }
   const cand = parseTargetCandidates(briefText);
   if (cand.candidates.length === 0) {
@@ -210,8 +211,8 @@ const g8 = (() => {
   return {
     name: '字数偏差（正文纯汉字 vs 任务简报篇幅字段）', checked: true, pass: inBand, severity: inBand ? 'PASS' : 'P2',
     detail, evidence: { hanChars, candidates: cand.candidates, briefField: cand.raw, ratioToUpper: +(hanChars / hi).toFixed(4), brief: briefPath,
-      bufMarker, inBufferBand, bufferBand,
-      note: '只判「是否落在候选区间」；候选之外不自动升 P1——目标值本身可能是档位下限/过期值/已豁免，判级归 T7。`bufferBand` = 例外通道的 ①② 条是否满足（标记 + 落带），**不含第 ③ 条**（T5 交接报告的估算标注不在本脚本输入内，须 T7 核）' },
+      bufMarker, inBufferBand, bufferBand, waiverMarker,
+      note: '只判「是否落在候选区间」；候选之外不自动升 P1——目标值本身可能是档位下限/过期值/已通过 WAIVER=on 显式豁免，判级归 T7。`bufferBand` = 例外通道的 ①② 条是否满足（标记 + 落带），**不含第 ③ 条**（T5 交接报告的估算标注不在本脚本输入内，须 T7 核）' },
   };
 })();
 

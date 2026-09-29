@@ -90,7 +90,10 @@ test('C.1 CRLF 行尾：SKILL.md 是 CRLF 时 frontmatter 仍必须解析（不�
     assert.match(regs[0].description, /论衡 v\d+(\.\d+)+：DSH 原生多 Agent 深度长文流水线/, 'description 必须来自 frontmatter 真源（v18.7.1 起加前缀；版本号不写死，防 bump 漂移）')
     assert.equal(typeof regs[0].whenToUse, 'string', 'CRLF 下 whenToUse 也必须注册（丢了 = 模型侧路由字段整块消失）')
     assert.equal(regs[0].content, realBody(), '正文必须与真源一致（行尾归一是既定行为）')
-    assert.deepEqual(logs.warn, [], '解析成功时不得报「未解析」')
+    // v18.57.x（审计修订）改**按内容**断言：旧写 `deepEqual(logs.warn, [])` 把「warn 为空」当成
+    //   「解析成功」的同义词——而 warn 通道还有别的合法来源（如「宿主未提供 tools.guard，
+    //   机制写保护未安装」这条降级告警）。本用例真正要防的是**解析失败告警**，故只针对它断言。
+    assert.ok(!logs.warn.some((m) => /未解析/.test(String(m))), '解析成功时不得报「未解析」：' + JSON.stringify(logs.warn))
     assert.deepEqual(errs, [], '宿主有 logger 时不得退回 console.error（审计 C.3）')
   })
 })
@@ -102,7 +105,7 @@ test('C.1 UTF-8 BOM：文件带 BOM 时 frontmatter 仍必须解析', async () =
     assert.equal(regs.length, 1)
     assert.notEqual(regs[0].description, FALLBACK, 'BOM 下退回了内置兜底 description')
     assert.equal(typeof regs[0].whenToUse, 'string')
-    assert.deepEqual(logs.warn, [])
+    assert.ok(!logs.warn.some((m) => /未解析/.test(String(m))), 'BOM 下不得报「未解析」：' + JSON.stringify(logs.warn))
   })
 })
 
@@ -112,9 +115,9 @@ test('C.2 前置空行 + 缺闭合行：必须响亮告警并把兜底形态说�
     assert.equal(regs.length, 1, '解析失败也必须照常注册（兜底形态是既定设计）')
     assert.equal(regs[0].description, FALLBACK, '未解析 → 内置兜底')
     assert.equal(regs[0].whenToUse, undefined, '未解析 → whenToUse 不注册')
-    assert.equal(logs.warn.length, 1, '必须恰好告警一次（审计 C.2：此前完全静默）')
-    assert.match(logs.warn[0], /frontmatter 未解析/)
-    assert.match(logs.warn[0], /CRLF/, '告警必须点出常见成因，否则收到告警的人无从下手')
+    const fmWarns = logs.warn.filter((m) => /frontmatter 未解析/.test(String(m)))
+    assert.equal(fmWarns.length, 1, '必须恰好告警一次（审计 C.2：此前完全静默）：' + JSON.stringify(logs.warn))
+    assert.match(fmWarns[0], /CRLF/, '告警必须点出常见成因，否则收到告警的人无从下手')
   })
 })
 
@@ -123,7 +126,9 @@ test('C.3 静音开关：LUNHENG_QUIET=1 静音信息行，但降级告警不静
   await withEnv({ LUNHENG_QUIET: '1' }, async () => {
     await withTemp(() => '\n坏文件（无 frontmatter）\n', async (root) => {
       const { logs } = await runApply(root)
-      assert.equal(logs.warn.length, 1, '降级（warn）必须始终可见——「静默降级」正是 v18.0.0 事故的形态')
+      // 按内容断言（同 C.3 无 logger 那条的理由）：warn 通道另有合法来源，计数耦合会假红。
+      assert.ok(logs.warn.some((m) => /frontmatter 未解析/.test(String(m))),
+        '降级（warn）必须始终可见——「静默降级」正是 v18.0.0 事故的形态：' + JSON.stringify(logs.warn))
       assert.deepEqual(logs.info, [], 'LUNHENG_QUIET=1 时信息行必须静音')
     })
   })

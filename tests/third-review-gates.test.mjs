@@ -141,3 +141,28 @@ test('N-4 installation.md：写明 peer 区间宽于实测证据 + 已知宿主�
   )
   assert.ok(/规避/.test(doc), '必须给出规避路径（用 0.1.7-rc.2 及以上 / 避开 headless 启动）')
 })
+
+// ── 审计修订 P1-2：测试 glob 必须三处同源（package.json / ci.yml / publish.yml）─────────────
+// 为什么需要（同族事故的第二次复发）：v18.18.3 修过「子技能 route.test.mjs 不在任何自动触发点」，
+//   但当时只改了根 `test` 脚本与 `ci.yml` —— `publish.yml` 的 gates 作业仍是 1 个 glob，
+//   于是一次同族修复漏掉了一条**发布路径**：发布 gates 自身不跑那 22 个用例即可能进入 npm publish。
+// 判据：从 `package.json` 的 `test` 脚本**派生** glob 集（唯一真源），要求 CI 与发布 gates 都覆盖同一集合。
+//   与 N-3c（门数同源）同一手法：抬/改测试面只改一处，文档漏改即红。
+test('审计修订 P1-2：测试 glob 三处同源——publish.yml 不得漏跑内嵌子技能测试', () => {
+  const pkg = JSON.parse(read('package.json'))
+  const testGlobs = [...String(pkg.scripts?.test ?? '').matchAll(/"([^"]*tests\/\*\*[^"]*)"/g)].map((m) => m[1])
+  assert.ok(
+    testGlobs.includes('skills/*/tests/**/*.test.mjs'),
+    `package.json 的 test 必须覆盖内嵌子技能测试（真源），实测：${JSON.stringify(testGlobs)}`,
+  )
+  for (const wf of ['.github/workflows/ci.yml', '.github/workflows/publish.yml']) {
+    const text = read(wf)
+    for (const g of testGlobs) {
+      assert.ok(
+        text.includes(g),
+        `${wf} 必须覆盖测试 glob \`${g}\`（与 package.json 的 test 同源）——`
+        + `v18.18.3 的同族修复漏掉了 publish.yml，导致发布 gates 不跑 skills/*/tests 的 22 个用例`,
+      )
+    }
+  }
+})

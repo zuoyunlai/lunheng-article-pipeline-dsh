@@ -102,7 +102,7 @@ test('端到端反哺⑤：M-Exist-10 字数预算允许标题换行后出现数
 
 // v18.0.5（第三方审计 P1-4/③）：上面那条断言的是**源码文本形态**（挪动代码即失效/误报）。
 //   本用例改为**真跑** final-check 并断言 `steps` 的实际顺序 —— 行为断言才防得住回归。
-test('端到端反哺⑥b（行为断言）：final-check 实跑的 steps 顺序必须「先刷新证据包、再跑 M 门」', () => {
+test('端到端反哺⑥b（行为断言）：final-check 实跑的 steps 顺序必须「先刷新证据卡、再跑 M 门、最后生成审计视图」', () => {
   const { d, proj, fin, ev } = mkProject()
   writeFileSync(join(fin, '定稿.md'), DRAFT_WITH_ENDNOTES(''))
   writeFileSync(join(ev, '文献卡.md'), CARD('文献卡', ['L01', 'L02', 'L03']))
@@ -112,8 +112,10 @@ test('端到端反哺⑥b（行为断言）：final-check 实跑的 steps 顺序
   const names = (j.steps || []).map((s) => s.step)
   const iEv = names.findIndex((n) => n.startsWith('build-evidence-bundle'))
   const iGate = names.findIndex((n) => n.startsWith('m-gate-check'))
+  const iView = names.findIndex((n) => n.startsWith('build-evidence-bundle') && n.includes('--summary'))
   assert.ok(iEv >= 0 && iGate >= 0, '两步都应出现在实跑 steps：' + JSON.stringify(names))
-  assert.ok(iEv < iGate, 'build-evidence-bundle 必须先于 m-gate-check：' + JSON.stringify(names))
+  assert.ok(iEv < iGate, 'build-evidence-bundle（刷新证据卡）必须先于 m-gate-check：' + JSON.stringify(names))
+  assert.ok(iView > iGate, 'build-evidence-bundle --summary（审计视图）必须晚于 m-gate-check：' + JSON.stringify(names))
   rmSync(d, { recursive: true, force: true })
 })
 

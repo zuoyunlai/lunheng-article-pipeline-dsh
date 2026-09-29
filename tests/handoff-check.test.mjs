@@ -32,6 +32,23 @@ function makeProject(extra = {}) {
   return d
 }
 
+test('审计修订 P2：B 组必须按 4 个检查项入分母（旧版整组算 1 个单位）', () => {
+  const d = makeProject()
+  // 回报刻意缺 B1 六要素段与 B4 路径提及 → 两条硬失败
+  const r = run([SCRIPT, '--project', d, '--role', 'T1', '--report', '本次检索已结束，结果稍后整理。'])
+  const j = parseJson(r)
+  const bFails = j.hard.filter((h) => /^B/.test(h.check))
+  assert.ok(bFails.length >= 1, '夹具应至少命中一条 B 组失败：' + JSON.stringify(j.hard))
+  // 分母侧：B 组贡献 4 项（旧版只贡献 1）——用「total − A 组产物数」反推 B 组贡献
+  assert.equal(j.total, j.artifacts.length + 4,
+    `B 组须按 4 个检查项入分母（B1 六要素/B2 披露/B3 行数/B4 路径）：total=${j.total} artifacts=${j.artifacts.length}`)
+  // 分子侧同尺度：pass + 失败条数 == total
+  assert.equal(j.pass + j.hardCount + j.softCount, j.total,
+    `pass 与 total 必须同尺度：pass=${j.pass} hard=${j.hardCount} soft=${j.softCount} total=${j.total}`)
+  assert.equal(typeof j.countingNote, 'string', '必须给出分母口径说明（免去猜 pass 的含义）')
+  rmSync(d, { recursive: true, force: true })
+})
+
 test('V3 不误伤：T1 合格项目 → exit 0，产物逐项 exists', () => {
   const d = makeProject()
   const r = run([SCRIPT, '--project', d, '--role', 'T1'])

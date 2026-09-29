@@ -472,7 +472,15 @@ if (opt.requireGates) {
 }
 
 // ── 出口 ─────────────────────────────────────────────────────────────────
-const total = required.length + (reportText != null ? 1 : 0) + (strict && role === 'T7' ? 1 : 0) + (opt.requireGates ? 1 : 0)
+// v18.57.x（审计修订 P2）：**计量单位必须自洽**。
+//   旧版：`total = required.length + (reportText != null ? 1 : 0) + …`，把 B 组整组算 **1 个单位**，
+//   而 `pass = total - hard.length - soft.length` 又要减去 B 组的**每一条**失败（B1/B2/B3/B4 各自成条）
+//   —— 分母按「组」、分子按「条」，于是 `pass` 既不是通过数也不是通过组数，任何读者都会误读。
+//   现：B 组按其**真实检查项数**（4 项）入分母，两侧同一尺度。
+//   如实声明的残余边界：A 组按**产物数**入分母，而同一份产物可能同时产出多条（如 A2 0 字节 + A3 不可读）
+//   → 此时 `pass` 偏**低**（保守方向：只会少报通过数，不会掩盖问题）。原始条数另以 `hardCount`/`softCount` 暴露。
+const B_CHECK_ITEMS = 4   // B1 六要素段 / B2 AI 使用披露 / B3 回报行数 / B4 回报路径
+const total = required.length + (reportText != null ? B_CHECK_ITEMS : 0) + (strict && role === 'T7' ? 1 : 0) + (opt.requireGates ? 1 : 0)
 const pass = total - hard.length - soft.length
 let exit = 0
 if (hard.some((h) => h.exitClass === 20)) exit = 20
@@ -486,6 +494,12 @@ const out = {
   exit,
   total,
   pass: Math.max(0, pass),
+  // v18.57.x：原始条数（不受分母口径影响）与分母口径说明——供机器消费，免去猜 `pass` 的含义。
+  hardCount: hard.length,
+  softCount: soft.length,
+  countingNote: 'total = A 组产物数 + B 组检查项数(4) + [strict&T7] + [--require-gates]；'
+    + 'pass = total − 失败条目数。同一份产物可能产出多条（A2+A3），此时 pass 偏低（保守方向）；'
+    + '判定请以 exit 与 hard/soft 清单为准，pass 仅供速览。',
   hard: hard.map(({ exitClass, ...rest }) => rest),
   soft,
   artifacts: opt.summary ? artifacts.filter((a) => !a.exists || a.bytes === 0) : artifacts,

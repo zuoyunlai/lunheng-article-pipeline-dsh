@@ -49,6 +49,20 @@ test('g-audit-check：全项合规 → exit 0，且 G2 与 G0.5 判 PASS', () =>
   rmSync(d, { recursive: true, force: true })
 })
 
+test('g-audit-check G8：自由文本否定/引用不得豁免；仅 WAIVER=on 生效', () => {
+  const draft = '# 标题\n\n## 摘要\n\n摘要。\n\n## 一、正文\n\n' + '汉字内容填充。'.repeat(400) + '\n\n## 参考文献\n\n[L01] x\n'
+  const runBrief = (brief) => {
+    const f = mkFixture({ brief, draft })
+    const j = parseJson(run([G, f.draft, '--cards', f.cards, '--brief', f.brief]))
+    rmSync(f.d, { recursive: true, force: true })
+    return g8(j)
+  }
+  assert.notEqual(runBrief('- **篇幅**：**5000 字**\\n> 本项目不允许字数不作硬规定。').severity, 'SKIP')
+  assert.notEqual(runBrief('- **篇幅**：**5000 字**\\n> 引用旧项目「字数豁免」记录。').severity, 'SKIP')
+  assert.equal(runBrief('- **篇幅**：**5000 字**\\n- WAIVER=off').severity, 'P2')
+  assert.equal(runBrief('- **篇幅**：**5000 字**\\n- WAIVER=on').severity, 'SKIP')
+})
+
 test('g-audit-check G8：**越限只判候选 P2，判级归 T7（绝不自行判 P1/P0）**（实测有项目已获主人字数豁免）', () => {
   const { d, draft, brief, cards } = mkFixture({
     brief: '- **篇幅**：**5000 字**\n',

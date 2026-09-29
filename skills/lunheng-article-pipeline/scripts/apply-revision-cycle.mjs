@@ -110,7 +110,16 @@ if (diffList) {
 //   命名更正（2026-09-29，主人裁定）：本判定的审计归属是 **G8（成品度 + 字数偏差）**，机检项 = `G8-CharCount`。
 //   本文件与 `_lib/target-chars.mjs` 过去把它叫「G5 阻塞线」——而 **G5 = 学术规范（查重 / AI 痕迹）**，
 //   与字数无关（G 清单见 `references/glossary.md` §G）。故变量 `charBand`、字段 `charBand` / `charBandVerdict`。
-const post = measure(existsSync(nextPath) ? nextPath : prevPath);
+// v18.57.x（审计修订 P1-4b）：**dry-run 没有改后稿可测**。
+//   旧写法 `measure(existsSync(nextPath) ? nextPath : prevPath)` 在 dry-run 下仍会去量测磁盘上
+//   **已存在**的 `初稿-vN.md`——它可能是历史占位或上一轮的残留，与本次运行毫无关系。
+//   决策 JSON 的 nextBody / delta 一旦取自它，主控会把这个数字写进修订说明与闸门记录（正是 L-56 的
+//   另一半：那次修的是「拿改前冒充改后」，这次修「拿无关文件冒充改后」）。
+//   故：dry-run → post = null，并以 postMeasurement 显式说明「未测量」，不留给消费方猜。
+const post = dryRun ? null : measure(existsSync(nextPath) ? nextPath : prevPath);
+const postMeasurement = dryRun
+  ? 'dry-run 未执行：不复制基线、不应用 diff，故无改后稿可测（nextBody / delta / nextFull 均为 null）'
+  : null;
 // v18.12.3：目标字数解析改走 `_lib/target-chars.mjs` 唯一实现。旧行为内联 `\d{4,5}` →
 //   `目标篇幅：300 字`（3 位）/ `12,000 字`（千分位）/ `1.2 万 字`（数量级单位）**全部解析不出**
 //   → `charBand = null` → **字数硬阈整段判定被静默跳过、脚本仍 exit 0**，主控会以为「已核过」。
@@ -130,7 +139,9 @@ const charBand = target ? { floor: Math.round(target * 0.9), ceil: Math.round(ta
 //   · 低下限（< −10%）→ **P0**——须扩写（主人明示保留 P0：「字数低于下限 −10% 直接输出 P0，须扩写」）
 //   ⚠️ verdict 的**前缀**（`超阻塞线` / `低于阻塞线` / `✓ 阻塞线内`）被 `apply-compression-cycle.mjs`
 //   用 `includes()` 当作控制信号消费，**不得改字**；本次只改括注里的档位。
-const charBandVerdict = charBand ? (post.body > charBand.ceil ? `超阻塞线 +${post.body - charBand.ceil} 字（P1，须压缩）` : (post.body < charBand.floor ? `低于阻塞线 ${charBand.floor - post.body} 字（P0，须扩写）` : '✓ 阻塞线内')) : '（未解析到目标字数，跳过 G8 字数硬阈判定）';
+const charBandVerdict = dryRun
+  ? '（dry-run 未测量改后字数——G8 字数硬阈不在本次判定内，须在真实修订轮后重跑）'
+  : (charBand ? (post.body > charBand.ceil ? `超阻塞线 +${post.body - charBand.ceil} 字（P1，须压缩）` : (post.body < charBand.floor ? `低于阻塞线 ${charBand.floor - post.body} 字（P0，须扩写）` : '✓ 阻塞线内')) : '（未解析到目标字数，跳过 G8 字数硬阈判定）');
 
 // ---- ⑤ 内部流程词快扫（M-Form-4/5 前哨）----
 const FLOW_WORDS = ['Phase\\s*\\d(\\.\\d)?', '承重', '一处两用', '素材加载清单', '修订说明', '初稿-v\\d', '审计环节', '批判报告'];
@@ -184,7 +195,13 @@ ${diffList ? (diffResult?.skipped === 'dry-run' ? '- dry-run 未应用' : `- ${b
 // ---- 汇总 ----
 console.log(JSON.stringify({
   project: projArg, targetVersion: nTarget, baselineCopied,
-  chars: { prevBody: pre.body, nextBody: post.body, delta: post.body - pre.body, nextFull: post.full },
+  chars: {
+    prevBody: pre.body,
+    nextBody: post ? post.body : null,
+    delta: post ? post.body - pre.body : null,
+    nextFull: post ? post.full : null,
+    ...(postMeasurement ? { postMeasurement } : {}),
+  },
   target, charBand, charBandVerdict,
   // 旧字段名 `g5` / `g5Verdict` 已随 2026-09-29 命名更正移除（字数归属 = G8，G5 = 学术规范）。
   // 兼容位**刻意不留**：留别名会把「同一个数两个名字」永久固化，正是本仓反复出问题的那一类。

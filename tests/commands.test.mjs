@@ -39,6 +39,23 @@ const mkProject = (name) => {
   return { d, runDir }
 }
 
+test('审计修订 P2：/lunheng-status 不得用 `..` 等参数读到 run/ 之外', async () => {
+  const d = mkdtempSync(join(tmpdir(), 'lh-cmd-esc-'))
+  try {
+    mkdirSync(join(d, 'run', 'proj'), { recursive: true })
+    // run/ 之外的「同名文件」——旧版 `..` 恰好能读到它
+    writeFileSync(join(d, 'status.md'), 'OUTSIDE-STATUS')
+    writeFileSync(join(d, '进展-主人版.md'), 'OUTSIDE-PROGRESS')
+    const captured = await grabRegistration((mod, ctx, o) => mod.installStatusCommand(ctx, o), { cwd: d })
+    for (const bad of ['..', '../', 'run/../..', '/etc', 'proj/../..']) {
+      const r = await captured.handler({ rawInput: bad, agent: { session: { header: { cwd: d } } } })
+      assert.doesNotMatch(r.text, /OUTSIDE-STATUS|OUTSIDE-PROGRESS/,
+        `参数 "${bad}" 不得读出 run/ 之外的内容，实得：${r.text}`)
+      assert.match(r.text, /未找到项目/, `参数 "${bad}" 应报未找到项目`)
+    }
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
 test('C-6 /lunheng-stats：参数白名单——仅 `--json` 放行，其它 token 一律拒绝且不派生子进程', async () => {
   const { d } = mkProject('白名单')
   const captured = await grabRegistration(

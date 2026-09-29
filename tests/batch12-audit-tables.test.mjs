@@ -58,6 +58,41 @@ const mk = (files) => {
   return d
 }
 
+// ── 审计修订 P1-4a：`--dry-run` 不写盘，不得被「原地覆盖」守卫拦下 ──────────────────
+// 旧行为：`apply-diff a.md l.md --dry-run`（不给 --out / --in-place）→ exit 10「原地覆盖必须显式声明」。
+//   而把写入限定在 `!dryRun` 的那道守卫在更下面（写盘段），即 dry-run 本来就不会写盘 —— 这是**误拒**：
+//   用户拿不到试算结果，只能被迫加 `--out` 指向一个并不打算写的路径。
+// 判据：dry-run 的语义是「只试算、不写盘」，故原地覆盖守卫只对**真实写盘**生效。
+test('审计修订 P1-4a：apply-diff --dry-run（不给 --out/--in-place）必须试算成功且不写盘', () => {
+  const d = mk({
+    'a.md': paper('原句 A。'),
+    'l.md': '[Diff 1]\n现况：原句 A。\n修改：新句 B。\n',
+  })
+  try {
+    const before = readFileSync(join(d, 'a.md'), 'utf8')
+    const r = run([S('apply-diff.mjs'), join(d, 'a.md'), join(d, 'l.md'), '--dry-run'])
+    assert.equal(r.code, 0, 'dry-run 不写盘，不得因「原地覆盖」被拒（exit 10）：' + r.out.slice(0, 300))
+    const j = parseJson(r)
+    assert.equal(j.dry_run, true, 'JSON 必须自证 dry_run')
+    assert.equal(j.written, false, 'dry-run 不得写盘')
+    assert.equal(j.applied, 1, 'dry-run 仍须给出试算结果（这才是它的用途）')
+    assert.equal(readFileSync(join(d, 'a.md'), 'utf8'), before, '源正文必须逐字节未变')
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
+// ── 对照：真实写盘时原地覆盖守卫必须仍然生效（修 dry-run 不得顺手把守卫放掉）──────────
+test('审计修订 P1-4a 对照：非 dry-run 且原地覆盖时仍必须要求显式 --in-place', () => {
+  const d = mk({
+    'a.md': paper('原句 A。'),
+    'l.md': '[Diff 1]\n现况：原句 A。\n修改：新句 B。\n',
+  })
+  try {
+    const r = run([S('apply-diff.mjs'), join(d, 'a.md'), join(d, 'l.md')])
+    assert.equal(r.code, 10, '真实写盘时未声明 --in-place 必须 exit 10：' + r.out.slice(0, 300))
+    assert.match(r.out, /原地覆盖|in-place/, '理由须点明原地覆盖与 --in-place')
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
 // ── L-57 正文里合法的行尾括号不得被删 ──────────────────────────────────────────
 test('L-57：`文字（对应的系数）` 不得被当元注记删除（旧版删尾括号且 ok:true）', () => {
   const d = mk({
@@ -194,6 +229,33 @@ test('L-56：apply-revision-cycle 的「脚本实测」是**改后**值、且 bo
     //     段长度混算所致；独立复核证据：题名区[0,7)=3 / 摘要标题行[7,13)=2 / 正文区[13,377)=353。
     //     精确边界已写死进 `sections.mjs` 与 `count-chars.mjs` 注释，防二次误判。）
     assert.equal(j.chars.nextBody, 3 + 50 + 200, '当前口径 = 摘要正文 + 关键词行 + 正文（题名不计）')
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
+// ── 审计修订 P1-4b：dry-run 不得把**已存在的 vN 占位文件**当成本轮改后稿 ──────────────
+// 旧行为：`const post = measure(existsSync(nextPath) ? nextPath : prevPath)` —— dry-run 既不复制基线
+//   也不应用 diff，却仍优先量测**磁盘上已存在**的 `初稿-vN.md`。若那是个历史占位文件，
+//   决策 JSON 的 `chars.nextBody` / `delta` 报的就是它的字数，而调用方会把它写进修订说明与闸门记录。
+//   v18.13.0 已修「用改前值冒充改后」（L-56），本条是同一议题的另一半：**用无关文件冒充改后**。
+// 判据：dry-run 没有产生任何改后稿，就必须如实说「未测量」，不得给出一个看着像实测的数字。
+test('审计修订 P1-4b：apply-revision-cycle --dry-run 不得把已存在的 vN 占位当改后字数', () => {
+  const d = mk({
+    '01-任务简报.md': '# 简报\n\n目标篇幅：300 字\n',
+    'drafts/初稿-v1.md': paper('甲'.repeat(300), { abstractLen: 50 }),
+    // 历史占位：内容与 v1 无关（若被当作 post，会得到一个小得离谱的 nextBody）
+    'drafts/初稿-v2.md': '# 占位\n\n## 摘要\n\n占位\n',
+  })
+  try {
+    const before = readFileSync(join(d, 'drafts/初稿-v2.md'), 'utf8')
+    const r = run([S('apply-revision-cycle.mjs'), d, '2', '--dry-run', '--skip-bundle'], { cwd: d })
+    const j = parseJson(r)
+    assert.equal(r.code, 0, 'dry-run 应正常结束：' + r.out.slice(0, 300))
+    assert.equal(j.chars.nextBody, null, `dry-run 未产生改后稿，nextBody 必须是 null（不得报占位文件的字数）：${JSON.stringify(j.chars)}`)
+    assert.equal(j.chars.delta, null, 'dry-run 不得给出 delta（它无从计算）')
+    assert.ok(j.chars.prevBody > 0, '改前基线仍须给出（供主控对照）')
+    assert.match(String(j.chars.postMeasurement || ''), /dry-run|未执行|未测量/,
+      '必须显式说明改后测量未执行，不能只给 null 让消费方猜')
+    assert.equal(readFileSync(join(d, 'drafts/初稿-v2.md'), 'utf8'), before, 'dry-run 不得改写占位文件')
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
 

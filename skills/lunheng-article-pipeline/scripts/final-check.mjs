@@ -67,16 +67,13 @@ const evDir = join(project, 'final', '证据包');
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 
 const steps = [
-  // 字数口径：全流水线锁定「正文区纯汉字」（与任务简报-template 同口径）；
-  // 旧版传 --full（全文）却被称为「字数权威值」→ 与目标区间比对会系统性偏大（v2.5.2-dsh.13 修复）
   { name: 'count-chars.mjs', cmd: 'node', args: [join(scriptDir, 'count-chars.mjs'), final], opt: true, parse: 'count-chars' },
-  // v17.0.0 顺序修复（端到端测试反哺）：**证据包刷新必须排在 M 门之前**。
-  //   旧顺序是 count-chars → m-gate-check → build-evidence-bundle，于是 M 门读到的证据包是**上一次**收集的副本
-  //   ——实测：文献卡在项目里已更新到 4 条，而证据包副本还是 2 条 → M-Form-10 报「头部 2 条 ≠ 正文 1 条」（误报）。
-  //   改为：count-chars → build-evidence-bundle（先刷新）→ m-gate-check（再校验）。
+  // v18.57.x（审计修订）：先刷新证据卡，再跑 M 门，最后才生成审计视图。
+  //   旧顺序 count-chars → build-evidence-bundle --summary → m-gate-check 导致审计视图读取
+  //   的是**上一次**的 M-Gate-Report.json——若旧报告为 exit:0 而新 M 门为 exit:2，
+  //   视图与报告不同步。现改为四步：字数 → 证据卡刷新 → M 门 → 审计视图（读本次报告）。
 ];
-if (!noSummary) steps.push({ name: 'build-evidence-bundle.mjs --summary', cmd: 'node', args: [join(scriptDir, 'build-evidence-bundle.mjs'), project, '--summary'], opt: true, parse: null });
-// 一并落盘 M 门报告到真源路径（final/M-Gate-Report.json），供 build-evidence-bundle 的审计视图读取
+if (!noSummary) steps.push({ name: 'build-evidence-bundle.mjs（刷新证据卡）', cmd: 'node', args: [join(scriptDir, 'build-evidence-bundle.mjs'), project], opt: true, parse: null });
 steps.push({ name: 'm-gate-check.mjs', cmd: 'node', args: [join(scriptDir, 'm-gate-check.mjs'), final, evDir, '--report', join(project, 'final', 'M-Gate-Report.json')], opt: false, parse: 'm-gate' });
 
 if (!wantJson) {
@@ -135,6 +132,23 @@ for (const step of steps) {
       `\n⚠️ [${step.name}] 可选步骤非零退出 ${statusVal} —— 本步骤输出缺失或不可用，`
       + `终检结论已按降级处理（不得据此认为该步骤「通过」）`,
     );
+  }
+}
+
+// v18.57.x（审计修订 P1-1）：审计视图**必须在 M 门之后**生成，且**不受 M 门非零退出影响**——
+//   它是主控/主人诊断 M 门失败的工具，视图读到的 final/M-Gate-Report.json 必须是**本次**的。
+//   故从 steps 循环中拆出来：循环内 m-gate-check（opt:false）非零会 break，若视图步骤还在
+//   循环里就永远轮不到（旧版行为：M 门失败 → 无视图 → 只能看 JSON 报告猜）。
+if (!noSummary) {
+  const viewStep = { name: 'build-evidence-bundle.mjs --summary（审计视图）', cmd: 'node', args: [join(scriptDir, 'build-evidence-bundle.mjs'), project, '--summary'] };
+  if (!wantJson) console.log(`\n========== [${viewStep.name}] ==========`);
+  const r = spawnSync(viewStep.cmd, viewStep.args, { stdio: ['ignore', 'pipe', 'pipe'], shell: false, encoding: 'utf8' });
+  const spawnFailed = r.status === null && (r.error || r.signal);
+  const statusVal = spawnFailed ? EXIT_INTERNAL : r.status;
+  summary.push({ step: viewStep.name, exit: statusVal, ok: statusVal === 0, ...(spawnFailed ? { spawnError: String(r.error?.message || r.signal) } : {}) });
+  if (statusVal !== 0) {
+    optionalFailures.push({ step: viewStep.name, exit: statusVal });
+    console.error(`\n⚠️ [${viewStep.name}] 非零退出 ${statusVal} —— 审计视图未能生成（M 门报告已落盘，可用 --json 查看详细结果）`);
   }
 }
 

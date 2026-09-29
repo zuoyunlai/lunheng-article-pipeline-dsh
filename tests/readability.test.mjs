@@ -7,7 +7,7 @@
 // 运行：node --test tests/
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { writeFileSync } from 'node:fs'
+import { writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { SCRIPTS, run, parseJson, tmp, mkProject } from './_fixtures.mjs'
 import { pathToFileURL } from 'node:url'
@@ -96,6 +96,27 @@ test('quality-score：可读性剖面是第 8 分量，八分量权重合计 100
   const sum = j.components.reduce((s, c) => s + c.weight, 0)
   assert.equal(sum, 100, `八分量权重合计必须 100（八项全适用时）：实测 ${sum}｜${j.components.map((c) => c.id + ':' + c.weight).join(' ')}`)
   assert.ok(rd.evidence.metrics && typeof rd.evidence.metrics.sentenceLenStd === 'number', '分值须带四指标原值供逐版对照')
+})
+
+test('quality-score：M-Gate 分量名与权重不得随「证据包有无」改变（同 id 即同分量）', () => {
+  const { d, proj, fin, ev } = mkProject({ audits: true })
+  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n摘要。\n\n## 一、导论\n\n'
+    + Array.from({ length: 30 }, (_, i) => `第${i}句用来凑够句数并让长度有变化，长短交错才像人写的。`).join('')
+    + '\n\n## 参考文献\n\n[L01] a\n\n## 数据来源\n\n[D01] d\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
+  writeFileSync(join(ev, '文献卡.md'), '# 文献卡\n\n### [L01] 甲\n')
+  writeFileSync(join(ev, '数据卡.md'), '# 数据卡\n\n### [D01] 甲\n- **时效评级**：🟢 ≤2 年\n')
+  const withEv = parseJson(run([Q, proj])).components.find((c) => c.id === 'M-Gate')
+  // 去掉证据包 → 走「缺 final/证据包」的 N/A 分支
+  rmSync(ev, { recursive: true, force: true })
+  const withoutEv = parseJson(run([Q, proj])).components.find((c) => c.id === 'M-Gate')
+  assert.ok(withEv && withoutEv, '两种场景都必须产出 M-Gate 分量')
+  assert.equal(withoutEv.weight, withEv.weight,
+    `同一 id 必须同权重（旧版 38 / 40 两种写法会让 --baseline 并排阅读时误判评分结构变化）：`
+    + `有证据=${withEv.weight} 无证据=${withoutEv.weight}`)
+  assert.equal(withoutEv.name, withEv.name, '同一 id 必须同名（旧版分别写「23 机械项」与「22 机械项」）')
+  assert.doesNotMatch(withEv.name, /\d+\s*机械项/,
+    '名称不得硬编码机械项数——该数字已漂移三次（22/23/24），真实值由 detail 的 pass/total 承载')
+  rmSync(d, { recursive: true, force: true })
 })
 
 test('quality-score：句数 < 20 → 可读性分量如实 N/A（不拿无统计意义的数字判档）', () => {

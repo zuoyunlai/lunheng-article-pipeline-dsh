@@ -592,23 +592,30 @@ if (reportPath) {
       const reviewText = typeof adj.llm_review === 'string' ? adj.llm_review : JSON.stringify(adj.llm_review ?? '');
       const FOUR = [/逐条/, /真阳性/, /规范/, /复核|独立/];
       const fourHits = FOUR.filter((re) => re.test(reviewText)).length;
-      if (hardRedLineHits.length > 0) {
-        console.error(
-          `⛔ 拒绝裁定：本次机械运行命中**硬 P0 红线**（${hardRedLineHits.join(' / ')}）——红线项不允许 LLM 兜底`
-          + `（v18.11.0 F-1 契约，v18.12.0 L-44 实装）。已落盘机械值 exit=${report.exit}；请真修复红线项后重跑。`,
-        );
-        console.error(`→ 退出码 30（裁定被拒：裁定无效，报告已落盘机械值）`);
+      const rejectAdjudication = (reason, detail) => {
+        const rejected = {
+          ...report,
+          script_exit_raw: report.exit,
+          verdict_stale: true,
+          verdict_stale_reason: reason,
+        };
+        // The rejected verdict must not leave an older passing report on disk.
+        writeReport(reportPath, JSON.stringify(rejected, null, 2), { protect: [draftPath] });
+        console.error(`⛔ 拒绝裁定：${detail}；本次机械值 exit=${report.exit} 已写入 ${reportPath}。`);
+        console.error('→ 退出码 30（裁定被拒；磁盘报告已更新为本次机械值）');
         process.exit(30);
+      };
+      if (hardRedLineHits.length > 0) {
+        rejectAdjudication(
+          `本次机械运行命中硬 P0 红线（${hardRedLineHits.join(' / ')}）`,
+          `本次机械运行命中**硬 P0 红线**（${hardRedLineHits.join(' / ')}）——红线项不允许 LLM 兜底（v18.11.0 F-1 契约，v18.12.0 L-44 实装）`,
+        );
       }
       if (adjExit !== report.exit && fourHits < 3) {
-        console.error(
-          `⛔ 拒绝裁定：裁定值 ${adjExit} ≠ 本次机械值 ${report.exit}，但 \`llm_review\` 未含「证伪证据四件套」的至少三项`
-          + `（当前命中 ${fourHits}/4：逐条枚举 / 真阳性扫描 / 规范冲突说明 / 独立复核来源）。`
-          + `\n   —— 四件套是「把机械失败人工修正为通过」的**必填代价**（M-Gate-Algorithm §_t8_llm_review）；`
-          + `机械值本就是 ${report.exit} 时无需裁定。已落盘机械值。`,
+        rejectAdjudication(
+          `裁定值 ${adjExit} 与机械值 ${report.exit} 不同，但证伪四件套仅命中 ${fourHits}/4`,
+          `裁定值 ${adjExit} ≠ 本次机械值 ${report.exit}，但证伪证据四件套仅命中 ${fourHits}/4（至少需要 3 项）`,
         );
-        console.error(`→ 退出码 30（裁定被拒：裁定段不完整，报告已落盘机械值）`);
-        process.exit(30);
       }
       out = {
         ...report,

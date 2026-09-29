@@ -10,7 +10,7 @@
 //   L-66  exit-guard.describeSpawn：`spawnSync` 未结算时不再输出 `exit null`
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { writeFileSync, mkdirSync } from 'node:fs'
+import { writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { SCRIPTS, run, parseJson, tmp } from './_fixtures.mjs'
 
@@ -176,6 +176,32 @@ test('exit-guard L-66：describeSpawn 把 status=null / signal 分流，决策 J
   assert.doesNotMatch(r.stdout, /exit null/, '决策 JSON 不得出现 `exit null`（旧实现 status 为 null 时即此形态）')
   assert.doesNotMatch(r.stdout, /exit undefined/, '决策 JSON 不得出现 `exit undefined`')
   assert.match(r.stdout, /"consistencyCheck": "dry-run"/, '口径应为 dry-run')
+})
+
+// ── 审计修订 P2：压缩决策的缺口量必须机器可读（不得从 verdict 文本按空格切）─────────────
+// 旧行为：`verdict.split(' ')[2]` 对 `低于阻塞线 1710 字（P0，须扩写）` 取到 `字（P0，须扩写）`，
+//   于是 recommendation 渲染成 `需扩写 字（P0，须扩写） 字` —— 消费方（主控 / 修订说明）
+//   **读不出缺多少字**，而这句正是决定「扩写到什么程度」的输入。超限侧原本能用纯属巧合。
+test('审计修订 P2：apply-compression-cycle 的 charGap / gapDirection 必须是结构化数字', () => {
+  const d = tmp('lunheng-b7-gap-')
+  const proj = join(d, 'run', 'proj')
+  mkdirSync(join(proj, 'final'), { recursive: true })
+  // 目标 300 字 → floor = 270；正文刻意写少，落在「低于阻塞线」分支
+  writeFileSync(join(proj, '01-任务简报.md'), '# 简报\n\n目标篇幅：300 字\n', 'utf8')
+  writeFileSync(join(proj, 'final', '定稿.md'), '# 标题\n\n## 摘要\n\n' + '汉'.repeat(40) + '\n', 'utf8')
+
+  const r = run([S('apply-compression-cycle.mjs'), proj, '--dry-run'])
+  const j = parseJson(r)
+  assert.match(String(j.verdict), /低于阻塞线/, '夹具应落在低于阻塞线分支，实得：' + j.verdict)
+  assert.equal(j.gapDirection, 'expand', '方向须结构化，实得 ' + j.gapDirection)
+  assert.equal(typeof j.charGap, 'number', 'charGap 必须是数字，实得 ' + JSON.stringify(j.charGap))
+  // 缺口 = floor − 实测（不是 floor 本身，也不是文本切片）
+  const expected = Math.round(300 * 0.9) - j.chars.body
+  assert.equal(j.charGap, expected, `缺口应等于 floor(${Math.round(300 * 0.9)}) − 实测(${j.chars.body})`)
+  assert.match(j.recommendation, new RegExp(`需扩写 ${expected} 字`),
+    `recommendation 必须带出正确数字（旧版渲染成「需扩写 字（P0，须扩写） 字」）：${j.recommendation}`)
+  assert.doesNotMatch(j.recommendation, /字（P0/, 'recommendation 不得混入 verdict 的括注切片')
+  rmSync(d, { recursive: true, force: true })
 })
 
 // ── L-61 / L-66：编排脚本的非 dry-run 分支必须真跑通，且 `--skip-bundle` 真被读取 ────────

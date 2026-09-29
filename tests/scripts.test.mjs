@@ -1027,6 +1027,31 @@ test('build-evidence-bundle：非项目目录必须 exit 10 且一个字节都�
   rmSync(d, { recursive: true, force: true })
 })
 
+test('审计修订 P2：build-evidence-bundle「一个源都没找到」时不得留下自建的空证据包目录', () => {
+  // 与上一条的区别：那条走**形态校验**失败（排在 mkdir 之前，一个字节不落）；
+  //   本条走**另一条**错误路径——项目骨架合法（有 01-任务简报.md 之外还需一个标记？不：本用例刻意
+  //   只放 final/ 目录，使其通过形态校验但没有任何可复制源）→ 旧版会先建出空的 final/证据包/ 再 exit 10。
+  const d = tmp()
+  const proj = join(d, 'run', 'skeleton')
+  mkdirSync(join(proj, 'drafts'), { recursive: true })   // 唯一的形态标记：drafts/
+  const r = run([join(SCRIPTS, 'build-evidence-bundle.mjs'), proj, '--summary'])
+  assert.equal(r.code, 10, '一个源都没有必须 exit 10：' + r.out.slice(0, 300))
+  assert.match(r.out, /一个源都没找到/, '须点名「一个源都没找到」')
+  assert.ok(!existsSync(join(proj, 'final', '证据包')),
+    '该目录系本次新建且为空，错误路径上必须回收（旧版留下空目录，与「报错不落字节」的承诺不符）')
+  assert.match(r.out, /已一并回收/, '回收动作须在 stderr 里可见，不得静默')
+
+  // 对照：目录**原本就在**（非本次创建）→ 不得删除它（绝不删既有目录）
+  const proj2 = join(d, 'run', 'skeleton2')
+  mkdirSync(join(proj2, 'drafts'), { recursive: true })
+  mkdirSync(join(proj2, 'final', '证据包'), { recursive: true })
+  writeFileSync(join(proj2, 'final', '证据包', 'user-note.md'), '用户自己的文件\n')
+  const r2 = run([join(SCRIPTS, 'build-evidence-bundle.mjs'), proj2, '--summary'])
+  assert.equal(r2.code, 10, '同样 exit 10')
+  assert.ok(existsSync(join(proj2, 'final', '证据包', 'user-note.md')), '既有目录与其内容必须原样保留')
+  rmSync(d, { recursive: true, force: true })
+})
+
 test('consistency-check ④b+⑲：占位符残留 / 版本硬编码 / 契约表断链都必须报（注入验证）', () => {
   const { d, repo, R } = mkRepo()
   // ① 占位符残留

@@ -8,6 +8,7 @@
 //   且**进程退出码 = 裁定值**（避免「产物说放行、退出码说 P0」）。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { writeFileSync, mkdirSync, rmSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { SCRIPTS, run, tmp } from './_fixtures.mjs'
@@ -89,20 +90,26 @@ test('参数错：裁定文件不存在 → exit 10（不得当成内容失败�
   } finally { rmSync(f.dir, { recursive: true, force: true }) }
 })
 
-test('拒绝③（L-44）：命中硬 P0 红线时裁定一律不采信 → exit 30，报告保持机械值', () => {
+test('拒绝③（L-44）：新正文命中硬 P0 时拒绝裁定并覆盖旧放行报告为本次机械值', () => {
   const f = mkClean()
   try {
-    // 删掉「案例来源」节 → M-Form-2 红线
+    // 先让旧正文报告呈现为已裁定放行，再改正文触发 M-Form-2 红线。
+    run([M(), f.draft, f.ev, '--report', f.report])
+    const prior = readReport(f.report)
+    prior.exit = 0
+    prior._t8_conclusion = { true_p0: 0, true_p1: 0, note: '旧正文 sha256: 000000000000' }
+    writeFileSync(f.report, JSON.stringify(prior, null, 2))
     const t = readFileSync(f.draft, 'utf8').replace('## 案例来源\n\n- [C01] 案例\n\n', '')
     writeFileSync(f.draft, t)
-    run([M(), f.draft, f.ev, '--report', f.report])
-    const before = readReport(f.report)
-    assert.ok(before.hard_red_line_hits.some((h) => /M-Form-2/.test(h)), '夹具应命中 M-Form-2 红线：' + JSON.stringify(before.hard_red_line_hits))
     const adj = adjFile(f.dir, { true_p0: 0, true_p1: 0, verdict: 'Pass', llm_review: FOUR })
     const r = run([M(), f.draft, f.ev, '--report', f.report, '--adjudicate', adj])
     assert.equal(r.code, 30, '红线命中时裁定应被拒：' + r.out + r.err)
     assert.match(String(r.err || r.out), /硬 P0 红线/)
-    assert.equal(readReport(f.report).exit, before.exit, '被拒时报告必须保持机械值')
+    const after = readReport(f.report)
+    assert.equal(after.exit, after.script_exit_raw, '拒绝后磁盘报告 exit 必须是本次机械值')
+    assert.equal(after.exit, 2, '夹具的硬红线应机械落为 P0/exit 2')
+    assert.equal(after.verdict_stale, true, '旧裁定不得继续伪装成适用于新正文')
+    assert.equal(after.verdict_scope?.draft_sha256, createHash('sha256').update(readFileSync(f.draft)).digest('hex'), '落盘指纹必须对应本次正文')
   } finally { rmSync(f.dir, { recursive: true, force: true }) }
 })
 

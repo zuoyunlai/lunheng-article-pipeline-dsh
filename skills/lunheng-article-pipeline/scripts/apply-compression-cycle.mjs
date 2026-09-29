@@ -83,6 +83,15 @@ const charBand = target ? { floor: Math.round(target * 0.9), ceil: Math.round(ta
 //   控制信号消费（第 132-142 行：recommendation 与 `process.exit(1)`），**不得改字**。
 const verdict = charBand ? (m.body > charBand.ceil ? `超阻塞线 +${m.body - charBand.ceil} 字（P1，须压缩）` : (m.body < charBand.floor ? `低于阻塞线 ${charBand.floor - m.body} 字（P0，须扩写）` : '✓ 阻塞线内')) : '（未解析到目标字数）';
 
+// v18.57.x（审计修订 P2）：缺口数字必须**结构化**取值，不得从 verdict 文本里按空格切。
+//   旧写法 `verdict.split(' ')[2]` 对 `低于阻塞线 1710 字（P0，须扩写）` 取到的是
+//   `字（P0，须扩写）`——于是 recommendation 输出 `需扩写 字（P0，须扩写） 字`，
+//   消费方（主控/修订说明）**机器读不出缺多少字**。超限侧原本能用纯属巧合（`+N 字` 恰好切对）。
+//   现：缺口数与方向各自成字段，文案从字段渲染。
+const gapMatch = verdict.match(/(?:超阻塞线\s*\+|低于阻塞线\s*)(\d+)\s*字/);
+const gapAmount = gapMatch ? Number(gapMatch[1]) : null;
+const gapDirection = verdict.includes('超阻塞线') ? 'compress' : (verdict.includes('低于阻塞线') ? 'expand' : null);
+
 // ---- ③ 残留风险清单（哪些内容可能需要压缩）----
 // v18.12.3：正文区口径改走上面同一个 `bodyOf`（旧版在这里又写了一遍 `slice(0, firstEnd)`——
 //   同一文件两处口径，正是「同族缺陷复发」的典型形态）。
@@ -129,15 +138,18 @@ const result = {
   targetPath,
   chars: { body: m.body, full: m.full },
   target, charBand, verdict,
+  // v18.57.x（审计修订 P2）：缺口量与方向的结构化字段——文案仅供人读，机器请读这两个字段。
+  charGap: gapAmount,
+  gapDirection,
   // 旧字段名 `g5` 已随 2026-09-29 命名更正移除（字数归属 = G8，G5 = 学术规范），**刻意不留别名**。
   flowHits,
   sha256: shaMap,
   consistencyCheck: ccResult ? ccResult.status : (dryRun ? 'dry-run' : 'skipped'),
   bundle: bundleResult ? bundleResult.status : (dryRun ? 'dry-run' : (flags.has('--skip-bundle') ? 'skipped(--skip-bundle)' : 'skipped')),
   recommendation: verdict.includes('超阻塞线')
-    ? `需进入 v(${Number(basename(targetPath).match(/\d+/)?.[0] || '3') + 1}) 修订轮；压缩目标 ${verdict.includes('+') ? verdict.split('+')[1].split(' ')[0] : '?'} 字（按 maxRounds=${maxRounds} 轮内）`
+    ? `需进入 v(${Number(basename(targetPath).match(/\d+/)?.[0] || '3') + 1}) 修订轮；压缩目标 ${gapAmount ?? '?'} 字（按 maxRounds=${maxRounds} 轮内）`
     : verdict.includes('低于阻塞线')
-    ? `需扩写 ${verdict.split(' ')[2]} 字（按 §12 补检索方向）`
+    ? `需扩写 ${gapAmount ?? '?'} 字（按 §12 补检索方向）`
     : '✓ 无需修订',
 };
 console.log(JSON.stringify(result, null, 2));

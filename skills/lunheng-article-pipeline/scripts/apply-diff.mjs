@@ -225,7 +225,11 @@ if (droppedLines.length) {
 //   `apply-diff <正文> <空清单>` 就该落在这一支，报 exit 1 + 「清单未解析出任何条目」），
 //   只有清单确实有条目、才轮到「原地覆盖必须显式 --in-place」（exit 10）。
 //   两支都不写盘，故先后只影响「报哪个错更贴因」，不影响数据安全。
-if (!emptyList && overwritesTarget && !inPlace) {
+//   v18.57.x（审计修订 P1-4a）：**dry-run 不写盘，故不受本守卫约束**——旧版条件是
+//   `!emptyList && overwritesTarget && !inPlace`，于是 `apply-diff a.md l.md --dry-run`
+//   （不给 --out / --in-place）被误拒 exit 10，用户拿不到试算结果。真正写盘段本就带 `!dryRun`
+//   （下方 line ~314），故此处的 dry-run 分支纯属误伤。现加 `!dryRun`：只对**真实写盘**要求声明。
+if (!dryRun && !emptyList && overwritesTarget && !inPlace) {
   console.error(`写入目标与输入正文是同一文件（会原地覆盖源正文）: ${realPath(targetPath)}`);
   console.error('→ 退出码 10：原地覆盖必须**显式**声明，二选一：');
   console.error(`   ① 写到下一版（推荐，源正文保持原样）: node apply-diff.mjs ${targetPath} ${listPath} --out drafts/初稿-v4.md`);

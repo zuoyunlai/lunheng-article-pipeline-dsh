@@ -18,7 +18,10 @@
 //   写进闸门记录，而 M 门随后校验的其实是**旧副本**（与 m-gate-check.mjs:57 当年修掉的「路径错撞 1」同类）。
 //   现两道硬约束：① 参数目录必须命中**项目形态标记**（01-任务简报.md / final/ / drafts/ 之一，Phase 0 起必然存在其一），
 //   否则 exit 10；② 收完后 `copied === 0 && missing > 0`（一个源都没找到）→ 列出缺失源 + exit 10。
-//   且形态校验**排在任何 mkdir/复制之前**——报错路径上不落一个字节（旧版正好相反：先在参数目录里建目录再报错）。
+//   且形态校验**排在任何 mkdir/复制之前**——**该**错误路径上不落一个字节（旧版正好相反：先在参数目录里建目录再报错）。
+//   v18.57.x（审计修订 P2）补正：上面那句只对**形态校验**成立。另一条错误路径（项目骨架合法、但一个源都没有，
+//     见下方 `copied === 0 && missing > 0` → exit 10）此前**会**留下一个空的 `final/证据包/`。现改为：
+//     若该目录是本次新建且仍为空 → 一并回收；否则保持原样（绝不删既有目录）。
 //   ③ 参数解析同步收紧（B-4 同族，纳入本轮授权）：未知旗标（`--sumary` / `--sorce` 拼错）、带值旗标缺值
 //      （`--source` / `--project` 后面没值）、多余位置参数 → 打印用法 + **exit 10**。旧版这三类全部**静默忽略**：
 //      用户以为「只出了摘要」实际拿到全量、以为指定了正文源实际用了默认源。实现与 apply-diff 共用
@@ -27,7 +30,7 @@
 //   ⚠️ 与既有回归用例的冲突（如实声明）：`tests/scripts.test.mjs` 有 3 个用例用「只有 drafts/ 或只有 final/定稿.md
 //   的骨架目录」调用本脚本并断言 exit 0（第 290/310/529 行附近）；按上述 ② 这类骨架必然 exit 10。夹具属测试所有者，
 //   本批未改（授权范围外），需同步给骨架补一个源文件（如 01-任务简报.md 或 final/证据包/数据卡.md）。
-import { readdirSync, copyFileSync, existsSync, mkdirSync, statSync, readFileSync, writeFileSync } from 'node:fs';
+import { readdirSync, copyFileSync, existsSync, mkdirSync, statSync, readFileSync, writeFileSync, rmdirSync } from 'node:fs';
 import { join, basename, relative, resolve } from 'node:path';
 import { countHan } from './_lib/han.mjs';                        // 汉字口径真源
 import { refCardPairRegex, refRegexFirst, refsOf } from './_lib/refs.mjs';   // 引用编号口径真源
@@ -167,7 +170,21 @@ const latestVersioned = (dir, prefix) => {
 };
 
 const destDir = join(project, 'final', '证据包');
-if (!existsSync(destDir)) mkdirSync(destDir, { recursive: true });
+// v18.57.x（审计修订 P2）：记下**本次是否由我们创建**——只有「自己建的 + 仍为空」才允许在错误路径上回收。
+//   边界说明（如实）：上方形态校验的失败路径**确实**一个字节都不落（校验排在 mkdir 之前）；
+//   而「项目骨架合法、但一个源都没有」这条路径**会**先建出 destDir 再报错（下方 exit 10）。
+//   旧版把这两种错误路径混为一谈地承诺「报错即不落字节」，故这里既清理、也把注释改准。
+const destDirCreated = !existsSync(destDir);
+if (destDirCreated) mkdirSync(destDir, { recursive: true });
+/** 错误路径回收：仅当目录是本脚本本次创建、且此刻为空（我们自己没往里放过东西）。
+ *  用 `rmdirSync`（不是 `rmSync`）——后者删目录需要 `recursive: true`，传 false 会抛 EISDIR 被吞掉。 */
+const removeDestDirIfSelfMadeEmpty = () => {
+  if (!destDirCreated) return false;
+  try {
+    if (readdirSync(destDir).length === 0) { rmdirSync(destDir); return true; }
+  } catch { /* 删不掉不算错误：目录留着即可，不掩盖真实退出码 */ }
+  return false;
+};
 
 let copied = 0, missing = 0;
 const missingSrcs = [];   // v18.2.6（B-2 ②）：记下**哪些源**缺失，好在报错里点名（旧版只给一个总数）
@@ -266,10 +283,13 @@ if (existsSync(figDir)) {
 //   而 M 门随后校验的是**旧副本**（闸门留痕被伪造）。形态校验（脚本上方）已挡住「不是项目」，本检查挡住
 //   「是项目骨架但源一个都没有」这一残余情形：这时本脚本给不出任何机械证据，就必须以非 0 退出。
 if (copied === 0 && missing > 0) {
+  const reclaimed = removeDestDirIfSelfMadeEmpty();
   console.error(`\n✗ 一个源都没找到：复制 0 个，缺失 ${missing} 个 —— 这几乎一定是**项目路径传错**（或该项目还没有任何素材/报告）`);
   console.error(`  项目目录: ${project}`);
   console.error(`  前几个缺失源: ${missingSrcs.slice(0, 5).join('、')}${missingSrcs.length > 5 ? `（…共 ${missingSrcs.length} 个）` : ''}`);
-  console.error(`  （已按需创建 ${destDir} —— 可能为空目录；本脚本不删已建目录）`);
+  console.error(reclaimed
+    ? `  （本次未创建任何产物：${destDir} 系本次新建且为空，已一并回收）`
+    : `  （${destDir} 未由本次创建或已含内容，保持原样——本脚本不删既有目录）`);
   console.error('→ 退出码 10（参数或路径错误）：请核对路径确实指向 run/<项目名> 后重跑；不要拿这份 exit 10 当「证据包已刷新」');
   process.exit(10);
 }
