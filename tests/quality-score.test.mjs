@@ -45,7 +45,7 @@ test('quality-score：同一产物两次跑 → 分数与逐分量完全一致�
 
 test('quality-score：分数只反映硬失败——P2 候选与 G14 Warning 之外的口径不得混入', () => {
   // 定稿 480 汉字 / 简报目标 500 字 → G8 在区间内（PASS）；把目标改成 200 字（低于 MIN 300 会被拒）
-  //   → 改用 300 字目标 + 480 字正文 → 超 1.09× = P2 候选。此时 g-audit 应为「无硬失败」= ratio 1
+  //   → 改用 300 字目标 + 480 字正文 → 超上界 ×1.05 = P2 候选。此时 g-audit 应为「无硬失败」= ratio 1
   const f = mkQProject({ g14: true })
   writeFileSync(join(f.proj, '01-任务简报.md'), '- **篇幅**：**300 字**\n')
   const j = parseJson(run([Q, f.proj]))
