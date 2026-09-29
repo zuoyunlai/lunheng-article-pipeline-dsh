@@ -224,3 +224,66 @@ node scripts/link-check.mjs
 | `audits/decisions/ADR-0002-写盘安全网.md` | 锚点状态：**尚未实装 → 已实装**（含负向对照留痕） |
 
 **验证（全部实跑）**：`repo-hygiene-check` **exit 0** ／ `consistency-check` **exit 0**（0 漂移，镜像已同步）／ `link-check` **exit 0** ／ `plugin-surface-check` **exit 0** ／ **全量测试 522/522 pass / 0 fail**（516 + 新增 6 条源码钉）。
+
+---
+
+## 十、发布留痕（v18.55.0，2026-09-29）
+
+> 主人选择路径：**「先看 master 上的 ci.yml 跑绿再打 tag」** → 条件满足后打 tag。
+
+### 10.1 版本级联与提交
+
+| 项 | 值 |
+|---|---|
+| 版本 | 18.54.0 → **18.55.0** |
+| bump 方式 | `node scripts/bump-version.mjs 18.54.0 18.55.0`（12 条白名单规则） |
+| 被改文件 | **68 个**（版本头 / SKILL frontmatter / description 首句 / package.json / cordis.patch 包头 / docs 当前版本 / 五语 README / SECURITY / CONTRIBUTING 的 tag 示例与安装 pin） |
+| CHANGELOG | **手写** `## 18.55.0` 段（六节），与 bump **同提交**——规则 ⑬ 要求首段 == `package.json` |
+| 提交 | `2b08334`（69 files / +142 −79）→ 已推 master，无 `[ahead]` |
+| 发布 tag | `v18.55.0`（== `package.json.version`） |
+
+**核验（两条，均可复跑）**：① 发布面已无 18.54.0 的**当前版本**位点；残留 11 处**全部是历史注记**（「v18.54.0 反哺 F-XX」）——按判据**保留不动**；② 脚本内 `version: 'vX'` 契约（7 处）为**各脚本契约版本**，只在契约变更时改；本批未改任何脚本输出契约 → bump 脚本正确排除 `scripts/`，**手工核实后维持原值**。
+
+### 10.2 CI 与发布工作流
+
+| 运行 | 对象 | 结果 |
+|---|---|---|
+| `36516066587` | master `2b08334` | ✅ **success**，11/11 作业全绿（loader-smoke **51s**） |
+| `36516287465` | tag `v18.55.0` | ci |
+| `36516287470` | tag `v18.55.0` → **publish** | ✅ `gates` 52s ／ `publish` **2m34s** ／ `release` 31s |
+
+**发布物绑定核验（最强证据）**：`npm view lunheng-article-pipeline@18.55.0 gitHead` == 本地 `HEAD` == **`2b08334275bd4a10500058d233468041f3217721`** → 已发布内容与提交**精确绑定**。
+**GitHub Release**：`v18.55.0` 已建（非 draft / 非 prerelease）。
+**dist-tags**：`dsh: 18.55.0`（由 `npm publish --tag dsh` 自动指向）；`latest` 未自动前移（工作流注释记载：需 `NPM_TOKEN`，否则走**手工补救路径**）→ 已按该路径执行 `npm dist-tag add lunheng-article-pipeline@18.55.0 latest`，**传播延迟后复核**：`latest: 18.55.0`，默认安装解析 `npm view <pkg> version` = **18.55.0**。
+
+### 10.3 ⚠️ 一处 CI 失败被判定为**环境抖动**（如实登记 + 判据）
+
+A/B 批提交（`3f59c80`）的 CI **红**，作业 `loader-smoke`：
+
+```
+✓ pack  ✓ install  ✓ dump-config  ✓ headless-smoke  ✗ uninstall
+  - command timed out; raise --timeout or --smoke-timeout
+```
+
+**判据（三条，缺一不足以判定）**：
+
+1. **只有最后一段超时**，失败形态是 pnpm 侧 `resolved 301` / `downloaded 49` / **`The operation was aborted`**——**不是**内容判定失败（前 4 段全 ✓，插件**装得上、加载得起来**）；
+2. **耗时对比**（同一作业近期 8 次）：
+
+   | run | 提交 | loader-smoke |
+   |---|---|---|
+   | `36514857418` | A/B 批（我） | **✗ 7m49s**（撞 `DSH_PLUGIN_DEV_TIMEOUT: 420000`） |
+   | `36515761374` | 续修（我） | 4m20s ——**conclusion = `cancelled`**（`ci.yml:12-14` `cancel-in-progress: true`，被下次 push 顶掉），**不是失败** |
+   | `36516066587` | bump（我） | ✅ **51s** |
+   | `36514038248` / `36513625580` / `36513488392` / `36513154320` / `36504761071` | 我之前的各次 | ✅ 47s / 40s / 49s / 50s / 45s |
+
+3. **同源内容族的最新提交在同一作业上 51s 通过** → 该失败不可复现于内容。
+
+> **⚠️ 不得据「历史长期红」把它当噪音略过**：本仓的 `loader-smoke` **自 v18.12.1 起已转绿**（根因是上游 `dsh-app-boot` 在 `patchReload: "live"` 且无 HMR 时抛错；修法 = `ci.yml` 的 dsh pin `0.1.5-rc.2` → `0.1.7-rc.2`）。故本次**按真失败流程走了诊断**（取失败作业日志 → 逐段核对 → 耗时对比），**结论才是环境抖动**，而非「已知红属正常」。
+> **可复用判据**：**「只有末段超时」+「前段全过」+「同源提交通过」三条同时成立**才可判抖动；缺任一条都必须继续挖。
+
+### 10.4 本次发版的净效果
+
+- **npm**：`lunheng-article-pipeline@18.55.0`（`dsh` 与 `latest` 双 tag 均指向）
+- **GitHub**：tag `v18.55.0` + Release `v18.55.0`
+- **安装**：`npm i lunheng-article-pipeline`（默认）或 `…@dsh` 均得 18.55.0
