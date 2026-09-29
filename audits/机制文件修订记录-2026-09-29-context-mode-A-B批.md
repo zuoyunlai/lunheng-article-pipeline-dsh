@@ -1,0 +1,154 @@
+# 机制文件修订记录 — 2026-09-29 · 外部借鉴 context-mode（A/B 批 + EXEC-2）
+
+> **状态**：✅ 已完成（本批未发版——版本号由主人定案后另行级联）
+> 记录时间：2026-09-29
+> 执行者：主控 T0
+> **授权依据**：主人直接指令「**继续修订啊**」（承接 2026-09-29 的 EXEC-1 定案与《修订计划-context-mode借鉴-v1.md》§三 批次 1–3）。按 `AGENTS.md` §机制文件写保护**唯一例外**（主人显式授权）执行。
+> **依据文档**：[`修订计划-context-mode借鉴-v1.md`](修订计划-context-mode借鉴-v1.md)（§二 总表 / §三 批次 / §四 逐项规格）＋[`反哺报告-context-mode借鉴评估-v1.md`](反哺报告-context-mode借鉴评估-v1.md)（§三 A/B 档）
+
+---
+
+## 一、改动清单
+
+### A 组 — 机制文件（6 个已跟踪文件 + 仓库级棘轮脚本 `repo-hygiene-check.mjs`）
+
+> **注意（防撞门）**：本记录**刻意不写「N 个随包脚本」式计数**——`consistency-check` 的「脚本计数漂移」规则会把此类数字与 SKILL.md 白名单行的唯一真源对账。随包脚本清单与数量**唯一真源 = `SKILL.md` §执行能力边界 的白名单行**，本记录只给指针。
+
+| # | 项 | 文件 | 改动 |
+|---|---|---|---|
+| 1 | **A3** | `references/maintainers.md` | 新增 **§十一 计量口径变更固定动作**——与 §七「收口批」、§十「发布前」并列的**第三条固定动作**：改任何计分/比例/统计口径须附 ① 同一输入 fix 前/后两列 ② 影响面清单（哪些跳变/哪些不变）③ 空状态显式（不许退化成好看的数） |
+| 2 | **B4** | 同上 | 新增 **§十二 昂贵验证的护栏规范**——Tier-2（跑真实项目）五条护栏：钉模型档位 / 成本上限 / 失败留痕 / 可复跑命令 / **不进 CI**；含**刻意偏离判据**「**验证实验要钉（可复现性），发货路径不钉（可移植性）**」 |
+| 3 | **A1** | 同上 | 新增 **§十三 决策记录（ADR）：位置与三条硬要求**——`audits/decisions/` 为位置（**技能目录外**，避词预算棘轮）＋三条硬要求（替代方案须逐条给驳回理由 / Consequences 必写 Negative / **Regression-proof anchor 成对测试含「源码钉」**）＋外部范本「先重析根因，故障已消失就撤门」 |
+| 4 | **B1/B2/A4** | `references/dispatch-cards.md` | 新增 **§上下文经济**（4 条，主控与全角色共守）：① 阈值显式化（回报 >10 行 → 六要素每项 1 行 + 指针）② 一次调用问全部（禁逐文件/逐关键词往返）③ **转述仍算计费**（同一事实一轮只完整写一次，含三播报转播）④ **收窄归下游** |
+| 5 | **B1** | `references/templates/交接报告-template.md` | 头部补**长度阈值**（>10 行 → 每项 1 行 + 指针；**禁以形容词替代**）＋自查清单加 1 项 |
+| 6 | **B3** | `references/_shared/外部检索源接入面.md` | §4.5 成本控制 新增**检索式批量纪律**：批量提交、禁 N 次近似重复单查询；**且「饱和停」判据针对「新增」而非「次数」**（附依据与边界：只借行为纪律，不引入限流机制） |
+| 7 | **A2（卡层）** | `references/_shared/检索注入防御.md` | 新增 **§落盘不得预筛（捕获层 ⊆ 收窄层）**——M-Form-11 的**反向侧**：卡片条数 = 实际取回条数；不相关者**标注「本轮不采用 + 理由」而非不写** |
+| 8 | **A2（卡层）** | `references/templates/素材加载清单-template.md` | 「## 已跳过」由**可选改必填**（无则显式写「无」）并写明**为什么**（区分「看了索引主动跳过」与「捕获层预筛掉」，两者在产物上同形） |
+| 9 | **EXEC-2** | `SKILL.md` | 工具表「命令/脚本」行：**「主流程默认零 exec」→「受限 shell（非零 exec）」**，与 `glossary.md` §shell 使用 同口径（此前同一事实两处相反） |
+| 10 | 棘轮 | `scripts/repo-hygiene-check.mjs`（仓库级，不随包） | `DOC_BUDGET` **显式抬升 5 项**（见 §三） |
+
+### B 组 — 新建文件（`audits/decisions/`，仓库级）
+
+| # | 文件 | 说明 |
+|---|---|---|
+| 11 | `audits/decisions/ADR-template.md` | ADR 模板（字段：Status / Date / Version / Supersedes / Evidence / Context（含根因重析）/ Decision / Regression-proof anchor / Consequences（必含 Negative）/ Alternatives considered / Contract for consumers） |
+| 12 | `audits/decisions/ADR-0001-sha256实值化.md` | **新决策**（本工作流产出）：sha256 须写实值、权威 = `manifest.json`、主人不参与回填；含 6 处互斥证据、机检同批收紧、**19 处/10 文件**的根因重析、4 条替代方案驳回理由、Negative（**需求由「可选验证」升为「必填实值」，明确认赔**）、源码钉要求（`FP_REAL_RE` 单一出口） |
+| 13 | `audits/decisions/ADR-0002-写盘安全网.md` | **回填件**：`writeWithSafety` = 同目录 `temp+rename` 原子写 + 带时间戳、有界回收（`BAK_MAX=20`）的回滚点；含**四层事故链**与「名字为什么会被复用」的坑 |
+| 14 | `audits/decisions/ADR-0003-退出码命名空间分离.md` | **回填件**：M 门 `0/1/2/3` 与交接门 `20/21/22` **刻意不共用**；含可操作判据「**只要脚本不做内容判定，它的 `1` 就一定是撞码**」；本件是本地**少数已具备源码钉**的决策（规则 ⑧/⑧b/⑧d） |
+
+### C 组 — 一并入库的既有文档（先前未跟踪）
+
+| # | 文件 | 说明 |
+|---|---|---|
+| 15 | `audits/反哺报告-context-mode借鉴评估-v1.md` | 借鉴评估报告（含 §九「零 exec」专项复核 + EXEC-1 定案） |
+| 16 | `audits/修订计划-context-mode借鉴-v1.md` | 修订计划（本批施工清单的来源；被本记录与既有记录引用 → 入库以消除悬空引用） |
+
+---
+
+## 二、改动前字节基线（实测）
+
+| 文件 | 改前 B | 改后 B | Δ |
+|---|---|---|---|
+| `references/maintainers.md` | 25,924 | 32,276 | **+6,352** |
+| `references/dispatch-cards.md` | 7,437 | 9,822 | +2,385 |
+| `references/_shared/外部检索源接入面.md` | 19,155 | 20,091 | +936 |
+| `references/_shared/检索注入防御.md` | 930 | 2,702 | +1,772 |
+| `references/templates/素材加载清单-template.md` | 2,481 | 3,196 | +715 |
+| `references/templates/交接报告-template.md` | 2,363 | 2,950 | +587 |
+| `SKILL.md` | 39,494 | 39,606 | +112 |
+| `QUICKSTART.md` | 15,505 | 15,505 | 0（本批只抬棘轮，正文由 EXEC-1 已改） |
+| `references/deliverables.md` | 22,303 | 22,303 | 0（同上） |
+
+---
+
+## 三、词预算棘轮（同一次提交内显式抬升，各附理由）
+
+按本地**定案 ① 公式**「实测 + 1.5 KB 向上取整到整 KB」：
+
+| 文件 | 实测 B | 旧上限 | 新上限 | 改后余量 | 抬升理由（已写入 `DOC_BUDGET` 说明） |
+|---|---|---|---|---|---|
+| `references/maintainers.md` | 32,276 | 27,648 | **34,816** | 2,540 | 新增 §十一/§十二/§十三 三节维护者向承重内容（**旧上限被顶穿**：新增 6,352 B） |
+| `SKILL.md` | 39,606 | 40,960 | **41,984** | 2,378 | EXEC-1 证据包实值口径 + EXEC-2 零 exec 措辞收口（余量曾降至 1,354 B） |
+| `references/_shared/外部检索源接入面.md` | 20,091 | 21,504 | **22,528** | 2,437 | B3 检索式批量纪律（余量曾降至 1,413 B） |
+| `references/deliverables.md` | 22,303 | 23,552 | **24,576** | 2,273 | EXEC-1 第 9 字段改实值口径（**属既有欠账**：改前余量 1,290 B 即已在 1.5 KB 线下） |
+| `QUICKSTART.md` | 15,505 | 16,384 | **17,408** | 1,903 | EXEC-1 用户可见口径改「零操作」（**属既有欠账**：改前余量 920 B 即已在线下） |
+
+> **`maintainers.md` 抬了两次**：首版按 32,033 B 算得 33,792 B；随后本批又补入「外部引用须标属主」一行 → 实测 32,276 B、余量降至 1,516 B（< 1.5 KB）→ **同批按公式再核定**到 34,816 B。两次抬升的理由均写在同一说明里（防日后被读成重复登记）。
+
+---
+
+## 四、验证证据（全部实跑；v18.54.0 + 本批）
+
+| 门 | 结果 |
+|---|---|
+| `node scripts/repo-hygiene-check.mjs` | ✅ **exit 0**：**全部通过**（含 ⑦b 本机路径 26/26 在基线内、⑧b 退出码命名空间三方一致、**⑨ 词预算 33 文档全覆盖**、⑩ 注解密度 ≤12%） |
+| `node skills/lunheng-article-pipeline/scripts/consistency-check.mjs` | ✅ **exit 0**：**80 个 .md + `cordis.patch.yml`/examples/`.dsh` 同步，0 处漂移** |
+| `node scripts/link-check.mjs` | ✅ **exit 0**：**无未归类断链**（存疑 1 条为既存已上报项） |
+| `node scripts/plugin-surface-check.mjs` | ✅ **exit 0**：9 项通过 / 0 失败 / 1 提示（不阻塞）/ skip 4（均在白名单） |
+| `node --test "tests/**/*.test.mjs" "skills/*/tests/**/*.test.mjs"` | ✅ **516 tests / 516 pass / 0 fail**（duration 79.8 s） |
+
+**镜像同步**：7 个改动文件 + `maintainers.md` 复审后重同步 → `consistency-check` 的 `.dsh 同步` 由 7 处红转绿（**改动期红属预期**，见 §六.4）。
+
+---
+
+## 五、安全流程留痕（`AGENTS.md` 例外条款 ①-⑤）
+
+| 条款 | 状态 | 证据 |
+|---|---|---|
+| ① 改前备份（工作区外）+ 记录行数基线 | ✅ | `<DSH_HOME>\_backup\lunheng-20260929-batch-EXECAB\`，**199 文件**（技能全量 + `scripts/` + `tests/`）；字节基线见 §二 |
+| ② 改中用 `edit` 精确匹配（禁 `sed -i`） | ✅ | 全程 `edit` 工具；**未使用任何 sed/awk/perl 回写** |
+| ③ 改后验证（`node --check` + 重跑受影响脚本 + `diff`） | ✅ | `node --check` on `repo-hygiene-check.mjs` ✅；受影响的全部门实跑（§四）；`link-check` 由红转绿（见 §六.1） |
+| ④ 全程可回滚 | ✅ | 见 §七 |
+| ⑤ 如实标注依据主人显式授权 | ✅ | 本记录头部与各改动点均标注；§六 如实声明边界 |
+
+---
+
+## 六、已知边界与如实声明
+
+1. **本批自查出一个由本批引入的真缺陷并已修（SELF-1）**：`maintainers.md` 的三处外部引用（context-mode 的 ADR-0001/0004 与 Tier-2 冒烟工作流）**只写了路径、未带行号**，而 `link-check` 的提取规则是「含 `/` + 扩展名白名单的 code span」——**带 `:行号` 的引用因扩展名正则不命中而免检**，不带行号的被判为**本仓相对路径** → **3 条未归类断链**（测试实测红）。
+   **修法**：按该门设计的正解**标明属主**（改为「context-mode 的 **ADR-0004（…）**」并加一行**属主标注**），**未新开 `CROSS_SKILL_*` 豁免**——判据：`link-check` 的白名单是「属主登记表」，为一次性外部引用开三条常驻豁免，会让门失去「未归类」这一信号。
+   > **教训可复用**：**引用外部仓库的文件时，写「属主 + 文件名」而不是裸路径**；裸相对路径在断链门眼里就是本仓路径。
+2. **一处落点偏离计划（A4）**：计划原定 `references/errors.md`，实际落 **`dispatch-cards.md`**。理由：`errors.md` 的职责是「**错误信息友好化**」、`failure-modes.md` 是「**F 论证失败模式**」——**两者都不是「转述仍算计费」的归属**（属上下文经济）。落 `dispatch-cards.md` 与 B1/B2 同址，构成一节完整的「上下文经济」。**这是纠正计划的落点误判，不是漏做。**
+3. **A2 只做了「卡层」，机检（A2b）未做**：计划 §三 明定 A2 须「先做卡 + 模板 → **跑 1 个实战项目** → 再决定是否加机检」。**本批未跑试点项目**，故 A2b（`m-gate-check.mjs` 增反向判据 + tests，须**新开命名空间**）**留待试点后定档**。
+4. **`.dsh` 镜像的中间态红**：改动期 `consistency-check` 的「`.dsh 同步`」必然红（真源已改、镜像未同步），这是**预期信号**；同步后转绿。**不得把该中间态读成回归。**
+5. **本批未动版本号**：`package.json` / `SKILL.md` frontmatter / 五语 README / `cordis.patch.yml` 等**版本点位一律未改**——版本级联 bump 由主人定案后另行执行（本地判据：只改「当前版本点位」，绝不改历史注解）。
+6. **EXEC-4 未做**：`segment-chars.mjs:19` 注释里的「T5 子代理**无脚本执行能力**」仍是一条**未经验证的孤证**，仍被用来解释 6~10% 的实测误差。**须实核**（spawn 一个最小子代理自报工具清单，或查 agent preset 配方）后改述。
+7. **`ADR-0002` / `ADR-0003` 为回填件**：其 `Status` 已标「回填」并给出 `Evidence` 落点；**未凭印象补写成因**。`ADR-0002` 的「源码钉」**如实标注为尚未实装**（建议下一批补）。
+
+---
+
+## 七、回滚命令
+
+```powershell
+# 方式一：git 回滚（本批改动 + 新增已跟踪文件）
+cd <仓库根>
+git revert <本批提交>            # 已提交后
+# 或未提交时：
+git checkout -- scripts/repo-hygiene-check.mjs skills/lunheng-article-pipeline
+git clean -fd audits/decisions
+
+# 方式二：从本次备份还原
+$bk = "$env:USERPROFILE\.dsh\_backup\lunheng-20260929-batch-EXECAB"
+Copy-Item "$bk\lunheng-article-pipeline" "<仓库根>\skills\lunheng-article-pipeline" -Recurse -Force
+Copy-Item "$bk\repo-scripts" "<仓库根>\scripts" -Recurse -Force
+
+# 回滚后必做：复跑门 + 回滚镜像（若已同步）
+node scripts/repo-hygiene-check.mjs
+node skills/lunheng-article-pipeline/scripts/consistency-check.mjs
+node scripts/link-check.mjs
+```
+
+> **棘轮已改**（§三 五项）→ 回滚时**须连同 `scripts/repo-hygiene-check.mjs` 一并回退**，否则上限停在抬后的值。
+
+---
+
+## 八、未做项 / 待核（如实登记）
+
+| # | 项 | 状态 | 说明 |
+|---|---|---|---|
+| 1 | **A2b** 捕获层反向机检 | ⏸ 待试点 | 须新开命名空间（不得复用 M-Form 编号）+ tests；先跑 1 个实战项目验证「预筛」确实发生 |
+| 2 | **EXEC-4** T5 脚本能力实核 | ⏸ 待实核 | 孤证在 `segment-chars.mjs:19`；实核方法见 `修订计划` §四 EXEC-4 |
+| 3 | **B5** 反模式文档形态 | ✅ 已核，**不做** | 核查结论：`errors.md` = 错误信息友好化、`failure-modes.md` = F1-F9 论证失败模式，**两者均非「反模式（BAD/GOOD 对照）」形态**，且**都不是 A4 的正确归属**（见 §六.2）。**本批不新建「反模式」文档**——新建文档会撞 v18.8.0 已完成的文档瘦身方向，且内容已由 `dispatch-cards.md` §上下文经济 承载 |
+| 4 | 版本级联 bump | ⏸ 待主人定案 | 见 §六.5 |
+| 5 | `ADR-0002` 的源码钉 | ⏸ 建议下批 | 唯一可被静默回退的部分 |
+| 6 | 其余 C 档（C1-C7 驳回项） | ❌ 明确不做 | 理由见 `反哺报告` §三 C 档与 §四.3 |

@@ -21,7 +21,7 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 | 计划与任务 | `todo_write` | 计划与任务跟踪 |
 | 检索与抓取 | `web_search` / `web_fetch` | 引擎与可用性按 DSH 会话配置 |
 | 文件读写 | `read` / `write` / `edit` | 结构化文件操作 |
-| 命令/脚本 | `pwsh`（本机 Windows；当前预设提供） | 主流程默认零 exec（白名单脚本见「执行能力边界」）；Linux 上为 `bash`——**具体工具集以当前会话工具清单为准** |
+| 命令/脚本 | `pwsh`（本机 Windows；当前预设提供） | 主流程为**受限 shell（非零 exec）**：按需执行白名单脚本与有限验证命令，其余须经主人同意（口径真源 = `references/glossary.md` §shell 使用）；Linux 上为 `bash`——**具体工具集以当前会话工具清单为准** |
 | 图像生成 | 无内置 → SVG 矢量风 / 主人投喂 | 可另配图像生成 MCP（如 MiniMax `image-01`） |
 
 **结构性要点（DSH 原生）**：
