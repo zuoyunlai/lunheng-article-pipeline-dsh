@@ -257,7 +257,7 @@ test('C-1 对外声明 ↔ 代码真源：工具/配置/命令/技能 四集合�
   const { tools, config, commands, skills, enumValues } = deriveCodeFacts()
 
   // 非空断言：派生退化（正则失配、文件改名）必须**响亮失败**，否则本门会静默变成恒真断言
-  assert.equal(tools.length, 3, `应从 lib/tools.js 派生出 3 个工具，实测 ${tools.length}——派生正则可能已与源码脱节`)
+  assert.equal(tools.length, 4, `应从 lib/tools.js 派生出 4 个工具，实测 ${tools.length}——派生正则可能已与源码脱节`)
   assert.equal(config.length, 5, `应从 lib/index.js 的 CONFIG_SPEC 派生出 5 个配置键，实测 ${config.length}`)
   assert.equal(commands.length, 2, `应从 lib/commands.js 派生出 2 条命令，实测 ${commands.length}`)
   assert.equal(skills.length, 2, `应从 skills/*/SKILL.md 派生出 2 个技能，实测 ${skills.length}`)

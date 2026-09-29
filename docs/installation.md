@@ -9,7 +9,7 @@
 #    ⚠️ **务必钉版本**：不写 `@<版本>` 时，装到哪个版本取决于本机包管理器**当时**的解析状态。
 #    实测过一次：同一条命令装到 **18.15.0**，而 registry 上的 `latest` 已是 18.20.4 —— 差了五个小版本，
 #    且按下面流程走下去**没有任何一步能让人察觉**。版本真源只有一处：`npm view lunheng-article-pipeline version`。
-dsh plugin --profile <profile> add lunheng-article-pipeline@18.59.0
+dsh plugin --profile <profile> add lunheng-article-pipeline@18.60.0
 
 # 1b) **核对装到的版本**（钉了版本也值得跑一次——它读的是 profile 里**实际落盘**的 package.json）
 node -e "console.log(require('<DSH_HOME>/profiles/<profile>/node_modules/lunheng-article-pipeline/package.json').version)"
@@ -121,7 +121,7 @@ dsh --profile <profile>
 
 | 路径 | 依赖 | 受限环境下的表现 |
 |---|---|---|
-| ① 原生工具 `lunheng_m_gate` / `lunheng_char_count` / `lunheng_handoff_check` | bundle 部署（入口跑过）+ 宿主有 `tools` 服务 + `@deepseek-ai/dsh-tools` 可解析 | 工具本体在**宿主进程内**，但脚本由 `lib/tools.js` **派生子进程**执行 → 沙箱禁子进程管道时失败（错误信息会明确写 EPERM 并提示改用 `pwsh`） |
+| ① 原生工具 `lunheng_m_gate` / `lunheng_char_count` / `lunheng_handoff_check` / `lunheng_ethics_sanitize` | bundle 部署（入口跑过）+ 宿主有 `tools` 服务 + `@deepseek-ai/dsh-tools` 可解析 | 工具本体在**宿主进程内**，但前三个由 `lib/tools.js` **派生子进程**执行 → 沙箱禁子进程管道时失败（错误信息会明确写 EPERM 并提示改用 `pwsh`）；`lunheng_ethics_sanitize`（v18.60.0）**不派生子进程**（纯函数 + 读随包词表），故不受该限制 |
 | ② `pwsh` 调脚本 `node scripts/<脚本>.mjs …` | 会话里有命令工具（`pwsh`/`bash`） | 沙箱**整体禁止派生子进程**时不可用（v18.2.2 记录过整段 `pwsh` 失效的实例）——此时该如实记「本机无法执行机检」 |
 | ③ 纯技能目录部署直接跑脚本 | 只把 `skills/lunheng-article-pipeline/` 拷进技能根 | **没有**路径 ①（入口不跑 → 无原生工具、无 guard、无 `/lunheng-status`、无 `/lunheng-stats` 两条人类命令），只剩 `pwsh`/命令工具 |
 

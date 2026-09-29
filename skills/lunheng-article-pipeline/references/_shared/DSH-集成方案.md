@@ -1,6 +1,6 @@
 # 论衡 × DSH 能力面集成方案
 
-> 版本：v18.59.0（C 组落地；§一–§六 为 v18.0.2 原文，§七–§八 为 v18.2.1 新增，**§九 为 v18.2.2 新增**；v18.10.0 战略反哺新增 structure-check.mjs + methodology-check.mjs + cite-coverage-check.mjs + journal-fit.mjs + meta-synthesize.mjs；v18.10.0 反哺落地再增 fix-gates.mjs）
+> 版本：v18.60.0（C 组落地；§一–§六 为 v18.0.2 原文，§七–§八 为 v18.2.1 新增，**§九 为 v18.2.2 新增**；v18.10.0 战略反哺新增 structure-check.mjs + methodology-check.mjs + cite-coverage-check.mjs + journal-fit.mjs + meta-synthesize.mjs；v18.10.0 反哺落地再增 fix-gates.mjs）
 > **用途**：把论衡的既有机制（**随包脚本** / 并行阶段 / 状态机 / 人在环闸门）**对齐 DSH 已有能力面**，替代平行自建。§一–§六 是**实施方案**，§七 是**落地状态表**，§八 是**可选配方**。**脚本清单与数量真源 = `SKILL.md` §执行能力边界 的「随包脚本白名单」行**（本文件不复述数字——v18.22.2 起；此前此处硬编码会随脚本增删过期）。
 > **依据**：DSH 官方文档 `docs/cookbook/adding-a-tool.md`、`docs/tool-execution-pipeline.md`、`docs/subsystems/*.md`、`docs/capability-seams.md`（知识库副本见 `dsh-plugin-guide/references/official-docs/`；行号对快照 commit `d347e703…`）。
 > **当前状态**：**C 组四项已启用**（原生只读工具 / `ctx.tools.guard()` 写保护 / `/lunheng-status` / 词预算门）、一项给配方（分档工具行→agent preset）、一项仍未接线（Phase 内并行→`workflow`，依官方用法限定「仅在用户明确要求 workflow 或大规模编排时」用，故**降级为按需**）。
@@ -227,7 +227,7 @@ return { gate: 'T2.5', pass: gatePass, literature: lit, data: dat, cases: cas }
 
 | C 项 | 处置 | 实现位置 | 官方依据 |
 |---|---|---|---|
-| C-1 只读脚本→原生工具 | ✅ **已启用**（2 个只读工具） | 入口内注册：`lib/tools.js` ← `lib/index.js` 的第二个 `ctx.effect` | `docs/cookbook/adding-a-tool.md`（规范值 + `render`）；`docs/subsystems/tools.md`（工具管线） |
+| C-1 只读脚本→原生工具 | ✅ **已启用**（4 个只读工具；v18.60.0 由 3 增补 `lunheng_ethics_sanitize`——注：本行 v18.6.0 后曾长期停留在「2 个」，属漏刷新，v18.60.0 一并校正） | 入口内注册：`lib/tools.js` ← `lib/index.js` 的第二个 `ctx.effect`。**前三个**是脚本薄包装（spawn 随包脚本）；**第四个**（伦理脱敏）是 `lib/ethics-sanitize.js` 的**纯函数**，不派生子进程、只读调用方指定文件 + 随包词表 | `docs/cookbook/adding-a-tool.md`（规范值 + `render`）；`docs/subsystems/tools.md`（工具管线） |
 | C-2 分档工具行→agent preset | 📋 **仅配方**（本包默认不装载三行，见下注） | 本文 §八 | `docs/architecture.md:131`；`docs/subsystems/tools.md:484-504`；`docs/subsystems/skills.md:13` |
 | C-3 四道人在环闸门→`ask_user_question` | ✅ **已启用** | `templates/主人确认-template.md` §6-§7 + `00-主控-扩展职责.md` §二十一 | `docs/tool-catalog.md:18,52-112`；`docs/subsystems/user-questions.md:35-44,136-147`；`docs/subsystems/plan.md:33` |
 | C-4 机制文件写保护机械化 | ✅ **已启用（部分）** | `lib/guard.js` → 入口内 `ctx.tools.guard()` | `docs/subsystems/tools.md:313-324`（`guard()` 只收紧；plain-context guard 全局生效） |
