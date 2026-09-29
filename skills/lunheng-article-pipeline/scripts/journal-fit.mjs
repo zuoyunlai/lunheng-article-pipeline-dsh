@@ -70,8 +70,13 @@ if (!journalRow) {
   process.exit(3);
 }
 
-// 解析字段（已知列：期刊名 / 类别 / 审稿周期 / 主题偏好 / 风格偏好 / 文体偏好）
-const [jName, jCategory, jCycle, jTopic, jStyle, jGenre] = journalRow;
+// 解析字段（已知列：期刊名 / 类别 / 审稿周期 / 主题偏好 / 风格偏好 / 文体偏好 / 范式标签[v18.59.0]）
+// v18.59.0 起新增「范式标签」列（受控词表 = quantitative/qualitative/theoretical/mixed/case）；
+// 老库（仅 6 列）的 cells.length=6 仍被前文 `cells.length >= 6` 接受，但 jParadigm 取 undefined → 走 J-Paradigm 「待回填」分支
+const [jName, jCategory, jCycle, jTopic, jStyle, jGenre, jParadigm] = journalRow;
+// v18.59.0：范式标签受控词表。任何不在词表内的取值都不判 P0/P1（= 不打断期刊匹配主流程），
+// 仅记入 jParadigmInfo.unrecognized 让主控能看到「该刊范式字段被填了非标值」。
+const PARADIGM_VOCAB = ['quantitative', 'qualitative', 'theoretical', 'mixed', 'case'];
 
 // === 字数读取（仅 --project 提供时） ===
 let projectWordCount = null;
@@ -135,6 +140,37 @@ const jCycleInfo = {
 const jCyclePass = cycleMax === null || cycleMax <= 12;  // 急稿避开 > 12 月期刊
 const jCycleSeverity = cycleMax === null ? 'P2' : (cycleMax <= 12 ? 'PASS' : 'P1');
 
+// === J-Paradigm: 范式匹配度（v18.59.0 反哺新增）================================
+// 判据：本论文 T9 评审输出的「方法风格」↔ 数据库「范式标签」是否一致
+//   · 输入：本论文的方法风格由主控在调用时通过 --style 传入（quantitative/qualitative/theoretical/mixed/case/null）
+//   · null/undefined = 主控未传 → 跳过本检查（**不**判 P1，因为 T9 评审阶段主控未必有定论）
+//   · 匹配规则：完全相等 = PASS；论文 mixed vs 期刊 quantitative 等「兼容性」 = PASS（mixed 可投递到任何偏单向的刊）；
+//     论文 quantitative vs 期刊 qualitative = P2 软提示（社科学术界常见：定量作者投质性刊多被 desk-reject「方法与刊偏好不符」）
+//   · 范式标签不在词表内 = P2 软提示（不打断主流程，仅告知主控）
+const jParadigmDetected = [];
+let jParadigmSeverity = 'PASS';
+const jParadigmInfo = { article: null, journal: jParadigm || null, recognized: false, vocab: PARADIGM_VOCAB };
+if (jParadigm !== undefined && jParadigm !== '' && jParadigm !== '待回填') {
+  jParadigmInfo.recognized = PARADIGM_VOCAB.includes(jParadigm);
+  if (!jParadigmInfo.recognized) {
+    jParadigmDetected.push({ code: 'PARADIGM_UNRECOGNIZED', desc: `范式标签「${jParadigm}」不在受控词表内`, severity: 'P2' });
+    jParadigmSeverity = 'P2';
+  }
+}
+// 文章侧范式（articleStyle）若主控传入，则与期刊侧做匹配；未传则不判
+if (typeof globalThis.__lunhengArticleStyle === 'string') {
+  jParadigmInfo.article = globalThis.__lunhengArticleStyle;
+  if (jParadigmInfo.recognized) {
+    const a = globalThis.__lunhengArticleStyle;
+    const compatible = (a === 'mixed') || (jParadigm === 'mixed') || (a === jParadigm);
+    if (!compatible) {
+      jParadigmDetected.push({ code: 'PARADIGM_MISMATCH', desc: `文章范式「${a}」与期刊范式「${jParadigm}」不一致`, severity: 'P2' });
+      jParadigmSeverity = 'P2';
+    }
+  }
+}
+const jParadigmPass = jParadigmDetected.length === 0;
+
 // === J-Format: 投稿格式合规预检（仅 --project 提供时执行） ===
 let jFormatInfo = { checks: [] };
 let jFormatPass = true;
@@ -163,14 +199,16 @@ if (projectWordCount !== null) {
 }
 
 // --- 汇总 ---
-const allPass = jReasonPass && jCyclePass && jFormatPass;
+const allPass = jReasonPass && jCyclePass && jFormatPass && jParadigmPass;
 const jFormatSeverity = jFormatInfo.checks.length === 0 ? 'PASS' : (jFormatInfo.checks.some((c) => c.severity === 'P1') ? 'P1' : 'P2');
+// v18.59.0：J-Paradigm 当前只触发 P2（不触发 P1），故即使不通过也不进 1 档；语义上仍参与 allPass（=P2 也算「不通过」）
 const exitCode = allPass ? 0 : ((jReasonSeverity === 'P1' || jCycleSeverity === 'P1' || jFormatSeverity === 'P1') ? 1 : 3);
 
 const result = {
   journal: jName,
   category: jCategory,
-  version: 'v18.11.0',
+  paradigm: jParadigm || null,    // v18.59.0 新增：期刊侧范式标签（受控词表或 null）
+  version: 'v18.59.0',
   projectPath: projectPath || null,
   projectWordCount,
   checks: {
@@ -187,6 +225,14 @@ const result = {
       severity: jCycleSeverity,
       info: jCycleInfo,
       note: '急稿避开审稿周期 > 12 月期刊',
+    },
+    'J-Paradigm': {       // v18.59.0 新增
+      name: '范式匹配度',
+      pass: jParadigmPass,
+      severity: jParadigmSeverity,
+      info: jParadigmInfo,
+      detected: jParadigmDetected,
+      note: '文章范式（主控 --style 传入）↔ 期刊范式标签 受控词表匹配；仅 P2（不打断主流程）',
     },
     'J-Format': {
       name: '投稿格式合规',
