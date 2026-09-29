@@ -1,4 +1,4 @@
-> 版本：v18.52.0（DSH bundle 插件）
+> 版本：v18.53.0（DSH bundle 插件）
 
 # 角色：同行评审 Peer Reviewer（T9，v2.4.0 新增）
 

@@ -53,6 +53,7 @@ import { tmpdir } from 'node:os';
 import { installExitGuard, requireExistingDir } from './_lib/exit-guard.mjs';
 import { h2Headings, titleMatches, firstEndnoteIndex, bodyStartAfterAbstract } from './_lib/sections.mjs';
 import { evaluate as readabilityEvaluate } from './_lib/readability.mjs';   // v18.26.0 QLT-3：可读性剖面（第 8 分量）
+import { evaluateQlt6 } from './_lib/qlt6.mjs';   // v18.53.0 QLT-6：论证强度（**独立于门**的第二把尺，见 F-BC）
 installExitGuard();
 
 const SCRIPTS = new URL('.', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
@@ -390,6 +391,17 @@ const result = {
   // v18.52.0（反哺 F-BC）：正名 + **效度边界**落盘（机器可读，防「合规分被读成质量分」）
   metric: 'QLT-1',
   metricLabel: '合规分（compliance score）',
+  // v18.52.0（反哺 F-S ②）：`handoff` 分量的**语义注明**——它衡量的是**留痕形态**（四门单据 + 闸门记录 +
+  //   交接门），**不衡量论文质量**；受控实验里两臂**同为 0** 时属「同口径扣分」→ **臂间可比、跨边界不可比**
+  //   （实验侧已在 `run/_AB-QLT5/结论.md` 声明同一事实）。写在 `validity` 里而不是只写在文档里：
+  //   读分数的人手里只有这份 JSON。
+  componentSemantics: {
+    handoff: '衡量**留痕形态**（四门单据 阶段确认-Phase*.md + 闸门记录 + 交接门判据），**不衡量论文质量**；'
+      + '受控实验两臂同为 0（实验级批量授权下无四门单据）时属同口径扣分 → **臂间可比、跨本仓金样本基线不可比**',
+  },
+  // v18.53.0（F-BC ③ / 主人裁定口径 D）：**QLT-6 论证强度**作为**同级独立量尺**随本脚本一并输出。
+  //   刻意**不并入**上面的 score（那是合规分）：两者效度不同，相加 = 把两种量混成一个数（F-BC 的病灶）。
+  qlt6: evaluateQlt6({ projectDir: project, draftPath: draft }),
   validity: {
     scope: '合规与成本',
     notScope: '论证质量',
