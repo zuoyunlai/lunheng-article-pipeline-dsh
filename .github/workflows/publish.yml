@@ -124,10 +124,16 @@ jobs:
       #   ④ **失败必须可操作（区分「缺」与「失效」）**：缺 token 仍是 warning（设计如此）；但 token
       #      **存在却失效**（E401 = 已撤销/过期/无 dist-tag:write 范围）是真问题——它让 latest 静默卡在旧版。
       #      故捕获后打 `::error::` 并给出**可直接复制**的补救命令，仍 exit 1（fail-closed，不把「latest 没跟上」伪装成成功）。
-      # v18.8.0 现状（2026-09-23）：`NPM_TOKEN` 已在 repo secrets 恢复（主人 v18.7.1 发布后手工补打 latest
-      #   时同步换发）。本步在 tag 触发路径会自动把 `latest` 写到本次版本（除非 token 范围不足）。
-      #   workflow_dispatch 路径仍可用作「只补 dist-tag，不重发 npm」的手动补救——满足 v2.5.2-dsh.13
-      #   「手工补救路径」的设计意图。token 治理要求见 SECURITY.md「NPM_TOKEN 的用途与治理」。
+      # v18.57.x 现状（2026-09-29 实测更正；旧注释写「NPM_TOKEN 已在 repo secrets 恢复」**不可复现，已删**）：
+      #   v18.58.0 发布时两条触发路径（tag push 与 workflow_dispatch）都拿到**空值** → 本步走空值分支。
+      #   `gh secret list` 显示 `NPM_TOKEN` **名存在**（updatedAt 2026-09-21，此后未变），但 workflow 内
+      #   `env: NPM_TOKEN: ${{ secrets.NPM_TOKEN }}` 注入的是空串。**判据：「secret 名存在」≠「secret 可用」**，
+      #   只能以该次运行的实际输出为准。
+      #   **本仓决定（主人 2026-09-29）**：**不依赖 token 自动同步 `latest`**，改为发版后由维护者**手工补打**
+      #   （`npm dist-tag add <pkg>@<ver> latest`；理由：只此一处用得上 token，而它需 90 天轮换
+      #   且 npm 正在把这类直接写入的令牌路径淘汰、官方推荐 OIDC——而发布本身早已走 OIDC）。
+      #   故下方空值分支是**预期路径**、不是配置故障；有 token 时自动同步的分支保留（将来若真配上仍然可用）。
+      #   token 治理要求见 SECURITY.md「NPM_TOKEN 的用途与治理」。
       - name: 核对 dist-tag（只读；有 token 才补打 latest）
         # v18.2.9（第三方审计 B8）：dispatch 限定默认分支——token 一旦按上方注释重新签发，
         #   任何有 write 权限者本可对任意分支 dispatch 触发含 NPM_TOKEN 的作业；限定默认分支收窄该面。
@@ -147,7 +153,9 @@ jobs:
               exit 1
             fi
           else
-            echo "::warning::未配置 NPM_TOKEN —— 仅 dsh 指向本次版本（由 npm publish --tag dsh 自动完成）；latest 仍指旧版。安装请用 $PKG@dsh，或由维护者手工执行：npm dist-tag add $PKG@$VER latest"
+            # v18.57.x（审计修订）：**这是本仓的预期路径，不是配置故障**（主人 2026-09-29 决定不依赖 token）。
+            #   文案改为「刻意不配 + 确切命令」，避免下次被读成「secret 掉了、快去配一个」而重开这个决定。
+            echo "::warning::本仓刻意不配置 NPM_TOKEN（主人 2026-09-29 决定）：仅 dsh 指向本次版本（由 npm publish --tag dsh 自动完成），latest 需维护者手工补打 → npm dist-tag add $PKG@$VER latest（复核用 npm view $PKG dist-tags --prefer-online）。若将来要恢复 CI 自动同步，见 SECURITY.md『NPM_TOKEN 的用途与治理』"
           fi
           npm view "$PKG" dist-tags --json
 
