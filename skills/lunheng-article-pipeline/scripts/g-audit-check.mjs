@@ -49,7 +49,7 @@ import { join } from 'node:path';
 import { installExitGuard, requireExistingFile } from './_lib/exit-guard.mjs';
 import { writeReport } from './_lib/destructive-write.mjs';
 import { countHan } from './_lib/han.mjs';                    // 汉字口径唯一真源
-import { parseTargetCandidates } from './_lib/target-chars.mjs';   // 篇幅候选解析唯一真源（v18.23.0 扩展；G5 用单值版 parseTargetChars）
+import { parseTargetCandidates } from './_lib/target-chars.mjs';   // 篇幅候选解析唯一真源（v18.23.0 扩展；G8 字数硬阈用单值版 parseTargetChars）
 import { refsOf } from './_lib/refs.mjs';                     // 引用编号口径唯一真源
 import { firstEndnoteIndex, bodyStartAfterAbstract, maskFences } from './_lib/sections.mjs';  // 正文区切分 / 围栏掩码（与 count-chars / m-gate-check 同源）
 installExitGuard();

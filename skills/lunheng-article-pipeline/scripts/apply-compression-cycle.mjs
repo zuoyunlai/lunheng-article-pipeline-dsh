@@ -3,7 +3,7 @@
 // 用法：node apply-compression-cycle.mjs <run/项目名> [--target-N <N>] [--max-rounds <3>] [--skip-bundle] [--dry-run]
 // 一条命令串起实战项目收尾阶段的字数压缩循环：
 //   ① 量测当前字数（body / full，与 count-chars.mjs 同源 _lib/han.mjs + _lib/sections.mjs）
-//   ② 判 G5 阻塞线（目标字数从 01-任务简报.md §目标篇幅 提取；G5 = −10% / +5%）
+//   ② 判 G8 字数硬阈（目标字数从 01-任务简报.md §目标篇幅 提取；阈 = −10% / +5%）
 //   ③ 若超阻塞线 → 触发 T5 v(N+1) 段级 diff（自动生成微压缩清单，主控可批准应用）
 //   ④ sha256 校验（所有 final/ 文件 — 与 _lib/destructive-write.mjs 的 sameFile 策略一致）
 //   ⑤ 刷新一致性门（consistency-check.mjs）+ 证据包（build-evidence-bundle.mjs）+ 审计视图
@@ -64,20 +64,24 @@ const measure = (p) => {
 };
 const m = measure(targetPath);
 
-// ---- ② 目标字数 + G5 阻塞线 ----
+// ---- ② 目标字数 + G8 字数硬阈 ----
 // v18.12.3：解析改走 `_lib/target-chars.mjs` 唯一实现（旧内联 `\d{4,5}` 在 `300 字` / `12,000 字` /
-//   `1.2 万 字` 上全返回 null → `g5 = null` → **G5 判定被静默跳过**）。解析不到必须说出来。
+//   `1.2 万 字` 上全返回 null → `charBand = null` → **判定被静默跳过**）。解析不到必须说出来。
+// 命名更正（2026-09-29，主人裁定）：字数归属 = **G8（成品度 + 字数偏差）**，机检项 = `G8-CharCount`；
+//   旧称「G5 阻塞线」是误称（**G5 = 学术规范（查重 / AI 痕迹）**，与字数无关）。
 const briefPath = join(projRoot, '01-任务简报.md');
 const tParse = existsSync(briefPath)
   ? parseTargetChars(readFileSync(briefPath, 'utf8'))
   : { value: null, raw: null, reason: '未找到 01-任务简报.md' };
 const target = tParse.value;
 if (target === null) {
-  console.error(`⚠️ 目标字数未解析到 → **G5 阻塞线判定跳过**（这是「未核」，不是「已核」）：${tParse.reason}`);
+  console.error(`⚠️ 目标字数未解析到 → **G8 字数硬阈判定跳过**（这是「未核」，不是「已核」）：${tParse.reason}`);
   if (tParse.raw) console.error(`   · 简报里读到的是：「${tParse.raw}」——请核对 §目标篇幅 的写法（支持 3–5 位、千分位逗号、万/千/k 单位）`);
 }
-const g5 = target ? { floor: Math.round(target * 0.9), ceil: Math.round(target * 1.05) } : null;
-const verdict = g5 ? (m.body > g5.ceil ? `超阻塞线 +${m.body - g5.ceil} 字` : (m.body < g5.floor ? `低于阻塞线 ${g5.floor - m.body} 字` : '✓ 阻塞线内')) : '（未解析到目标字数）';
+const charBand = target ? { floor: Math.round(target * 0.9), ceil: Math.round(target * 1.05) } : null;
+// ⚠️ verdict 的**前缀**（`超阻塞线` / `低于阻塞线` / `✓ 阻塞线内`）在本文件下方被 `includes()` 当
+//   控制信号消费（第 132-142 行：recommendation 与 `process.exit(1)`），**不得改字**。
+const verdict = charBand ? (m.body > charBand.ceil ? `超阻塞线 +${m.body - charBand.ceil} 字（P1，须压缩）` : (m.body < charBand.floor ? `低于阻塞线 ${charBand.floor - m.body} 字（P0，须扩写）` : '✓ 阻塞线内')) : '（未解析到目标字数）';
 
 // ---- ③ 残留风险清单（哪些内容可能需要压缩）----
 // v18.12.3：正文区口径改走上面同一个 `bodyOf`（旧版在这里又写了一遍 `slice(0, firstEnd)`——
@@ -124,7 +128,8 @@ const result = {
   project: positionals[0],
   targetPath,
   chars: { body: m.body, full: m.full },
-  target, g5, verdict,
+  target, charBand, verdict,
+  // 旧字段名 `g5` 已随 2026-09-29 命名更正移除（字数归属 = G8，G5 = 学术规范），**刻意不留别名**。
   flowHits,
   sha256: shaMap,
   consistencyCheck: ccResult ? ccResult.status : (dryRun ? 'dry-run' : 'skipped'),

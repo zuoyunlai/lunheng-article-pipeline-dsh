@@ -7,7 +7,7 @@
 //     L-59 apply-diff 条目头正则把正文引用 `[L01]` 当条目头（真 diff 被吞）
 //     L-56 apply-revision-cycle 用**改前**字数当「脚本实测」，且 body 口径含题名区
 //             + 同族新发现：目标字数 `\d{4,5}` 让 `300 字` / `12,000 字` / `1.2 万 字` 解析失败
-//               → G5 阻塞线**整段静默跳过且 exit 0**（主控会以为「已核」）
+//               → G8 字数硬阈**整段静默跳过且 exit 0**（主控会以为「已核」）
 //     L-55 证据包只加不删 → 源被删后包内留孤儿副本，M 门核到旧副本仍判通过
 //   每条都用「先造出本该报警的输入」的方式钉住，并对旧行为写对照断言。
 import { test } from 'node:test'
@@ -145,8 +145,8 @@ test('L-58 对照：规规矩矩的清单仍 ok:true / exit 0（不误伤）', (
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
 
-// ── L-56 目标字数解析（静默跳过 G5）───────────────────────────────────────────
-test('L-56 同族：目标字数支持 3–5 位 / 千分位 / 万·千·k（旧版 `\\d{4,5}` 全部 null → G5 静默跳过）', async () => {
+// ── L-56 目标字数解析（静默跳过字数硬阈）───────────────────────────────────────────
+test('L-56 同族：目标字数支持 3–5 位 / 千分位 / 万·千·k（旧版 `\\d{4,5}` 全部 null → 字数硬阈静默跳过）', async () => {
   const { parseTargetChars } = await import('../skills/lunheng-article-pipeline/scripts/_lib/target-chars.mjs')
   const cases = [
     ['目标篇幅：300 字', 300],
@@ -183,8 +183,8 @@ test('L-56：apply-revision-cycle 的「脚本实测」是**改后**值、且 bo
     assert.equal(j.chars.prevBody, 353, '改前 body（口径见下条断言）')
     assert.equal(j.chars.nextBody, 253, '改后 body —— 旧版报的是改前的 353（差值恒 0）')
     assert.equal(j.chars.delta, -100, 'delta 必须等于清单实际改动量（旧版恒 0）')
-    assert.equal(j.target, 300, '3 位目标须解析到（旧版 `\\d{4,5}` → null → G5 静默跳过）')
-    assert.match(String(j.g5Verdict), /低于阻塞线|阻塞线内/, 'G5 必须真的判定，而不是「跳过」')
+    assert.equal(j.target, 300, '3 位目标须解析到（旧版 `\\d{4,5}` → null → 字数硬阈静默跳过）')
+    assert.match(String(j.charBandVerdict), /低于阻塞线|阻塞线内/, '字数硬阈必须真的判定，而不是「跳过」')
     // 与 count-chars 交叉核对：**同源口径 = 逐字同值**（这条把「两处各写一份实现」钉死）
     const cc = parseJson(run([S('count-chars.mjs'), join(d, 'drafts/初稿-v2.md')]))
     assert.equal(cc.hanChars, j.chars.nextBody, 'apply-revision-cycle 的 body 必须与 count-chars 同值')

@@ -49,7 +49,7 @@ export const ENDNOTE_ORDER = [
  *   实测：一份正文含 ```` ```markdown ```` 示例、其内含 `## 参考文献` 行的稿件，
  *   `count-chars` 报 **15 汉字**（手算 31）、**exit 0、stderr 空、无 degraded**。
  *   而 `count-chars` 的 body 纯汉字是 `glossary.md` 明定的**唯一字数验收口径**——偏小即可能把
- *   「超目标篇幅」判成「在区间内」（G5 错误放行）；M 门的 body/endnote 分界同源同错，两个消费者
+ *   「超目标篇幅」判成「在区间内」（字数判级错误放行）；M 门的 body/endnote 分界同源同错，两个消费者
  *   一起错、互不发现。故修在解析层：`h2Headings` / `h3Headings` 的下游全部自动获得围栏感知
  *   （count-chars / m-gate-check / segment-chars / fix-gates / mform-gates / mintegrity-gate / cite-coverage-check …）。
  *
