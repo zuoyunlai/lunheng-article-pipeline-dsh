@@ -63,6 +63,48 @@ test('g-audit-check G8：**越限只判候选 P2，判级归 T7（绝不自行�
   rmSync(d, { recursive: true, force: true })
 })
 
+test('g-audit-check G8：例外通道标记（BUF=）只浮出事实、不改 severity；三态各自可辨', () => {
+  // 正文 80×「汉字内容填充。」≈ 480+ 汉字。目标 300 → 超上界 1.6×，**不在** +5%~+9% 容忍带内。
+  const LONG_DRAFT = '# 标题\n\n## 摘要\n\n摘要。\n\n## 一、正文\n\n' + '汉字内容填充。'.repeat(80) + '\n\n## 参考文献\n\n[L01] x\n'
+  const T300 = '- **篇幅**：**300 字**\n'
+  // ① 未标 → bufMarker = null（**「没标」与「标了 off」必须可辨**）
+  let f = mkFixture({ brief: T300, draft: LONG_DRAFT })
+  let j = parseJson(run([G, f.draft, '--cards', f.cards, '--brief', f.brief]))
+  assert.equal(g8(j).evidence.bufMarker, null)
+  assert.equal(g8(j).evidence.bufferBand, false)
+  assert.equal(g8(j).severity, 'P2', '本门永远不因该标记改变 severity：' + JSON.stringify(g8(j).evidence))
+  rmSync(f.d, { recursive: true, force: true })
+  // ② 标 off → 明示回主判
+  f = mkFixture({ brief: T300 + '- BUF=off\n', draft: LONG_DRAFT })
+  j = parseJson(run([G, f.draft, '--cards', f.cards, '--brief', f.brief]))
+  assert.equal(g8(j).evidence.bufMarker, 'off')
+  assert.equal(g8(j).evidence.bufferBand, false)
+  assert.match(g8(j).detail, /BUF=off/, '标了 off 必须出现在 detail 里（不静默）')
+  rmSync(f.d, { recursive: true, force: true })
+  // ③ 标 on 但**不在**容忍带（超 60%）→ 通道不适用，detail 说明原因
+  f = mkFixture({ brief: T300 + '- BUF=on\n', draft: LONG_DRAFT })
+  j = parseJson(run([G, f.draft, '--cards', f.cards, '--brief', f.brief]))
+  assert.equal(g8(j).evidence.bufMarker, 'on')
+  assert.equal(g8(j).evidence.inBufferBand, false)
+  assert.equal(g8(j).evidence.bufferBand, false, '标记 + 不在带内 ⇒ 通道不成立')
+  assert.match(g8(j).detail, /不在/, '不适用时必须说明原因')
+  rmSync(f.d, { recursive: true, force: true })
+  // ④ 标 on 且**落在**容忍带 → bufferBand = true。目标**自校准**（按实测汉字数 ÷1.07 反推），
+  //    避免对「一个短语 = 几个汉字」做脆弱假设——这正是本套用例其余各组踩过的教训。
+  f = mkFixture({ brief: T300, draft: LONG_DRAFT })
+  const han = g8(parseJson(run([G, f.draft, '--cards', f.cards, '--brief', f.brief]))).evidence.hanChars
+  rmSync(f.d, { recursive: true, force: true })
+  const target = Math.round(han / 1.07)   // 目标 ≈ 实测 ÷1.07 ⇒ 超限 ≈ +7%
+  f = mkFixture({ brief: `- **篇幅**：**${target} 字**\n- BUF=on\n`, draft: LONG_DRAFT })
+  j = parseJson(run([G, f.draft, '--cards', f.cards, '--brief', f.brief]))
+  assert.equal(g8(j).evidence.bufMarker, 'on')
+  assert.equal(g8(j).evidence.inBufferBand, true, `正文 ${han} 汉字 / 目标 ${target} 应落 +5%~+9%：` + JSON.stringify(g8(j).evidence))
+  assert.equal(g8(j).evidence.bufferBand, true)
+  assert.match(g8(j).evidence.note, /不含第 ③ 条/, '必须写明脚本不核第 ③ 条（估算标注不在其输入内）')
+  assert.equal(g8(j).severity, 'P2', '通道成立也只是 P2 候选——判级归 T7，脚本不代判')
+  rmSync(f.d, { recursive: true, force: true })
+})
+
 test('g-audit-check G8：缺 --brief → SKIP 且 exit 3（**SKIP ≠ 通过**）', () => {
   const { d, draft, cards } = mkFixture()
   const r = run([G, draft, '--cards', cards])

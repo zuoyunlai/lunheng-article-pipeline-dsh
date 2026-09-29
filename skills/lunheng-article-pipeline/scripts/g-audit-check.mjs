@@ -3,7 +3,7 @@
 //
 // 用法：node g-audit-check.mjs <正文.md> [--cards <目录>] [--brief <任务简报.md>] [--qlt] [--report <path>] [--json]
 //   --cards <目录>  = 素材卡所在目录（`final/证据包/` 或项目根；脚本自行回退找 `literature/文献卡.md` 等）
-//   --brief <文件>  = 任务简报（G8 字数判定需要「目标篇幅」；G15 另读其中的 `QLT=on|off` 标记）
+//   --brief <文件>  = 任务简报（G8 字数判定需要「目标篇幅」，另读其 `BUF=on|off` 例外通道标记；G15 另读其中的 `QLT=on|off` 标记）
 //   --qlt           = 核对模式相关项 G15-VolIssue（**唯一开关**；依据 = 简报的 `QLT=on` 标记，不按散文标签推断）
 //   --report <path> = JSON 结果写入 <path>（默认 stdout）
 //   --json          = 兼容保留（JSON 本就是默认也是唯一输出形态）
@@ -166,6 +166,13 @@ const hasField = (text, name) => fieldRe(name).test(text);
 //     ② 因此「越限是否算缺陷」不是零判断力项——它取决于「主人是否豁免」。本脚本只给实测比值与档位，
 //        判级归 T7（若简报自身已写豁免词，直接 SKIP 并说明）。
 const WAIVER_RE = /字数不作硬规定|不作硬规定|字数不设限|不设字数|字数不限|字数豁免|不设上限|篇幅不限/;
+// **例外通道标记（唯一依据，2026-09-29 主人定案）**：任务简报里的显式 `BUF=on` / `BUF=off`。
+//   与 G15 的 `QLT=on` **同形同源**——刻意**不**按散文或勾选框判断（同族的实测教训：G15 首版
+//   按标签字面放行，对未启用该模式的项目产出 6 组假阳性）。本标记**只浮出、不判级**：
+//   判级归 T7，本脚本仅把「简报是否开了容忍带」变成 `evidence.bufferBand` 里的**可见事实**。
+//   容忍带本体 = 超限 +5%~+9%（即 v18.11.0 F-3 的原容忍带），且要求 T5 交接报告已标注估算字数
+//   （第 3 条是留痕条件，脚本不核——它不在正文与简报里，故 detail 里显式点名由 T7 核）。
+const BUF_MARKER_RE = /(?<![A-Za-z0-9_])BUF\s*=\s*(on|off)(?![A-Za-z0-9_])/i;
 const g8 = (() => {
   const hanChars = countHan(bodyText);
   if (!briefPath) {
@@ -185,13 +192,26 @@ const g8 = (() => {
   // 判据：落在**候选区间**内（下界 ×0.85 ≤ 实测 ≤ 上界 ×1.05）即通过；否则 P2 候选。
   const lo = cand.candidates[0], hi = cand.candidates[cand.candidates.length - 1];
   const inBand = hanChars >= lo * 0.85 && hanChars <= hi * 1.05;
+  // 例外通道：只报事实（简报是否标了 `BUF=on` + 是否落容忍带），**不参与 severity**。
+  const bufMarker = (() => { const m = BUF_MARKER_RE.exec(briefText); return m ? m[1].toLowerCase() : null; })();
+  const overRatio = hanChars / hi - 1;
+  const inBufferBand = overRatio > 0.05 && overRatio <= 0.09;
+  const bufferBand = bufMarker === 'on' && inBufferBand;
+  const bufNote = bufMarker === null
+    ? ''
+    : bufMarker === 'off'
+      ? ' · 简报标 `BUF=off`（容忍带未开启）→ 按主判 **P1 触发 v3**'
+      : bufferBand
+        ? ' · 简报标 `BUF=on` **且**超限落在 +5%~+9% → **例外通道的 ① ② 条满足**：请 T7 核第 ③ 条「T5 交接报告是否已标注本轮估算字数（含 +20% buffer）」，三条齐则本档记 **P2、不触发 v3**（否则回 P1）'
+        : ' · 简报标 `BUF=on` 但超限**不在** +5%~+9% 内 → 例外通道不适用，按主判 **P1 触发 v3**';
   const detail = inBand
     ? `在候选区间内：${hanChars} 字 vs 候选 ${lo}${hi !== lo ? `–${hi}` : ''} 字`
-    : `${hanChars} 字 vs 简报候选 ${lo}${hi !== lo ? `–${hi}` : ''} 字 = ${(hanChars / hi).toFixed(3)}×（对上界）→ **候选，判级归 T7**：先核 status.md / 交付说明.md 是否已声明字数豁免或篇幅变更（实测存在「简报 16k / 定稿 40k + 交付说明记主人豁免」与「简报为 Phase 0 原始文档、后经 v4 增补扩篇」两类真实情形，均不构成缺陷）`;
+    : `${hanChars} 字 vs 简报候选 ${lo}${hi !== lo ? `–${hi}` : ''} 字 = ${(hanChars / hi).toFixed(3)}×（对上界）→ **候选，判级归 T7**：先核 status.md / 交付说明.md 是否已声明字数豁免或篇幅变更（实测存在「简报 16k / 定稿 40k + 交付说明记主人豁免」与「简报为 Phase 0 原始文档、后经 v4 增补扩篇」两类真实情形，均不构成缺陷）${bufNote}`;
   return {
     name: '字数偏差（正文纯汉字 vs 任务简报篇幅字段）', checked: true, pass: inBand, severity: inBand ? 'PASS' : 'P2',
     detail, evidence: { hanChars, candidates: cand.candidates, briefField: cand.raw, ratioToUpper: +(hanChars / hi).toFixed(4), brief: briefPath,
-      note: '只判「是否落在候选区间」；候选之外不自动升 P1——目标值本身可能是档位下限/过期值/已豁免，判级归 T7' },
+      bufMarker, inBufferBand, bufferBand,
+      note: '只判「是否落在候选区间」；候选之外不自动升 P1——目标值本身可能是档位下限/过期值/已豁免，判级归 T7。`bufferBand` = 例外通道的 ①② 条是否满足（标记 + 落带），**不含第 ③ 条**（T5 交接报告的估算标注不在本脚本输入内，须 T7 核）' },
   };
 })();
 
