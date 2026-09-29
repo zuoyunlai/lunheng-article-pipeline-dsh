@@ -43,7 +43,7 @@ const mkProject = ({ t75Rows, report = { script_exit_raw: 2, exit: 2 }, withT25 
       '| 信任级别完整性（M-Form-6） | m-gate-check.mjs → M-Form-6 通过 | ✓ | |',
       '| 引用闭环（M-Exist-3：[Dxx] 正文 ↔ 数据卡条目） | m-gate-check.mjs → M-Exist-3 通过 | ✓ | |',
       '| 数据卡头部声明 vs 实际计数 | data/数据卡.md 头部 35 == 实际 35 | ✓ | |',
-      '| 证据包哈希占位符（可选验证） | final/交付说明.md 含占位符 | ✓ | |',
+      '| 证据包 sha256 实值（权威 = manifest.json） | final/交付说明.md 含 sha256 实值 | ✓ | |',
       `| 交接门 handoff-check exit（按被验收角色） | ${handoffEv} | ✓ | |`,
       '',
     ].join('\n'))
@@ -75,7 +75,7 @@ const FULL_T75 = (extra = []) => [
   { item: '审计报告最新版存在', ev: 'audits/审计报告-v1.md', res: '✓' },
   { item: 'P0/P1 清单已列', ev: 'audits/审计报告-v1.md §修订任务书', res: '✓' },
   { item: 'M 门全部 exit 0', ev: 'm-gate-check.mjs → exit 0', res: '✓' },
-  { item: '证据包指纹占位符', ev: 'final/交付说明.md 含占位符', res: '✓' },
+  { item: '证据包指纹（sha256 实值）', ev: 'final/交付说明.md 含 sha256 实值', res: '✓' },
   { item: '引用闭环（M-Exist-3：[Dxx] 正文 ↔ 数据卡条目）', ev: 'm-gate-check.mjs → M-Exist-3 通过', res: '✓' },
   { item: '论文交付物 vs 报告独立隔离', ev: 'final/定稿.md 无交接报告混入', res: '✓' },
   { item: '修订轮由独立写手执行', ev: 'audits/审计报告-v1.md 记录 T5 子代理', res: '✓' },
@@ -154,7 +154,7 @@ test('L-02：记录里有 ✗ 行时，M 门行对账**仍须执行**（旧版�
     t75Rows: [
       ...FULL_T75().slice(0, 3),
       { item: '某软项', ev: 'exit 0', res: '✗', why: '已知缺口，走局限性' },
-      { item: '证据包指纹占位符', ev: 'final/交付说明.md 含占位符', res: '✓' },
+      { item: '证据包指纹（sha256 实值）', ev: 'final/交付说明.md 含 sha256 实值', res: '✓' },
     ],
     report: { script_exit_raw: 2, exit: 2 },
   })

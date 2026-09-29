@@ -26,7 +26,7 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 
 **结构性要点（DSH 原生）**：
 1. **技能级工具白名单/denied 在 DSH 无效**：工具集由 Agent 预设决定；文档提到的工具以当前会话预设为准（本机 standard 预设实测含 read / write / edit / web_search / web_fetch / todo_write / subagent / subagent_fork / list_agents / pwsh 等；**预设不同则工具集不同，勿假定某工具必然存在**）。
-2. **模型分配（通用自适应）**：`subagent` 默认继承会话模型（零配置可用）；三档分档工具（`subagent_retrieval`/`strong`/`audit`）**v18.2.6 起默认不装载**，设 `LUNHENG_TIERING=on` 才装载。档位明细见下方「何时使用」。（分档预设的安装配方在**仓库级** `examples/preset/`，**不随包**——bundle 部署下读不到，运行期只需知道上面那两条开关。）
+2. **模型分配（通用自适应）**：`subagent` 默认继承会话模型（零配置可用）；三档分档工具（`subagent_retrieval`/`strong`/`audit`）**v18.2.6 起默认不装载**——**装载有两条路径**：① 设 `LUNHENG_TIERING=on`（显式装载）；② **设任一档 `LUNHENG_*_PROVIDER` / `LUNHENG_*_MODEL` 即自动装载**（旧用户「设了模型就生效」行为不变）；`LUNHENG_TIERING=off` 优先级最高、强制不装载（实现真源 = `cordis.patch.yml` 三行 `disabled` 表达式）。档位明细见下方「何时使用」。（分档预设的安装配方在**仓库级** `examples/preset/`，**不随包**——bundle 部署下读不到，运行期只需知道上面那几条开关。**2026-09-29 跨文档对账修复**：本条原写「设 `LUNHENG_TIERING=on` **才**装载」，与实现及 `_shared/DSH-集成方案.md` §八 互斥——「才」字把充分条件误写成必要条件，会让照单一真源设了 `_MODEL` 的主人误判「未装载」。）
 3. **执行约定**：状态机（status.md 主控独占写）+ 交接报告六要素 + G8 自检 + 超时介入（`list_agents` 软巡检）；**无心跳/8 分钟硬卡**。
 4. **「（检查）」占位符**：发布包中 shell 示例被净化剥离为「（检查）」——按「人类 host shell 验证示例」处理（`read` 全文 + LLM 推理模拟判定）。**证据包 sha256 一律取 `final/证据包/manifest.json` 实值，主人不参与回填**（2026-09-29 主人授权修订 EXEC-1；见 `_shared/M-Gate-Algorithm.md` §M-Exist-2）。
 5. **角色体系**：**9 个独立角色 T1-T9 互不可替代**（T1-T3 检索 / T4-T5 加工 / T6-T9 防御）；T8 终检独立角色、由主控 T0 亲执行；T9 审稿可选但**默认选中**（学术**必选**）。
