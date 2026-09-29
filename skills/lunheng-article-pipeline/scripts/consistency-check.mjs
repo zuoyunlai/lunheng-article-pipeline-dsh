@@ -435,7 +435,7 @@ for (const [rel, p] of repoTargets) {
 //   只认 `git tag` / `git push origin` 两种形态，不碰散文里的历史注记（那些必须允许留旧号）。
 const inlineTagTargets = isRepoLayout
   ? [
-      ...['README.md', 'README.zh.md', 'README.es.md', 'README.pt.md', 'README.hi.md'].map((f) => [f, join(REPO_ROOT, f)]),
+      ...['README.md', 'README-zh.md', 'README-es.md', 'README-pt.md', 'README-hi.md'].map((f) => [f, join(REPO_ROOT, f)]),
       ['CONTRIBUTING.md', join(REPO_ROOT, 'CONTRIBUTING.md')],
       ['SECURITY.md', join(REPO_ROOT, 'SECURITY.md')],
     ]

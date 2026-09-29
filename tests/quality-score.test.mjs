@@ -43,6 +43,47 @@ test('quality-score：同一产物两次跑 → 分数与逐分量完全一致�
   rmSync(f.d, { recursive: true, force: true })
 })
 
+test('quality-score：分量权重是**显式契约**——各分支权重与 100 预算不得静默漂移', () => {
+  // v18.57.x（审计修订 P2）：本用例把「每个分量在各场景下的权重」钉成可核对的契约。
+  //   为什么需要：权重此前散落在 8 个分量 × 2~3 个分支的字面量里，审计实测发现同一分量在不同
+  //   分支权重不同（M-Gate 38/38/40、structure 10/8、cite-coverage 8/10、g-audit 12×比例/15/12），
+  //   而**没有任何门会红**。其中 M-Gate 那条把预算撑到 102（已修）。
+  //   ⚠️ 另注意：**「同一 id 多个权重」本身不是笔误**——权重是按「预算总和 ≈ 100」标定的，
+  //     故本用例断言的是**具体取值表**，不是「各分支必须相等」。改动任一数字都会红，从而强制复核。
+  const full = mkQProject({ g14: true })
+  const jFull = parseJson(run([Q, full.proj]))
+  const wOf = (j) => Object.fromEntries(j.components.map((c) => [c.id, c.weight]))
+  const naIds = (j) => j.na.map((x) => x.id).sort()
+
+  // ① 八分量齐全（无 G14 报告 → G14 为 N/A；无方法节 → structure 为 N/A）
+  assert.deepEqual(jFull.components.map((c) => c.id),
+    ['M-Gate', 'structure', 'methodology', 'cite-coverage', 'g-audit', 'G14', 'readability', 'handoff'],
+    '分量集合与顺序是契约：' + JSON.stringify(jFull.components.map((c) => c.id)))
+  assert.deepEqual(wOf(jFull),
+    { 'M-Gate': 38, structure: 8, methodology: 4, 'cite-coverage': 8, 'g-audit': 12, G14: 10, readability: 10, handoff: 10 },
+    `权重表已漂移（改权重必须同步改本契约与本文件头部权重真表）：${JSON.stringify(wOf(jFull))}`)
+
+  // ② 缺证据包 → M-Gate 转 N/A，但**权重仍为 38**（旧版此处写 40，把预算撑到 102）
+  const noEv = mkQProject({ g14: false, deliver: false, brief: false })
+  rmSync(join(noEv.proj, 'final', '证据包'), { recursive: true, force: true })
+  const jNoEv = parseJson(run([Q, noEv.proj]))
+  const mg = jNoEv.components.find((c) => c.id === 'M-Gate')
+  assert.equal(mg.weight, 38, '缺证据时 M-Gate 权重仍须 38（同 id 同权重）：' + JSON.stringify(jNoEv.components.map((c) => `${c.id}:${c.weight}`)))
+  assert.equal(mg.applicable, false, '缺证据 → M-Gate 必须 N/A（不给 0 分蒙混）')
+  assert.ok(naIds(jNoEv).includes('M-Gate'))
+
+  // ③ coverage 的口径：= 适用权重 ÷ **实际总权重**（不得写死 100）
+  for (const j of [jFull, jNoEv]) {
+    const wSum = j.components.filter((c) => c.applicable).reduce((s, c) => s + c.weight, 0)
+    const naW = j.components.filter((c) => !c.applicable).reduce((s, c) => s + c.weight, 0)
+    assert.equal(j.coverage, +((wSum / (wSum + naW)).toFixed(4)),
+      `coverage 必须按实际总权重算（旧式 (100−naW)/100 在合计≠100 时失真）：${JSON.stringify({ wSum, naW, coverage: j.coverage })}`)
+  }
+
+  rmSync(full.d, { recursive: true, force: true })
+  rmSync(noEv.d, { recursive: true, force: true })
+})
+
 test('quality-score：分数只反映硬失败——P2 候选与 G14 Warning 之外的口径不得混入', () => {
   // 定稿 480 汉字 / 简报目标 500 字 → G8 在区间内（PASS）；把目标改成 200 字（低于 MIN 300 会被拒）
   //   → 改用 300 字目标 + 480 字正文 → 超上界 ×1.05 = P2 候选。此时 g-audit 应为「无硬失败」= ratio 1

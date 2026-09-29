@@ -1,6 +1,6 @@
 # Lunheng (lunheng-article-pipeline) — a DeepSeek Harness bundle for multi-agent long-form writing
 
-> 🌐 **English** (this file) ｜ [中文](README.zh.md) ｜ [Español](README.es.md) ｜ [Português](README.pt.md) ｜ [हिन्दी](README.hi.md)
+> 🌐 **English** (this file) ｜ [中文](README-zh.md) ｜ [Español](README-es.md) ｜ [Português](README-pt.md) ｜ [हिन्दी](README-hi.md)
 
 > 版本：v18.57.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
@@ -88,7 +88,7 @@ lunheng-article-pipeline/                 # the package is the repository
 ├── docs/                     # installation, usage, architecture, faq, troubleshooting
 ├── examples/preset/          # model-tier notes and install guide
 ├── README.md                 # this file (English source)
-├── README.zh.md README.es.md README.pt.md README.hi.md
+├── README-zh.md README-es.md README-pt.md README-hi.md
 ├── SECURITY.md CHANGELOG.md CONTRIBUTING.md LICENSE
 ```
 

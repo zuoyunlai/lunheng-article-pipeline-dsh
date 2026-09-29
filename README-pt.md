@@ -2,7 +2,7 @@
 
 > 版本：v18.57.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
-> 🌐 [English](README.md) ｜ [中文](README.zh.md) ｜ [Español](README.es.md) ｜ **Português**（este arquivo）｜ [हिन्दी](README.hi.md)
+> 🌐 [English](README.md) ｜ [中文](README-zh.md) ｜ [Español](README-es.md) ｜ **Português**（este arquivo）｜ [हिन्दी](README-hi.md)
 
 > Um bundle do DeepSeek Harness (DSH) que registra **duas skills de agente sob demanda**: `lunheng-article-pipeline` (a pipeline principal de 9 papéis) e `lunheng-commands` (um invólucro fino que expõe 11 comandos de barra `/lunheng-*`: draft / resume / cite / audit / journal / ppt / history / rollback / status / stats / help; **sem papel novo e sem item novo do portão M**; ver `skills/lunheng-commands/SKILL.md`). A skill principal transforma a produção de textos longos — artigos acadêmicos, análise setorial, comentário econômico e artigos extensos — em uma **pipeline de 9 papéis com participação humana**.
 
@@ -88,7 +88,7 @@ lunheng-article-pipeline/                 # o pacote é o repositório
 ├── docs/                     # instalação, uso, arquitetura, faq, solução de problemas
 ├── examples/preset/          # notas de níveis de modelo e guia de instalação
 ├── README.md                 # fonte em inglês
-├── README.zh.md README.es.md README.pt.md README.hi.md
+├── README-zh.md README-es.md README-pt.md README-hi.md
 ├── SECURITY.md CHANGELOG.md CONTRIBUTING.md LICENSE
 ```
 

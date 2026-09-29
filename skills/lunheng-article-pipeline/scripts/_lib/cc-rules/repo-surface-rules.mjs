@@ -93,7 +93,7 @@ if (existsSync(dshSkillDir)) {
 //     ② 五份的**表格行数**必须相等（官方 i18n 文档：结构须镜像——表行列数 / 列表项数）；
 //     ③ 五份的 `##` 标题数必须相等（官方门已覆盖字符串层面，这里再钉数量，防「删掉一节还 PASS」）。
 //   边界（如实）：无法判定**译文语义**是否与中文版一致（那需要人读或 LLM 复核），故只钉结构。
-const fiveLangs = ['README.md', 'README.zh.md', 'README.es.md', 'README.pt.md', 'README.hi.md'];
+const fiveLangs = ['README.md', 'README-zh.md', 'README-es.md', 'README-pt.md', 'README-hi.md'];
 const langStats = [];
 for (const f of fiveLangs) {
   const p = join(REPO_ROOT, f);

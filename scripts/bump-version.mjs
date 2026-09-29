@@ -33,7 +33,7 @@ const files = [
   ...walk(path.join(ROOT, 'examples')),
   path.join(ROOT, 'package.json'),
   path.join(ROOT, 'cordis.patch.yml'),
-  ...[ 'README.md', 'README.zh.md', 'README.es.md', 'README.pt.md', 'README.hi.md', 'SECURITY.md', 'CONTRIBUTING.md' ].map((f) =>
+  ...[ 'README.md', 'README-zh.md', 'README-es.md', 'README-pt.md', 'README-hi.md', 'SECURITY.md', 'CONTRIBUTING.md' ].map((f) =>
     path.join(ROOT, f),
   ),
 ]

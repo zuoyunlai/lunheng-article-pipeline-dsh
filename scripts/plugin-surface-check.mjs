@@ -58,8 +58,12 @@ const ROOT = path.resolve(HERE, '..')
  * CLI 版本 pin（可经 `DSH_PLUGIN_DEV_SPEC` 覆盖）。
  * v18.2.6 抬升 0.3.7 → **0.3.10**：0.3.7 已落后上游三版，且旧 pin 下的门数与仓库文档口径不一致
  *   （文档写「14 项：11 通过 / 3 跳过」，而 0.3.10 实测 **9 通过 / 1 warn / 4 skip**，warn = CLI 期望
- *   `README-zh.md` 连字符命名，见下方 WARN_EXEMPT）。抬高 pin 的意义不是「追新」，而是让**门与文档
+ *   `README-zh.md` 连字符命名）。抬高 pin 的意义不是「追新」，而是让**门与文档
  *   对齐到同一个可复现的 CLI 版本**；抬升后必须重跑本脚本并把实际数字写回文档（本次已写回）。
+ * **v18.57.x（审计修订）后续**：五语 README 已按上游期望**改名**为连字符形态（`README-zh.md` 等），
+ *   故上面那个 warn 与其同源的 `readme-consistency` skip **均已消失**——`readme-five-langs` 与
+ *   `readme-consistency` 现为 **✓ pass**，本脚本实测 **11 通过 / 0 失败 / 0 提示 / 3 skip**。
+ *   相应的两条豁免条目已按各自「退出条件」删除（见 `SKIP_ALLOWED` / `WARN_EXEMPT`）。
  */
 export const CLI_SPEC = process.env.DSH_PLUGIN_DEV_SPEC || 'dsh-plugin-guide@0.3.16'   // v18.21.1 回退（0.3.19→0.3.16）
 // 三次复审 N-3：本常量是「本包所用的 dsh-plugin-guide」的**唯一 pin 点**。
@@ -114,7 +118,6 @@ const WAIVERS = []
  * 同时打印表内**未触发**的条目（上游行为变化时可据此清理，避免白名单变成橡皮图章）。
  */
 const SKIP_ALLOWED = new Map([
-  ['readme-consistency', 'CLI 的 README_LANGS 只认连字符命名（README-zh.md…）；本仓用 README.<lang>.md 点号命名，故它「找不到两份可比的 README」。见 WARN_EXEMPT 的 readme-five-langs 同源说明'],
   ['redline-persona-role', '该检查找**仓库根**的 SKILL.md / systemPrompt 段落，而本包（bundle 形态）的技能体在 skills/lunheng-article-pipeline/SKILL.md —— 结构上永远看不到'],
   ['redline-waterfall-next', '本包不用任何 waterfall 监听器（能力面走 ctx.effect / ctx.tools.guard / ctx.commands.register），没有 next() 可漏'],
   ['redline-no-hardcoded-tunables', 'CLI 只认 `export const Config = Schema.…`（Schemastery）与 `= {`（会被判 fail）；本包入口刻意用 standard-schema 形态 `Object.freeze({…})`（不引入宿主依赖，见 lib/index.js 头注释）→ 三条正则都不命中，只能 skip。**已实测**（CLI dist 0.3.10 的 checkRedlineNoHardcodedTunables：:1065-1066,1077）。等价语义由 tests/entry.test.mjs 的 Config 用例与「非法配置加载期响亮失败」覆盖'],
@@ -124,13 +127,14 @@ const SKIP_ALLOWED = new Map([
 /**
  * **`STRICT_WARN=1` 下仍被豁免的 warn**（v18.2.6 新增）：每一项都必须写清理由与退出条件，
  * 未触发的条目会在输出里被点名（便于清理）。**表外的任何 warn 都在 strict 模式下阻塞**。
+ *
+ * v18.57.x（审计修订）：**本表已清空**——唯一的历史条目 `readme-five-langs` 的退出条件
+ *   （「一旦完成重命名，本条应删除」）已达成：五语 README 改名为 `README-zh.md` 等连字符形态，
+ *   该检查转为 ✓ pass，其同源的 `readme-consistency` 也由 skip 转为 ✓ pass。
+ *   保留空数组是刻意的：结构（含「未触发即点名」的清理提示）仍在，将来若确需新豁免，
+ *   仍必须在此登记理由与退出条件，而不是散落在别处的注释里。
  */
-const WARN_EXEMPT = [
-  {
-    id: 'readme-five-langs',
-    reason: 'CLI 期望 `README-zh.md` 等**连字符**命名，而本仓沿用 `README.zh.md` 点号命名（npm 侧合法：readmeFilename 由 npm 自己探测）。改成连字符是对外可见的重命名，牵动 consistency-check 规则 ⑦/⑬/㉑（`fiveLangs` 数组硬编码点号名）、五语 README 互链、`package.json.files`，属跨文件协调改动 → 本批（v18.2.6）**不重命名**，改为在此显式登记并写进 CONTRIBUTING 的待办；一旦完成重命名，本条应删除（脚本会提示未触发）。',
-  },
-]
+const WARN_EXEMPT = []
 
 const wantJson = process.argv.includes('--json')
 const isCI = Boolean(process.env.GITHUB_ACTIONS)

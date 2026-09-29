@@ -8,6 +8,14 @@
 // 口径：汉字计数走 `_lib/han.mjs`（与 count-chars.mjs 同源）——delta 由脚本**实测**，不由清单自报
 // 退出码：0 = 全部条目应用 / 1 = 部分跳过或清单解析出 0 条（需人工处理）/ 10 = 参数或路径错误
 //
+// **条目头只认四个清单族（v18.57.x 审计修订补全文档）**：`[Diff N]` / `[P0-n]` / `[P1-n]` / `[C-n]`。
+//   ⚠️ **`[P2-n]` 刻意不收**——这不是遗漏，而是与全流水线口径一致：段级 diff 只承载 **P0/P1**
+//   （见 `references/pipeline-readme.md` §修订轮默认段级 diff：T5 每轮只对 P0/P1 出一段），
+//   **P2 由 LLM 兜底、不进机械流水**（P2 是「候选/软提示」档，见 `_shared/字数判定表.md` 与
+//   `g-audit-check.mjs` 的「只判候选、判级归 T7」同源口径）。
+//   → 若确要把某条 P2 也走机械应用，**在清单里改写为 `[Diff N]`**（编号自选、不与 P0/P1 冲突即可）。
+//   → 直接把 `[P2-n]` 丢进来时不会静默吞掉：会落进 `unparsedHeads` 并被点名（下方带专门提示）。
+//
 // v18.2.6 审计修复（第三方审计 v18.2.5 B-4「假成功 + 默认原地覆盖」P0）：
 //   ① 参数解析旧版过松——`--out`（缺值）与拼错的 `--dry-rnu` 都被**静默忽略**，用户以为在试运行、实际会落盘；
 //      现未知参数 / 缺值 / 多余位置参数一律打印用法 + exit 10。解析器本体与 build-evidence-bundle 共用
@@ -206,6 +214,13 @@ const emptyList = items.length === 0;   // v18.2.6（B-4 ③）：清单解析�
 if (emptyList && unparsedHeads.length) {
   console.error(`⚠️ 清单里找到 ${unparsedHeads.length} 个方括号行，但**都不是**可识别的条目头（只认 [Diff N] / [P0-n] / [P1-n] / [C-n]）：`);
   for (const h of unparsedHeads.slice(0, 5)) console.error(`   · 第 ${h.line} 行: ${h.text}`);
+  // v18.57.x（审计修订）：`[P2-n]` 是**特意不收**的一族（不是格式笔误），单独给可操作指引——
+  //   旧提示只列「四种前缀」，把 P2 与「拼错/正文引用」混为一谈，用户不知道该怎么办。
+  const p2Heads = unparsedHeads.filter((h) => /^\s*(?:#{1,6}\s*)?\[P2-\d+/i.test(h.text));
+  if (p2Heads.length) {
+    console.error(`   ↳ 其中 ${p2Heads.length} 行是 **\`[P2-n]\`**：该族**刻意不入段级 diff**（只承载 P0/P1；P2 由 LLM 兜底、不进机械流水）。`);
+    console.error('     若确要机械应用这条 P2，**请把清单里的 `[P2-n]` 改写成 `[Diff N]`**（编号自选即可）。');
+  }
   console.error('   → 若是清单格式写错，请改成上述四种前缀之一；若这些行本就是**正文引用**（`[L01]`/`[D01]`），它们不该出现在清单里。');
   console.error('   （v18.12.3 前，任意 `[x]` 行都被当条目头 → 正文引用会被吞掉、真 diff 静默丢失）');
 }

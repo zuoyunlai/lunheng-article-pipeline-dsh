@@ -27,7 +27,7 @@ import { readPackManifest } from '../scripts/_lib/pack-manifest.mjs' // M-2/M-3�
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const SKILL = join(ROOT, 'skills', 'lunheng-article-pipeline')
-const README_FILES = ['README.md', 'README.zh.md', 'README.es.md', 'README.pt.md', 'README.hi.md']
+const README_FILES = ['README.md', 'README-zh.md', 'README-es.md', 'README-pt.md', 'README-hi.md']
 
 /** 宿主技能目录对 description 的硬上限（与 DSH 源码同源，改这里必须同时给出来源行号）。 */
 const HOST_CATALOG_DESCRIPTION_MAX_LENGTH = 500

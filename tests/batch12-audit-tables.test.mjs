@@ -149,6 +149,35 @@ test('L-59：非四族的方括号头（如 `[1]`）→ 0 条并**点名**，不
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
 
+// ── 审计修订：`[P2-n]` 刻意不入段级 diff，且必须给可操作指引（不与「拼错」混为一谈）──────────
+test('审计修订：apply-diff 对 `[P2-n]` 须点名「刻意不收」并指引改写成 [Diff N]', () => {
+  const d = mk({
+    'a.md': paper('原句 A。'),
+    'l.md': '[P2-1]\n现况：原句 A。\n修改：新句 B。\n',
+  })
+  try {
+    const r = run([S('apply-diff.mjs'), join(d, 'a.md'), join(d, 'l.md'), '--dry-run'])
+    assert.equal(r.code, 1, '未解析出条目 → exit 1：' + r.out.slice(0, 300))
+    assert.match(r.out, /\[P2-n\]/, '必须点名 P2 这一族（旧提示只列四种前缀，用户不知道该怎么办）')
+    assert.match(r.out, /刻意不入段级 diff|刻意不收/, '须说明「刻意」——否则会被读成格式笔误')
+    assert.match(r.out, /\[Diff N\]/, '须给出可操作指引：改写成 [Diff N]')
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
+// ── 对照：同一条内容改写成 `[Diff N]` 后必须能正常机械应用（证明上条的指引可行）──────────
+test('审计修订：apply-diff 对改写成 `[Diff N]` 的同一条目正常应用', () => {
+  const d = mk({
+    'a.md': paper('原句 A。'),
+    'l.md': '[Diff 1]\n现况：原句 A。\n修改：新句 B。\n',
+  })
+  try {
+    const out = join(d, 'a2.md')
+    const r = run([S('apply-diff.mjs'), join(d, 'a.md'), join(d, 'l.md'), '--out', out])
+    assert.equal(r.code, 0, '改写成 [Diff N] 后应正常应用：' + r.out.slice(0, 300))
+    assert.match(readFileSync(out, 'utf8'), /新句 B。/)
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
 // ── L-58 丢弃行必须上报且 ok 转假 ─────────────────────────────────────────────
 test('L-58：多行「现况」的续行被丢弃 → ok 转假 + 点名（旧版半截替换仍 ok:true）', () => {
   const d = mk({

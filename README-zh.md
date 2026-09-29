@@ -1,6 +1,6 @@
 # 论衡（lunheng-article-pipeline）— DSH bundle 多 Agent 深度长文流水线
 
-> 🌐 [English](README.md) ｜ **中文**（本文件）｜ [Español](README.es.md) ｜ [Português](README.pt.md) ｜ [हिन्दी](README.hi.md)
+> 🌐 [English](README.md) ｜ **中文**（本文件）｜ [Español](README-es.md) ｜ [Português](README-pt.md) ｜ [हिन्दी](README-hi.md)
 
 > 版本：v18.57.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
@@ -88,7 +88,7 @@ lunheng-article-pipeline/                 # 包即仓库
 ├── docs/                     # 安装 / 使用 / 架构 / FAQ / 排障
 ├── examples/preset/          # 分档说明与安装指南
 ├── README.md                 # 英文源版
-├── README.zh.md README.es.md README.pt.md README.hi.md
+├── README-zh.md README-es.md README-pt.md README-hi.md
 ├── SECURITY.md CHANGELOG.md CONTRIBUTING.md LICENSE
 ```
 

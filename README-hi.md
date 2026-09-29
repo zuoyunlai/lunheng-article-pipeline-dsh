@@ -2,7 +2,7 @@
 
 > 版本：v18.57.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
-> 🌐 [English](README.md) ｜ [中文](README.zh.md) ｜ [Español](README.es.md) ｜ [Português](README.pt.md) ｜ **हिन्दी**（यह फ़ाइल）
+> 🌐 [English](README.md) ｜ [中文](README-zh.md) ｜ [Español](README-es.md) ｜ [Português](README-pt.md) ｜ **हिन्दी**（यह फ़ाइल）
 
 > एक DeepSeek Harness (DSH) बंडल जो **माँग पर दो एजेंट स्किल** पंजीकृत करता है: `lunheng-article-pipeline` (मुख्य 9-भूमिका पाइपलाइन) और `lunheng-commands` (पतला wrapper जो 11 `/lunheng-*` स्लैश आदेश देता है: draft / resume / cite / audit / journal / ppt / history / rollback / status / stats / help; **कोई नई भूमिका नहीं, कोई नया M-द्वार आइटम नहीं**; देखें `skills/lunheng-commands/SKILL.md`)। मुख्य स्किल दीर्घ लेखन — शोध-पत्र, उद्योग विश्लेषण, व्यावसायिक समीक्षा और लंबे लेख — को **मानव-सहभागिता वाली 9-भूमिका पाइपलाइन** में बदल देती है।
 
@@ -88,7 +88,7 @@ lunheng-article-pipeline/                 # पैकेज ही रिपॉ�
 ├── docs/                     # स्थापना, उपयोग, संरचना, faq, समस्या-निवारण
 ├── examples/preset/          # मॉडल-स्तर नोट्स और स्थापना मार्गदर्शिका
 ├── README.md                 # अंग्रेज़ी स्रोत
-├── README.zh.md README.es.md README.pt.md README.hi.md
+├── README-zh.md README-es.md README-pt.md README-hi.md
 ├── SECURITY.md CHANGELOG.md CONTRIBUTING.md LICENSE
 ```
 

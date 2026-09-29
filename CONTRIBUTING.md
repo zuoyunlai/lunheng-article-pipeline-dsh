@@ -21,7 +21,7 @@
 ## 升级流程（发布新版本时）
 
 1. **在真源仓库**（不是部署镜像——见下节「开发位置」）的 `skills/lunheng-article-pipeline/` 下完成机制/角色卡/脚本的修改；改包面（`package.json` / `cordis.patch.yml` / `lib/**`）时**先查官方资料**（`dsh-plugin-guide` 技能），见 `skills/lunheng-article-pipeline/AGENTS.md` 的「开发参考资料」段；
-2. **同步版本号**：`package.json` 的 `version`、`SKILL.md`（frontmatter `version` + 首部版本行）、`cordis.patch.yml` 头、根 `README.md`/`README.zh.md`/`README.es.md`/`README.pt.md`/`README.hi.md`、`SECURITY.md`、`docs/introduction.md`、`docs/troubleshooting.md`、`skills/lunheng-article-pipeline/README.md`、`examples/preset/README.md` 的安装命令——**全部一致**。
+2. **同步版本号**：`package.json` 的 `version`、`SKILL.md`（frontmatter `version` + 首部版本行）、`cordis.patch.yml` 头、根 `README.md`/`README-zh.md`/`README-es.md`/`README-pt.md`/`README-hi.md`、`SECURITY.md`、`docs/introduction.md`、`docs/troubleshooting.md`、`skills/lunheng-article-pipeline/README.md`、`examples/preset/README.md` 的安装命令——**全部一致**。
    > ⚠️ **但机检并不「全量扫描」（v18.2.6 如实更正；旧文写「规则 ⑫⑬ 会全量扫描版本点位」是夸大的）**：`consistency-check.mjs` 的版本点位规则 **⑫ 只覆盖 3 处**——根 `README.md`、`docs/introduction.md`、以及**技能级 README**（脚本内部登记名写作 `skills/README.md`，实际解析为 `skills/lunheng-article-pipeline/README.md`，见 `consistency-check.mjs:179-186`）；规则 ⑬ 另外认 `docs/` 下的**安装 pin** 与「当前版本」行；规则 ①/⑦ 认 `> 版本：` 行与内联 `git tag` 示例。**其余文件的版本头（`SECURITY.md`、`docs/troubleshooting.md`、`docs/*.md` 的版本行）目前靠人工同步**——2026-09 的第三方审计正是这样抓到 `SECURITY.md:3` 与 `docs/troubleshooting.md:3` 双双停在 v18.2.4 而 `package.json` 已是 18.2.5，同时 `consistency-check` 仍报「0 处漂移」（C-3「版本点位门是假覆盖」）。
    > **待办（未做，属规则所有者的改动）**：把版本点位门的覆盖面从「硬编码 3 文件」改为「根 `*.md` + `docs/**`（可执行 `*.md`）」，并补一条**负向用例**（注入旧版本头必须变红）。补丁点位见交付报告 §3 ③。
 3. **同一提交内更新 `CHANGELOG.md`**（写 `## X.Y.Z` 段，如 `## 18.0.0`）——规则 ⑪ 会机械校验「当前版本段存在」，bump 与 CHANGELOG 脱钩会直接红灯；
