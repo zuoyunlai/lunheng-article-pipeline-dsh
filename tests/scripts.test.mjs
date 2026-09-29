@@ -1604,7 +1604,7 @@ test('m-gate-check M-Exist-7：交付说明 12 固定字段（缺字段 / 空字
 
 ## 9. 证据包指纹
 
-- sha256：\`[哈希校验待主人回填]\`
+- sha256：a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4（权威 = final/证据包/manifest.json）
 
 ## 10. 投稿就绪检查表
 
@@ -1651,6 +1651,11 @@ test('m-gate-check M-Exist-7：交付说明 12 固定字段（缺字段 / 空字
   it = item()
   assert.equal(it.pass, false, '决策记录漏门必须报')
   assert.match(it.detail, /未覆盖/)
+  // ⑥ 指纹段只剩旧占位符 → 硬问题（2026-09-29 主人授权修订 EXEC-1：占位符路径废止，须写 sha256 实值）
+  writeFileSync(DD, GOOD.replace('- sha256：a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4（权威 = final/证据包/manifest.json）', '- sha256：[哈希校验待主人回填]'))
+  it = item()
+  assert.equal(it.pass, false, 'EXEC-1 回归锚点：指纹段只剩旧占位符必须报（占位符路径已废止）')
+  assert.match(it.detail, /实值/)
   rmSync(d, { recursive: true, force: true })
 })
 
@@ -2927,7 +2932,7 @@ test('v18.3.1 审计 B9：M-Exist-7 缺 1 固定字段 P1 / 缺 5 字段 P0（�
     '## 6. 成本指标\n\n- token：~1.2M',
     '## 7. 建议 merge 的反哺清单\n\n- 反哺规则 A → 05 卡',
     '## 8. AI 使用披露（完整版）\n\n- AI 生成段：全文初稿',
-    '## 9. 证据包指纹\n\n- sha256：[哈希校验待主人回填]',
+    '## 9. 证据包指纹\n\n- sha256：a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4（权威 = final/证据包/manifest.json）',
     '## 10. 投稿就绪检查表\n\n- 推荐期刊：见审稿报告',
     '## 11. 主人决策记录\n\n- 四门：Phase 0 通过｜Phase 2.5 通过｜Phase 3.5 通过｜Phase 5 通过',
     '## 12. 终检结论\n\n- M 门 exit = 0',

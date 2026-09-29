@@ -17,10 +17,74 @@
 //   ② **容差 2%**：`约 68%` 与 `68.1%` 视为一致（与 SKILL.md「主人软接受档 ±2%」同口径）；
 //      且剥离 约/近/逾/超过/达/为/是/共/左右/大约 等修饰词后再比键。
 
+import { readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { h2Headings } from '../sections.mjs';
 
 /** 数字 + 单位/量级的抽取（与 `g-audit-check.mjs` 的 QUANT_RE 同族；**刻意不抓裸年份**）。 */
 const NUM_RE = /(\d[\d,]*(?:\.\d+)?)\s*(%|个百分点|倍|万亿|千亿|百亿|亿元|亿美元|万亿元|亿吨|万辆|万台|万人|亿人|千瓦时|GW|MW|kW|kWh|吨|万家|人)/g;
+
+// === v18.54.0（反哺 F-BG）：正文 ↔ 素材 的**字段级**一致性（M-Fact-1 第三项） ===
+//
+// 为什么并入 M-Fact-1 而不是新开 `M-Fact-2`：前者是**同族、同消费方**（T7/T8 读「跨节事实一致性」一条），
+//   新开门项会改动 `total` 与全仓「M 门 24 项」口径（文档 + 用例 + 对照表大面积连带），
+//   而本项的**判定归属**与 M-Fact-1 完全一致（都是「正文里的数字/字段与真源不符」）→ 并入更诚实。
+//
+// 实测现场（本反哺的由来）：臂 B `§4.4 论点 2` 原写「观测[D-CASE27]为 2019 年」，
+//   而两臂共用的冻结数据集里 `[D-CASE27]` 的**行发表年与详情标题均为 2023**（DOI 亦含 `-023-`）。
+//   **四道门 + M 门 24 项全部未报**：既有 M-Fact-1 只比「正文 ↔ 正文」（两处都错得自洽时它不报），
+//   M-Exist-3 只查 `[Dxx]` **编号是否存在**、不核**字段值**。
+//
+// ⚠️ **防误报口径（三条，照 M-Fact-1 主体与 F-BG 的「宁漏不误」）**：
+//   ① 只在**同一句内**同时出现「素材编号 + 四位年份」时才判——跨句不配（否则会把不同句的年份错配到编号上）；
+//   ② 素材侧取**年份集合**（表格行发表年 ∪ 详情四位年份 ∪ DOI 年份片段），**命中任一即不报**——
+//      故 `[D-CASE28]` 这类「行内错误」（行 2023 / 详情 2019）**两边都不报**（正确：两个值在素材里都有依据）；
+//   ③ 素材文件缺失 / 该编号不在素材内 → **跳过并留痕**（不猜、不报），与 M-Form-8 的 `degraded` 同纪律。
+//
+// **覆盖边界（如实声明，不得夸大）**：只做**年份**这一种字段；**计数/编号对应**（如「N 例」与数据集行数）
+//   与**跨句断言**（年份写在另一句）**均未覆盖** → 本项是「零假阳性、低召回」的核对，不构成「字段面已核完」。
+const CASE_ID_RE = /\[D-CASE(\d{2,3})\]/g;
+const FOUR_DIGIT_YEAR_RE = /(?<!\d)((?:19|20)\d{2})(?!\d)/g;
+
+/** 从素材文件抽 `id -> Set<年份>`（表格行取发表年 + URL 年份片段；非表格行取该行四位年份）。 */
+function caseYearsFrom(materialText) {
+  const map = new Map();
+  for (const line of materialText.split('\n')) {
+    const ids = [...line.matchAll(CASE_ID_RE)].map((m) => m[0]);
+    if (ids.length === 0) continue;
+    const years = new Set();
+    if (line.trim().startsWith('|')) {
+      const cells = line.split('|').map((s) => s.trim());
+      // cells[1]=编号 cells[2]=期刊 cells[3]=出版商 cells[4]=学科 cells[5]=发表年 …
+      for (const y of (cells[5] || '').matchAll(FOUR_DIGIT_YEAR_RE)) years.add(y[1]);
+      const urlCell = cells.find((c) => /https?:\/\//.test(c)) || '';
+      for (const m of urlCell.matchAll(/-(19|20)(\d{2})(?=[-_/.])/g)) years.add(`${m[1]}${m[2]}`);
+    } else {
+      for (const y of line.matchAll(FOUR_DIGIT_YEAR_RE)) years.add(y[1]);
+    }
+    for (const id of ids) {
+      if (!map.has(id)) map.set(id, new Set());
+      for (const y of years) map.get(id).add(y);
+    }
+  }
+  return map;
+}
+
+/** 正文里「同一句内 素材编号 + 四位年份」的字段级断言。 */
+function caseYearAssertions(text) {
+  const out = [];
+  text.split('\n').forEach((line, i) => {
+    if (!/\[D-CASE\d{2,3}\]/.test(line)) return;
+    for (const sent of line.split(/(?<=[。；;！？])/)) {
+      const ids = [...new Set([...sent.matchAll(CASE_ID_RE)].map((m) => m[0]))];
+      if (ids.length === 0) continue;
+      const years = [...new Set([...sent.matchAll(FOUR_DIGIT_YEAR_RE)].map((m) => m[1]))];
+      if (years.length === 0) continue;
+      out.push({ line: i + 1, ids, years, sentence: sent.trim() });
+    }
+  });
+  return out;
+}
 
 /** 键归一化：剥离程度/估计类修饰词与标点空白，便于「同一表述」逐字对齐。 */
 const MODIFIERS = /(大约|约|近|逾|超过|多达|高达|约为|达到|达|为|是|共|左右|以上|以下|超过|逾|近|约)/g;
@@ -123,18 +187,69 @@ export function mFact1(ctx) {
     void INFIX;
   }
 
+  // ---- 正文 ↔ 素材 字段级一致性（v18.54.0 反哺 F-BG）----
+  const materialChecked = { files: [], skipped: '', conflicts: [] };
+  {
+    const roots = [ctx.projectRoot, ctx.evDir].filter(Boolean);
+    const candidates = ['data/撤稿案例数据集.md', 'data/数据卡.md', 'data/数据卡-lite.md'];
+    const files = [];
+    for (const r of roots) for (const rel of candidates) {
+      const p = join(r, rel);
+      if (existsSync(p) && !files.includes(p)) files.push(p);
+    }
+    materialChecked.files = files;
+    if (files.length === 0) {
+      // 与 M-Form-8 `degraded8` 同纪律：**未执行必须可见**，不能与「核过且无问题」同形。
+      materialChecked.skipped = '素材文件未找到（data/撤稿案例数据集.md 或 data/数据卡.md）→ 正文↔素材字段核对**未执行**，不是「通过」';
+    } else {
+      const yearsById = new Map();
+      for (const p of files) {
+        for (const [id, set] of caseYearsFrom(readFileSync(p, 'utf8'))) {
+          if (!yearsById.has(id)) yearsById.set(id, new Set());
+          for (const y of set) yearsById.get(id).add(y);
+        }
+      }
+      for (const a of caseYearAssertions(text)) {
+        const bad = [];
+        for (const id of a.ids) {
+          const allowed = yearsById.get(id);
+          if (!allowed || allowed.size === 0) continue;    // 编号不在素材内 → 交给 M-Exist-3，不在此重复报
+          if (!a.years.some((y) => allowed.has(y))) bad.push(`${id}(素材: ${[...allowed].sort().join('/')})`);
+        }
+        if (bad.length) {
+          const core = /摘要|结论|结语/.test(sectionOf(text.indexOf(a.sentence.slice(0, 12))));
+          materialChecked.conflicts.push({
+            line: a.line, ids: a.ids, years: a.years, bad, severity: core ? 'P0' : 'P1',
+            sentence: a.sentence.slice(0, 80),
+          });
+        }
+      }
+    }
+  }
+
   // ---- 汇总为一条 gate（M-Fact-1）----
-  const worst = conflicts.some((c) => c.severity === 'P0') ? 'P0'
-    : (conflicts.length > 0 ? 'P1' : (aliasPairs.length > 0 ? 'P2' : '通过'));
+  const materialP0 = materialChecked.conflicts.some((c) => c.severity === 'P0');
+  const worst = conflicts.some((c) => c.severity === 'P0') || materialP0 ? 'P0'
+    : (conflicts.length > 0 || materialChecked.conflicts.length > 0 ? 'P1'
+      : (aliasPairs.length > 0 ? 'P2' : '通过'));
   const parts = [];
   if (conflicts.length) parts.push(`数字跨节不一致 ${conflicts.length} 组：` + conflicts.slice(0, 3).map((c) => `「${c.key}」=${c.values.join(' / ')}`).join('；'));
+  if (materialChecked.conflicts.length) {
+    parts.push(`正文↔素材年份不符 ${materialChecked.conflicts.length} 处：`
+      + materialChecked.conflicts.slice(0, 3).map((c) => `L${c.line} ${c.years.join(',')} vs ${c.bad.join(' ')}`).join('；'));
+  }
+  if (materialChecked.skipped) parts.push(`⚠️ ${materialChecked.skipped}`);
   if (aliasPairs.length) parts.push(`术语近形混用候选 ${aliasPairs.length} 组：` + aliasPairs.slice(0, 3).map((p) => `「${p.a}」(${p.aCount}) / 「${p.b}」(${p.bCount})`).join('；'));
   results.push({
     gate: 'M-Fact-1 跨节事实一致性',
     pass: worst === '通过',
-    detail: parts.length ? parts.join(' ｜ ') + `（容差 ${tol * 100}%；术语项为 P2 候选，判级归 T7）` : `未发现跨节数字冲突或近形术语混用（容差 ${tol * 100}%）`,
+    detail: parts.length
+      ? parts.join(' ｜ ') + `（容差 ${tol * 100}%；术语项为 P2 候选，判级归 T7；正文↔素材核对仅覆盖**年份**字段，计数/编号对应与跨句断言未覆盖）`
+      : `未发现跨节数字冲突、近形术语混用或正文↔素材年份不符（容差 ${tol * 100}%；素材文件 ${materialChecked.files.length} 个；正文↔素材核对仅覆盖**年份**字段）`,
     severity: worst,
     ...(conflicts.length ? { conflicts } : {}),
+    ...(materialChecked.conflicts.length ? { materialConflicts: materialChecked.conflicts } : {}),
+    ...(materialChecked.skipped ? { materialSkipped: materialChecked.skipped } : {}),
     ...(aliasPairs.length ? { aliasPairs } : {}),
   });
 }

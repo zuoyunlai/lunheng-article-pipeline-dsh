@@ -628,6 +628,27 @@ try {
     : '';
   let wallBit2 = '';
   if (wall8.ghost.length) wallBit2 = `承重墙含卡片中不存在的编号：${wall8.ghost.slice(0, 5).join(',')}`;
+  // v18.54.0（反哺 F-BH，**已更正定义**）：detail 显式写出**档位依据**。
+  //   原始反哺（本会话主控提出）声称「备注『N 个论点但只标了 M 条承重墙』是 M-Form-8 判 P1 的主因」——
+  //   **经读实现证伪**：该 note 既不在 `wallHard`（只有超载/幽灵进 hard）也不参与 severity 三元式，
+  //   它**不产生任何档位影响**；实测臂的 P1 来自 `weak > 0`（1 段覆盖 <2 类 = F-AH 的 ② 档）。
+  //   但「误读」本身是**真实且已发生**的危害：本会话主控正是据此把 P1 归因写进了
+  //   局限性 / 交付说明 / T8 裁定的 note（三处，已回改）。根因 = **detail 把「备注」与 severity
+  //   并排输出却不标谁是因**——读者（含 LLM 主控）会就近归因。
+  //   修法（只动 detail 文案，**不动任何 severity**）：末尾无条件给出「档位依据」，
+  //   并明写上方「备注」/「P2 提示」不参与档位判定。
+  //   判据（可迁移）：**凡「结论 + 若干观察」并排输出，必须显式标出哪一项是结论的依据**——
+  //   否则读者会挑离结论最近的那条当理由（本轮实测：主控自己就这么读了）。
+  const sevCause = mform8Findings.L_missing > 0
+    ? `P0：${mform8Findings.L_missing} 段缺任意证据`
+    : (wallHard
+      ? `P1：${wall8.overload.length ? '承重墙超载' : '承重墙幽灵编号'}`
+      : (mform8Findings.weak > 0
+        ? `P1：${mform8Findings.weak} 段覆盖 <2 类证据（F-AH ② 档）`
+        : (noLOnly8 > 0
+          ? `P2：${noLOnly8} 段有证据但缺 [Lxx]（F-AH ③ 档）`
+          : '通过：三段判定与承重墙硬项均无命中')));
+  const sevBit = `档位依据：${sevCause}（**只有本项决定档位**；上方「承重墙 …条标注」/「备注」/「P2 提示」均为观察，不参与档位判定）`;
   results.push({
     gate: 'M-Form-8 三角验证',
     pass: mform8Pass,
@@ -640,6 +661,7 @@ try {
       wall8.parseError || '',   // v18.2.6：解析异常**无条件**出现在 detail（不再无痕跳过）
       (wall8.checked && wall8.rows > 0 && !wall8.overload.length && wall8.notes.length) ? `备注：${wall8.notes[0]}` : '',
       mform8Findings.soft.length ? `P2 提示（裸断言段）：${mform8Findings.soft.slice(0, 2).join('；')}${mform8Findings.soft.length > 2 ? ` 等 ${mform8Findings.soft.length} 段` : ''}` : '',
+      sevBit,
     ].filter(Boolean).join(' ｜ '),
     severity: mform8Severity,
   });

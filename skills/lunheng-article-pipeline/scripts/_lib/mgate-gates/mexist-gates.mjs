@@ -892,8 +892,19 @@ try {
         }
       }
     }
-    if (!/\[哈希校验待主人回填\]|sha256\s*[:：]?\s*[0-9a-f]{16,}/i.test(dt)) {
-      findings7.push('缺「证据包指纹」段或 sha256 占位符 `[哈希校验待主人回填]`（M-Integrity-2 步骤 4 的输入）');
+    // 2026-09-29 主人授权修订 EXEC-1：占位符路径废止——「证据包指纹」段须写 sha256 实值
+    //   （权威 = final/证据包/manifest.json），主人不参与回填。正则**不再接受**
+    //   `[哈希校验待主人回填]` / `[SHA256-PENDING:HOST-VERIFY]`（v2.2.17 教训 #123 的「可选验证」已升为必填实值）。
+    // v18.54.0（反哺 F-BI，随 EXEC-1 一并修）：**同一判据必须只有一个正则**。
+    //   实测缺陷：EXEC-1 只改了下面这条硬检查，而 detail 首段的「+ 证据包指纹✓/✗」标记仍用**旧正则**
+    //   （接受占位符）→ 只有占位符的项目，同一行 detail **同时**输出
+    //   「…实到 11/11 **+ 证据包指纹✓**」与「硬问题：缺「证据包指纹」段或 sha256 **实值**…」
+    //   （实测现场 = `run/AB-共锁-A`）→ 读者无法判断该门到底认不认这个字段。
+    //   判据（可迁移）：**改判据时，必须把该判据的**所有**出口一起改**（硬问题 + 摘要标记 + 软提示 …），
+    //   否则会出现「结论说 ✗、摘要说 ✓」的自相矛盾文案——比判据本身错更难查。
+    const FP_REAL_RE = /sha256\s*[:：]?\s*[0-9a-f]{16,}/i;
+    if (!FP_REAL_RE.test(dt)) {
+      findings7.push('缺「证据包指纹」段或 sha256 **实值**（须含 `sha256: <hex 16+>`，权威 = `final/证据包/manifest.json`）；占位符已废止，主人不参与回填（M-Integrity-2 步骤 4 的输入）');
     }
     const dec = dl.findIndex((l) => /主人决策记录/.test(l));
     if (dec !== -1) {
@@ -909,7 +920,7 @@ try {
       gate: 'M-Exist-7 交付说明字段齐备',
       pass: !hard7 && soft7.length === 0,
       detail: [
-        `12 固定字段（11 关键词字段 + 证据包指纹）实到 ${FIELD_KEYWORDS.length - findings7.filter((x) => x.startsWith('缺固定字段')).length}/${FIELD_KEYWORDS.length}${/\[哈希校验待主人回填\]|sha256\s*[:：]?\s*[0-9a-f]{16,}/i.test(dt) ? ' + 证据包指纹✓' : ' + 证据包指纹✗'}`,
+        `12 固定字段（11 关键词字段 + 证据包指纹）实到 ${FIELD_KEYWORDS.length - findings7.filter((x) => x.startsWith('缺固定字段')).length}/${FIELD_KEYWORDS.length}${FP_REAL_RE.test(dt) ? ' + 证据包指纹✓（实值）' : ' + 证据包指纹✗（缺实值）'}`,
         hard7 ? `硬问题：${findings7.slice(0, 3).join('；')}` : '固定字段齐备且有内容',
         soft7.length ? `软提示：${soft7.slice(0, 2).join('；')}` : '',
       ].filter(Boolean).join(' ｜ '),

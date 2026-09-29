@@ -238,7 +238,7 @@ export const DELIVERY_NOTE_OTHER_SECTIONS = [
   '## 5. 数据溯源 check-list\n\n- 无',
   '## 7. 建议 merge 的反哺清单\n\n- 无',
   '## 8. AI 使用披露\n\n- AI',
-  '## 9. 证据包指纹\n\n- sha256：[哈希校验待主人回填]',
+  '## 9. 证据包指纹\n\n- sha256：a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4（权威 = final/证据包/manifest.json）',
   '## 10. 投稿就绪检查表\n\n- 推荐',
   '## 11. 主人决策记录\n\n- Phase 0 通过｜Phase 2.5 通过｜Phase 3.5 通过｜Phase 5 通过',
   '## 12. 终检结论\n\n- 通过',

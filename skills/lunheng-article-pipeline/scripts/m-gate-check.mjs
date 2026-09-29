@@ -485,7 +485,12 @@ if (reportPath) {
       try {
         const prev = JSON.parse(readFileSync(reportPath, 'utf8'));
         const keep = {};
-        for (const k of ['_t8_llm_review', '_t8_conclusion']) if (prev[k]) keep[k] = prev[k];
+        // v18.54.0（反哺 F-BF②）：`_t8_adjudicated_at` / `_t8_adjudicated_by` 并入 keep 列表。
+        //   实测缺陷：裁定当次落盘含这两个键，**随后一次不带 `--adjudicate` 的复跑即静默丢弃**
+        //   （顶层只剩 `_t8_llm_review` / `_t8_conclusion` / `script_exit_raw` / `verdict_stale`）
+        //   → 报告不再自证「**谁在何时裁定**」，只剩裁定 JSON 本体与闸门记录可查。
+        //   判据：随裁定一起写入的**留痕键**，其寿命必须与 `_t8_conclusion` 同步（同寿原则）。
+        for (const k of ['_t8_llm_review', '_t8_conclusion', '_t8_adjudicated_at', '_t8_adjudicated_by']) if (prev[k]) keep[k] = prev[k];
         if (Object.keys(keep).length > 0) {
           out = { ...report, ...keep, script_exit_raw: report.exit };
           const prevSha = prev.verdict_scope?.draft_sha256;
@@ -626,6 +631,20 @@ if (reportPath) {
     //   现走 writeReport：与 draftPath 同文件 → exit 10；并留时间戳 .bak（旧版无回滚点）。
     writeReport(reportPath, JSON.stringify(out, null, 2), { protect: [draftPath] });
     console.error(`📄 M-Gate 报告已落盘: ${reportPath}`);
+    // v18.54.0（反哺 F-BF①）：**非裁定复跑**时把「进程码 / 报告裁定值」两个数同时说清。
+    //   实测缺陷：`--adjudicate` 成功当次进程码 = 裁定值（0）；**其后任一次普通复跑**的进程码
+    //   回到**本次机械值**（实测 1），而落盘报告的 `exit` 仍是已采纳的裁定值 0 → **两个数不同**。
+    //   后果：只看 shell 的 `$LASTEXITCODE` 会把「已裁定放行」误读为「有 P1 未放行」；只看报告则相反。
+    //   判据：**同一个事实有两个权威读数时，工具必须把两个都打出来，并指明谁是本次的进程码**——
+    //   这与 F-BF② 同属「别让消费者去猜」，也是 v18.12.0 L-05「产物说放行、退出码说 P0」的续修。
+    if (!adjudicatePath && typeof out.exit === 'number' && out.exit !== report.exit) {
+      console.error(
+        `ℹ️ 本次为**非裁定复跑**：进程退出码 = 本次机械值 ${report.exit}，`
+        + `而报告中保留的**有效裁定值** = ${out.exit}（script_exit_raw=${report.exit} 已另存；`
+        + `既有 T8 裁定未过期${out.verdict_stale ? '（⚠️ 但 verdict_stale=true，见上）' : ''}）。`
+        + `\n   读法：**判定放行与否以报告的 exit 字段为准**；进程码在本模式下只表示「本次机械面有几级」。`,
+      );
+    }
   } catch (e) {
     // v18.2.9（第三方审计 B14）：落盘失败不再吞掉。AGENTS.md 铁律「闸门必须留机械证据（exit code + 产物路径）」
     //   ——报告写不出来时 exit 0/1/2 会让主控以为证据链完整（磁盘满/权限错时实际拿不到报告）。

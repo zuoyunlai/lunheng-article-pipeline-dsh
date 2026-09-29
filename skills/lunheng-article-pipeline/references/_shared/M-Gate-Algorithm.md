@@ -1,4 +1,4 @@
-> 版本：v18.53.0（DSH bundle 插件）
+> 版本：v18.54.0（DSH bundle 插件）
 
 > **v2.5.2-dsh.5 重大修订**（测试轮反哺 14 项问题落地）：
 > - **P0** #1 M-Form-2 与 M-Form-7 白名单统一（含 AI 使用声明）
@@ -822,30 +822,27 @@ return (len(leaked) == 0 and len(orphan) == 0, leaked, orphan)
 ```
 算法步骤（v2.2.17 修订，回应 外部扫描器 v2.2.16 finding F03+F05 94%/92%）：
 1. 读取 final/证据包/ 目录下所有 .md 和 .txt 文件
-2. **LLM 能力边界**（v2.2.17 澄清）：主控 LLM 不能直接计算 sha256 二进制哈希 → 主控用 `read` 读全文 + 推理验证「文件非空」+ 列文件名 +修改时间。**重要：以下占位符机制是论衡默认设计，不是 bug**。
-   - **DSH 例外（v2.5.2-dsh.0 反哺，教训：论艺术中的丑 sha256 占位符形同虚设）**：DSH 下主控有 `pwsh` 工具，**可直接计算 sha256 回填**，不必留占位符——`Get-FileHash -Algorithm SHA256 final\证据包\*.md` 由主控执行并写实值入「证据包指纹」段。仅在主控决定不跑 shell（严格零 exec 场景）时才降级为 `[SHA256-PENDING:HOST-VERIFY]` 占位符。
-3. **生成 sha256 占位**（v2.2.17 明确占位符机制）：在 final/交付说明.md「证据包指纹」段写出（由主控 LLM 写入，纯文本占位符）：
+2. **sha256 的来源（2026-09-29 主人授权修订 EXEC-1）**：sha256 由 `build-evidence-bundle.mjs` 计算——该脚本 `:302` 逐文件记 `sha256`、`:314-331` 产出 `final/证据包/manifest.json`（含 `auditTargetSha256`）。主控**只从 `manifest.json` 引用实值**，不另行计算、也不留占位符。该产出是 T8 终检的必跑步骤（`08-终检-finalizer.md` 的 `final-check.mjs` 三脚本顺序契约：`count-chars` → `build-evidence-bundle` → `m-gate-check`，**顺序不可交换**），故到达本门时 `manifest.json` 必然已存在。
+3. **写入实值**（2026-09-29 主人授权修订 EXEC-1）：在 final/交付说明.md「证据包指纹」段写出**权威真源指针 + 实值**：
    ```
-   ## 证据包指纹（v2.2.17）
+   ## 证据包指纹
 
-   ⚠️ 重要：以下 sha256 哈希是【待主人在 host shell 手动计算后回填】的占位符，不是 agent 计算结果。
+   权威真源：final/证据包/manifest.json（逐文件 sha256 + auditTargetSha256）
+   本段为引用，不构成第二真源。
 
-   - 数据卡.md: `[哈希校验待主人回填]`
-   - 案例卡.md: `[哈希校验待主人回填]`
-   - 文献卡.md: `[哈希校验待主人回填]`
-   - 先行者清单.md: `[哈希校验待主人回填]`
-
-   主人回填（可选）：
-   校验哈希 final/证据包/数据卡.md >> final/交付说明.md
-   校验哈希 final/证据包/案例卡.md >> final/交付说明.md
-   # ... 其他文件同上
+   - 数据卡.md: sha256 <64 位十六进制实值>
+   - 案例卡.md: sha256 <实值>
+   - 文献卡.md: sha256 <实值>
+   - 先行者清单.md: sha256 <实值>
    ```
-4. **判定**（v2.2.17 三种状态全部接受）：
-   - （a）占位符存在 `[哈希校验待主人回填]` → **P5 ✅ 通过**（主人未验证不阻塞交付）
-   - （b）实际 sha256 已回填（主人手动计算后）→ **P5 ✅ 通过**（高信任度）
-   - （c）指纹段完全缺失 → **P5 ❌ 失败**（主控未生成占位符，是真错误）
-5. **人类主人补填**（v2.2.17 明示）：可选步骤，人类主人在 host shell 跑后回填 sha256 值
-6. **本文档中所有 sha256 示例**（v2.2.17 立场声明）：是「跨平台命令参考」，给主人在自己机器上手动验证用——**不是 agent 执行的代码**。论衡 LLM **不执行**任何 shell 命令（不在随包脚本白名单内）。
+   **主人不参与回填**：`[哈希校验待主人回填]` 与 `[SHA256-PENDING:HOST-VERIFY]` 两条路径均已废止。
+4. **判定**（2026-09-29 主人授权修订 EXEC-1）：
+   - （a）段内存在 **sha256 实值**（`sha256[:：]?\s*<hex 16+>`）→ **通过**
+   - （b）段内只剩占位符（`[哈希校验待主人回填]` / `[SHA256-PENDING:HOST-VERIFY]`）→ **P1**（占位符已废止，不再视为合规）
+   - （c）指纹段完全缺失 → **P1**（主控未写，是真错误）
+   > **档位收口**：旧文此处判 **P5**，而本文件阈值总表（§阈值总表）同一判据写 **P1**——同一事实两处两值。本次统一为 **P1**（与 `mexist-gates.mjs` 的 `M-Exist-7` 实装严重度一致）。**P5 档位自此不再使用。**
+5. **判定链**：本项**不再有「人类补填」分支**——实值取自 `manifest.json`，无需任何人手工计算。
+6. **本文档中所有 sha256 示例**：是「跨平台命令参考」；实际值一律取自 `manifest.json`。
 ```
 
 
@@ -1010,7 +1007,7 @@ declared = 「总评分 XX/30」（或「总分 XX/30」）                     
 若无 final/交付说明.md → N/A（T8 尚未开始交付），pass=true
 12 字段（11 个内容字段 + 证据包指纹）逐个：存在（标题/加粗标签/表行）且有内容 → 缺 → P1；空或仅 <…> 占位符 → P1
   · 内容阈值 = 1 字（允许「无」「未启用」等**合法的一句话答复**，只拦真空与占位符）
-证据包指纹：须有 [哈希校验待主人回填] 占位符 或 真实 sha256                       → 缺 → P1
+证据包指纹：须有 sha256 实值（权威 = final/证据包/manifest.json）              → 缺或仅占位符 → P1
 主人决策记录：须覆盖 Phase 0 / 2.5 / 3.5 / Phase 5 四门；
   缺回填的门必须显式标注「未留痕」（不得省略、不得代填）                          → 缺门 → P1
 ```
@@ -1154,7 +1151,7 @@ outline = analysis/分析大纲.md（缺则回退 证据包/分析大纲.md）�
 5. 信任级别完整性：M-Form-6 exit 0 → 通过；否则 → 触发 T2 补标注
 6. 引用闭环：M-Exist-3 exit 0 → 通过（正文 `[Dxx]` 均在数据卡有条目）；否则 → 触发 T2 补数据卡
    （**v18.2.6 审计修复**：旧文写「信任级别一致性：M-Exist-3 exit 0」——该门只做引用闭环对账，**不查信任级别**；信任级别由步骤 5 的 M-Form-6 承担）
-7. **v2.2.17 修复（教训 #123）**：哈希指纹为**可选验证**——主控发占位符 `[哈希校验待主人回填]` 到 `final/交付说明.md`「证据包指纹」段，**不**作为闸门强制项。主人需手动在 host shell 跑 （检查 final/证据包/*.md）（参考 `shell 脚本`）。**该步骤不是 agent 执行的代码，是人类验证示例。**
+7. **2026-09-29 主人授权修订 EXEC-1（需求升级，如实登记）**：哈希指纹**不再是「可选验证」**——「证据包指纹」段须写 **sha256 实值**（权威 = `final/证据包/manifest.json`），主人**不参与回填**，无实值即 **P1**。（本条原为 v2.2.17 教训 #123 的「可选验证、不阻塞交付」；本次按主人定案升为必填实值。）
 8. **v2.2.10 新增（教训 #106）**：数据卡头部「共 N 条」声明 vs 实际 检查 计数一致性
    头部声明：匹配 '共 [0-9]+ 条' final/证据包/数据卡.md
    实际计数：步骤 2 的双格式并集 dedupe
@@ -1172,11 +1169,11 @@ outline_count = count_data_requirements_in_brief('01-任务简报.md')  # v2.2.1
 data_ok = data_count >= outline_count
 trust_form_ok = check_M_Form_6(data_card)
 trust_exist_ok = check_M_Exist_3(data_card, 'final/定稿.md')
-sha256_pending = emit_placeholder_sha256(data_card)  # v2.2.17：发占位符 [哈希校验待主人回填]，**不**作为闸门强制项
+sha256_value = read_manifest_sha256('final/证据包/manifest.json')  # 2026-09-29 EXEC-1：取实值，不再发占位符
 header_consistent = check_header_vs_actual_count(data_card)  # v2.2.10 新增
 all_pass = data_ok and trust_form_ok and trust_exist_ok and header_consistent  # v2.3.2 删 owner_signed（主人签字不在 T2.5 闸门，教训 #136）
-# v2.2.17 修复 F03 + F05：sha256 不是“必填门”，是“可选验证”（主人手动跑）
-return (all_pass, fail_reasons, sha256_pending)
+# 2026-09-29 EXEC-1（需求升级）：sha256 由 manifest.json 提供实值；占位符路径废止
+return (all_pass, fail_reasons, sha256_value)
 ```
 
 **实战反例**（教训 #106）：T2 写数据卡时凭印象在头部写「共 29 条」，实际 检查 只有 26 条，T4 靠人工 检查 才发现。本次新增步骤 9 拦截。
@@ -1189,7 +1186,7 @@ return (all_pass, fail_reasons, sha256_pending)
 1. 检查审计报告最新版：列出 audits/审计报告-vN.md → N 取最大 → 必须存在
 2. P0/P1 清单已列：检查 -E '^- \*\*P0|^- \*\*P1' audits/审计报告-vN.md → 必须有 ≥1 条
 3. M 门**机械 24 项**（M-Form 1-11 + M-Exist 1-11 + M-Integrity-1）全部 exit 0：读 M-Gate-Report.json → 全部 true（**M 门总 25 项 = 机械 24 + 人工 1**；旧文只写「M-Form 11 + M-Exist 11」漏 M-Integrity-1，v18.2.6 审计修复）
-4. 证据包 哈希指纹段存在：读 final/交付说明.md「证据包指纹」段 → 必须有 sha256 **占位符** `[哈希校验待主人回填]`（人类可选在 host shell 手动计算后回填真实哈希，占位符即视为通过——v2.2.17 改，agent 不执行 sha256，不把 sha256 作闸门强制项）
+4. 证据包 哈希指纹段存在：读 final/交付说明.md「证据包指纹」段 → 必须有 **sha256 实值**（权威 = `final/证据包/manifest.json`）。**2026-09-29 主人授权修订 EXEC-1**：占位符路径（`[哈希校验待主人回填]`）已废止，主人不参与回填；段内只剩占位符或缺失 → **P1**。
 5. 引用闭环：M-Exist-3 exit 0 → 通过（正文 `[Dxx]` 均在数据卡有条目；**信任级别不在此门**——由 M-Form-6 + G12 承担，v18.2.6 审计修复）
 6. 论文交付物 vs 操作员报告独立隔离：
    - final/定稿.md（论文）不含 audits/ / final/交付说明.md 内容
@@ -1206,7 +1203,7 @@ return (all_pass, fail_reasons, sha256_pending)
 audit_latest = get_latest_audit_report('audits/')
 p0_p1_listed = check_p0_p1_listed(audit_latest)
 m_gate_ok = check_m_gate_all_pass('final/M-Gate-Report.json')
-sha256_ok = check_evidence_sha256_placeholder('final/交付说明.md')  # v2.2.17 改：占位符 [哈希校验待主人回填] 即通过，人类可选回填
+sha256_ok = check_evidence_sha256_real('final/交付说明.md')  # 2026-09-29 EXEC-1：须为 sha256 实值，占位符不再通过
 trust_ok = check_M_Exist_3(...)
 isolation_ok = check_draft_vs_report_isolation('final/定稿.md', 'final/交付说明.md', 'audits/')
 revision_independent = check_revision_by_independent_writer('status.md')
