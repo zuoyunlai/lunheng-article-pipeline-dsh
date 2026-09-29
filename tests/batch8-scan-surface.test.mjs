@@ -10,8 +10,9 @@
 //   L-72  svg.mjs 的 DANGEROUS 不含 <style>（@import 外发零告警）；--report 目录缺失口径不一
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { writeFileSync, mkdirSync, existsSync, readFileSync, rmSync, readdirSync } from 'node:fs'
+import { writeFileSync, mkdirSync, mkdtempSync, existsSync, readFileSync, rmSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { SCRIPTS, ROOT, run, parseJson, tmp } from './_fixtures.mjs'
 
 const S = (n) => join(SCRIPTS, n)
@@ -249,4 +250,35 @@ test('L-72 --report 指向被审正文 → exit 10 且原文件字节不变（�
   const r = run([S('cite-coverage-check.mjs'), md, '--report', md])
   assert.equal(r.code, 10, '同文件必须 exit 10，实得 ' + r.code)
   assert.equal(readFileSync(md, 'utf8'), body, '被审正文必须逐字节不变')
+})
+
+// ── 审计修订：`--report` **允许**写项目外（既定设计，主人 2026-09-29 决定）───────────────
+// 为什么要有这一条：审计曾把「`writeReport` 不限制输出目录」记为待修项，主人裁定**这是既定设计**——
+//   ① `quality-score.mjs` 本就要把各门 `--report` 写进 `os.tmpdir()`（跑完即清理），强制项目根会破坏它；
+//   ② 调用方本就能经 `pwsh` 写任意路径，限制目录不构成真实权限收窄。
+// 故本用例**正向钉住该行为**：若将来有人给它加硬性项目根限制，这里会红，并指向 SECURITY.md 的对应段。
+test('审计修订：--report 允许写项目外（既定设计；勿加硬性项目根限制）', () => {
+  const d = tmp('lunheng-b8-outside-')
+  const proj = join(d, 'run', 'proj')
+  mkdirSync(join(proj, 'final', '证据包'), { recursive: true })
+  const md = join(proj, 'final', '定稿.md')
+  writeFileSync(md, '# 标题\n\n## 摘要\n\n正文 [L01]。\n', 'utf8')
+  // 报告写到**另一棵临时根**——与项目目录之间没有任何包含关系
+  const outsideDir = mkdtempSync(join(tmpdir(), 'lunheng-report-outside-'))
+  const outside = join(outsideDir, 'm-gate.json')
+  const args = [S('m-gate-check.mjs'), md, join(proj, 'final', '证据包'), '--report', outside]
+  try {
+    const r = run(args)
+    assert.ok([0, 1, 2, 3].includes(r.code),
+      `项目外报告路径必须照常出报告（内容码 0/1/2/3），实得 ${r.code}：${r.out.slice(0, 300)}`)
+    assert.equal(existsSync(outside), true,
+      '既定设计：报告允许写到项目外的临时路径（主人 2026-09-29 决定；理由见 SECURITY.md §随包脚本）')
+    // 覆盖保护与位置无关：再写一次 → 必须先留 `.bak` 回滚点
+    run(args)
+    const baks = readdirSync(outsideDir).filter((f) => f.includes('m-gate.json') && f.endsWith('.bak'))
+    assert.ok(baks.length >= 1, '覆盖既有报告前必须留 `.bak` 回滚点——该保证不因写在项目外而失效')
+  } finally {
+    rmSync(d, { recursive: true, force: true })
+    rmSync(outsideDir, { recursive: true, force: true })
+  }
 })
