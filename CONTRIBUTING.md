@@ -44,11 +44,12 @@
    > ```
    > `--test-isolation=none` 让测试文件在**同一进程**内跑，是受限 DSH 会话里**唯一能跑通**的形态（`node --test` 默认模式由 runner 自己 spawn 子进程 → EPERM）。代价与边界（如实）：**隔离模式不覆盖跨进程行为**——CI 与发布链仍用标准隔离模式（`.github/workflows/*.yml`），两处结论不一致时**以 CI 为准**。另有三个用例按环境**带理由跳过**（工具内部 spawn / `npm pack` / `final-check` 子步骤），跳过会出现在 `ℹ skipped N` 里——**跳过 ≠ 通过**，不得据此宣称机检已过。
 5. 提交并推送分支；
-6. **发布 = 只推 tag**：`git tag v18.62.0 && git push origin v18.62.0`（tag 必须等于 `v` + `package.json.version`，publish 工作流会校验；**v18.2.1 更正：本行示例上一版停在 `v18.0.4`——bump 脚本的点位正则按行首锚定，扫不到这种内联形态，两次都漏了**；**v18.2.2 更正：第三处人工刷新**；**v18.2.3 更正：第四处人工刷新 —— 根因与终结方案见 §版本号约定 的「已知漏点」注**；**v18.2.4 起已机械化**：`consistency-check` 规则①/⑦ 同址补扫本形态，每次 bump 漏刷即 P1 变红）
+6. **发布 = 只推 tag**：`git tag v18.62.1 && git push origin v18.62.1`（tag 必须等于 `v` + `package.json.version`，publish 工作流会校验；**v18.2.1 更正：本行示例上一版停在 `v18.0.4`——bump 脚本的点位正则按行首锚定，扫不到这种内联形态，两次都漏了**；**v18.2.2 更正：第三处人工刷新**；**v18.2.3 更正：第四处人工刷新 —— 根因与终结方案见 §版本号约定 的「已知漏点」注**；**v18.2.4 起已机械化**：`consistency-check` 规则①/⑦ 同址补扫本形态，每次 bump 漏刷即 P1 变红）
    - **发布前多跑一步打包产物验证**：`npm pack` 后解包，确认新增脚本/库/入口随包且能从解包副本运行（两条历史教训：`_lib/` 重构后必须确认相对 `import` 未因 `files` 白名单而丢失；入口移入 `lib/` 后必须确认 `apply` 真能读到 `SKILL.md`——后者现由 `tests/entry.test.mjs` 在 CI 里常驻防守）
    - **发布面裁剪是机械门，不是自觉**（v18.2.0）：`repo-hygiene-check` 规则⑥ 与 `scripts/pack-smoke.mjs` 都带**负清单**——`CHANGELOG.md` / `CONTRIBUTING.md` / `scripts/` / `tests/` / `.github/` **不得随包**；把仓库向文件加回 `package.json` 的 `files` 白名单会**直接红**。另：npm **强制包含**根目录 `README*` 与 `LICENSE`（从 `files` 删掉、加 `.npmignore` 均**无效**，已实测），故五语 README 一定在包内——别把它当缺陷报。
    - ⚠️ **一次只能推 1 个 tag**：GitHub 对「单次 push 超过 3 个 tag」**不触发任何 workflow**（实测：一次推 4 个 tag → 0 个运行）；
    - ⚠️ **补推历史 tag = 乱序发布，会覆盖 `dsh` dist-tag（2026-09-22 实测教训）**：`npm publish --tag dsh` 每次把 `dsh` 指到当前发布版本。若在最新版**之后**补推旧 tag（如已推 v18.6.1、再补推 v18.5.1 / v18.6.0），每个旧 tag 的 publish 会依次把 `dsh` 覆盖回旧版，最终停在**最后完成的旧版**而非最新版。**补推后必须手工重设**：`npm dist-tag add lunheng-article-pipeline@<最新版> dsh`（`latest` 同理——它因 `NPM_TOKEN` 已删而从不自动前移，见 `publish.yml`「核对 dist-tag」步注释）；
+    - ✅ **发版后跑一次 `node scripts/dist-tag-check.mjs`（v18.62.1 新增，只读、零凭据）**：断言 `package.json version == dsh == latest`，不一致时**直接打印可复制的修复命令**并 exit 1。**为什么需要它**：`latest` 不自动前移是**政策而非故障**，代价是**每次发版都要记得手工补**——而 v18.62.0 这次就真的忘了（主人是在 npmjs.com 页面看到 18.60.1 才发现的）。它**刻意不进 CI**：CI 无 token、修不了，挂上去只会每次发版亮红灯（「习以为常的红」）；它是**发版后手动跑一次**的核对工具；
    - ⚠️ **禁止本地 `npm publish`**（会绕过 CI 的四道门 + 回归测试与 OIDC provenance，且 npm 版本不可覆盖）；
    - tag 触发的 `publish.yml` 分**两个 job**（v18.2.6 起）：
      - **`gates`**（`permissions: contents: read`，**不持 `id-token`、不读 `NPM_TOKEN`**）：跑**门 1/4 一致性自检 → 门 2/4 打包面检查（`STRICT_WARN=1`）→ 门 3/4 机械卫生门 → 门 4/4 打包产物冒烟（`pack-smoke`）→ 随包脚本回归测试**；
@@ -98,7 +99,7 @@ npm 版本**不可覆盖**：一旦某版本发布，仓库里**不得**再改�
 **发布 = 推 tag**，由 `.github/workflows/publish.yml` 以 **OIDC Trusted Publishing + `--provenance`** 完成：
 
 ```sh
-git tag v18.62.0 && git push origin v18.62.0   # 工作流会校验 tag == v + package.json.version
+git tag v18.62.1 && git push origin v18.62.1   # 工作流会校验 tag == v + package.json.version
 ```
 
 > ⚠️ **不要在本机 `npm publish`**：会绕过 CI 的**四道门 + 回归测试**与来源证明，且 npm 版本**不可覆盖**（发错只能 bump 重发）。

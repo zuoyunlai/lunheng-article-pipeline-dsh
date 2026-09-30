@@ -1,6 +1,6 @@
 # 安全策略（SECURITY）
 
-> 版本：v18.62.0（DSH 原生插件）
+> 版本：v18.62.1（DSH 原生插件）
 
 ## 上报漏洞
 
@@ -49,10 +49,11 @@
   > **故障排查（维护者侧）**：
   >   1. `npm view lunheng-article-pipeline dist-tags` 应见 `latest` / `dsh` 同步到当前最新 tag；
   >   2. 若 `latest` 落后（**当前预期如此**）→ 本地执行 `npm dist-tag add lunheng-article-pipeline@<版本> latest`（`dsh` 永远由 OIDC `npm publish --tag dsh` 自动指向，无须修）。复核时**绕开本地缓存**：`npm view … dist-tags --prefer-online` 或直接查 `https://registry.npmjs.org/-/package/lunheng-article-pipeline/dist-tags`——实测补打后本地缓存会短暂显示旧值；
+  >   2b. ✅ **优先用 `node scripts/dist-tag-check.mjs`（v18.62.1 新增）代替手抄第 1/2 条**：它把「读 `package.json` 版本 → 查 registry → 断言 `dsh`/`latest` 双指向」机械化，**已优先读 `?write=true` 绕 CDN 传播延迟**（实测补打后公共端点约 45s 才更新——手查很容易在这个窗口里误判「补打没生效」），不一致时**直接打印可复制的修复命令**并 exit 1。**只读、零凭据、刻意不进 CI**（理由见 CONTRIBUTING §升级流程）；
   >   3. CI dist-tag 步若打 `NPM_TOKEN 存在但鉴权失败（E401）` → token 在 npm 端失效，按治理 ⑤ `npm token revoke <id>` 后重新签发并 `gh secret set NPM_TOKEN <新 token>`；
   >   4. CI dist-tag 步若打空值 warning → **先别急着 `gh secret list`**：实测**名存在也可能注入空值**（见上方当前状态）。若确要让 CI 自动同步，须以**该次运行的日志**为准逐项确认，而不是只确认 secret 名在不在；
   >   5. workflow_dispatch 手动路径：UI → Actions → publish.yml → Run workflow → 默认分支 master → 触发「仅 dist-tag 不重发 npm」的补救（idempotent guard 见 `publish.yml` 的「幂等检查」步）。**⚠️ 该路径也已实测拿不到 token**（2026-09-29），故它现在起不到「自动补 latest」的作用——补 `latest` 请直接用第 2 条。
-  > **完整发布链（2026-09-29 实测更新）**：本地门 → git commit → tag push → CI gates（4门 + 回归） → OIDC npm publish（`--tag dsh` 自动指向）→ dist-tag 步（**实测空值 → warning，不失败**）→ 发布后审计（gitHead 轮询等待） → release job（创建 GitHub Release + 附 tgz 资产）→ **维护者手工补 `latest`**（第 2 条）。
+  > **完整发布链（2026-09-29 实测更新）**：本地门 → git commit → tag push → CI gates（4门 + 回归） → OIDC npm publish（`--tag dsh` 自动指向）→ dist-tag 步（**实测空值 → warning，不失败**）→ 发布后审计（gitHead 轮询等待） → release job（创建 GitHub Release + 附 tgz 资产）→ **维护者手工补 `latest`**（第 2 条；用 `node scripts/dist-tag-check.mjs` 核对，第 2b 条）。
 
 ## 支持的版本
 
