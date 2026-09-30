@@ -36,7 +36,17 @@ export const dataCardIds = (text) => [...new Set([...String(text ?? '').matchAll
 export const expandRefRanges = (seg) => {
   const extra = new Set()
   const bad = []
-  for (const m of String(seg ?? '').matchAll(/\[([LDC])(\d+)\]\s*[-–—~至]\s*\[([LDC])(\d+)\]/g)) {
+  // ── v18.60.1（主人授权反哺 v2 §1.1）：**先切除 `## AI 使用声明` 节，再展开区间** ──
+  //   为什么：该节的区间编号（如「本文 [L01]-[L15] 文献与 [D01]-[D30] 数据均经核验」）是
+  //   **披露性描述**，不承担引用闭环义务；但展开后它们会进入「文末引用集」，与正文对账时
+  //   被判为**假孤儿**。实测（论衡实测项目-夫妻收入差异家庭权力）：AI 声明两处区间展开出
+  //   45 个编号，其中 4 个在正文无实质引用 → M-Exist-1 报「硬孤儿 4」——而该项目正文与
+  //   文末五节双向 50/50 编号完全一致（`diag-orphan.mjs` 复算证实）。因 M-Exist-1 属
+  //   v18.11.0 F-1 的 4 类「硬红线」（不可 LLM 兜底），该假阳性会**硬性阻断交付并拒绝
+  //   T8 裁定**，故必须在源头切除。
+  //   切除范围：从 `## AI 使用声明` 标题行起至文本末尾（该节固定为文末最后一节）。
+  const src = String(seg ?? '').replace(/^##\s*AI\s*使用声明[\s\S]*$/m, '')
+  for (const m of src.matchAll(/\[([LDC])(\d+)\]\s*[-–—~至]\s*\[([LDC])(\d+)\]/g)) {
     const [, a, n1, b, n2] = m
     if (a !== b) { bad.push(m[0]); continue }
     const lo = Number(n1), hi = Number(n2)

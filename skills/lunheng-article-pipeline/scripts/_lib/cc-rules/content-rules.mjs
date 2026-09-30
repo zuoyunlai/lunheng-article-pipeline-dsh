@@ -524,6 +524,52 @@ const HISTORY_TOKEN_RE = /此前|曾经|旧版|已删|已移除|已作废|历史
       }
     }
   }
+
+  // ㉚ 模板示例 ↔ 机检契约对照（v18.60.1，主人授权反哺 v2 §4.1 / §7.1 #9）
+  //   为什么立它（实测依据）：论衡实测项目-夫妻收入差异家庭权力 出现 **7 类格式返工**——数据卡信任级别行 /
+  //   批判报告 C 节标题 / AI 声明下划线签名栏 / AI 声明区间写法 / 交付说明字段起点 / 审稿 6 维表 /
+  //   期刊表三百分比——**无一例外**都是「**模板说的**」与「**脚本认的**」不一致（正是 `机检硬格式.md`
+  //   开篇记录的老问题在新位置复现），且每个项目都靠主控在 T7/T8 **人工返工**（本次 7 类 / 11 处）。
+  //   判据：**模板里的示例行必须能通过它对应的机检判定**——把「人读的模板」与「机读的脚本」对齐到仓库门
+  //   这一层，让模板改错在**提交时**暴露，而不是等项目跑到终检。
+  //   覆盖面（首版取实测最高频 3 处；新增同类契约按同一模式追加）：
+  //     ㉚-a 数据卡模板信任级别示例行 → 真源 = 机检硬格式.md §一（全角冒号 + 档位词紧跟）
+  //     ㉚-b 批判角色卡 C 节标题示例 → 真源 = M-Exist-8 正则（`### C1`，无 `N.N ` 序号前缀）
+  //     ㉚-c AI 使用声明模板签名栏 → 真源 = M-Form-3 下划线占位检测（方括号占位，非连续下划线）
+  {
+    const trustTpl = join(ROOT, 'references', 'templates', '数据卡-template-lite.md');
+    if (existsSync(trustTpl)) {
+      const t = readFileSync(trustTpl, 'utf8');
+      if (!/^- \*\*信任级别\*\*：/m.test(t)) {
+        errors.push('[P1 模板↔机检契约失配] references/templates/数据卡-template-lite.md 缺契约形态的信任级别示例行'
+          + '（机检只认 `- **信任级别**：已发布` = 全角冒号 + 档位词紧跟）'
+          + '；子代理照模板抄写即触发 M-Form-6 P0（实测 v18.60.1 模板用半角冒号+emoji → T2 逐字照抄 → 30 条全失配）');
+      }
+      if (/^- \*\*信任级别\*\*:\s/m.test(t)) {
+        errors.push('[P1 模板↔机检契约失配] references/templates/数据卡-template-lite.md 的信任级别示例行仍用**半角冒号**'
+          + '（`- **信任级别**: `）——机检正则要求全角 `：`；照抄即 M-Form-6 P0');
+      }
+    }
+    const critCard = join(ROOT, 'references', 'agents', '06-批判-critical-companion.md');
+    if (existsSync(critCard)) {
+      const t = readFileSync(critCard, 'utf8');
+      if (!/^#{2,4}\s*C1(?![0-9])/m.test(t)) {
+        errors.push('[P1 模板↔机检契约失配] references/agents/06-批判-critical-companion.md 的 C 节标题示例未用 `### C1` 形态'
+          + '（M-Exist-8 要求 `#` 后**直接**跟 C 编号；写成 `### 1.1 C1` 会判「批判维度缺 N 节」**假 P0**）');
+      }
+    }
+    const aiDeclTpl = join(ROOT, 'references', 'templates', 'AI-使用声明-template.md');
+    if (existsSync(aiDeclTpl)) {
+      const t = readFileSync(aiDeclTpl, 'utf8');
+      // ⚠️ 只检查**签名栏行**（`作者签名：___`），**不扫全文**——否则模板里作为**反例**引用的
+      //   `____________` 会自我误报（v18.60.1 首测即踩：规则上线第一次跑就报了自己的模板）。
+      if (/^\s*作者签名[：:]\s*_{3,}/m.test(t)) {
+        errors.push('[P1 模板↔机检契约失配] references/templates/AI-使用声明-template.md 的签名栏仍用**连续下划线**'
+          + '（`____________`）——M-Form-3 判「下划线占位」；请改方括号 `[作者签名]`'
+          + '（机检侧 v18.60.1 已豁免 AI 声明节，模板侧按方括号写 = 双保险）');
+      }
+    }
+  }
 }
 
 }

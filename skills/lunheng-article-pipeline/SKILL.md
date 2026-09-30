@@ -1,11 +1,11 @@
 ---
 name: "lunheng-article-pipeline"
-version: "18.60.0"
-description: "论衡 v18.60.0：DSH 原生多 Agent 深度长文流水线（学术论文 / 商业评论 / 行业分析 / 公众号）。9 个独立角色 T1-T9 + 主控；三角验证 + M 门 + G 审计 + 修订回环双轨（≤2 轮纠错 + 至多 +1 深化） + 期刊匹配 + auto_cite 预标注 + 内嵌 11 个 /lunheng 斜杠命令。适用：≥2000 字、证据须可追溯的长文（4 个人在环节点、**数小时**）。**不适用**：<2000 字短文与即时问答；文学创作；需数学推导或实验设计的理工科论文；营销软文；需一手数据而未投喂素材。版本增量见 CHANGELOG.md。"
+version: "18.60.1"
+description: "论衡 v18.60.1：DSH 原生多 Agent 深度长文流水线（学术论文 / 商业评论 / 行业分析 / 公众号）。9 个独立角色 T1-T9 + 主控；三角验证 + M 门 + G 审计 + 修订回环双轨（≤2 轮纠错 + 至多 +1 深化） + 期刊匹配 + auto_cite 预标注 + 内嵌 11 个 /lunheng 斜杠命令。适用：≥2000 字、证据须可追溯的长文（4 个人在环节点、**数小时**）。**不适用**：<2000 字短文与即时问答；文学创作；需数学推导或实验设计的理工科论文；营销软文；需一手数据而未投喂素材。版本增量见 CHANGELOG.md。"
 whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 description（v18.0.5：官方目录只渲染 name + description，本字段对模型不可见，保留仅供工具链与维护者阅读）。"
 ---
 
-> 版本：v18.60.0（DSH bundle 插件）
+> 版本：v18.60.1（DSH bundle 插件）
 > **逐版明细与历史成因外移（v18.22.1 CTX-1）**：本文件只留**现行口径**；逐版明细与成因（v18.12.1 / v18.12.0 / v18.11.0 / v18.10.0 / v18.8.0 / v18.7.x …）全部在**仓库根 `CHANGELOG.md`** 同名版本段——该文件**不在随包目录内**（npm 发布物与纯技能目录部署都没有它），读不到就跳过，**不要当成断链**。
 > **v2.5.2-dsh.8 角色语义定案（主人指令）**：**9 个角色 T1-T9 各自独立、不可相互替代**——T8 终检不是「主控兼做的杂活」而是独立角色（有独立角色卡），只是执行者由主控担任（**主控 = T0 调度 + T8 终检执行双重身份**），不 spawn 子代理；**T9 审稿可选、默认选中、学术论文必选**。
 
@@ -40,8 +40,12 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 ## ⚠️ 执行能力边界（先读这一段）
 
 **论衡技能的工具边界（DSH）**：
+- 📊 **档位 → 工具集能力（v18.60.1，主人授权反哺 v2 §2.3）**：三档 `subagent_retrieval` / `subagent_strong` / `subagent_audit` 由 `cordis.patch.yml` 的「分档闸门」段装载（配置真源 = [`references/_shared/模型路由.md`](references/_shared/模型路由.md)）。**各档的 `pwsh`/命令执行能力无机制声明**——实测出现**三方不一致**：T2 交接报告称「`sources-index --check` 由主控代跑」（无 exec）、T5 称「工具集没有命令执行工具，无法跑 `count-chars.mjs`」（无 exec）、而 T9-m 报告自陈「调用 `node methodology-check.mjs` 取 MC-Form-12 实测（**exit 2**）」（有 exec）。
+  > **判据（照此执行，不必猜）**：① **门禁类实测一律由主控代跑**——M 门 / G 审计 / 三个战略门（structure / methodology / cite-coverage）/ 字数 / 交接门，主控自己执行（本测 16 次 M 门 / 6 次 final-check 全在主控）；② 子代理话术里凡「跑脚本」的要求，按「能跑就跑、跑不了就**如实声明该步未跑**」写（现状已如此）；③ 子代理若声明「已跑」，主控须以其 **exit code + 命令**为准，不可仅凭文字采信。
+  > **代价与收益（如实）**：主控代跑增加主会话步数，换来的是**门禁证据链不依赖子代理能力差异**——否则同一门在不同档位下时跑时不跑，结论不可比。
 - ✅ **可调用**：当前会话预设提供的工具（本机 standard 预设实测含 read / write / edit / web_search / web_fetch / todo_write / subagent / list_agents / pwsh 等）——DSH 无技能级白名单，工具集由 Agent 预设决定。**调用任何工具前先确认它在当前会话工具清单里**（教训：文档声明的工具未必在本预设里——`read_page`/`bash` 就不存在）。
-- ✅ **随包脚本白名单（v18.29.0 增补 sources-index 后为 27 个）**：`scripts/*.mjs` = consistency-check / m-gate-check / g-audit-check / fix-gates / md2html / pdfcheck / token-cost / count-chars / segment-chars / ref-get / build-evidence-bundle / final-check / normalize-trust-level / model-routing / token-budget / apply-diff / lunheng-stats / handoff-check / apply-revision-cycle / apply-compression-cycle / structure-check / methodology-check / cite-coverage-check / journal-fit / meta-synthesize / quality-score / sources-index + 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等）——**受限 shell 使用**（另：`_lib` 子目录为共享库，非入口、不单独调用），非「零 exec」；其余命令须经主人同意。
+- ✅ **随包脚本白名单（v18.60.1 增补 refresh-gates 后：共 28 个）**：`scripts/*.mjs` = consistency-check / m-gate-check / g-audit-check / fix-gates / md2html / pdfcheck / token-cost / count-chars / segment-chars / ref-get / build-evidence-bundle / final-check / refresh-gates / normalize-trust-level / model-routing / token-budget / apply-diff / lunheng-stats / handoff-check / apply-revision-cycle / apply-compression-cycle / structure-check / methodology-check / cite-coverage-check / journal-fit / meta-synthesize / quality-score / sources-index + 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等）——**受限 shell 使用**（另：`_lib` 子目录为共享库，非入口、不单独调用），非「零 exec」；其余命令须经主人同意。
+  > **`refresh-gates.mjs`（v18.60.1 新增，主人授权反哺 v2 §2.6 / §7.1 #8）**：终检期「正文指纹刷新」助手——`node scripts/refresh-gates.mjs <项目目录> [--dry-run] [--json]`，把「**本阶段正文 sha256**」在 `audits/闸门记录-T2.5.md` / `-T7.5.md` / `final/交付说明.md`（§1/§9）里的旧值一键刷新为当前定稿（或 drafts 最高版）的指纹。**为什么**：正文每次演进都让这些指纹同时过期，而 **M-Exist-5 做「闸门记录 ↔ `final/M-Gate-Report.json`」的指纹互锁比对** → 过期即 P1（实测本项目终检期正文演进 3 次、主控手工同步 4 处/轮）。**三条边界**：① **只替换已知形态的旧指纹**（正则锚定在「正文 sha256 / draft_sha256 / sha256:」字样附近），不做「把所有 64 位 hex 换掉」的危险操作（那会误伤证据包 manifest 的**条目** sha256）；② 抓不到旧指纹 → 报「无可刷新项」并**不写盘**（不是错误）；③ **不改正文、不改 `M-Gate-Report.json`**（后者的 `exit` 权威值只能由 `m-gate-check --adjudicate` 写）。exit `0` 无需刷新 / `1` 已刷新 / `10` 参数或路径错 / `70` 内部错。
   > **`fix-gates.mjs`（v18.11.0 新增，反哺报告 v2 的 F-5 落地）**：Phase 4.5 主控收尾助手——`node scripts/fix-gates.mjs <项目目录> [--json]` 扫描 4 类可机械修复项（M-Form-10 索引段锚点 / M-Form-11 `## 已加载` 段 / M-Form-4 文末节禁词 / M-Exist-7 交付说明 12 字段），**输出可直接粘贴的修复内容**，**零写盘**。exit `0` 无可修项 / `1` 有建议 / `10` 参数错。**不是闸门**——闸门结论以 `m-gate-check.mjs` 为准，本工具只给修法。
   > **`segment-chars.mjs`（v18.2.7 新增）**：分段字数实测（`--list` 列全部节 / `--section "3.6"` 取指定节），供主控在派发段级 diff **之前**实测目标段现况字数；口径与 `count-chars.mjs` 同源。用法详见 [`references/pipeline-readme.md`](references/pipeline-readme.md) §段级 diff 前置步。
   > **`apply-diff.mjs`（v18.2.5 新增）**：段级 diff 清单机械应用器，用法与清单格式约定见 [`references/pipeline-readme.md`](references/pipeline-readme.md) §修订轮默认段级 diff。
@@ -57,7 +61,7 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 - ❌ **不做**：凭据访问 / 浏览器自动化 / 定时任务（除白名单脚本与验证命令外，主控默认不执行任意 shell，LLM 推理判定）。
 - 🔒 **机制文件写保护（v18.1.0 部分机械化）**：`SKILL.md` / `AGENTS.md` / `references/**` / `scripts/**` / `cordis.patch.yml` 属**机制文件**——任何角色（含主控与子代理）**不得**用 write/edit 改动；改进动议只写 `audits/反哺报告-vN.md`，由主人在 host shell apply。**改机制文件 = P0 违规，本次交付作废**。bundle 部署下由入口注册的全局 `ctx.tools.guard()` 机制否决（主人授权走 `LUNHENG_ALLOW_MECH_EDIT=1` 或插件行 config）；已知边界与部署处方见 [`references/maintainers.md`](references/maintainers.md) §二（运行期只需记住：guard 不覆盖 pwsh）。
 - 🧾 **闸门必须留机械证据**：T2.5/T7.5 与 M 门**不得只凭自述**——附脚本 exit code + 产物路径。exit：`0` 通过 / `1` P1 / `2` P0 / `3` 仅 P2·soft·SKIP（需复核，不得当通过）/ `10` 参数路径错（含异常路径，`exit-guard` 统一映射，**不得与 P1 混用**）/ **`30` `--adjudicate` 裁定被拒**（红线命中 / 证伪四件套不全 / 缺 `true_p0`-`true_p1`；v18.12.0 L-05，**拒绝裁定 ≠ 内容失败**）/ `70` 内部错误。`model-routing.mjs` 用 `4`＝需人工决定；`handoff-check.mjs` 用 `20/21/22`（收报验收，见下 §⚡）；非闸门工具不共用本语义（见 `docs/troubleshooting.md §8`）。
-- 🛠 **原生工具 / 人类命令（v18.1.0，可选）**：只读工具 `lunheng_m_gate` / `lunheng_char_count` / `lunheng_handoff_check` / `lunheng_ethics_sanitize`（伦理脱敏，v18.60.0）——清单里有就优先用（省 `pwsh` + stdout 解析），没有就 `pwsh` 直调脚本（两条路径等价，脚本是唯一真源）；主人可用 `/lunheng-status` 自查进展（不产生模型消息）。详见 `references/_shared/DSH-集成方案.md`。
+- 🛠 **原生工具 / 人类命令（v18.1.0，可选）**：只读工具 `lunheng_m_gate` / `lunheng_char_count` / `lunheng_handoff_check` / `lunheng_ethics_sanitize`（伦理脱敏，v18.60.1）——清单里有就优先用（省 `pwsh` + stdout 解析），没有就 `pwsh` 直调脚本（两条路径等价，脚本是唯一真源）；主人可用 `/lunheng-status` 自查进展（不产生模型消息）。详见 `references/_shared/DSH-集成方案.md`。
 - 🪪 **技能来源自检（v2.5.2-dsh.13）**：启动时用 `read` 核对本文件版本头「> 版本：v…」与期望版本一致；**不一致即停机**并报告主人「技能来源可疑」——同名 skill 按 rank 就近取胜，低 rank 会**静默顶替**。判据：项目级副本（rank 100）胜过一切（含已装 bundle 250），故「装了 bundle 又留 `.dsh/skills/` 副本」时生效的一直是副本，自检只能靠**读到的 `SKILL.md` 绝对路径 + 版本头**。完整 rank 表与考证见 [`references/maintainers.md`](references/maintainers.md) §一。
 - ℹ️ **M 门**：**总 25 项 = 机械 24 项（M-Form 1-11 + M-Exist 1-11 + M-Integrity-1，走 `scripts/m-gate-check.mjs`）+ 人工 1 项（M-Integrity-2 跨文件判断；M-Form-8 承重墙质量同源由主控 LLM 兜底）**——文档内 shell 示例仅供人类复核，agent 不执行任意 shell。
 - 💰 **长会话体量治理（v18.22.3 CTX-5）**：会话成本 ≈ **步数 × 每步上下文**；最贵的是**人驱动的主会话**（主控读产物 / 跑门 / 回填四门），不是某个子代理。① 审计类长会话**按 Phase 拆 session**（插件侧无法自动做，靠落盘产物 + `status.md` 交接）；② **先跑机械门，只把失败项交给会话**——`m-gate-check` / `final-check` / `handoff-check` / `consistency-check` / `repo-hygiene-check` 零模型成本。使用者向说明见 [`docs/usage.md`](docs/usage.md) §长会话与主会话体量。
@@ -89,12 +93,13 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 8. **文件修改安全流程**：禁止 `sed -i`；用 `edit` 精确匹配；改前记录行数 + `cp` 备份、改后 `diff` 验证
 9. **子代理交接六要素缺一不可**，且**产物须给「路径 + 字节数 + 结构自检结果」三要素**（防「写盘前失败」：实战某轮 T7 产 M 门报告却缺审计/反哺报告，靠人工 `ls` 才发现）；长时间无产出 → `list_agents` 介入
 10. **降级规则分场景**（v18.0.0）：**有分档预设**环境 → 顶配档不可用须主控请示；**无分档预设**环境（本机 `subagent_audit` 不存在）→ 「请示」无档可切、规则空转，改为 **Phase 0 一次性授权**：主控探测后显式告知主人「本机未挂载分档预设，T6/T7/T9/G14 将继承会话模型（档位 = 会话模型）」，此后无需每个角色重复声明。
+11. **Phase 0 必须创建 `run/<项目>/model-routing.md` 并逐 spawn 追加会话 ID**（v18.60.1，主人授权反哺 v2 §3.5）：该文件是**成本实测的唯一输入**——`交付说明-template.md` §6 要求 token 成本写**实测值**（`~NN[MKB]`），而 `node scripts/token-cost.mjs --sessions <ID…>` 只能从会话 ID 取数。**实测代价**：论衡实测项目-夫妻收入差异家庭权力 未建该文件 → 终检时 §6 只能写「实测不可得：未收集会话 ID」，**模板要求的实测值永远拿不到**（M-Exist-7 只核「字段有内容」，核不出这一层，故缺口一路走到交付）。**动作**：Phase 0 建文件（含表头 `| 角色 | agent id | 启动时间 |`）→ 每 spawn 一个角色即追加一行 → 终检时一次性喂给 `token-cost.mjs`。该文件同时被 `build-evidence-bundle` 收录。
 
 > **分层加载（token 优化）**：上下文紧张时先读「⚡ 启动速查表」，glossary/pipeline-readme 按需查节，不必全文加载。**「按需查节」的机制动作 = `node scripts/ref-get.mjs <文件.md> <#锚点>`**（v18.22.2 CTX-3：只取该节并打印真字节数；锚点未命中即 exit 10 并列出可用锚点，**不会**给一个看起来成功的空节）。
 
 ## ⚡ 启动速查表
 
-- 版本：v18.60.0｜角色：T0 主控（= T8 终检执行者）＋ T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / T8 终检（主控亲执行）/ T9 审稿（默认选中，学术必选）
+- 版本：v18.60.1｜角色：T0 主控（= T8 终检执行者）＋ T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / T8 终检（主控亲执行）/ T9 审稿（默认选中，学术必选）
 - Phase：0 定题 → 1 检索(T1∥T2∥T3) → 1.5 补检索(可选,spawn T1) → 2 分析 → 2.5 大纲(人) → 3 写作 → 3.5 洞察(人) → 3.6 批判 → 4 审计 → **4.2 修订回环(≤2 轮+A 轨)** → 4.5 审稿+G14终闸 → 5 终检(人)
   > **本行的权威性**：本行是主控排 `todo_write` 的**唯一 Phase 真源**；机检规则 **㉔** 断言「流水线全景出现的 Phase 编号 ⊆ 本行」。**流水线全景仍是 1.5 / 4.2 的详述真源**（`Phase 1.5` 定向补检索 / `Phase 4.2 修订`）。
 - G14 时点（**v18.2.8 删早闸，三层防御**）：**① T5 v1 自检（零 spawn）→ ② 修订轮收尾自查（零 spawn）→ ③ 终闸 4.5 与 T9 并行（唯一一次 spawn，报告 = 最终版本真源）**

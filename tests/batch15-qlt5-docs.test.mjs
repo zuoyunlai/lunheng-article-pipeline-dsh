@@ -186,11 +186,12 @@ test('行引用守卫：本批引用的 `文件:行号` 逐条指向所声称内
   assert.match(gl[259 - 1], /至多 \+1 深化轮/, 'glossary.md:259 须是 B 轨「至多 +1 深化轮」')
 
   const pl = lines('references', 'pipeline-readme.md')
-  assert.match(pl[819 - 1], /B 轨累计已达 1 → 不再开/, 'pipeline-readme.md:819 须是 B 轨「累计已达 1 → 不再开」')
+  assert.match(pl[858 - 1], /B 轨累计已达 1 → 不再开/, 'pipeline-readme.md:858 须是 B 轨「累计已达 1 → 不再开」（v18.60.1：T9 整合契约段插入后由 819 下移至 858）')
 
   const mf = lines('scripts', '_lib', 'mgate-gates', 'mform-gates.mjs')
-  assert.match(mf[254 - 1], /ENDNOTE_SCAN_EXEMPT = \['AI 使用声明'\]/, 'mform-gates.mjs:254 须是整节豁免白名单')
-  assert.match(mf[244 - 1], /案例卡\|数据卡\|文献卡/, 'mform-gates.mjs:244 须含文末禁止词（数据卡/案例卡）')
-  assert.match(mf[274 - 1], /const endnoteNonBiblio/, 'mform-gates.mjs:274-277 须是「仅豁免数字编号书目行」那段')
-  assert.match(mf[277 - 1], /join\('\\n'\)/, '同上：:277 为止')
+  assert.match(mf[260 - 1], /ENDNOTE_SCAN_EXEMPT = \['AI 使用声明'\]/, 'mform-gates.mjs:260 须是整节豁免白名单（v18.60.1：TEMP_MARKERS_AI_DECL_EXEMPT 段插入后由 254 下移至 260）')
+  // v18.60.1：mform-gates.mjs 因新增 TEMP_MARKERS_AI_DECL_EXEMPT 段（下划线豁免）整体下移 6 行，以下三处同步。
+  assert.match(mf[250 - 1], /案例卡\|数据卡\|文献卡/, 'mform-gates.mjs:250 须含文末禁止词（数据卡/案例卡）（v18.60.1：由 244 下移至 250）')
+  assert.match(mf[280 - 1], /const endnoteNonBiblio/, 'mform-gates.mjs:280-283 须是「仅豁免数字编号书目行」那段（v18.60.1：由 274 下移至 280）')
+  assert.match(mf[283 - 1], /join\('\\n'\)/, '同上：:283 为止（v18.60.1：由 277 下移至 283）')
 })

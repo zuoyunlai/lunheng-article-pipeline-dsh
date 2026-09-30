@@ -24,7 +24,7 @@
 //   ③ 末档把任何非 0/1/2/3/70 的码都渲染成「exit 10」→ 改准确（10 与非 10 分开）；
 //   ④ 导入的 `EXIT_USAGE` 旧版未使用 → 现用于渲染与判定（不再让 10 只以字面量出现）。
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { installExitGuard, requireExistingDir, EXIT_USAGE, EXIT_INTERNAL } from './_lib/exit-guard.mjs'; // 退出码硬化（v18.0.5）
@@ -191,16 +191,43 @@ const report = {
     charCountDegradedReason: charDegraded ? (charOut?.degradedReason || 'count-chars 未给出原因') : null,
     optionalFailures: optionalFailures.map((f) => `${f.step}(exit ${f.exit})`),
     notes,
-    mGate: parsedOutputs['m-gate'] && parsedOutputs['m-gate'].exit !== undefined ? {
-      total: parsedOutputs['m-gate'].total,
-      pass: parsedOutputs['m-gate'].pass,
-      p0: parsedOutputs['m-gate'].p0 || 0,
-      p1: parsedOutputs['m-gate'].p1 || 0,
-      p2: parsedOutputs['m-gate'].p2 || 0,
-      soft: parsedOutputs['m-gate'].soft || 0,
-      skips: parsedOutputs['m-gate'].skips || 0,
-      hardExit: parsedOutputs['m-gate'].exit, // 脚本机械 exit（= M-Gate-Report.json 的 script_exit_raw 语义）
-    } : null,
+    // ── v18.60.1（主人授权反哺 v2 §3.4）：**并列「机械值 / T8 裁定值」** ──
+    //   为什么：`final-check` 只取 M 门的**机械值**，而 T8 可经 `--adjudicate` 把
+    //   `final/M-Gate-Report.json` 的 `exit` 裁定为 0（机械值可能为 3 = 仅 P2）。旧版于是让交付件
+    //   出现「M-Gate-Report 说 0 / final-check 说 3」的**自相矛盾**（实测：论衡实测项目-夫妻收入
+    //   差异家庭权力 需主控手工同步 `final-check-v0.json` 的 5 个字段才解除）。
+    //   判据：**机械值与裁定值都必须可见**；`stableExit` = 交付件应引用的**稳定态**（v18.52.0 F-BB）。
+    mGate: (() => {
+      const mg = parsedOutputs['m-gate'];
+      if (!mg || mg.exit === undefined) return null;
+      let adjudicatedExit = null, adjudicatedBy = null;
+      try {
+        const rp = join(project, 'final', 'M-Gate-Report.json');
+        if (existsSync(rp)) {
+          const rep = JSON.parse(readFileSync(rp, 'utf8'));
+          if (rep._t8_conclusion && typeof rep.exit === 'number' && rep.exit !== rep.script_exit_raw) {
+            adjudicatedExit = rep.exit;
+            adjudicatedBy = rep._t8_adjudicated_by || 'T8（主控亲执行）';
+          }
+        }
+      } catch { /* 报告读不动不影响机械值——只是裁定值不可见，如实留 null */ }
+      return {
+        total: mg.total,
+        pass: mg.pass,
+        p0: mg.p0 || 0,
+        p1: mg.p1 || 0,
+        p2: mg.p2 || 0,
+        soft: mg.soft || 0,
+        skips: mg.skips || 0,
+        hardExit: mg.exit,                        // 机械值（= M-Gate-Report.json 的 script_exit_raw 语义）
+        adjudicatedExit,                          // T8 经 --adjudicate 写入的裁定值（null = 未裁定）
+        adjudicatedBy,
+        stableExit: adjudicatedExit ?? mg.exit,   // **交付件应引用的稳定态**（有裁定取裁定）
+        note: adjudicatedExit !== null
+          ? `机械值 ${mg.exit} → T8 裁定 ${adjudicatedExit}（稳定态 = ${adjudicatedExit}；交付件只引用稳定态，v18.52.0 F-BB）`
+          : '无 T8 裁定（稳定态 = 机械值）',
+      };
+    })(),
     // v18.0.0 修复：旧版只处理 0/1，其余一律落 `else` → **exit 3（仅 P2，无 P0/P1）被误报「存在 P0 致命问题」**。
     //   现按 M-Gate-Algorithm.md 的 exit 语义分档（0/1/2/3/10）。
     // v18.2.6：末档不再把「任何非 0/1/2/3/70 的码」都渲染成 exit 10（那是误导）——10 与非 10 分开。

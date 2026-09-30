@@ -865,7 +865,16 @@ try {
     const findings7 = [];
     const soft7 = [];
     for (const [label, re] of FIELD_KEYWORDS) {
-      const i = dl.findIndex((l) => /^#{1,6}\s|^\s*\*\*|^\s*\|/.test(l) && re.test(l));
+      // ── v18.60.1（主人授权反哺 v2 §1.2）：**字段起点改「标题行优先、正文行兜底」** ──
+      //   为什么：旧实现取「首个满足 `^#|^\*\*|^\|` 且含字段名的行」——交付说明正文里**任何位置**
+      //   提及该字段名（如 §8 写「见 §11 主人决策记录」）都会被当成字段起点，字段正文范围随之落到
+      //   该处之后 → 报「字段未覆盖 Phase 0/2.5/3.5/Phase 5」**假硬问题**。
+      //   实测（论衡实测项目-夫妻收入差异家庭权力）：同一 P1 **三次复现**——每次「修一处措辞」
+      //   都因需写出该字段名而引入下一处（记录这个 bug 本身就要写出字段名）。
+      //   判据：字段是**标题承载**的结构（`## N. 字段名`），标题行优先级必须高于正文提及行。
+      const isFieldHeading = (l) => /^#{1,6}\s/.test(l);
+      let i = dl.findIndex((l) => isFieldHeading(l) && re.test(l));
+      if (i === -1) i = dl.findIndex((l) => /^\s*\*\*|^\s*\|/.test(l) && re.test(l));
       if (i === -1) { findings7.push(`缺固定字段「${label}」（deliverables.md 定为必填）`); continue; }
       // 字段正文 = 到下一个标题/表头行为止
       let j = dl.length;
@@ -906,7 +915,11 @@ try {
     if (!FP_REAL_RE.test(dt)) {
       findings7.push('缺「证据包指纹」段或 sha256 **实值**（须含 `sha256: <hex 16+>`，权威 = `final/证据包/manifest.json`）；占位符已废止，主人不参与回填（M-Integrity-2 步骤 4 的输入）');
     }
-    const dec = dl.findIndex((l) => /主人决策记录/.test(l));
+    const dec = (() => {
+      // v18.60.1（主人授权反哺 v2 §1.2）：同 §字段起点——**标题行优先**，避免正文提及该字段名即错位。
+      const h = dl.findIndex((l) => /^#{1,6}\s/.test(l) && /主人决策记录/.test(l));
+      return h !== -1 ? h : dl.findIndex((l) => /主人决策记录/.test(l));
+    })();
     if (dec !== -1) {
       let dj = dl.length;
       for (let k = dec + 1; k < dl.length; k++) { if (/^#{1,6}\s/.test(dl[k])) { dj = k; break; } }
@@ -954,8 +967,13 @@ try {
     const rl8 = rt8.split('\n');
     const CIDS = ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7'];
     // 认标题 / 加粗标签 / 列表项 / 表格行四种写法（避免因格式差异误判「漏节」）
-    const cLine = (c) => new RegExp(`^(?:#{1,6}\\s*|[-*]\\s*|\\|\\s*)?\\*{0,2}${c}(?![0-9])\\b`);
-    const headLine = (c) => new RegExp(`^#{2,4}\\s*\\*{0,2}${c}(?![0-9])\\b`);
+    // ── v18.60.1（主人授权反哺 v2 §2.5）：**允许 `#` 后带 `N.N ` 序号前缀** ──
+    //   旧正则要求 `#` 后**直接**跟 C 编号，于是 `### 1.1 C1 核心论点可攻击性`（T6 实测写法）不匹配
+    //   → 报「批判维度缺 C3/C4/C5」**假 P0**（而七节实际齐全：报告 42,939 B / 441 行，C1-C7 全在）。
+    //   判据：节标题的**编号前缀是排版自由**，语义由 `C1..C7` 承载——不该由前缀形态决定是否识别到节。
+    const CSEQ = '(?:\\d+(?:\\.\\d+)*\\.?\\s+)?';
+    const cLine = (c) => new RegExp(`^(?:#{1,6}\\s*|[-*]\\s*|\\|\\s*)?\\*{0,2}${CSEQ}${c}(?![0-9])\\b`);
+    const headLine = (c) => new RegExp(`^#{2,4}\\s*\\*{0,2}${CSEQ}${c}(?![0-9])\\b`);
     const missing8 = CIDS.filter((c) => !rl8.some((l) => cLine(c).test(l)));
     const thin8 = [];
     for (const c of CIDS) {
@@ -1278,7 +1296,14 @@ if (files.length === 0 && isDraftStageAudit) {
       const mf = JSON.parse(readFileSync(manifestPath, 'utf8'));
       const drifted = [];
       const absent = [];
+      // ── v18.60.1（主人授权反哺 v2 §1.3 / §7.1 #6）：**`.bak` 两侧都不参与复算** ──
+      //   为什么：`.bak` 是 `writeWithSafety` 的回滚点，`pruneBackups` 每个原文件上限 `BAK_MAX = 20`
+      //   （超出即回收最旧者）。① 若清单登记了它（v18.60.1 之前生成的包），回收后必判 `absent` → **假 P0**；
+      //   ② 新清单不再登记它，但包里仍留有历史 `.bak` → 会被 `extra` 判「未登记的产物」→ **假 P0**。
+      //   判据：复算只对**交付成员**负责；`.bak` 是脚本自身的回滚点，不是交付物。
+      const isBak = (p) => String(p).endsWith('.bak');
       for (const e of (mf.files || [])) {
+        if (isBak(e.path)) continue;
         const full = join(evDir, e.path);
         if (!existsSync(full)) { absent.push(e.path); continue }
         const buf = readFileSync(full);
@@ -1288,7 +1313,7 @@ if (files.length === 0 && isDraftStageAudit) {
       const registered = new Set((mf.files || []).map((e) => e.path));
       const extra = files
         .map((f) => f.slice(evDir.length + 1).replaceAll('\\', '/'))
-        .filter((r) => !registered.has(r));
+        .filter((r) => !registered.has(r) && !isBak(r));
       if (absent.length || drifted.length || extra.length) {
         manifestChecked = true;
         manifestProblem =

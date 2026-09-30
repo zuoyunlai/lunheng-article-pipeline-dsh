@@ -82,16 +82,18 @@ test('L-47：闸门记录里的 sha256 与报告正文指纹不一致 → 报（
     ['审计报告最新版存在', 'audits/审计报告-v1.md', '✓'],
     ['P0/P1 清单已列', 'audits/审计报告-v1.md §修订任务书', '✓'],
     ['M 门全部 exit 0', 'm-gate-check.mjs → exit 0', '✓'],
-    ['证据包指纹（sha256 实值）', `final/证据包/数据卡.md（sha256=${'b'.repeat(64)}）`, '✓'],
+    ['**本阶段正文 sha256**（实值；填当前定稿/初稿的最高版指纹）', `final/证据包/数据卡.md（sha256=${'b'.repeat(64)}）`, '✓'],
     ['引用闭环（M-Exist-3：[Dxx] 正文 ↔ 数据卡条目）', 'final/证据包/数据卡.md', '✓'],
     ['论文交付物 vs 报告独立隔离', 'final/证据包/审计报告-v1.md', '✓'],
     ['修订轮由独立写手执行', 'audits/审计报告-v1.md', '✓'],
+    // v18.60.1：模板 T7.5 新增本行（战略门脚本留痕）——夹具须逐项齐备，否则报「检查项缺」而非本用例要验的指纹互锁
+    ['**T7 战略门脚本留痕**（v18.12.0 L-33；实据列填三个脚本各自的 exit）', 'structure-check exit 0 / methodology-check exit 0 / cite-coverage exit 0', '✓'],
   ]
   writeFileSync(join(au, '闸门记录-T7.5.md'), ['# 闸门记录', '', '| 检查项 | 实据（路径 / exit code） | 结论 | 失败原因 |', '|---|---|---|---|', ...rows.map((r) => `| ${r[0]} | ${r[1]} | ${r[2]} | |`), ''].join('\n'))
   try {
     // 注意：不以 --report 指向项目内，避免覆盖夹具
     const it = gateOf(run([join(SCRIPTS, 'm-gate-check.mjs'), draft, ev]), 'M-Exist-5')
     assert.equal(it.pass, false, '指纹不一致必须报：' + JSON.stringify(it))
-    assert.match(String(it.detail), /sha256|指纹/)
+    assert.match(String(it.detail), /sha256|指纹|正文/)   // v18.60.1：模板行名由「证据包指纹（sha256 实值）」改为「**本阶段正文 sha256**（实值…）」
   } finally { rmSync(dir, { recursive: true, force: true }) }
 })

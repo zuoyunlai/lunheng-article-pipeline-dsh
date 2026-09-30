@@ -312,6 +312,13 @@ const MANIFEST_NAME = 'manifest.json';
     if (!existsSync(dir)) return;
     for (const f of readdirSync(dir).sort()) {
       if (f === MANIFEST_NAME) continue;
+      // ── v18.60.1（主人授权反哺 v2 §1.3）：**跳过 `.bak` 备份产物** ──
+      //   为什么：`manifest.json` 走 `writeWithSafety`（原子写 + 时间戳 `.bak`），备份落在**同目录**；
+      //   而 `pruneBackups`（destructive-write.mjs，`BAK_MAX = 20`）会**回收最旧的 `.bak`**——旧版把
+      //   `.bak` 一并登记为清单成员，于是「回收 → 登记的成员已不存在」→ M-Exist-2 **必然**判复算失败 P0
+      //   （实测：论衡实测项目-夫妻收入差异家庭权力 的证据包累积 21 个 `.bak`，复算报「登记的文件已不在包里」）。
+      //   判据：`.bak` 是脚本自身的回滚点，**不是交付成员**——不应进入清单，也不应影响复算。
+      if (f.endsWith('.bak')) continue;
       const full = join(dir, f);
       let st;
       try { st = statSync(full) } catch { continue }

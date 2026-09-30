@@ -124,15 +124,21 @@ const TEMP_MARKERS = [
   [/\[[LDC](?:_|-)(?!主\d)(?!基-)(?!空\])(?!CASE)[A-Za-z\u4e00-\u9fff][^\]]*\]/g, '临时编号（如 [L_TBD-1]）'],
   [/【(?:待补|待定|待查|待核|临时)】/g, '中文方头括号占位'],
   [/（(?:待补|待定|待查|待核|临时)）/g, '圆括号占位'],
-  [/_{3,}/g, '下划线占位'],
   [/[？?]{2,}/g, '连续问号占位'],
 ];
+// ── v18.60.1（主人授权反哺 v2 §1.4）：下划线占位检测**排除 `## AI 使用声明` 节** ──
+//   为什么：学术版 AI 声明的签名栏（`作者签名：____________　日期：____________`）天然是连续下划线，
+//   属**合规形态**；整篇比对本会产生**系统性假阳性**——每个走学术版 AI 声明的项目都必然命中 M-Form-3。
+//   实测（论衡实测项目-夫妻收入差异家庭权力）：定稿命中「下划线占位×2」→ P1；把签名栏改为方括号后清零。
+//   边界（如实）：**只对下划线这一项**豁免 AI 声明节；其余占位标记（`[待补]` / `[L_TBD-1]` 等）若出现在
+//   AI 声明节里**仍应报**（那才是真占位符），故**不整节跳过**。
+const TEMP_MARKERS_AI_DECL_EXEMPT = [[/_{3,}/g, '下划线占位']];
 {
-  const tempCount = TEMP_MARKERS.reduce((a, [re]) => a + ((textProse.match(re) || []).length), 0);
-  const tempHits = TEMP_MARKERS
-    .map(([re, label]) => [label, (textProse.match(re) || []).length])
-    .filter(([, n]) => n > 0)
-    .map(([label, n]) => `${label}×${n}`);
+  const proseNoAiDecl = textProse.replace(/^##\s*AI\s*使用声明[\s\S]*$/m, '');
+  const scanMarkers = (markers, text) => markers.map(([re, label]) => [label, (text.match(re) || []).length]);
+  const hits = [...scanMarkers(TEMP_MARKERS, textProse), ...scanMarkers(TEMP_MARKERS_AI_DECL_EXEMPT, proseNoAiDecl)];
+  const tempCount = hits.reduce((a, [, n]) => a + n, 0);
+  const tempHits = hits.filter(([, n]) => n > 0).map(([label, n]) => `${label}×${n}`);
   results.push({
     gate: 'M-Form-3 临时编号残留',
     pass: tempCount === 0,
