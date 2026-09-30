@@ -21,7 +21,12 @@ test('㉖ 子技能版本漂移：package.json version 改回 1.0.0 → 必须�
   const before = run([ccPath(repo)], { cwd: d })
   assert.ok(!/子技能版本漂移/.test(before.out), `基线不该报子技能版本漂移：\n${before.out.slice(-400)}`)
 
-  writeFileSync(pkg, readFileSync(pkg, 'utf8').replace('"version": "1.0.1"', '"version": "1.0.0"'))
+  // 注入漂移：把**真值**换成一个必然与 SKILL.md 不同的值。
+  //   ⚠️ 不要硬编码「1.0.1 → 1.0.0」——版本号每升一次这个夹具就过期，
+  //   而失败信息会长得像「规则失效」，把「夹具年久」误诊成「门坏了」。
+  //   （2026-09-30 v1.0.1→1.0.2 实测踩到：两条反向自证同时红。）
+  const cur = JSON.parse(readFileSync(pkg, 'utf8')).version
+  writeFileSync(pkg, readFileSync(pkg, 'utf8').replace(`"version": "${cur}"`, '"version": "0.0.0"'))
   const after = run([ccPath(repo)], { cwd: d })
   assert.equal(after.code, 1, `注入漂移后应 exit 1，实得 ${after.code}`)
   assert.match(after.out, /子技能版本漂移/, `漏了 package.json 版本漂移却未点名：\n${after.out.slice(-400)}`)
@@ -32,7 +37,7 @@ test('㉖ 子技能版本缺失：package.json 删掉 version 行 → 必须报 
   const pkg = join(repo, 'skills', 'lunheng-commands', 'package.json')
 
   const src = readFileSync(pkg, 'utf8')
-  assert.ok(/"version"\s*:\s*"1\.0\.1"/.test(src), '夹具 package.json 应含 version 1.0.1')
+  assert.ok(/"version"\s*:\s*"[^"]+"/.test(src), '夹具 package.json 应含 version 行（值不硬编码——见上条注）')
   writeFileSync(pkg, src.replace(/\n\s*"version"\s*:\s*"[^"]+",/, ''))
 
   const after = run([ccPath(repo)], { cwd: d })

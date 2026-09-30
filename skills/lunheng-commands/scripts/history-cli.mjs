@@ -4,6 +4,7 @@
 
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { resolve, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 /**
  * run/ 目录路径解析
@@ -92,8 +93,9 @@ export function diffProjects(id1, id2) {
   return result;
 }
 
-// CLI 调用入口
-if (import.meta.url === `file://${process.argv[1]}`) {
+// CLI 调用入口（v18.62.0 F6：可移植判定——`file://${argv[1]}` 在 Windows 下永不相等，入口静默不执行）
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) {
   const subCmd = process.argv[2];
   if (subCmd === 'list' || !subCmd) {
     const result = listProjects();

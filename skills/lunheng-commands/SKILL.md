@@ -1,11 +1,13 @@
 ---
 name: "lunheng-commands"
-version: "1.0.1"
-description: "lunheng-commands v1.0.1：论衡 v18.7.1 **内嵌子技能**，提供 11 个 /lunheng 斜杠命令 UX（-draft/-resume/-cite/-audit/-journal/-ppt/-history/-rollback/-status/-stats/-help）。薄壳设计：不引入新角色 / 新阶段 / 新 M 门；所有重活仍走论衡 9 角色流水线。-rollback 需 --confirm 二次确认；-stats 显示 run/ 项目汇总看板（包装论衡 v18.5.0 lunheng-stats.mjs）。**不适用**：<2000 字短文与即时问答；实时聊天 / 朋友圈 / 邮件。"
+version: "1.0.2"
+description: "lunheng-commands v1.0.2：论衡 v18.62.0 **内嵌子技能**，提供 11 个 /lunheng 斜杠命令 UX（-draft/-resume/-cite/-audit/-journal/-ppt/-history/-rollback/-status/-stats/-help）。薄壳设计：不引入新角色 / 新阶段 / 新 M 门；所有重活仍走论衡 9 角色流水线。-rollback 需 --confirm 二次确认；-stats 显示 run/ 项目汇总看板（包装论衡 v18.5.0 lunheng-stats.mjs）；**-status --pending = 跨项目「待我决策」聚合收件箱**（v1.0.2）。**不适用**：<2000 字短文与即时问答；实时聊天 / 朋友圈 / 邮件。"
 whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 description（v18.0.5：官方目录只渲染 name + description，本字段对模型不可见，保留仅供工具链与维护者阅读）。v18.7.1 起：本技能随论衡 bundle 自动安装——`dsh plugin add lunheng-article-pipeline` 即获，无需单独 install。"
 ---
 
-> 版本：v1.0.1（v18.7.1 内嵌子技能，2026-09-23）
+> 版本：v1.0.2（v18.62.0 反哺 F4/F6；2026-09-30）
+> **v1.0.2 变更**：① **新增 `-status --pending`**（跨项目「待我决策」聚合收件箱，实现 `scripts/pending-cli.mjs`）——旗标不改变「11 个命令」计数；② **修复 CLI 入口缺陷**（F6）：`route-command` / `stats-cli` / `history-cli` 三处原写 `` file://${process.argv[1]} ``，**在 Windows 下永不相等** → CLI 入口静默不执行（退出码 0、零输出），已全部改为 `pathToFileURL`。
+> **版本同步点（5 处，改动须同批）**：本文件 frontmatter `version` + 本行 + `README.md` 标题 + `package.json` `version` + `references/command-routing.md` 版本头 + `scripts/route-command.mjs` 头注释——**v18.20.0 审计的 P1-① 正是只改了其中三处留下的漂移**，勿重演。
 > **v18.7.1 升级**：从独立 npm 包**嵌入**到论衡 bundle 内——`skills/lunheng-commands/` 作为论衡第二个技能自动注册。所有 11 个 /lunheng 命令免单独安装。
 > **本包为薄壳 wrapper**：所有重活仍走 `lunheng-article-pipeline` 的子代理；本包仅做"用户意图 → 论衡阶段调用"的翻译层。
 
@@ -35,6 +37,7 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 | `-history` | 列 `run/*/` 历史 + 支持 `--diff <id1> <id2>` | [command-routing.md#history] |
 | `-rollback <id> --confirm` | 回滚到 checkpoint | [command-routing.md#rollback] |
 | `-status [id]` | 显示当前进度（status.md 内容，≤15 行） | [command-routing.md#status] |
+| `-status --pending` | **跨项目「待我决策」聚合收件箱**（v18.62.0 F4；扫 `run/*/` 的 §6 未回填 + 进展页待办） | [command-routing.md#status] |
 | `-stats` | run/ 目录项目汇总看板（包装论衡 v18.5.0 lunheng-stats.mjs） | [command-routing.md#stats] |
 | `-help` | 列可用命令 | [command-routing.md#help] |
 

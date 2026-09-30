@@ -13,7 +13,7 @@
 import { spawn } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 import { existsSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -83,8 +83,9 @@ export async function runStats(args = []) {
   });
 }
 
-// CLI 入口
-if (import.meta.url === `file://${process.argv[1]}`) {
+// CLI 入口（v18.62.0 F6：可移植判定——`file://${argv[1]}` 在 Windows 下永不相等，入口静默不执行）
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) {
   const args = process.argv.slice(2);
   const result = await runStats(args);
   if (!result.ok && result.error) {
