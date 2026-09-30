@@ -867,3 +867,98 @@ test('对照表引用守：行引用必须可解析，作废门号不得复活�
   )
   assert.ok(table.includes(PHANTOM), `对照表 §三 首行的作废门号留档不得被删——它是「这个号为什么不能用」的唯一案卷`)
 })
+
+/**
+ * M 门**机械项数**（非门 ID）的代码真源：`mgate-gates/*.mjs` 里 `gate:` 标签的**去重个数**。
+ * ⚠️ `M-Integrity-2` 是人工门（T7.5 主控亲做，不由脚本产出、无 `gate:` 标签）→ 派生值天然 == 机械项数，
+ *   总项数 = 派生值 + 1。**刻意不从文档抄**：手抄的那一份正是会漂的那一份。
+ */
+function mechanicalGateCount() {
+  const ids = codeGateIds()
+  assert.ok(
+    ids.size >= 20,
+    `从 mgate-gates/*.mjs 的 \`gate:\` 标签只派生到 ${ids.size} 个 M 门项（<20）——派生口径可疑，拒绝在噪声上断言`,
+  )
+  return ids.size
+}
+
+// v18.61.1（文档体检反哺）：把「M 门机械/总项数」这类**天生多处引用、且已连漂数版**的数字钉住。
+//   实测漂移面：v18.25.0 加 `M-Fact-1`（机械 22→23）与 v18.27.0 加 `M-Exist-11`（→24）之后，
+//   脚本头注释 / appendix / `methodology-check` / `glossary` / 多份角色卡与模板仍写「机检 22 项 / 总 23 项」，
+//   而脚本**自己输出的 `total` 实测 = 24**（自报头与自输出互相矛盾，且没有任何门会响）。
+//   根因：本文件既有的 M 门守卫只断言**门 ID 字符串覆盖**（它抓到过 `M-Fact-1` 漏登），**不断言数字**。
+//   判据：① 机械项数从 `gate:` 标签**派生**（唯一真源 = 代码）；② 锚点文档必须写到派生值 + 四族全枚举；
+//        ③ 同一批锚点文档不得再出现旧口径的**精确形态**（宽泛的「22」会误伤合法的历史口径三要素行，
+//           故只钉 `机检 **22 项**`/`总项数 23 项`/`恒 22（机械项）`/`"total": 22,` 这类无歧义写法）。
+test('M 门机械/总项数必须等于 mgate-gates 派生值，锚点文档不得留旧口径（v18.61.1 数字守卫）', () => {
+  const mech = mechanicalGateCount()
+  const total = mech + 1
+  // 四族全枚举真源（与 M-Gate-Algorithm.md 顶部真源行同形）——数字对了但漏一族，同样是漂。
+  const ENUM = 'M-Form 1-11 + M-Exist 1-11 + M-Integrity-1 + M-Fact-1'
+
+  const anchors = [
+    join(SKILL, 'scripts', 'm-gate-check.mjs'),
+    join(SKILL, 'references', '_shared', 'M-Gate-Algorithm.md'),
+    join(SKILL, 'references', '_shared', 'M-Gate-Algorithm-appendix.md'),
+    join(SKILL, 'references', 'glossary.md'),
+    join(SKILL, 'SKILL.md'),
+    join(SKILL, 'AGENTS.md'),
+  ]
+  const texts = new Map(anchors.map((f) => [f, readFileSync(f, 'utf8')]))
+  const at = (f) => relative(ROOT, f).split(sep).join('/')
+
+  // ① 枚举串必须在 M 门算法真源与两处常驻文档里逐字出现。
+  for (const f of [
+    join(SKILL, 'references', '_shared', 'M-Gate-Algorithm.md'),
+    join(SKILL, 'SKILL.md'),
+    join(SKILL, 'AGENTS.md'),
+  ]) {
+    assert.ok(
+      texts.get(f).includes(ENUM),
+      `${at(f)} 的 M 门项数枚举与代码派生值不同形：期望含「${ENUM}」（派生机械 ${mech} 项）。` +
+        '加/删 M 门项时必须同批更新本枚举——「说机械 24 却只列 23 项」正是本批修掉的形态。',
+    )
+  }
+
+  // ② 脚本头注释与报告 schema 的项数必须写派生值（这两处是「自报头/自输出矛盾」的高发点）。
+  const script = texts.get(join(SKILL, 'scripts', 'm-gate-check.mjs'))
+  assert.ok(
+    script.includes(`机检 **${mech} 项**`),
+    `${at(join(SKILL, 'scripts', 'm-gate-check.mjs'))} 头注释必须写「机检 **${mech} 项**」——` +
+      `它与脚本自己输出的 \`total\` 是同一事实的两处陈述，实测曾长期停在「22 项」而 \`total\` = ${mech}。`,
+  )
+  assert.ok(
+    script.includes(`总项数 ${total} 项`),
+    `${at(join(SKILL, 'scripts', 'm-gate-check.mjs'))} 头注释必须写「总项数 ${total} 项」（机械 ${mech} + 人工 1）。`,
+  )
+  const appendix = texts.get(join(SKILL, 'references', '_shared', 'M-Gate-Algorithm-appendix.md'))
+  assert.ok(
+    appendix.includes(`"total": ${mech},`),
+    `${at(join(SKILL, 'references', '_shared', 'M-Gate-Algorithm-appendix.md'))} 的 schema 示例必须写 \`"total": ${mech},\`（派生值）。`,
+  )
+  assert.ok(
+    appendix.includes(`恒 ${mech}（机械项）`),
+    `${at(join(SKILL, 'references', '_shared', 'M-Gate-Algorithm-appendix.md'))} §1.1 的 \`total\` 语义行必须写「恒 ${mech}（机械项）」。`,
+  )
+
+  // ③ 旧口径的**精确形态**不得留在锚点文档里（无歧义写法，故无需历史行豁免）。
+  const STALE = [
+    ['机检 **22 项**', '机械项数旧口径'],
+    ['总项数 23 项', '总项数旧口径'],
+    ['恒 22（机械项）', 'schema 语义行旧口径'],
+    ['"total": 22,', 'schema 示例旧口径'],
+  ]
+  const stale = []
+  for (const [f, text] of texts) {
+    for (const [needle, what] of STALE) {
+      if (text.includes(needle)) stale.push(`${at(f)} 仍含「${needle}」（${what}；现行为机械 ${mech} / 总 ${total}）`)
+    }
+  }
+  assert.deepEqual(
+    stale,
+    [],
+    `下列锚点文档残留 M 门项数旧口径：\n  ${stale.join('\n  ')}\n` +
+      '修法：改为代码派生值（机械 ' + mech + ' / 总 ' + total + '），并保留四族全枚举。' +
+      '**不要**为迁就文本放宽本断言——数字漂移正是这条守卫存在的理由。',
+  )
+})

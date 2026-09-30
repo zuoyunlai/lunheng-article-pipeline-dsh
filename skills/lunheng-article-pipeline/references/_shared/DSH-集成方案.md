@@ -1,6 +1,6 @@
 # 论衡 × DSH 能力面集成方案
 
-> 版本：v18.61.0（C 组落地；§一–§六 为 v18.0.2 原文，§七–§八 为 v18.2.1 新增，**§九 为 v18.2.2 新增**；v18.10.0 战略反哺新增 structure-check.mjs + methodology-check.mjs + cite-coverage-check.mjs + journal-fit.mjs + meta-synthesize.mjs；v18.10.0 反哺落地再增 fix-gates.mjs）
+> 版本：v18.61.1（C 组落地；§一–§六 为 v18.0.2 原文，§七–§八 为 v18.2.1 新增，**§九 为 v18.2.2 新增**；v18.10.0 战略反哺新增 structure-check.mjs + methodology-check.mjs + cite-coverage-check.mjs + journal-fit.mjs + meta-synthesize.mjs；v18.10.0 反哺落地再增 fix-gates.mjs）
 > **用途**：把论衡的既有机制（**随包脚本** / 并行阶段 / 状态机 / 人在环闸门）**对齐 DSH 已有能力面**，替代平行自建。§一–§六 是**实施方案**，§七 是**落地状态表**，§八 是**可选配方**。**脚本清单与数量真源 = `SKILL.md` §执行能力边界 的「随包脚本白名单」行**（本文件不复述数字——v18.22.2 起；此前此处硬编码会随脚本增删过期）。
 > **依据**：DSH 官方文档 `docs/cookbook/adding-a-tool.md`、`docs/tool-execution-pipeline.md`、`docs/subsystems/*.md`、`docs/capability-seams.md`（知识库副本见 `dsh-plugin-guide/references/official-docs/`；行号对快照 commit `d347e703…`）。
 > **当前状态**：**C 组 10 项已启用 + 1 项 preset 已落地**（v18.60.1 反哺 v3 + v18.61.0 反哺 v4，主人显式授权落地——详见 `audits/机制文件修订记录-2026-09-30-反哺v3全批.md` + `audits/机制文件修订记录-2026-09-30-反哺v4全批.md`）：原生只读工具 + `executionMode` 声明 / `ctx.tools.guard()` 写保护 / `/lunheng-status` / 词预算门 / `tools/post-execute` 伦理脱敏自动挂载 / `file-watcher:change` refresh-gates HMR 联动 / `assistant/chunk` G14 启发式预筛 / `system-prompt/assemble` 钩子 / `agent/request` waterfall 模型路由 / `examples/preset/agent-tiered/cordis.yml` preset 化。一项仍未接线（Phase 内并行→`workflow`，依官方用法限定「仅在用户明确要求 workflow 或大规模编排时」用，故**降级为按需**）。**未做（v18.61 反哺 v4 后仍 Backlog）**：**H8** `session-log` SessionEvent 投影（依赖 v2.5.2-dsh.5 双文件分工定案，主人 review 后再做）；**H9** `session-query-sqlite`（依赖 H8）；**H10** `web_profile`（价值小）；**H11** `workflow` / `goals` / `jobs`（AGENTS.md 显式禁接）。
@@ -221,7 +221,7 @@ return { gate: 'T2.5', pass: gatePass, literature: lit, data: dat, cases: cas }
 
 ---
 
-## 七、v18.1.0（C 组）落地状态：七项已启用（v18.60.1 反哺 v3 后）、一项仍给配方、一项仍未接线
+## 七、v18.1.0（C 组）落地状态：**十三项已启用 + 一项 preset 已落地**（v18.60.1 反哺 v3 + v18.61.0 反哺 v4 后）、一项仍未接线
 
 > **依据**：第三方全量审计 v2 §4「C. 中期偏架构（6 条）」，本轮逐条处置。**官方文档行号**取自 `dsh-plugin-guide/references/official-docs/`（快照 commit `d347e703…`，2026-09-04）。
 
@@ -265,9 +265,15 @@ return { gate: 'T2.5', pass: gatePass, literature: lit, data: dat, cases: cas }
 
 ---
 
-## 八、方案 D4：把分档工具行移入 agent preset（**仅配方，默认不动**）
+## 八、方案 D4：把分档工具行移入 agent preset
 
-> ⚠️ **状态：未验证配方**。官方文档只描述机制，**知识库中没有任何 preset 组合文件的完整示例**（快照范围含 `docs/`、根 `AGENTS.md`、`packages/AGENTS.md|README.md`，**不含** `packages/preset/agent-presets/README.md`）。因此本节给的是**可操作步骤 + 每步官方依据 + 每步验证方法**，**不声称已在真实部署上跑通**。执行前请先小范围验证。
+> ✅ **状态：v18.61.0 反哺 v4 落地（主人授权）**——
+> **第 1 步**实测验证 ✅：`dsh --profile web --patch <临时 patch> --dump-config` 三档工具行 `disabled: true` 加载成功（exit=0）；详见 `audits/反哺报告-H6验证报告-2026-09-30.md` §一。
+> **第 2 步**实测落地 ✅：`examples/preset/agent-tiered/cordis.yml` 已写（按本节第 2 步配方，三档 subagent 工具行开 `modelSelectionSettings:true`）。
+> **第 3 步**待主人部署环境实测：本机缺 `DEEPSEEK_API_KEY`，`dsh headless` 起不了真会话；按本节第 3 步配方在有 LLM key 的环境跑真会话，验证 `list_subagent_models` 出现 + per-call `provider`/`model` 切换生效。
+>
+> **注意**：原 §八 "未验证配方" 已**部分不再成立**（第 1/2 步已实测验证 + 落地），但本节保留作为**完整配方**给主人参考，并按主人 review 后**可选**做第三步真会话验证。
+> 官方文档只描述机制，**知识库中没有任何 preset 组合文件的完整示例**（快照范围含 `docs/`、根 `AGENTS.md`、`packages/AGENTS.md|README.md`，**不含** `packages/preset/agent-presets/README.md`）。本节保留第 1-3 步配方供**需要独立 preset 化的主人**复用（已在真源 `examples/preset/agent-tiered/` 落地的版本是推荐默认）。
 
 ### 8.1 为什么考虑（收益与依据）
 

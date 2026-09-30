@@ -172,7 +172,7 @@ const result = {
     timestamp: new Date().toISOString(),
     description: '论衡方法论可复现性门 / v18.10.0 战略反哺 P0-1 / scripts 白名单 18→19',
     notes: '本脚本为机检骨架 + 关键词扫描；M-Form-12 / M-Exist-11 / M-Exist-12 是**本脚本自有命名空间**，'
-      + '与 m-gate-check.mjs 的 M 门 22 项（M-Form 1-11 / M-Exist 1-10 / M-Integrity-1）**不共用编号**——'
+      + '与 m-gate-check.mjs 的 M 门 24 项（M-Form 1-11 / M-Exist 1-11 / M-Integrity-1 / M-Fact-1）**不共用编号**——'
       + 'v18.12.0（全量审计 L-20）更正：旧注释写「与 m-gate-check.mjs 的 … 函数同源维护」，而该脚本内并无这三个函数，属虚假声明；'
       + '四份学术声明模板引用的「M-Form-12 子门」亦据此更正为「T7 人工核验」',
   },

@@ -23,7 +23,7 @@ Phase 4 审计     → spawn T7 审计员 → audits/审计报告-vN.md（G0-G14
                  → 打回修订 ≤2 轮（必须 spawn 独立写手）；仍不过 → 升级决策 / Acknowledged Limitations 模式
 Phase 4.5 审稿   → spawn T9 同行评审（可选，默认选中，**学术论文必选**）∥ **G14 终闸**（主人 Phase 0 可显式关闭）→ audits/审稿报告-vN.md（6 维度评分 + 期刊匹配助手 Top 3）
 [🔒 T7.5 完整性门] 审计报告最新版 + P0/P1 清单 + M 门全 exit 0 + 隔离 → 通过才终检
-Phase 5 终检     → T8 终检（独立角色，主控 T0 以 T8 身份亲完成 M 门：M-Form 11 / M-Exist 11 / M-Integrity 2，LLM 兜底）→ final/定稿.md + 证据包/ + 交付说明.md
+Phase 5 终检     → T8 终检（独立角色，主控 T0 以 T8 身份亲完成 M 门：M-Form 11 / M-Exist 11 / M-Integrity 2 / M-Fact 1，LLM 兜底）→ final/定稿.md + 证据包/ + 交付说明.md
 ```
 
 ## 关键规则

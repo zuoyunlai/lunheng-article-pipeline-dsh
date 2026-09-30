@@ -10,7 +10,7 @@
   // —— 脚本机械段（每次运行重写）——
   "draft": "<被审正文路径>",
   "date": "YYYY-MM-DD",
-  "total": 22,                    // 恒 = 机械项数（M-Form 11 + M-Exist 11 + M-Integrity-1）
+  "total": 24,                    // 恒 = 机械项数（M-Form 11 + M-Exist 11 + M-Integrity-1 + M-Fact-1）
   "pass": 0, "p0": 0, "p1": 0, "p2": 0,
   "soft": 0,                      // severity === "LLM 兜底" 的失败项数（不计硬失败，但计入 anyFail）
   "skips": 0,                     // pass === "SKIP" 的项数
@@ -38,7 +38,7 @@
 | `results[].pass` | `true` / `false` / `"SKIP"` | **三态**。`"SKIP"` 目前只有 M-Exist-1（文末缺失、M-Form-2 已失败时让位）；`SKIP` 计入 `skips` → 判 `exit 3`，**不得当通过** |
 | `results[].severity` | `"P0"`/`"P1"`/`"P2"`/`"通过"`/`"LLM 兜底"`/`"SKIP"` | 硬失败 = severity ∈ {P0,P1,P2} 且 `pass:false`；`LLM 兜底` 单独进 `soft` 桶 |
 | `results[].detail` | 文本 | 人读；**`[报告后激活]`** 前缀见 §1.4 |
-| `total` | 整数 | 恒 22（机械项）。**M 门总项数 23 = 机械 24 + 人工 1（M-Integrity-2）** |
+| `total` | 整数 | 恒 24（机械项）。**M 门总项数 25 = 机械 24 + 人工 1（M-Integrity-2）** |
 | `--summary` 下的 `results` | 子集 | 仅保留**硬失败项**（`pass !== true && severity !== "LLM 兜底"`）——**不是完整报告，不得直接当闸门口径**（取闸门结论须跑不带 `--summary` 的一次） |
 
 ### 1.2 机械 24 项 gate 标签（逐字；`m-gate-check.mjs` 的 `gate:` 值即真源）
@@ -46,8 +46,9 @@
 | 组 | 项数 | gate 标签 |
 |---|---|---|
 | **M-Form** | 11 | `M-Form-1 引用标注完整性` / `M-Form-2 文末四节存在性` / `M-Form-3 临时编号残留` / `M-Form-4 元数据泄露` / `M-Form-5 过程语言残留` / `M-Form-6 信任级别` / `M-Form-7 文末白名单` / `M-Form-8 三角验证` / `M-Form-9 图件闭环` / `M-Form-10 索引段完整性` / `M-Form-11 素材按需加载闭环` |
-| **M-Exist** | 10 | `M-Exist-1 引用双向对比` / `M-Exist-2 证据包完整性` / `M-Exist-3 引用闭环` / `M-Exist-4 审计条目闭环` / `M-Exist-5 阶段闸门记录表` / `M-Exist-6 审稿报告与期刊匹配` / `M-Exist-7 交付说明字段齐备` / `M-Exist-8 批判报告覆盖` / `M-Exist-9 审计报告 G 项覆盖` / `M-Exist-10 大纲 §11 精简段` |
+| **M-Exist** | 11 | `M-Exist-1 引用双向对比` / `M-Exist-2 证据包完整性` / `M-Exist-3 引用闭环` / `M-Exist-4 审计条目闭环` / `M-Exist-5 阶段闸门记录表` / `M-Exist-6 审稿报告与期刊匹配` / `M-Exist-7 交付说明字段齐备` / `M-Exist-8 批判报告覆盖` / `M-Exist-9 审计报告 G 项覆盖` / `M-Exist-10 大纲 §11 精简段` / `M-Exist-11 反方论证闭合`（v18.27.0 QLT-4） |
 | **M-Integrity** | 1（脚本内） | `M-Integrity-1 T2.5 完整性`（脚本佐证）；**M-Integrity-2 = 主控 T7.5 人工门，不在脚本内、不出现在 `results` 里** |
+| **M-Fact** | 1 | `M-Fact-1 跨节事实一致性`（v18.25.0 QLT-2，数字跨节 + 术语近形 + 正文↔素材字段级） |
 
 > ⚠️ **标签措辞的两条清仓判据**（v18.2.6 教训）：
 > ① **M-Exist-3 是「引用闭环」而非「信任级别一致性」**——该门只对账正文 `[Dxx]` ↔ 数据卡条目；信任级别由 M-Form-6（独立信任级别段）+ G12（审计层）承担。曾有 15+ 处文档与 `templates/闸门记录-template.md` 的两行机检表沿用旧语义，形成「会被机检、但没有任何检查在跑」的**假绿**。

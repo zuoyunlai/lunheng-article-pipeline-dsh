@@ -266,7 +266,11 @@ function checkGateCounts(text, rel) {
     `[P1 M 门项数不自洽] ${rel}:${ln} ${label}写 ${got} 项，真源应为 ${want}（真源 = m-gate-check.mjs 的 gate 标签：`
     + `M-Form ${form} + M-Exist ${exist} + M-Integrity ${integ} = 机械 ${mech}；总 ${total} = 机械 ${mech} + 人工 ${MANUAL}）`,
   );
-  const FAMILY = [['M-Form', form], ['M-Exist', exist], ['M-Integrity', integ + 1]];
+  // v18.61.1（文档体检反哺）：语族清单补 **M-Fact**。旧清单只有三族，于是行内出现「… / M-Fact 1 项」时，
+  //   ⑤ 的分项归属会把它**就近归给前一个 FAMILY 关键词 M-Integrity** → 报「M-Integrity 写 1 项」假阳性
+  //   （实测 `deliverables.md` 四族并列写法即此形）。派生值 `fact` 早在 v18.25.0 就已入 GATE_DERIVED，
+  //   漏的只是这份归属表——与「M-Fact-1 落地时无人补登」是同一类漂移。
+  const FAMILY = [['M-Form', form], ['M-Exist', exist], ['M-Integrity', integ + 1], ['M-Fact', fact]];
   const HIST_QUOTE = /旧版|旧文|历史|废止|旧口径/;          // 「显式引用旧值」的豁免标记
   const SUBSET_POST = /需人工|需 LLM|人工修正|需复核/;      // 后文出现 → 是「待修项数」，非任何档位计数
   // 「N 项」**后**紧邻机械/脚本 → 该数是机械项数（「19 项有脚本佐证」即此形）。
@@ -284,7 +288,7 @@ function checkGateCounts(text, rel) {
     //   后者是注入样本 (f)「v2.5.2-dsh.17 起 19 项有脚本佐证」的必要入口——该行可以
     //   **不出现任何 M 门关键词**，但「N 项（有）脚本佐证」在论衡语境里只可能指机械门
     //   （唯一跑 22 项机械判定的脚本就是 m-gate-check.mjs），故同样在断言面内。
-    if (!/M\s*门|M-Form|M-Exist|M-Integrity|(?:有|由|经)\s*脚本|m-gate-check/.test(l)) return;
+    if (!/M\s*门|M-Form|M-Exist|M-Integrity|M-Fact|(?:有|由|经)\s*脚本|m-gate-check/.test(l)) return;
     const ln = i + 1;
     // 门编号 M-Form-11 / M-Exist-3 / M-Integrity-2 的**后缀数字**不是项数——把它当关键词会让
     //   「另有 1 项主控人工门 M-Integrity-2」被读成「M-Integrity 写 1 项」（实测误报）。

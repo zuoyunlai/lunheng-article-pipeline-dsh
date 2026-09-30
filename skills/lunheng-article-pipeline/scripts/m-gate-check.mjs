@@ -8,12 +8,14 @@
 //                  M-Exist-4 审计条目闭环 / M-Exist-5 阶段闸门记录表 /
 //                  M-Exist-6 审稿报告与期刊匹配 / M-Exist-7 交付说明字段齐备 /
 //                  M-Exist-8 批判报告覆盖（C1-C7）/ M-Exist-9 审计报告 G 项覆盖；
-//                  M-Form-8 增补「承重墙超载」机检 → 本脚本机检 **22 项**（M-Form 11 + M-Exist 10 + M-Integrity-1 佐证）
-// v18.2.6 审计修复：M 门**总项数 23 项 = 机检 22 项 + 人工 1 项（M-Integrity-2 跨文件判断，T8 亲做）**。
-//   旧头注释写「M 门 22 项（脚本 21 项 + M-Integrity-2 主控）」——**与本脚本自己输出的 `total` 矛盾**
-//   （实测真实项目回放 `total = 22`：机检 22 项就是 M-Form 11 + M-Exist 10 + M-Integrity-1，没有第 23 个机械项）。
-//   真源口径见 `AGENTS.md`「M 门」节与 `references/_shared/M-Gate-Algorithm.md`：23 项中 22 项已脚本化。
-//   本脚本报告里的 `total` = **本次实际入账的机检项数（满配 22）**，人工项 M-Integrity-2 不由本脚本产出。
+//                  M-Form-8 增补「承重墙超载」机检 → 本脚本机检 **24 项**（M-Form 11 + M-Exist 11 + M-Integrity-1 + M-Fact-1 佐证）
+// v18.25.0（QLT-2）: 新增 M-Fact-1 跨节事实一致性（数字跨节 + 术语近形）。
+// v18.27.0（QLT-4）: 新增 M-Exist-11 反方论证闭合（论点—证据—反方表）。
+// v18.61.1 口径收口（文档体检反哺）：M 门**总项数 25 项 = 机检 24 项 + 人工 1 项（M-Integrity-2 跨文件判断，T8 亲做）**。
+//   旧头注释写「机检 22 项 / 总 23 项」——**与本脚本自己输出的 `total` 矛盾**
+//   （实测 `total = 24`：机检 24 项就是 M-Form 11 + M-Exist 11 + M-Integrity-1 + M-Fact-1，没有第 25 个机械项）。
+//   真源口径见 `AGENTS.md`「M 门」节与 `references/_shared/M-Gate-Algorithm.md`：25 项中 24 项已脚本化。
+//   本脚本报告里的 `total` = **本次实际入账的机检项数（满配 24）**，人工项 M-Integrity-2 不由本脚本产出。
 // 用法: node m-gate-check.mjs <final/定稿.md> <final/证据包目录> [--summary] [--fig-dir <图件目录>] [--report <path>]
 //   --summary：仅输出聚合统计（total/pass/p0/p1/p2/soft/skips）+ 硬失败项；省略通过项 details[]（省 ~80% 输出字节，机器可读友好）
 //   --fig-dir：图件目录（缺省自动推 <定稿目录>/图件 或 <项目根>/final/图件）

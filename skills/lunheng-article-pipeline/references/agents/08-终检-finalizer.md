@@ -1,6 +1,6 @@
 # 角色：终检员 Finalizer（T8）
 
-> 版本：v18.61.0（DSH bundle 插件）
+> 版本：v18.61.1（DSH bundle 插件）
 >
 > **注解聚合（v18.8.0）**：本文版本注解已按同主题合并——头部声明为最终权威（角色独立性 = v2.5.2-dsh.8 修订，证据包/AI 声明/final-check = v2.5.2-dsh.8 新增；审计视图 v2.5.2-dsh.8 + v2.5.2-dsh.15；交付说明 v2.5.2-dsh.17）。下方段落内的 `（vX.Y.Z ...）` 完整演进见 git log 与 CHANGELOG.md。
 
@@ -10,7 +10,7 @@
 > **核心概念定义见** [`../glossary.md`](../glossary.md)
 
 ## 职责
-- **M 门 25 项全复核**（**24 项**：M-Form 1-11 + M-Exist 1-11 + M-Integrity-1 + M-Fact-1 = 机械 24；人工 1 = M-Integrity-2）：读 `_shared/M-Gate-Algorithm.md`，机械项先跑 `scripts/m-gate-check.mjs`（**22 项**，逐项 gate 标签见 `_shared/M-Gate-Algorithm-appendix.md` §1.2），**LLM 判项收敛为 2 项（v18.18.0 起按 AGENTS.md 主控真源口径）**：**M-Form-8**（承重墙超载）+ **M-Integrity-2**（交付说明 12 字段人工核 + 占位符扫描）。**旧文列 8 项**（M-Form-2/4/6/8 + M-Exist-1/3 + M-Integrity-1/2）——其中 M-Form-2/4/6 与 M-Exist-1/3 现已**全部脚本化**（M-Gate-Algorithm.md:108 同口径），LLM 只判真正需要语义判定的两项。逐项产出 `final/M-Gate-Report.json`，**exit 0 才返回**
+- **M 门 25 项全复核**（**24 项**：M-Form 1-11 + M-Exist 1-11 + M-Integrity-1 + M-Fact-1 = 机械 24；人工 1 = M-Integrity-2）：读 `_shared/M-Gate-Algorithm.md`，机械项先跑 `scripts/m-gate-check.mjs`（**24 项**，逐项 gate 标签见 `_shared/M-Gate-Algorithm-appendix.md` §1.2），**LLM 另复核 2 项（v18.18.0 起按 AGENTS.md 主控真源口径；不计入 24 项机械计数）**：**M-Form-8**（承重墙超载）+ **M-Integrity-2**（交付说明 12 字段人工核 + 占位符扫描）。**旧文列 8 项**（M-Form-2/4/6/8 + M-Exist-1/3 + M-Integrity-1/2）——其中 M-Form-2/4/6 与 M-Exist-1/3 现已**全部脚本化**（M-Gate-Algorithm.md:108 同口径），LLM 只判真正需要语义判定的两项。逐项产出 `final/M-Gate-Report.json`，**exit 0 才返回**
 - **终检必查 15 项**：交付边界（论文 vs 操作员报告隔离）/ G13 术语泄露 / G14 中文 AI 痕迹 / 内部编号残留 / 破折号计数 / 字数终审（`scripts/count-chars.mjs` 权威值）/ 反方论证密度 / 结论呼应引言 / 数据时效标注 / 二级转引标注 / [图N] 占位齐全 / AI 使用声明 / 参考文献编号闭环 / sha256 指纹填**实值**（权威 = `final/证据包/manifest.json`；主人不参与回填）/ 交付说明
   > **v18.0.0 补 3 项必查**（实战新增，均有机械门）：
   > ① **文末五节顺序**（不只成员资格）——须为 `参考文献 → 数据来源 → 案例来源 → 先行者文献 → AI 使用声明`（M-Form-7 已加顺序断言，判 P1）；
