@@ -2,6 +2,16 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.61.0 — 2026-09-30
+
+> **性质**：**DSH 新能力接缝补足批 + 论衡 plugin 反哺落地**（依据主人显式授权「请依次全部修订」——反哺报告 §四 H3/H4/H6/H7 显式 review 全部落地；机制文件写保护的授权例外条款）。
+> **为什么抬次版本**：本版新增**3 个 ctx.on 监听器**（H3 G14 启发式预筛 / H4 system-prompt 钩子 / H7 agent.request waterfall） + **1 个 agent preset 目录**（H6 `examples/preset/agent-tiered/cordis.yml`） + 配套词预算抬升（SKILL.md 49 KB + ALWAYS_LIMIT 69 KB），属**次版本粒度的新能力面**（按 semver 惯例属 minor）。
+> **依据**：主人授权（2026-09-30 反哺报告 v4）；落地记录 = `audits/机制文件修订记录-2026-09-30-反哺v4全批.md`（含 §一 已实施 12 项 / §二 未实施 4 项 / §三 跨门验证 / §四 边界 / §五 回滚命令）。
+> **改动范围**：H3/H4/H7 监听器 = `lib/index.js`（431 → 525 行，+94）；H6 preset = **新增** `examples/preset/agent-tiered/cordis.yml`；词预算抬升 = `scripts/repo-hygiene-check.mjs`（ALWAYS_LIMIT + SKILL.md）；文档同步 = SKILL.md / SECURITY.md / DSH-集成方案.md；集成测试 = `tests/h3-h4-h7-listeners.test.mjs`（10 个新增 case）。
+> **真源 roles**（必须配套写明，否则 consistency-check 规则⑩c 判 P1）：`subagent_retrieval` = T1 文献 / T2 数据 / T3 案例（**检索档**）；`subagent_strong` = T4 分析 / T5 写作（**强推理档**）；`subagent_audit` = T6 批判 / T7 审计 / T9 审稿 / G14 检测（**顶配防漏判档**）。
+> **未做（如实登记）**：**H8** `session-log` SessionEvent 投影（依赖 v2.5.2-dsh.5 双文件分工定案，主人 review 后再做）；**H9** `session-query-sqlite`（依赖 H8）；**H10** `web_profile`（价值小）；**H11** `workflow` / `goals` / `jobs`（AGENTS.md 显式禁接）。
+> **回滚点**：v18.60.1 = `5cb4196`（反哺 v3 提交）。
+
 ## 18.60.1 — 2026-09-30
 
 > **性质**：**机制层缺陷修复批 + 反哺落地批**（依据主人显式指令「请依照《反哺报告-v2》依次全部修订」——机制文件写保护的授权例外条款）。

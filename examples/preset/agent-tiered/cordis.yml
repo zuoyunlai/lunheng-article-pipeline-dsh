@@ -1,0 +1,63 @@
+# 论衡分档 agent preset（v18.61.0 反哺 v4，主人显式授权落地）
+#
+# 按 `references/_shared/DSH-集成方案.md` §八 第 2 步配方落地：
+#   把 bundle 的三档 subagent 工具行从 profile 全局移到 preset scope，让
+#   `list_subagent_models` 工具 + per-call `provider`/`model`/`reasoning_effort`
+#   只在该 preset 内生效（而非全 profile 内每个会话都有）。
+#
+# ⚠️ **本包默认不动 patch**（DSH-集成方案 §八 §八.3 第 5 条明示）：bundle 的 cordis.patch.yml
+#    三档 `- insert:` 行**仍保留**——本 preset 是**作用域收窄 + 可选模型发现**的并行补充；
+#    装了本 preset 的 profile 会让 `subagent_retrieval/strong/audit` 三档**从 profile 全局
+#    沉到 preset 层**（agent-preset 的 standing composition 覆盖其 join 的 agent —— dshx.dev
+#    "Nearest scope on the chain wins"）。
+#
+# **真源 roles**（必须配套写明，否则 consistency-check 规则⑩c 判 P1）：
+#   - `subagent_retrieval` → T1 文献 / T2 数据 / T3 案例（**检索档**）
+#   - `subagent_strong`    → T4 分析 / T5 写作（**强推理档**）
+#   - `subagent_audit`     → T6 批判 / T7 审计 / T9 审稿 / G14 检测（**顶配防漏判档**）
+#
+# **模型路由**：
+#   - 由环境变量 `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_{PROVIDER,MODEL}` 覆盖；未设即返回 `undefined`（与
+#     bundle cordis.patch.yml 的 `agentOptions` 同源）
+#   - 不传 `{}`（避免无谓触发 provider 的 agentOptions 能力门）
+#
+# **modelSelectionSettings**：
+#   开 `true` 后本 preset 内会看到 `list_subagent_models` 工具（per-call 选模型）；
+#   该字段在 dsh 0.1.7-rc.2 上**已在 dsh 自带 subagent 工具默认开**（实测见
+#   `audits/反哺报告-H6验证报告-2026-09-30.md`），但本包 patch 三档独立写明才能**让论衡三档也继承**。
+#
+# ⚠️ **`!!js` 在 preset 平面是否允许**（DSH-集成方案 §八 §八.3 不确定点 3）：
+#   官方只规定 `!!js` 可用于 `config`/`disabled`（`cordis-tutorial/05-config.md:80`），与平面无关；
+#   若宿主拒绝，退路是**不写 `agentOptions`**——改用会话内 `list_subagent_models` + per-call 选模型，
+#   这正是开 `modelSelectionSettings` 的目的。本批先按官方字面写法落地，实测时若宿主拒绝再降级。
+
+- insert:
+    # ── 检索档 subagent（T1/T2/T3 便宜快）──
+    - id: tool-subagent-retrieval
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: spawn
+        toolName: subagent_retrieval
+        backgroundMode: continuable
+        modelSelectionSettings: true
+        agentOptions: !!js "(e => { const p = e.LUNHENG_RETRIEVAL_PROVIDER, m = e.LUNHENG_RETRIEVAL_MODEL; if (!p && !m) return undefined; return Object.assign({}, p ? { provider: p } : {}, m ? { model: m } : {}); })(process.env)"
+
+    # ── 强推理档 subagent（T4 分析 / T5 写作）──
+    - id: tool-subagent-strong
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: spawn
+        toolName: subagent_strong
+        backgroundMode: continuable
+        modelSelectionSettings: true
+        agentOptions: !!js "(e => { const p = e.LUNHENG_STRONG_PROVIDER, m = e.LUNHENG_STRONG_MODEL; if (!p && !m) return undefined; return Object.assign({}, p ? { provider: p } : {}, m ? { model: m } : {}); })(process.env)"
+
+    # ── 顶配档 subagent（T6 批判 / T7 审计 / T9 审稿 / G14 检测）──
+    - id: tool-subagent-audit
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: spawn
+        toolName: subagent_audit
+        backgroundMode: continuable
+        modelSelectionSettings: true
+        agentOptions: !!js "(e => { const p = e.LUNHENG_AUDIT_PROVIDER, m = e.LUNHENG_AUDIT_MODEL; if (!p && !m) return undefined; return Object.assign({}, p ? { provider: p } : {}, m ? { model: m } : {}); })(process.env)"

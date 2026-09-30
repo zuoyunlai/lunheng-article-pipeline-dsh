@@ -1,9 +1,9 @@
 # 论衡 × DSH 能力面集成方案
 
-> 版本：v18.60.1（C 组落地；§一–§六 为 v18.0.2 原文，§七–§八 为 v18.2.1 新增，**§九 为 v18.2.2 新增**；v18.10.0 战略反哺新增 structure-check.mjs + methodology-check.mjs + cite-coverage-check.mjs + journal-fit.mjs + meta-synthesize.mjs；v18.10.0 反哺落地再增 fix-gates.mjs）
+> 版本：v18.61.0（C 组落地；§一–§六 为 v18.0.2 原文，§七–§八 为 v18.2.1 新增，**§九 为 v18.2.2 新增**；v18.10.0 战略反哺新增 structure-check.mjs + methodology-check.mjs + cite-coverage-check.mjs + journal-fit.mjs + meta-synthesize.mjs；v18.10.0 反哺落地再增 fix-gates.mjs）
 > **用途**：把论衡的既有机制（**随包脚本** / 并行阶段 / 状态机 / 人在环闸门）**对齐 DSH 已有能力面**，替代平行自建。§一–§六 是**实施方案**，§七 是**落地状态表**，§八 是**可选配方**。**脚本清单与数量真源 = `SKILL.md` §执行能力边界 的「随包脚本白名单」行**（本文件不复述数字——v18.22.2 起；此前此处硬编码会随脚本增删过期）。
 > **依据**：DSH 官方文档 `docs/cookbook/adding-a-tool.md`、`docs/tool-execution-pipeline.md`、`docs/subsystems/*.md`、`docs/capability-seams.md`（知识库副本见 `dsh-plugin-guide/references/official-docs/`；行号对快照 commit `d347e703…`）。
-> **当前状态**：**C 组四项已启用**（原生只读工具 / `ctx.tools.guard()` 写保护 / `/lunheng-status` / 词预算门）、一项给配方（分档工具行→agent preset）、一项仍未接线（Phase 内并行→`workflow`，依官方用法限定「仅在用户明确要求 workflow 或大规模编排时」用，故**降级为按需**）。
+> **当前状态**：**C 组 10 项已启用 + 1 项 preset 已落地**（v18.60.1 反哺 v3 + v18.61.0 反哺 v4，主人显式授权落地——详见 `audits/机制文件修订记录-2026-09-30-反哺v3全批.md` + `audits/机制文件修订记录-2026-09-30-反哺v4全批.md`）：原生只读工具 + `executionMode` 声明 / `ctx.tools.guard()` 写保护 / `/lunheng-status` / 词预算门 / `tools/post-execute` 伦理脱敏自动挂载 / `file-watcher:change` refresh-gates HMR 联动 / `assistant/chunk` G14 启发式预筛 / `system-prompt/assemble` 钩子 / `agent/request` waterfall 模型路由 / `examples/preset/agent-tiered/cordis.yml` preset 化。一项仍未接线（Phase 内并行→`workflow`，依官方用法限定「仅在用户明确要求 workflow 或大规模编排时」用，故**降级为按需**）。**未做（v18.61 反哺 v4 后仍 Backlog）**：**H8** `session-log` SessionEvent 投影（依赖 v2.5.2-dsh.5 双文件分工定案，主人 review 后再做）；**H9** `session-query-sqlite`（依赖 H8）；**H10** `web_profile`（价值小）；**H11** `workflow` / `goals` / `jobs`（AGENTS.md 显式禁接）。
 
 ---
 
@@ -221,7 +221,7 @@ return { gate: 'T2.5', pass: gatePass, literature: lit, data: dat, cases: cas }
 
 ---
 
-## 七、v18.1.0（C 组）落地状态：四项已启用、两项仍未接线
+## 七、v18.1.0（C 组）落地状态：七项已启用（v18.60.1 反哺 v3 后）、一项仍给配方、一项仍未接线
 
 > **依据**：第三方全量审计 v2 §4「C. 中期偏架构（6 条）」，本轮逐条处置。**官方文档行号**取自 `dsh-plugin-guide/references/official-docs/`（快照 commit `d347e703…`，2026-09-04）。
 
@@ -233,6 +233,13 @@ return { gate: 'T2.5', pass: gatePass, literature: lit, data: dat, cases: cas }
 | C-4 机制文件写保护机械化 | ✅ **已启用（部分）** | `lib/guard.js` → 入口内 `ctx.tools.guard()` | `docs/subsystems/tools.md:313-324`（`guard()` 只收紧；plain-context guard 全局生效） |
 | C-5 `/lunheng-status` 命令 | ✅ **已启用** | `lib/commands.js` → `ctx.commands.register()` | `docs/subsystems/commands.md:5`（dispatch 不产生模型消息） |
 | C-6 词预算门 | ✅ **已启用** | 仓库门 `repo-hygiene-check`（**仓库根** `scripts/` 下，不随包）规则⑨ | `official-docs/AGENTS.md`（`verify-doc-budgets` 先例） |
+| C-7 `executionMode` 声明（v18.60.1 反哺 v3，主人授权落地） | ✅ **已启用** | `lib/tools.js` 的 4 个 `defineTool`（`lunheng_m_gate` / `lunheng_char_count` / `lunheng_handoff_check` / `lunheng_ethics_sanitize`）全部加 `executionMode: 'parallel'` | `docs/subsystems/tools.md` 的 `executionMode`（parallel/exclusive 由 driver 有界滚动池调度） |
+| C-8 `tools/post-execute` 自动伦理脱敏监听器（v18.60.1 反哺 v3，主人授权落地） | ✅ **已启用** | `lib/index.js` 第 4 段 `ctx.effect` 里的 `ctx.on('tools/post-execute', listener)`；监听器对 `subagent_*` / `file_read` / `web_*` 自动调 `lib/ethics-sanitize.js` 的 `sanitize(text, { mode: 'basic' })`，把 `reviewFlags` 与 `ethicsSanitized` 计数注入 result | `docs/subsystems/tools.md`（post-execute waterfall 模式 accept / block） |
+| C-9 `file-watcher:change` refresh-gates HMR 联动（v18.60.1 反哺 v3，主人授权落地） | ✅ **已启用** | `lib/index.js` 第 5 段 `ctx.effect` 里的 `ctx.on('file-watcher:change', listener)`；监听 `cordis.patch.yml` 变更 → 自动 `spawn` `scripts/refresh-gates.mjs` | DSH HMR 设计 + 仓库已有 `scripts/refresh-gates.mjs`（v18.60.1 新增脚本） |
+| C-10 `assistant/chunk` G14 启发式预筛监听器（v18.61.0 反哺 v4，主人授权落地） | ✅ **已启用** | `lib/index.js` 新增 `ctx.on('assistant/chunk', listener)`；监听模型流式输出 → 用正则粗筛 G14 §A（模板词）+ §B（句式同质化） → 命中后在 chunk 上追加 `g14PreScreen` 元数据，**不修改 chunk.text 内容** | `docs/subsystems/tools.md`（assistant/chunk 流式输出事件）+ v18.2.8 G14 修订（§A/§B 类判据）|
+| C-11 `system-prompt/assemble` 钩子（v18.61.0 反哺 v4，主人授权落地） | ✅ **已启用** | `lib/index.js` 新增 `ctx.on('system-prompt/assemble', listener)`；监听 prompt 装配 → **只追加不覆盖** dsh 默认 prompt（附加「论衡技能加载中」提示段，**最保守模式**）| dsh agent-loop 文档（system-prompt/assemble waterfall 模式）|
+| C-12 `agent/request` waterfall 模型路由（v18.61.0 反哺 v4，主人授权落地） | ✅ **已启用** | `lib/index.js` 新增 `ctx.on('agent/request', listener)`；监听模型请求事件 → 论衡三档 subagent（retrieval / strong / audit）请求时按 `LUNHENG_*_PROVIDER` / `LUNHENG_*_MODEL` env **覆盖** provider/model | dsh x.dev「agent/request waterfall」（换请求配置）+ DSH-集成方案 §八 D4 配方 + `examples/preset/agent-tiered/cordis.yml`（**双保险**：preset 内同样公式的 `agentOptions`）|
+| C-13 H6 agent preset 化 + `modelSelectionSettings:true`（v18.61.0 反哺 v4，主人授权落地） | ✅ **已落地**（preset 文件已写） | 新增 `examples/preset/agent-tiered/cordis.yml`；按 §八 第 2 步配方，论衡三档 subagent 工具行开 `modelSelectionSettings:true` → 该 preset 内可用 `list_subagent_models` 工具 + per-call `provider`/`model`/`reasoning_effort`。**真源 roles**：retrieval = T1/T2/T3、strong = T4/T5、audit = T6/T7/T9/G14 | `docs/subsystems/core.md:564`（"the new preset's id, which becomes its directory name"）+ `capability-seams.md:507`（"preset cordis.yml"）+ `capability-seams.md:491`（Agent-scoped delegation tools）|
 
 ### 7.1 C-1 的关键设计（为什么不是 patch 行、也不要 `exports`）
 
