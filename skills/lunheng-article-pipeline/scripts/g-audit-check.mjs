@@ -54,7 +54,7 @@ import { installExitGuard, requireExistingFile } from './_lib/exit-guard.mjs';
 import { writeReport } from './_lib/destructive-write.mjs';
 import { countHan } from './_lib/han.mjs';                    // 汉字口径唯一真源
 import { parseTargetCandidates } from './_lib/target-chars.mjs';   // 篇幅候选解析唯一真源（v18.23.0 扩展；G8 字数硬阈用单值版 parseTargetChars）
-import { refsOf } from './_lib/refs.mjs';                     // 引用编号口径唯一真源
+import { refsOf, quantNumberRegex } from './_lib/refs.mjs';     // 引用编号口径唯一真源；§8.3 #38 加定量数字口径
 import { firstEndnoteIndex, bodyStartAfterAbstract, maskFences } from './_lib/sections.mjs';  // 正文区切分 / 围栏掩码（与 count-chars / m-gate-check 同源）
 import { packageVersionTag } from './_lib/pkg-version.mjs';   // §8.3 #39：产物 version 单一真源
 installExitGuard();
@@ -225,7 +225,11 @@ const g8 = (() => {
 //   判据：正文出现的**定量声明**（百分比 / 百分点 / 倍 / 带万·亿·万亿等量级单位的数值）逐个在素材卡全文里
 //     找同数字串；找不到 → 收益为「候选」，**P2**（`apply-diff.mjs` numeric_drift 的同一原则：
 //     机械只挑「卡里没有」，是否属常识/推算/衍生计算归 T7）。裸年份（2024 年）刻意不纳入（年份在卡里未必逐条登记）。
-const QUANT_RE = /(?<![\d.])(\d[\d,\uff0c]*(?:\.\d+)?)\s*(%|个百分点|倍|万亿|千亿|百亿|亿元|亿美元|万亿元|亿吨|万辆|万台|万人|亿人|千瓦时|GW|MW|kW|kWh|吨|万家|亿美元)/g;
+// v18.62.4（全量审计-v18.62.3 §8.3 #38）：**口径上提为单一真源**（`_lib/refs.mjs` 的 `quantNumberRegex()`）。
+//   旧版此处自己写了一份 `QUANT_RE`，与 `mfact-gate.mjs` 的 `NUM_RE` **自称同族但已分叉**：
+//   本处有 lookbehind、无 `人`、末尾 `亿美元` 重复；那边无 lookbehind、有 `人`。
+//   现两处共用同一工厂：**lookbehind（更严）+ 单位取并集（含 `人`）+ 去重**。
+const QUANT_RE = quantNumberRegex();
 const g2 = (() => {
   const cardTexts = Object.values(cards);
   if (cardTexts.length === 0) {

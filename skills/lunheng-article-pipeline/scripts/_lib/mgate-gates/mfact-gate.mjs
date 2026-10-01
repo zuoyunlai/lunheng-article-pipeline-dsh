@@ -20,9 +20,14 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { h2Headings } from '../sections.mjs';
+import { quantNumberRegex } from '../refs.mjs';   // §8.3 #38：定量数字口径单一真源（原先与 g-audit 的 QUANT_RE 各自手抄且已分叉）
 
 /** 数字 + 单位/量级的抽取（与 `g-audit-check.mjs` 的 QUANT_RE 同族；**刻意不抓裸年份**）。 */
-const NUM_RE = /(\d[\d,]*(?:\.\d+)?)\s*(%|个百分点|倍|万亿|千亿|百亿|亿元|亿美元|万亿元|亿吨|万辆|万台|万人|亿人|千瓦时|GW|MW|kW|kWh|吨|万家|人)/g;
+// v18.62.4（全量审计-v18.62.3 §8.3 #38）：**口径上提为单一真源**（`_lib/refs.mjs` 的 `quantNumberRegex()`）。
+//   旧版此处自己写了一份 `NUM_RE`，与 `g-audit-check.mjs` 的 `QUANT_RE` **自称同族但已分叉**：
+//   本处无 lookbehind（`2015` 里的 `5` 会被当成「5」）、有 `人`；那边有 lookbehind、无 `人`、且 `亿美元` 重复。
+//   现两处共用同一工厂：**lookbehind（更严）+ 单位取并集 + 去重**。
+const NUM_RE = quantNumberRegex();
 
 // === v18.54.0（反哺 F-BG）：正文 ↔ 素材 的**字段级**一致性（M-Fact-1 第三项） ===
 //
