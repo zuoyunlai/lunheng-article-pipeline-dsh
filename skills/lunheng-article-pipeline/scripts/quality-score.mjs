@@ -69,6 +69,7 @@ import { installExitGuard, requireExistingDir } from './_lib/exit-guard.mjs';
 import { h2Headings, titleMatches, firstEndnoteIndex, bodyStartAfterAbstract } from './_lib/sections.mjs';
 import { evaluate as readabilityEvaluate } from './_lib/readability.mjs';   // v18.26.0 QLT-3：可读性剖面（第 8 分量）
 import { evaluateQlt6 } from './_lib/qlt6.mjs';   // v18.53.0 QLT-6：论证强度（**独立于门**的第二把尺，见 F-BC）
+import { packageVersionTag } from './_lib/pkg-version.mjs';   // §8.3 #39：产物 version 单一真源
 installExitGuard();
 
 const SCRIPTS = new URL('.', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
@@ -412,7 +413,7 @@ if (baselinePath) {
 
 const result = {
   project,
-  version: 'v18.24.0',
+  version: packageVersionTag(),
   score,
   coverage,
   // v18.52.0（反哺 F-BC）：正名 + **效度边界**落盘（机器可读，防「合规分被读成质量分」）

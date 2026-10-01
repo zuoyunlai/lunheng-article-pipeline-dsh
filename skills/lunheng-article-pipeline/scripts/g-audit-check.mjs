@@ -56,6 +56,7 @@ import { countHan } from './_lib/han.mjs';                    // 汉字口径唯
 import { parseTargetCandidates } from './_lib/target-chars.mjs';   // 篇幅候选解析唯一真源（v18.23.0 扩展；G8 字数硬阈用单值版 parseTargetChars）
 import { refsOf } from './_lib/refs.mjs';                     // 引用编号口径唯一真源
 import { firstEndnoteIndex, bodyStartAfterAbstract, maskFences } from './_lib/sections.mjs';  // 正文区切分 / 围栏掩码（与 count-chars / m-gate-check 同源）
+import { packageVersionTag } from './_lib/pkg-version.mjs';   // §8.3 #39：产物 version 单一真源
 installExitGuard();
 
 // --- CLI ---
@@ -595,7 +596,7 @@ const exitCode = hasP0 ? 2 : (hasP1 ? 1 : (hasP2 || skipped > 0 ? 3 : 0));
 
 const result = {
   file,
-  version: 'v18.41.0',
+  version: packageVersionTag(),
   inputs: { brief: briefPath, cardsDir, cardsFound: Object.fromEntries(Object.entries(cards).map(([k, v]) => [k, v.path])) },
   checks,
   overall: {

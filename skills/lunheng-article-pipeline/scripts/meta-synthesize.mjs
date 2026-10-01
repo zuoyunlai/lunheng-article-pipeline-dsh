@@ -18,6 +18,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { installExitGuard, requireExistingFile } from './_lib/exit-guard.mjs';
 import { writeReport } from './_lib/destructive-write.mjs';   // 报告写盘守卫（v18.12.0，全量审计 L-50）
+import { packageVersionTag } from './_lib/pkg-version.mjs';   // §8.3 #39：产物 version 单一真源
 installExitGuard();
 
 // --- CLI 参数解析 ---
@@ -146,7 +147,7 @@ const heterogeneityHints = [
 // === 输出 ===
 const result = {
   project: projectPath,
-  version: 'v18.11.0',
+  version: packageVersionTag(),
   trigger: { threshold: trigger, actualCards: totalCards, triggered: true },
   prismaFlow,
   effectSizeCandidates,

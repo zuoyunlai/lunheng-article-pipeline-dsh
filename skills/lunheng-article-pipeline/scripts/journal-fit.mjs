@@ -21,6 +21,7 @@ import { installExitGuard, requireExistingFile } from './_lib/exit-guard.mjs';
 import { sectionBody } from './_lib/sections.mjs';
 import { writeReport } from './_lib/destructive-write.mjs';   // 报告写盘守卫（v18.12.0，全量审计 L-50）
 import { refRegex } from './_lib/refs.mjs';                   // v18.16.0（A-1 反哺）：共用 refRegex，避免本地窄正则漏检 1 位/4 位编号
+import { packageVersionTag } from './_lib/pkg-version.mjs';   // §8.3 #39：产物 version 单一真源
 installExitGuard();
 
 // --- CLI 参数解析 ---
@@ -208,7 +209,7 @@ const result = {
   journal: jName,
   category: jCategory,
   paradigm: jParadigm || null,    // v18.59.0 新增：期刊侧范式标签（受控词表或 null）
-  version: 'v18.59.0',
+  version: packageVersionTag(),
   projectPath: projectPath || null,
   projectWordCount,
   checks: {

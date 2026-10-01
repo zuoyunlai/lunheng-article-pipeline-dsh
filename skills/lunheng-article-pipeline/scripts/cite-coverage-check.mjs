@@ -20,6 +20,7 @@ import { installExitGuard, requireExistingFile } from './_lib/exit-guard.mjs';
 import { sectionBody, firstEndnoteIndex, bodyStartAfterAbstract, maskFences } from './_lib/sections.mjs';
 import { writeReport } from './_lib/destructive-write.mjs';   // 报告写盘守卫（v18.12.0，全量审计 L-50）
 import { refRegex } from './_lib/refs.mjs';                   // v18.16.0（A-2 反哺）：任意位数 L 编号，与 m-gate-check 同源
+import { packageVersionTag } from './_lib/pkg-version.mjs';   // §8.3 #39：产物 version 单一真源
 installExitGuard();
 
 // --- CLI 参数解析 ---
@@ -245,7 +246,7 @@ const exitCode = allPass ? 0 : (hasP1 ? 1 : 3);
 
 const result = {
   file,
-  version: 'v18.11.0',
+  version: packageVersionTag(),
   checks: {
     'C-Strength': {
       name: '引用关联强度分布',

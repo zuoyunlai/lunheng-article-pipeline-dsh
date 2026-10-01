@@ -177,4 +177,20 @@ if (tierTruth.size === 3) {
   }
 }
 
+// ⑩d 产物 `version` 不得写死（v18.62.4 · 全量审计-v18.62.3 §8.3 #39）
+//   病灶：7 个随包脚本在 JSON 产物里写死 `version: 'v18.11.0'` 这类字面量，**自实装起从未更新**
+//   （实测停在 v18.11.0 / v18.24.0 / v18.41.0 / v18.59.0，而包已是 v18.62.4），且**两门都不覆盖**它。
+//   该字段是给下游看「产物出自哪一版机制」的 —— 写死即**必然腐烂**，且没有任何东西会提醒。
+//   规则：随包脚本**不得**再出现 `version: 'vX.Y.Z'` 字面量；应用 `packageVersionTag()`
+//   （真源 = `_lib/pkg-version.mjs`，运行时读随包 package.json）。本门只拦**新增的写死**，
+//   不做「值是否等于 pkgVer」的比对（那样每版 bump 都要改 7 处 —— 那正是本条要消灭的东西）。
+for (const f of diskScripts) {
+  const t = readFileSync(join(ROOT, 'scripts', f), 'utf8')
+  const hard = [...t.matchAll(/version:\s*'(v\d+\.\d+\.\d+)'/g)].map((m) => m[1])
+  if (hard.length) {
+    errors.push(`[P1 脚本产物版本写死] ${f} 的产物 version 写死为 ${hard.join(' / ')}（包已是 v${pkgVer}）`
+      + '——请改用 `packageVersionTag()`（真源 `_lib/pkg-version.mjs`）。写死必然腐烂：本轮实测 7 处停在四个旧版本上，且无门发现')
+  }
+}
+
 }
