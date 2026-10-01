@@ -962,3 +962,52 @@ test('M 门机械/总项数必须等于 mgate-gates 派生值，锚点文档不�
       '**不要**为迁就文本放宽本断言——数字漂移正是这条守卫存在的理由。',
   )
 })
+
+// ── v18.62.4（全量审计-v18.62.3 P2-4）：CHANGELOG **最新段**的测试计数必须与真值不矛盾 ──────────
+//
+// 为什么需要：审计实测 18.62.3 段写「全量 `node --test` **575/575**」，而当时全量套实为 **604**
+//   （575 是**根 `tests/` 一项**的数，`skills/*/tests/` 另有 29）——**这类数字无任何门覆盖**，
+//   而它恰好会被读者当作「验证强度」的依据。本批自己又犯了一次同型错：18.62.4 段先写 `612/612`，
+//   随后两批把套件加到 620 却忘了回改。
+// **可断言的真值从哪来**：套件总数无法在**被跑的那个套件内部**取到（自指），故本用例**静态数**
+//   「`tests/**` 与 `skills/*/tests/**` 里 `test(` 的出现次数」——它与 `node --test` 的计数一一对应
+//   （本仓两个文件存在编译期宏式用例，未计入，故真值只会**偏小**；因此判据取**单向**：声明值 **≥** 真值）。
+// **边界（如实）**：① 只查**最新段**——历史段是留痕，改它等于篡改 changelog；② 判据是「不矛盾」，
+//   不是「精确相等」（精确相等需要每次加用例都改 CHANGELOG，会立刻退化成噪声门）。
+test('v18.62.4 P2-4：CHANGELOG 最新段的测试计数不得与真值矛盾（且内部自洽）', () => {
+  const cl = readFileSync(join(ROOT, 'CHANGELOG.md'), 'utf8')
+  const ver = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version
+  const start = cl.indexOf(`\n## ${ver} `)
+  assert.ok(start >= 0, `CHANGELOG 必须有当前版本段「## ${ver}」`)
+  const nextH2 = cl.indexOf('\n## ', start + 1)
+  const seg = cl.slice(start, nextH2 > 0 ? nextH2 : cl.length)
+
+  // 静态数用例数（与 node --test 的 tests 计数同量级；偏小 → 单向断言）
+  let actual = 0
+  for (const dir of ['tests', join('skills', 'lunheng-commands', 'tests')]) {
+    const abs = join(ROOT, dir)
+    if (!existsSync(abs)) continue
+    for (const e of readdirSync(abs, { withFileTypes: true })) {
+      if (!e.isFile() || !e.name.endsWith('.test.mjs')) continue
+      actual += (readFileSync(join(abs, e.name), 'utf8').match(/^test\(/gm) || []).length
+    }
+  }
+
+  const pairs = [...seg.matchAll(/(\d{2,4})\s*\/\s*(\d{2,4})\s*(?:全绿|pass|通过)/g)]
+    .map((m) => [Number(m[1]), Number(m[2])])
+  assert.ok(pairs.length > 0, `最新版本段（${ver}）必须给出「N/N 全绿」形态的验证结论——否则本门无从核对`)
+
+  // ① 内部自洽：每个 N/N 的两侧必须相等
+  assert.deepEqual(
+    pairs.filter(([a, b]) => a !== b),
+    [],
+    `最新版本段里的测试计数自相矛盾（N/N 两侧不等）：${JSON.stringify(pairs)}`,
+  )
+  // ② 与真值不矛盾：声明值必须 ≥ 静态真值（防「套件涨了、CHANGELOG 没跟」）
+  const declaredMax = Math.max(...pairs.map(([a]) => a))
+  assert.ok(
+    declaredMax >= actual,
+    `CHANGELOG 最新段声明全量套 **${declaredMax}**，而按测试文件静态数得的用例数已达 **${actual}**`
+      + `（≥ 声明值）→ 声明已过期。修法：把该段「N/N 全绿」改为当前实测值（或删去绝对值只写「全绿」）。`,
+  )
+})

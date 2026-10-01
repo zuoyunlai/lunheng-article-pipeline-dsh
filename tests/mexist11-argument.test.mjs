@@ -37,19 +37,23 @@ const TABLE_OK = '## §11 写手版精简段\n\n### 论点—证据—反方\n\n
   + '| 论点 | 承重证据 | 反方段锚点 | 回应段锚点 |\n|---|---|---|---|\n'
   + '| 机制成立 | [L01] | 五、反驳与回应 | 五、反驳与回应 |\n'
 
-test('M-Exist-11：无分析大纲 → **pass=true + P2 + 「N/A 且未检」**（不得读成通过，也不判死老项目）', () => {
+test('M-Exist-11：无分析大纲 → **pass=SKIP + 「N/A 且未检」**（不得读成通过，也不判死老项目）', () => {
   const it = item(mk(null))
   assert.ok(it, 'M-Exist-11 必须在场')
-  assert.equal(it.pass, true, '缺输入不得判失败：' + it.detail)
-  assert.equal(it.severity, 'P2', '但必须以 P2 + 「未检」如实标记')
+  // v18.62.4（全量审计-v18.62.3 P1-5）：由 `pass: true + severity: 'P2'` 改为 `pass: 'SKIP' + severity: 'SKIP'`。
+  //   为什么：旧形态下「未检」只写在 detail 字符串里，**退出码侧完全看不见**（`pass: true` 既不进
+  //   `fail` 也不进 `skips`）→ 移走 `analysis/分析大纲.md` 即可让本门静默变成 exit 0。
+  //   同仓既有样板 = `mexist-gates.mjs:15`（等价情形用 `pass: 'SKIP'` → exit 3）。判据未变：**不判死老项目**。
+  assert.equal(it.pass, 'SKIP', '缺输入不得判失败，但必须记「未检」（SKIP）而非「通过」：' + it.detail)
+  assert.equal(it.severity, 'SKIP', '以 SKIP 标记未检（旧版记 P2 会被读成「软提示，可放行」）')
   assert.match(it.detail, /N\/A 且\*\*未检\*\*/)
   assert.match(it.detail, /不得读成通过/)
 })
 
-test('M-Exist-11：大纲里没有该表 → 同样 N/A 且未检（P2）', () => {
+test('M-Exist-11：大纲里没有该表 → 同样 N/A 且未检（SKIP）', () => {
   const it = item(mk('## 一、分析\n\n普通大纲，没有论点表。\n'))
-  assert.equal(it.pass, true)
-  assert.equal(it.severity, 'P2')
+  assert.equal(it.pass, 'SKIP')   // v18.62.4（P1-5）：同上一用例
+  assert.equal(it.severity, 'SKIP')
   assert.match(it.detail, /未找到「论点—证据—反方」四列表/)
 })
 

@@ -1,4 +1,4 @@
-> 版本：v1.0.2（lunheng-commands 独立技能包）
+> 版本：v1.0.3（lunheng-commands 独立技能包）
 
 # /lunheng 命令路由表（单一真源）
 

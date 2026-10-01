@@ -229,6 +229,19 @@ export function mFact1(ctx) {
 
   // ---- 汇总为一条 gate（M-Fact-1）----
   const materialP0 = materialChecked.conflicts.some((c) => c.severity === 'P0');
+  // v18.62.4（全量审计-v18.62.3 P1-6）——**本条最终只做「显式计数」，不改 pass/severity**。如实留痕两次尝试：
+  //   ① 第一版：素材未核对时把整条 M-Fact-1 记 `SKIP`。**错**——`tests/batch16` 7 条用例全红：
+  //      那些用例里数字跨节/术语项**真的跑了也真的没发现问题**，此时把整条记为「未检」等于
+  //      用「某个子检查没跑」抵消「其他子检查的干净结论」。
+  //   ② 第二版：收窄为「整条记录无任何发现时才 SKIP」。仍错——实测 `tests/mfact-gate.test.mjs` 的
+  //      夹具沿用 `mkCase`（只造 `data/撤稿案例数据集.md`，即**素材本该存在**），而素材核对只认
+  //      `项目根/data|证据包/data` 三候选；`projectRoot` 在真实项目里正是项目根，故「未找到」在
+  //      真实项目里本就是**素材缺失信号**，把它当「本项不适用」会掩盖它。
+  //   → 正确的口径（本版）：`正文↔素材年份核对` 是 M-Fact-1 的**子检查**，它没跑时**如实计入 `unchecked`
+  //      顶层数组**（见 `m-gate-check.mjs` 的 `unchecked` 统计），**不改变** M-Fact-1 既有的
+  //      P0/P1/P2/通过 判定。这样：detail 早已写明「未执行，不是「通过」」（人读可见），
+  //      而 `report.unchecked[]` 让**退出码侧/机器侧也看得见**（新增字段，不改既有语义）。
+  const materialUnchecked = materialChecked.files.length === 0 && !!materialChecked.skipped;
   const worst = conflicts.some((c) => c.severity === 'P0') || materialP0 ? 'P0'
     : (conflicts.length > 0 || materialChecked.conflicts.length > 0 ? 'P1'
       : (aliasPairs.length > 0 ? 'P2' : '通过'));
@@ -242,14 +255,25 @@ export function mFact1(ctx) {
   if (aliasPairs.length) parts.push(`术语近形混用候选 ${aliasPairs.length} 组：` + aliasPairs.slice(0, 3).map((p) => `「${p.a}」(${p.aCount}) / 「${p.b}」(${p.bCount})`).join('；'));
   results.push({
     gate: 'M-Fact-1 跨节事实一致性',
-    pass: worst === '通过',
+    // v18.62.4（全量审计-v18.62.3 P2-7）：**P2-only 发现不再把整门判 fail**。
+    //   病灶（实测）：旧式 `pass: worst === '通过'` 让 `worst === 'P2'` 时 `pass: false` → 该门进 `hard` 桶
+    //   → `m-gate-check` 的 `anyFail` 为真 → **exit 3**。而 P2 的语义（本仓多处明文）是「**软提示，需人复核，
+    //   不触发返工**」：文风/术语一致性这类判断力项的失败不该把整份定稿卡在非 0 上
+    //   （对照：M-Form-8 的裸断言/长句两个 P2 项是 push 进 `soft` 的，从不改 `pass`）。
+    //   实测触发面很常见：中文里**正常的「的」插入**（「经济增长」/「经济的增长」）即命中近形对
+    //   → 一份干净终稿拿不到 exit 0，只能走 T8 裁定。
+    //   现：`worst === 'P2'` 时 `pass: true`（与 P0/P1 一致地「相对档位」），P2 仍如实出现在
+    //   `severity`、`p2` 桶与 `aliasPairs` 里 → 人读可见、机器可见，但**不再冒充硬失败**。
+    pass: worst === '通过' || worst === 'P2',
     detail: parts.length
-      ? parts.join(' ｜ ') + `（容差 ${tol * 100}%；术语项为 P2 候选，判级归 T7；正文↔素材核对仅覆盖**年份**字段，计数/编号对应与跨句断言未覆盖）`
+      ? parts.join(' ｜ ') + `（容差 ${tol * 100}%；**术语项为 P2 软提示，判级归 T7，不阻断交付**；正文↔素材核对仅覆盖**年份**字段，计数/编号对应与跨句断言未覆盖）`
       : `未发现跨节数字冲突、近形术语混用或正文↔素材年份不符（容差 ${tol * 100}%；素材文件 ${materialChecked.files.length} 个；正文↔素材核对仅覆盖**年份**字段）`,
     severity: worst,
     ...(conflicts.length ? { conflicts } : {}),
     ...(materialChecked.conflicts.length ? { materialConflicts: materialChecked.conflicts } : {}),
     ...(materialChecked.skipped ? { materialSkipped: materialChecked.skipped } : {}),
+    // v18.62.4（P1-6）：子检查未执行 → **显式机器可见**（不改变本项 pass/severity，见上方注释）
+    ...(materialUnchecked ? { unchecked: ['正文↔素材年份核对（素材文件未找到）'] } : {}),
     ...(aliasPairs.length ? { aliasPairs } : {}),
   });
 }

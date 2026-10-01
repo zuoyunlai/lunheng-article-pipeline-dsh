@@ -23,6 +23,11 @@
 //              于是「路径敲错」得到的结论比「正确传参」更宽松，与下方定稿/证据包的 10 处理自相矛盾）
 // 配套：M-Gate-Algorithm.md「机械化脚本化」段
 // 严重度评级（v2.5.2-dsh.5 引入）：gate fail 时按 P0/P1/P2 分级；单子项失败子项数 ≤2 → P2 可放行
+//   **exit 70（v18.62.4，全量审计-v18.62.3 P1-3）**：门内**解析/读取失败**（`severity: 'ERROR'`）单独成类
+//   → `exit 70`（内部/环境缺陷，**未对内容下结论**）。旧版把这些记 `severity: 'P1'`，于是
+//   `final-check.mjs` 会读成「存在 P1 残留，可触发 T5 修订一轮」→ **脚本缺陷把未被修改的稿件送进付费修订轮**，
+//   且违反本仓契约「内部错 = 70，绝非 1」（`_lib/exit-guard.mjs`）。`errors` 计入 `hard`（便于人读），
+//   但**不计入 p0/p1/p2 桶**、也不进软桶——它的专属出口是 70。
 import { readFileSync, readdirSync, statSync, existsSync, mkdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, dirname, basename } from 'node:path';
@@ -356,6 +361,12 @@ const pass = results.filter((r) => r.pass === true).length;
 const fail = results.filter((r) => r.pass === false);
 const soft = fail.filter((r) => r.severity === 'LLM 兜底').length;
 const hard = fail.filter((r) => r.severity !== 'LLM 兜底');
+// v18.62.4（P1-3）：门内**解析/读取失败**单独成类 → exit 70（见头部注释与下方 exitCode）
+const errors = hard.filter((r) => r.severity === 'ERROR').length;
+// v18.62.4（P1-6）：**子检查未执行**的显式清单（门自己用 `unchecked: [原因…]` 声明）。
+//   与 SKIP 的区别：SKIP 表示「本门整体未检」（→ exit 3）；`unchecked` 表示「本门主体检了，
+//   但其中某个子项因缺输入没跑」——**如实列出、不改退出码**，让机器侧也能看见人读 detail 才看得到的信息。
+const unchecked = results.flatMap((r) => (Array.isArray(r.unchecked) ? r.unchecked.map((u) => `${(r.gate || '').split(' ')[0]}：${u}`) : []));
 
 // === 激活时序标记（v18.0.0 新增，冲突⑪）===
 // 实战教训：M-Exist-4/5/6/9 的前提均为「报告文件已落盘」（审计报告 / 审稿报告等）——
@@ -374,10 +385,11 @@ for (const r of results) {
 const p0 = hard.filter((r) => r.severity === 'P0').length;
 const p1 = hard.filter((r) => r.severity === 'P1').length;
 const p2 = hard.filter((r) => r.severity === 'P2').length;
+
 // 退出码语义（v2.5.2-dsh.13 修订，回应审计 P1「exit 0 与『任何一项不过都不得标记完成』矛盾」）：
 //   0 = 全项通过（无失败、无 SKIP）｜1 = 存在 P1 失败｜2 = 存在 P0 失败
 //   3 = 仅 P2 / LLM 兜底 / SKIP —— 需 LLM 复核，**不得**当作「通过」（旧版一律 exit 0）｜10 = 参数/路径错误
-//
+//   70 = **门内解析/读取失败**（`severity: 'ERROR'`，v18.62.4 P1-3）——内部/环境缺陷，**未对内容下结论**；
 // v18.11.0 F-1 反哺修订——硬 P0 红线（**不允许** T8 LLM 兜底覆盖）：
 //   以下 4 类是结构性硬缺陷，**必须真修复**后才能 exit≠2。理由：覆盖盲区/格式软提示/严格度过高可 LLM 兜底，
 //   但"结构缺失/编号缺失/数据不完整"是论文可用性的硬约束——LLM 标记为假阳性会掩盖真问题。
@@ -396,7 +408,9 @@ const hardRedLineHits = results
   .filter((r) => r.pass === false && HARD_RED_LINE_RE.test(String(r.gate || '')))
   .map((r) => `${String(r.gate).split(' ')[0]}(${r.severity})`);
 const anyFail = results.some((r) => r.pass === false);
-const exitCode = p0 > 0 ? 2 : (p1 > 0 ? 1 : (anyFail || skips > 0 ? 3 : 0));
+// v18.62.4（P1-3）：ERROR 优先级最高 —— 门自己没跑通时，p0/p1 的计数没有意义（可能漏检），
+//   故一律 70，让下游 `final-check.mjs` 读成「脚本/环境缺陷，勿触发修订轮」而不是「内容有 P1」。
+const exitCode = errors > 0 ? 70 : (p0 > 0 ? 2 : (p1 > 0 ? 1 : (anyFail || skips > 0 ? 3 : 0)));
 
 // === v18.52.0（反哺 F-BB）：换稿重裁的**中间态**识别 —— 报告曾忠实记录「只存在几秒」的状态 ===
 // 实测缺陷：主控**先改** `audits/闸门记录-T7.5.md` 的指纹互锁值、**后重写** `final/M-Gate-Report.json`，
@@ -451,6 +465,10 @@ const report = {
   date: new Date().toISOString().slice(0, 10),
   total: results.length,
   pass, p0, p1, p2, soft, skips,
+  // v18.62.4（P1-6）：**子检查未执行**的显式清单（门用 `unchecked: [...]` 声明）。
+  //   为什么单列而不是并进 skips：skips 会把整门记为「未检」并推到 exit 3；而这里描述的是
+  //   「本门主体检了、某个子项没跑」——**不改退出码**，但让机器侧看得见（旧版只有 detail 字符串里有人读的信息）。
+  ...(unchecked.length ? { unchecked } : {}),
   hard_red_line_hits: hardRedLineHits,   // v18.12.0（L-44）：非空 ⇒ 不接受 T8 LLM 兜底（T8/门侧共同强制）
   results: wantSummary ? results.filter((r) => !r.pass && r.severity !== 'LLM 兜底') : results,  // --summary 仅保留硬失败项，省 token
   exit: exitCode,
@@ -581,7 +599,12 @@ if (reportPath) {
         adj = JSON.parse(readFileSync(adjudicatePath, 'utf8'));
       } catch (e) {
         console.error(`裁定文件读取/解析失败: ${adjudicatePath}（${e.message}）`);
-        console.error('  期望 JSON：{"true_p0":0,"true_p1":0,"verdict":"…","llm_review":"① 逐条枚举… ② 真阳性扫描… ③ 规范冲突说明… ④ 独立复核来源…"}');
+        // v18.62.4（全量审计-v18.62.3 P2-5）：**这行提示曾逐字印出「证伪四件套」的四个关键词**，
+        //   而紧随其后的校验（下方 `FOUR`）正是靠**关键词命中**判定（≥3 项）。于是「把本提示原文
+        //   粘进 `llm_review`」即可让关键词校验满分 —— 校验退化为「格式检查」，声称的「证据」其实没被看。
+        //   故：提示**保留形状**（告诉调用方要哪些字段），但**不再给出可复制的关键词**。
+        //   判据：**模板不得包含校验所依赖的字面量**（否则校验等于在考自己出的题）。
+        console.error('  期望 JSON：{"true_p0":0,"true_p1":0,"verdict":"…","llm_review":"<证伪证据四件套，逐项写明；具体要件见 SKILL.md/审计报告，本处不再印出关键词>"}');
         process.exit(10);
       }
       const aP0 = adj.true_p0 ?? adj.true_p0_count;

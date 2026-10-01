@@ -49,15 +49,50 @@ test('审计修订 P2：B 组必须按 4 个检查项入分母（旧版整组算
   rmSync(d, { recursive: true, force: true })
 })
 
-test('V3 不误伤：T1 合格项目 → exit 0，产物逐项 exists', () => {
+// v18.62.4（全量审计-v18.62.3 P1-10）：本组由「缺回报也必须 exit 0」改为**两个方向都钉住**。
+//   为什么改：旧 V3 断言 `--role T1`（**不给 `--report`**）→ exit 0。而「六要素缺一不可」是本包硬约束，
+//   旧行为等于「**缺回报**」与「**回报合格**」产出同一个 0 —— fail-open。
+//   现：① 缺回报 → **22**（软提示，「只验了 A 组、六要素未核」，不等于合格）；
+//       ② 给了合规六要素回报 → **exit 0**（不误伤）。
+test('V3 不误伤：T1 合格项目 → A 组产物全 exists', () => {
   const d = makeProject()
   const r = run([SCRIPT, '--project', d, '--role', 'T1'])
-  assert.equal(r.code, 0, r.out.slice(0, 300))
   const j = parseJson(r)
-  assert.equal(j.exit, 0)
-  assert.equal(j.hard.length, 0)
+  // 缺回报：不得再是 0（P1-10）——判 22「需人工复核」，且必须带 B0 留痕
+  assert.equal(r.code, 22, '缺回报不得判合格（旧版 exit 0 是 fail-open）：' + r.out.slice(0, 300))
+  assert.equal(j.exit, 22)
+  assert.equal(j.hard.length, 0, '缺回报在收报模式下不判硬失败（交付前用 --require-gates 判硬）')
+  assert.ok(j.soft.some((s) => s.check === 'B0'), '须有 B0 软提示留痕：' + JSON.stringify(j.soft))
   assert.equal(j.artifacts.length, 2)
   assert.ok(j.artifacts.every((a) => a.exists))
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('V3b（P1-10 反向）：T1 带合规六要素回报 → exit 0', () => {
+  const d = makeProject()
+  const rep = [
+    '**做了什么**：完成文献检索。',
+    '**产物在哪**：literature/文献卡.md、literature/先行者清单.md。',
+    '**怎么验证**：逐条核对编号。',
+    '**已知问题**：无。',
+    '**下一步**：交 T2。',
+    '**状态机更新**：T1 完成。',
+    '**AI 使用披露**：本角色由 AI 辅助。',
+  ].join('\n')
+  const r = run([SCRIPT, '--project', d, '--role', 'T1', '--report', rep])
+  const j = parseJson(r)
+  assert.equal(r.code, 0, '合规回报不得误伤：' + r.out.slice(0, 300))
+  assert.equal(j.hard.length, 0)
+  assert.equal(j.soft.length, 0)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('V3c（P1-10）：`--require-gates` 下缺回报 → 硬判 21（交付前验收）', () => {
+  const d = makeProject()
+  const r = run([SCRIPT, '--project', d, '--role', 'T1', '--require-gates'])
+  const j = parseJson(r)
+  assert.ok([20, 21].includes(r.code), '交付前验收缺回报必须硬判（20/21）：' + r.out.slice(0, 300))
+  assert.ok(j.hard.some((h) => h.check === 'B0'), '须有 B0 硬失败：' + JSON.stringify(j.hard.map((h) => h.check)))
   rmSync(d, { recursive: true, force: true })
 })
 

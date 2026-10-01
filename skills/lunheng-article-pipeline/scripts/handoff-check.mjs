@@ -368,7 +368,24 @@ if (strict) {
 }
 
 // ── B 组：回报侧（给了 report 才跑） ────────────────────────────────────────
+// v18.62.4（全量审计-v18.62.3 P1-10）：**「没给回报」不再等于「回报合格」**（fail-open 修复）。
+//   病灶（实测）：旧版 `reportText == null` 时 B 组整组既不进 `total`、也不进 `hard`/`soft`
+//   → `handoff-check --project <p> --role T5` 在**六要素回报完全缺失**时照样 `exit 0`（= 合格），
+//   而「六要素缺一不可」是本包写进 SKILL.md / AGENTS.md 的硬约束。这正是本仓反复批判的
+//   「PASS 与『没输入』同形」，且发生在最常用的调用形态上（原生工具的 `report` 是可选参数）。
+//   边界（为什么不是一律判 20/21）：
+//     · `ROLE_TO_ARTIFACTS[role]` 为空（T0/T8）→ 本就不走收报验收，不受影响（A0 已如实软提示）；
+//     · **带 `--require-gates`**（交付前一次性验收）或**给了任何回报**时，缺回报 = **硬判**（21）；
+//     · **既没 `--require-gates` 也没回报**时——即调研/收报模式——记一条**软提示**（→ exit 22
+//       「需人工复核」）。理由：那正是工具 `lunheng_handoff_check` 的「查一下产物在不在」调用形态，
+//       硬判 21 会把「只想看产物」误报成「回报不合」；而 exit 22 仍**不等于 0**，不会静默放行。
+//     · 判据一句话：**缺输入要可见、且绝不与 0（合格）同形**。
 let report = null
+const reportExpected = required.length > 0
+if (reportText == null && reportExpected) {
+  if (opt.requireGates) addHard('B0', role, '未提供回报（缺 `--report` / `--report-file`）——本角色应带六要素交接回报，`--require-gates` 下判 21', 21)
+  else addSoft('B0', role, '未提供回报（缺 `--report` / `--report-file`）——本次只验了 A 组产物侧，回报六要素**未核**；交付前请用 `--require-gates` 复跑或补 `--report`')
+}
 if (reportText != null) {
   const norm = String(reportText)
   const lines = norm.split('\n').filter((l) => l.trim() !== '')

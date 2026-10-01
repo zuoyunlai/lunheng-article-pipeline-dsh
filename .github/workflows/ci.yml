@@ -176,3 +176,12 @@ jobs:
         #   「测试或工具偷偷写进真仓库」（忘了用临时夹具 / 把「检查」实现成「修复」/ 路径推导偏到真源树）。
         #   它同时是 v18.44.0 那起**未定位成因**的改写事故在 CI 侧的固定观察点。
         run: node scripts/no-write-check.mjs -- node --test "tests/**/*.test.mjs" "skills/*/tests/**/*.test.mjs"
+      # v18.62.4（全量审计-v18.62.3 P1-11）：**这一条曾不存在，而上面那条包装曾吞掉测试退出码**——
+      #   `no-write-check` 旧版只看「有没有改写」与「命令是否存在（ENOENT）」，被包命令退出非 0
+      #   既不判负也不透传 → 604 个用例在 PR/push 上**完全不阻塞**，只剩 `publish.yml`（打 tag 时）
+      #   才拦，为时已晚。现两头收口：① 包装器内部把「被包命令 exit≠0」判负；② 再加下面这一步**裸跑**
+      #   同一 glob —— 即使将来包装器语义再变，测试失败也一定红，且失败细节直接落在 GitHub 的测试报告里。
+      #   `--test-timeout` 与 `package.json#scripts.test` 同源：此前三处 glob 同形而超时参数只有
+      #   package.json 有 → CI 里挂死的用例永不超时。
+      - name: 全量套（裸跑，阻塞）
+        run: node --test --test-timeout=180000 "tests/**/*.test.mjs" "skills/*/tests/**/*.test.mjs"

@@ -2,6 +2,11 @@
 //   真实项目 baseline（exit + stdout/report sha256）对账）。主脚本构建 ctx 后按原 results 顺序调用：
 //   mForm2 → mForm7 →（主文件计算 body/endnote/prose 并挂 ctx）→ mForm1/3/5/4/6/8/9 →
 //   mExist1 → mForm10/11 → mExist4..10/2/3 → mIntegrity1。
+// ⚠️ v18.62.4（全量审计-v18.62.3 P1-3）：本文件内的**解析/读取失败**一律记 `severity: 'ERROR'`（不再记 P1）
+//   （`grep -n '解析失败: \${e.message}'` 找全部站点；`mexist-gates.mjs` 同理）。理由：P1 会被
+//   `final-check.mjs` 读成「存在 P1 残留，可触发 T5 修订一轮」→ **脚本缺陷把未被修改的稿件送进付费修订轮**；
+//   且本仓契约明写「内部错 = 70，绝非 1」（`_lib/exit-guard.mjs`）。归并见 `m-gate-check.mjs`：
+//   `errors > 0 → exit 70`（内部/环境缺陷，未对内容下结论）。本注记使下方常量整体下移 6 行。
 //   唯一非逐字变换：mForm6 原以顶层 let dataCard/dataCardReadError 与下游门共享，现改为函数尾
 //   回写 ctx（下游 mForm9 / M-Exist-3 / M-Integrity-1 在其后读 ctx，时序不变）。
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
@@ -419,7 +424,19 @@ try {
     if (sec.length < THRESHOLDS.mform8MinSecLen) continue;
     const secTitle = sec.split('\n')[0].trim();
     const titleNorm = secTitle.replace(/^[0-9一二三四五六七八九十]+\s*[、.．:：\s]+/u, '').replace(/[：:].*$/u, '').trim();
-    if (FRONT_BACK.some((t) => titleNorm === t || titleNorm.startsWith(t) || titleNorm.includes(t))) continue;
+    if (FRONT_BACK.some((t) => titleNorm === t || titleNorm.startsWith(t) || titleNorm.includes(t))) {
+      // v18.62.4（全量审计-v18.62.3 P1-7）：**区分「丢弃的是前后置节」与「丢弃的其实是正文」**。
+      //   实测病灶：正文用 `### 论点N` 组织时，它被并入其所属 H2；若该 H2 标题是 `摘要` 等前后置词，
+      //   整块（含全部 `###` 正文）被这一个 `continue` 丢掉 → `total` 停在 0 → 旧版判「通过」
+      //   （detail 却写着「承重墙未检…不是「通过」」）。
+      //   判据：只有前后置词的节（摘要 / 关键词 / Abstract）丢掉不算；**带了非前后置 H3 子标题的节**
+      //   才算「把真内容一起丢了」→ 计入 `frontBackSwallowed`，供下方判定为「未检」。
+      const h3Titles = [...sec.matchAll(/^###[ \t\u3000]+(\S.*?)[ \t\u3000]*$/gm)]
+        .map((m) => m[1].replace(/^[0-9一二三四五六七八九十]+\s*[、.．:：\s]+/u, '').replace(/[：:].*$/u, '').trim())
+        .filter((t) => t && !FRONT_BACK.some((fb) => t === fb || t.startsWith(fb) || t.includes(fb)));
+      if (h3Titles.length > 0) mform8Findings.frontBackSwallowed = (mform8Findings.frontBackSwallowed || 0) + 1;
+      continue;
+    }
     mform8Findings.total++;
     const secProse = stripCodeSpans(sec);          // 剥掉代码/反引号里的字面量编号
     const hasL = /\[L\d+\]/.test(secProse);
@@ -617,10 +634,24 @@ try {
   //   单类证据那一档由既有 `weak`（覆盖 <2 类）承担 → P1；零证据仍在 `L_missing` → P0。
   //   `pass` 必须为 false 才会被主脚本计入 P2（主脚本按 `pass === false` 筛、再按 severity 分档）。
   const noLOnly8 = mform8Findings.noLOnly || 0;
-  let mform8Pass = (mform8Findings.L_missing === 0 && mform8Findings.weak === 0 && !wallHard && noLOnly8 === 0);
-  let mform8Severity = mform8Findings.L_missing > 0 ? 'P0'
-    : (wallHard || mform8Findings.weak > 0 ? 'P1'
-      : (noLOnly8 > 0 ? 'P2' : '通过'));
+  // v18.62.4（全量审计-v18.62.3 P1-7）：**`total === 0` 不得判通过**。
+  //   为什么（实测复现）：节切分只按 H2；若正文实质段落全挂在标题命中 `FRONT_BACK` 的 H2 之下
+  //   （如 `## 摘要` + 若干 `### 论点N`），该 H2 被整节 `continue` 丢弃 → `mform8Findings.total` 停在 0
+  //   → 旧版照样 `mform8Pass = true` / `severity = '通过'`，detail 里却写着「承重墙**未检**…**不是**「通过」」。
+  //   即：**分母塌成 0 时，机器说通过、人读说不是通过**。现按「未检」语义收口（与同仓
+  //   `g-audit-check.mjs` 的 `skipped → exit 3` 同判据；不升 P0/P1，因为「没扫到段」不等于「段里有缺陷」）。
+  const mform8NoSec = mform8Findings.total === 0;
+  // v18.62.4（全量审计-v18.62.3 P1-7）：只有「**前置/后置 H2 把实质 H3 正文整块吞掉**」这一种
+  //   0 段形态才记 `SKIP`（未检）——它意味着分节口径与正文结构不匹配，此时「0 段」不是「干净」而是「没检」。
+  //   其余 0 段（各节都短于阈值、根本没有可判节）**不进 SKIP**：那属夹具/短稿的正常形态，
+  //   判 SKIP 会让存量短夹具大面积翻转（本条修法的第一次尝试就踩了这个坑，由 batch17 的 F-BH 用例抓出）。
+  const mform8Unchecked = mform8NoSec && (mform8Findings.frontBackSwallowed || 0) > 0;
+  let mform8Pass = mform8Unchecked ? 'SKIP'
+    : (mform8Findings.L_missing === 0 && mform8Findings.weak === 0 && !wallHard && noLOnly8 === 0);
+  let mform8Severity = mform8Unchecked ? 'SKIP'
+    : mform8Findings.L_missing > 0 ? 'P0'
+      : (wallHard || mform8Findings.weak > 0 ? 'P1'
+        : (noLOnly8 > 0 ? 'P2' : '通过'));
   // v18.2.5 新增：wallBit 附带**实际选中的清单表头**（让「锚点选错表」这类问题自带证据、可事后核对）。
   const wallHeadBit = wall8.checked && wall8.headRow
     ? `（清单锚点表头：${wall8.headRow.slice(0, 46)}${wall8.headRow.length > 46 ? '…' : ''}）`
@@ -645,15 +676,19 @@ try {
   //   并明写上方「备注」/「P2 提示」不参与档位判定。
   //   判据（可迁移）：**凡「结论 + 若干观察」并排输出，必须显式标出哪一项是结论的依据**——
   //   否则读者会挑离结论最近的那条当理由（本轮实测：主控自己就这么读了）。
-  const sevCause = mform8Findings.L_missing > 0
-    ? `P0：${mform8Findings.L_missing} 段缺任意证据`
-    : (wallHard
-      ? `P1：${wall8.overload.length ? '承重墙超载' : '承重墙幽灵编号'}`
-      : (mform8Findings.weak > 0
-        ? `P1：${mform8Findings.weak} 段覆盖 <2 类证据（F-AH ② 档）`
-        : (noLOnly8 > 0
-          ? `P2：${noLOnly8} 段有证据但缺 [Lxx]（F-AH ③ 档）`
-          : '通过：三段判定与承重墙硬项均无命中')));
+  const sevCause = mform8Unchecked
+    ? `未检（SKIP）：**0 个可判段，但有 ${mform8Findings.frontBackSwallowed} 个前后置节吞掉了带实质 H3 子标题的内容** —— ` +
+      '分节口径（只按 H2）与本文结构不匹配：正文实质段落挂在 `### …` 之下、其所属 H2 标题命中前后置关键词（摘要/引言/结语…）。' +
+      '**不得读成「全文已检且干净」**；请改用 H2 组织实质章节，或由 T8 按本项 SKIP 复核'
+    : mform8Findings.L_missing > 0
+      ? `P0：${mform8Findings.L_missing} 段缺任意证据`
+      : (wallHard
+        ? `P1：${wall8.overload.length ? '承重墙超载' : '承重墙幽灵编号'}`
+        : (mform8Findings.weak > 0
+          ? `P1：${mform8Findings.weak} 段覆盖 <2 类证据（F-AH ② 档）`
+          : (noLOnly8 > 0
+            ? `P2：${noLOnly8} 段有证据但缺 [Lxx]（F-AH ③ 档）`
+            : '通过：三段判定与承重墙硬项均无命中')));
   const sevBit = `档位依据：${sevCause}（**只有本项决定档位**；上方「承重墙 …条标注」/「备注」/「P2 提示」均为观察，不参与档位判定）`;
   results.push({
     gate: 'M-Form-8 三角验证',
@@ -672,7 +707,7 @@ try {
     severity: mform8Severity,
   });
 } catch (e) {
-  results.push({ gate: 'M-Form-8 三角验证', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
+  results.push({ gate: 'M-Form-8 三角验证', pass: false, detail: `解析失败: ${e.message}`, severity: 'ERROR' });
 }
 
 }
@@ -795,7 +830,7 @@ try {
     });
   }
 } catch (e) {
-  results.push({ gate: 'M-Form-9 图件闭环', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
+  results.push({ gate: 'M-Form-9 图件闭环', pass: false, detail: `解析失败: ${e.message}`, severity: 'ERROR' });
 }
 
 }
@@ -924,7 +959,7 @@ try {
     });
   }
 } catch (e) {
-  results.push({ gate: 'M-Form-10 索引段完整性', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
+  results.push({ gate: 'M-Form-10 索引段完整性', pass: false, detail: `解析失败: ${e.message}`, severity: 'ERROR' });
 }
 
 }
@@ -1106,7 +1141,7 @@ try {
     });
   }
 } catch (e) {
-  results.push({ gate: 'M-Form-11 素材按需加载闭环', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
+  results.push({ gate: 'M-Form-11 素材按需加载闭环', pass: false, detail: `解析失败: ${e.message}`, severity: 'ERROR' });
 }
 
 }

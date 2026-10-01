@@ -56,7 +56,7 @@ test('审计修订 P2：/lunheng-status 不得用 `..` 等参数读到 run/ 之�
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
 
-test('C-6 /lunheng-stats：参数白名单——仅 `--json` 放行，其它 token 一律拒绝且不派生子进程', async () => {
+test('C-6 /lunheng-stats：参数白名单——`--json` 与**受围栏的** `--run-dir` 放行，其它一律拒绝', async () => {
   const { d } = mkProject('白名单')
   const captured = await grabRegistration(
     (mod, ctx, o) => mod.installStatsCommand(ctx, o),
@@ -64,11 +64,35 @@ test('C-6 /lunheng-stats：参数白名单——仅 `--json` 放行，其它 tok
   )
 
   // ① 未授权参数 → error，且**不得**走到 spawnSync
-  for (const bad of ['--run-dir', '/etc', '--bogus', 'run/其它项目', '--json --run-dir=/tmp']) {
+  // v18.62.4（P2-3）：`--run-dir` 本身**已不再**是未授权旗标（文档/CHANGELOG 一直把它写成可用形态，
+  //   而宿主命令一律拒绝 = 同仓自相矛盾）。现改为「放行但受围栏」，故本清单换成真正越界的形态。
+  for (const bad of [
+    '--bogus',
+    'run/其它项目',
+    '--json --run-dir=/tmp',
+    '--run-dir /etc',                 // 越出 <工作区>/run
+    '--run-dir ../..',                // 词法越界
+    '--run-dir',                      // 缺值
+    '--run-dir /definitely-not-exist', // 不存在
+  ]) {
     const r = await captured.handler({ rawInput: bad, agent: { session: { header: { cwd: d } } } })
     assert.equal(r.kind, 'error', `未授权输入 "${bad}" 必须被拒绝，实得 kind=${r.kind}`)
     assert.match(r.text, /白名单|未授权/, `拒绝理由须点明白名单，实得：${r.text}`)
     assert.ok(!r.text.includes('run 遥测看板'), '被拒时不得产出看板正文（说明已执行脚本）')
+  }
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('P2-3 /lunheng-stats：`--run-dir` **指向工作区内 run/** → 放行（文档与实现对齐）', async () => {
+  const { d } = mkProject('围栏内')
+  const captured = await grabRegistration(
+    (mod, ctx, o) => mod.installStatsCommand(ctx, o),
+    { cwd: d, skillRoot: SKILL_DIR, scriptTimeoutMs: 30000 },
+  )
+  // 相对形态（指到工作区内的 run/）与绝对形态都应被接受
+  for (const ok of ['--run-dir run', `--run-dir ${join(d, 'run')}`]) {
+    const r = await captured.handler({ rawInput: ok, agent: { session: { header: { cwd: d } } } })
+    assert.notEqual(r.kind, 'error', `工作区内 run/ 必须放行（实得：${r.text}）`)
   }
   rmSync(d, { recursive: true, force: true })
 })

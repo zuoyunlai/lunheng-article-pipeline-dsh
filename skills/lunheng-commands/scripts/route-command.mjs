@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // route-command.mjs — /lunheng <cmd> [args] 路由到论衡阶段
-// 版本：v1.0.2
+// 版本：v1.0.3
 // 本脚本为论衡（lunheng-article-pipeline v18.7.0+）的薄壳 wrapper 命令解析器
 // 不引入新角色 / 新阶段 / 新 M 门；所有重活仍走论衡子代理
 //
@@ -85,9 +85,17 @@ export function listCommands() {
 }
 
 // CLI 调用入口（v1.0.2：可移植判定，见文件头 F6 注）
+// ⚠️ v18.62.4（全量审计-v18.62.3 P1-4）：**旧版此处必然走 usage 分支**——
+//   旧码 `routeCommand(process.argv)`：`process.argv` 的形状是 `[node, <脚本绝对路径>, …用户参数]`，
+//   于是 `routeCommand` 里的 `argv[1] !== '-lunheng'` **恒真**（argv[1] 永远是脚本路径）→
+//   命令行调用**永远**打印用法并以 exit 1 结束，下面 help 表与 JSON 打印在真实调用下**不可达**。
+//   （单测 `tests/route.test.mjs` 传的是**合成 argv** `['node','-lunheng',…]`，故测不到这个缺陷。）
+//   修法：**在入口处剥掉前两位**，把合成 argv 重新交给 `routeCommand`（函数契约不动、22 条单测不受影响）。
+//   为什么不在 `routeCommand` 内部判断：它是**单测直接导入的纯函数**，argv 契约
+//   （`argv[1] === '-lunheng'`）已被用例钉住，且 `tests/route.test.mjs:142` 专门断言「缺前缀 → 用法错」。
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
-  const result = routeCommand(process.argv);
+  const result = routeCommand(['node', '-lunheng', ...process.argv.slice(2)]);
   if (result.error) {
     console.error(result.error);
     process.exit(1);
@@ -97,8 +105,13 @@ if (isMain) {
     for (const c of listCommands()) {
       console.log(`  ${c.cmd.padEnd(12)} ${c.desc}`);
     }
-    console.log('\n帮助：-lunheng -help');
+    console.log('\n用法：node scripts/route-command.mjs <命令> [参数…]（`-help` / `-h` 均为本帮助）');
     process.exit(0);
   }
-  console.log(JSON.stringify(result, null, 2));
+  try {
+    console.log(JSON.stringify(result, null, 2));
+  } catch (e) {
+    // 管道提前关闭（如 `| head -1`）会抛 EPIPE：写不出去不是本命令的错，不该渲染成崩溃
+    if (e && e.code !== 'EPIPE') throw e;
+  }
 }

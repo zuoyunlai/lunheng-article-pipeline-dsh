@@ -298,6 +298,22 @@ for (const f of active) {
     //   「会枚举清单」的文件做**缺项**检查，避免误伤只提单个命令的文档：判「枚举」= 斜杠分隔 ≥5 个
     //   -token，或代码块 ≥5 行 /lunheng -xxx。只查缺项（⊇ 真源），不查多列（-auto/-manual/-h/--confirm 不误伤）。
     const canonical = keys.filter((k) => k !== '-h');   // 11 个正命令（-h 别名不计）
+    // v18.62.4（全量审计-v18.62.3 P1-2/P2-5）：**枚举检查的扫描面与方向都补齐**。
+    //   旧实现的两个缺口（均有实测依据）：
+    //     ① **扫描面**：枚举检查只被调用在 `skills/lunheng-commands/**` 与 `lib/index.js` 上
+    //        （见下方两个调用点），而**数字**检查（`scanFile`）遍历的是全量 `active`（主技能 80 个 .md）。
+    //        同一规则的两半扫描面不同 → 主技能自己的文档从不受枚举检查。
+    //        实测后果：`references/pipeline-readme.md` 写「11 个斜杠命令」而代码块只列 **10** 个（缺 `-stats`），
+    //        而该文件正是 T1-T9 派发话术的复制源（SKILL.md 明写「勿凭记忆复制」）。
+    //     ② **方向**：`missing` 只做「真源 ⊆ 文档」（代码有、文档漏），**不做反向**。
+    //        故 `docs/installation.md` 可以列出 `compression-cycle / evidence-bundle / m-gate / handoff-check`
+    //        这类**根本不存在的命令名**而不判红（读者会去调一个不存在的命令）。
+    //   现按「**数字查主技能 + 枚举查全部**」补齐：enumCheck 的调用点加上 `active` 与 `docsActive`。
+    //   反向判据的**误报边界**（刻意收窄，防把文档里的正当 `-x` 词判红）：
+    //     · 只认**三级标题行内、形如 `/lunheng -x`** 的写法——它是「列出命令」的强信号；
+    //     · 行内以 `（` `(` `` ` `` 开始的括注（如 `` `-cite`（-auto/-manual）``）不算声明；
+    //     · `-auto/-manual/-h/--confirm/--json/--dry-run/--diff/--report/--run-dir` 等已登记旗标/模式不计。
+    const DECLARED_NONCMD = new Set(['-auto', '-manual', '-h', '--confirm', '--json', '--dry-run', '--diff', '--report', '--run-dir', '--pending', '--level', '--summary', '--project', '--role']);
     const enumCheck = (absPath, rel) => {
       if (!existsSync(absPath)) return;
       const text = readFileSync(absPath, 'utf8');
@@ -316,7 +332,19 @@ for (const f of active) {
       if (missing.length) {
         errors.push(`[P1 命令枚举缺项] ${rel} 枚举了命令清单但缺 ${missing.join(' / ')}（真源 = route-command.mjs COMMANDS 表 ${canonical.length} 项，-h 别名与 -cite 3 模式不计入）`);
       }
+      // 反向：文档**不得声明真源里没有的命令名**（见上方边界注释）
+      for (let i = 0; i < lines.length; i++) {
+        const m = /^\s*[-*]\s+`\/lunheng\s+(-[a-z][a-z0-9-]*)/.exec(lines[i]);
+        if (!m) continue;
+        const tok = m[1];
+        if (canonical.includes(tok) || DECLARED_NONCMD.has(tok)) continue;
+        errors.push(`[P1 命令幻影声明] ${rel}:${i + 1} 声明了真源里不存在的命令 \`${tok}\`（真源 = route-command.mjs COMMANDS 表：${canonical.join(' / ')}）——读者会去调用一个不存在的命令`);
+      }
     };
+    // v18.62.4（P1-2）：主技能文档同样要过枚举检查（旧版只过数字检查）
+    for (const f of active) enumCheck(f, relative(ROOT, f).replaceAll('\\', '/'));
+    // v18.62.4（P1-2/P2-5）：随包 `docs/**`（`ctx.docsActive`，已排除历史留痕）也纳入
+    for (const f of (ctx.docsActive || [])) enumCheck(f, relative(REPO_ROOT, f).replaceAll('\\', '/'));
     if (existsSync(cmdDir)) {
       const walkEnum = (dir) => {
         for (const e of readdirSync(dir, { withFileTypes: true })) {

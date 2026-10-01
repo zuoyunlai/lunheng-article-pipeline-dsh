@@ -5,7 +5,8 @@
 //   · 默认：快照 → 跑**发布序列**（全量套 + 四道具）→ 逐步比对 → 报告被改写的文件
 //   · `-- <命令…>`：只跑指定命令（用于怀疑某个具体工具时，例如 `-- node skills/.../consistency-check.mjs`）
 //   · `--root <目录>`：改快照根（测试夹具用；默认 = 本仓库根）
-// exit `0` 无改写 / `1` 有改写（逐文件列名）/ `10` 参数错 / `70` 内部错误
+// exit `0` 无改写**且每步都正常收尾** / `1` 有改写 **或** 有步骤未能开始/未正常收尾（逐项列名）
+//      / `10` 参数错 / `70` 内部错误
 //
 // 为什么有这个脚本（**来自一次未定位成因的真实事故**，v18.44.0）：
 //   发版前的 `consistency-check` 报出 `[P1 标题内嵌版本漂移] auto_cite-补充-template.md`——
@@ -100,10 +101,21 @@ try {
     const pre = snapshot();
     let exit = 0, spawnErr = null;
     try { execFileSync(s.cmd, s.args, { cwd: root, encoding: 'utf8', stdio: 'pipe' }); }
-    catch (e) { exit = e.status ?? -1; spawnErr = e.code === 'ENOENT' ? `找不到命令 ${s.cmd}` : null; }
+    catch (e) {
+      // v18.62.4（全量审计-v18.62.3 P1-1/P1-11）：**「没跑起来」不等于「没改写」**。
+      // 旧实现只记三种码，于是 EPERM / EACCES（受限沙箱禁命名管道）被记成 `exit=-1` 后**完全不影响结论**
+      // —— CI 里本脚本正包着全量测试（ci.yml:178），被包命令失败时步骤照样绿。
+      // 现改为**归因三分类**（每类都具名落盘，不把不同原因混成一个数字）：
+      //   ① notFound ：可执行文件找不到（ENOENT）——命令名写错；
+      //   ② notStart ：受限环境拒绝派生（EPERM/EACCES）等——**环境不可用**，不是「无改写」；
+      //   ③ exitedNonZero：真跑起来了但自己退非 0（含脚本自身的「有发现」语义，如 exit 1）。
+      // 三者与「跑了且 exit 0 且无改写」在快照上**完全一样**，故必须显式区分。
+      exit = e.status ?? -1;
+      if (e.code === 'ENOENT') spawnErr = `找不到命令 ${s.cmd}（ENOENT）`;
+      else if (e.code === 'EPERM' || e.code === 'EACCES') spawnErr = `无法派生（${e.code}）：环境拒绝启动该命令——**不是**「无改写」`;
+      else if (exit === -1 || exit === null) spawnErr = `未能启动（${e.code || '未知'}）`;
+    }
     const d = compare(pre, snapshot());
-    // ⚠️ 「子进程没跑起来」与「跑了但没改写」在快照上**长得一样**——必须显式区分，
-    //    否则本脚本会在「命令根本不存在」时给出「✓ 无改写」这种假绿（首版即如此）。
     steps.push({ label: s.label, exit, spawnErr, ...d });
   }
 } catch (e) {
@@ -112,7 +124,15 @@ try {
 }
 const total = compare(before, snapshot());
 const bad = steps.filter((s) => s.total > 0);
-const broken = steps.filter((s) => s.spawnErr);
+const notRun = steps.filter((s) => s.spawnErr);
+// v18.62.4（P1-1/P1-11）：**被包命令自己退非 0 也必须判负**。
+//   为什么（本条的由来）：CI 用本脚本包住全量测试（`.github/workflows/ci.yml:178`），
+//   而旧版只看 `spawnErr`（ENOENT）与改写数 → 被包测试**失败也不影响步骤结果**，
+//   于是 PR/push 侧 604 个用例全部变成非阻塞守卫（发版侧 publish.yml 才拦，为时已晚）。
+//   代价与边界（如实）：脚本自身的「有发现」语义（如 `-- node scripts/consistency-check.mjs`
+//   自报 exit 1）也会让本步判负——这正是「有发现就不该绿」的期望，但在**单命令排查**用法下
+//   要读下面的归因行区分「它发现了问题」与「它没跑起来」。
+const unexpected = steps.filter((s) => !s.spawnErr && s.exit !== 0);
 
 if (json) {
   console.log(JSON.stringify({ root, steps, total: { ...total, changed: show(total.changed), added: show(total.added), removed: show(total.removed) } }, null, 2));
@@ -126,11 +146,22 @@ if (json) {
       if (s.removed.length) console.log(`      删除：${show(s.removed).join(', ')}`);
     }
   }
-  console.log(broken.length > 0
-    ? `\n✗ **有步骤没跑起来**：${broken.map((s) => s.label).join('、')}——「没跑」与「跑了没改写」在快照上一样，故必须显式失败。`
-    : (bad.length === 0
-      ? `\n✓ 无改写：${steps.length} 步跑完，仓库 ${before.size} 个文件逐一哈希未变`
-      : `\n✗ **有改写**：${bad.length} 步改动了仓库（详见上表）。这说明某一步在上面的流程里**写了真仓库**——`
-        + '典型成因：测试忘了用临时夹具、工具把「检查」实现成了「修复」、或脚本的路径推导偏到了真源树。'));
+  console.log(
+    notRun.length > 0
+      ? `\n✗ **有步骤没跑起来**（${notRun.length} 步）：${notRun.map((s) => s.label).join('、')}`
+        + '\n  ——「没跑」与「跑了没改写」在快照上一样，故必须显式失败。'
+        + '\n  常见成因：命令名写错（ENOENT）／受限文件策略禁子进程（EPERM，此时**整条检查无效**，'
+        + '应改用完整权限或直接跑对应门，而不是把本步当通过）。'
+      : unexpected.length > 0
+        ? `\n✗ **有步骤未正常收尾**（${unexpected.length} 步）：`
+          + unexpected.map((s) => `${s.label}（exit=${s.exit}）`).join('、')
+          + '\n  ——被包命令退非 0 = 它**自报失败或有发现**，本步不得判绿。'
+          + '\n  若这是「命令自身的有发现语义」（如 consistency-check 报出漂移），请按上表 exit 码判读该门结论；'
+          + '\n  若这是「命令没跑起来」，它应已被上一类（没跑起来）捕获——两者都在上表里逐行可见。'
+        : bad.length === 0
+          ? `\n✓ 无改写：${steps.length} 步全部 exit 0 且仓库 ${before.size} 个文件逐一哈希未变`
+          : `\n✗ **有改写**：${bad.length} 步改动了仓库（详见上表）。这说明某一步在上面的流程里**写了真仓库**——`
+            + '典型成因：测试忘了用临时夹具、工具把「检查」实现成了「修复」、或脚本的路径推导偏到了真源树。',
+  );
 }
-process.exit(broken.length > 0 || bad.length > 0 ? 1 : 0);
+process.exit(notRun.length > 0 || unexpected.length > 0 || bad.length > 0 ? 1 : 0);

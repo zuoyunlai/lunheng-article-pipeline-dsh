@@ -186,12 +186,16 @@ test('行引用守卫：本批引用的 `文件:行号` 逐条指向所声称内
   assert.match(gl[259 - 1], /至多 \+1 深化轮/, 'glossary.md:259 须是 B 轨「至多 +1 深化轮」')
 
   const pl = lines('references', 'pipeline-readme.md')
-  assert.match(pl[858 - 1], /B 轨累计已达 1 → 不再开/, 'pipeline-readme.md:858 须是 B 轨「累计已达 1 → 不再开」（v18.60.1：T9 整合契约段插入后由 819 下移至 858）')
+  // v18.62.4（全量审计-v18.62.3 P1-2）：斜杠命令清单补 `-stats` 与 `-status --pending` 两行
+  //   → 本文件 858 之后的引用整体下移 2 行（858 → 860）。判据同上：引错行号即红。
+  assert.match(pl[860 - 1], /B 轨累计已达 1 → 不再开/, 'pipeline-readme.md:860 须是 B 轨「累计已达 1 → 不再开」（v18.62.4：命令清单补 2 行后由 858 下移至 860）')
 
   const mf = lines('scripts', '_lib', 'mgate-gates', 'mform-gates.mjs')
-  assert.match(mf[260 - 1], /ENDNOTE_SCAN_EXEMPT = \['AI 使用声明'\]/, 'mform-gates.mjs:260 须是整节豁免白名单（v18.60.1：TEMP_MARKERS_AI_DECL_EXEMPT 段插入后由 254 下移至 260）')
-  // v18.60.1：mform-gates.mjs 因新增 TEMP_MARKERS_AI_DECL_EXEMPT 段（下划线豁免）整体下移 6 行，以下三处同步。
-  assert.match(mf[250 - 1], /案例卡\|数据卡\|文献卡/, 'mform-gates.mjs:250 须含文末禁止词（数据卡/案例卡）（v18.60.1：由 244 下移至 250）')
-  assert.match(mf[280 - 1], /const endnoteNonBiblio/, 'mform-gates.mjs:280-283 须是「仅豁免数字编号书目行」那段（v18.60.1：由 274 下移至 280）')
-  assert.match(mf[283 - 1], /join\('\\n'\)/, '同上：:283 为止（v18.60.1：由 277 下移至 283）')
+  // v18.62.4（全量审计-v18.62.3 P1-3）：文件头新增 4 行 ERROR 归类注记 → 以下常量整体下移 5 行
+  //   （254 → 259 / 244 → 249 / 274 → 279 / 277 → 282）。判据同上：引错行号即红。
+  assert.match(mf[265 - 1], /ENDNOTE_SCAN_EXEMPT = \['AI 使用声明'\]/, 'mform-gates.mjs:265 须是整节豁免白名单（v18.62.4：ERROR 注记插入后由 260 下移至 265）')
+  // v18.62.4：同上整体下移。
+  assert.match(mf[255 - 1], /案例卡\|数据卡\|文献卡/, 'mform-gates.mjs:255 须含文末禁止词（数据卡/案例卡）（v18.62.4：由 250 下移至 255）')
+  assert.match(mf[285 - 1], /const endnoteNonBiblio/, 'mform-gates.mjs:285-288 须是「仅豁免数字编号书目行」那段（v18.62.4：由 280 下移至 285）')
+  assert.match(mf[288 - 1], /join\('\\n'\)/, '同上：:288 为止（v18.62.4：由 283 下移至 288）')
 })

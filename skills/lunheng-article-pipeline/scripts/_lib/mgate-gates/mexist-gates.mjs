@@ -1,4 +1,8 @@
 // M-Exist 门族（v18.3.1 审计 B2 阶段 1：从 m-gate-check.mjs 抽离为门模块，行为逐字等价——
+// v18.62.4（全量审计-v18.62.3 P1-3）：门内的**解析/读取失败**一律记 `severity: 'ERROR'`（不再记 P1）。
+//   为什么：P1 会被 `final-check.mjs` 读成「存在 P1 残留，可触发 T5 修订一轮」→ **脚本缺陷会把未被修改的
+//   稿件送进付费修订轮**；且本仓契约明写「内部错 = 70，绝非 1」（见 _lib/exit-guard.mjs）。
+//   归并见 m-gate-check.mjs 的 `errors` 统计：errors>0 → exit 70（内部/环境缺陷，未对内容下结论）。
 //   run/ 49 组真实项目 baseline（exit + stdout/report sha256）对账）。主脚本构建 ctx 后按原
 //   result 顺序调用：mExist1 → M-Form-10/11（仍在主脚本）→ mExist4..mExist10 → mExist2 → mExist3。
 //   每个门函数只读 ctx 共享态并往 ctx.results 推结果；模块不持有跨门可变态。
@@ -290,7 +294,7 @@ try {
     });
   }
 } catch (e) {
-  results.push({ gate: 'M-Exist-4 审计条目闭环', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
+  results.push({ gate: 'M-Exist-4 审计条目闭环', pass: false, detail: `解析失败: ${e.message}`, severity: 'ERROR' });
 }
 
 }
@@ -315,7 +319,7 @@ try {
   if (!hasAudit5) {
     results.push({ gate: 'M-Exist-5 阶段闸门记录表', pass: true, detail: 'N/A：尚无审计报告（未进入 Phase 4，闸门记录留待 T7.5）', severity: '通过' });
   } else if (!auditsDir5) {
-    results.push({ gate: 'M-Exist-5 阶段闸门记录表', pass: false, detail: '找不到 audits/ 目录，无法定位闸门记录', severity: 'P1' });
+    results.push({ gate: 'M-Exist-5 阶段闸门记录表', pass: false, detail: '找不到 audits/ 目录，无法定位闸门记录', severity: 'ERROR' });
   } else {
     const tplItems = { 'T2.5': [], 'T7.5': [] };
     const normLabel = (s) => String(s).replace(/[\s*`（）()【】\[\]：:、，,。.／/\-—_|]/g, '');
@@ -637,7 +641,7 @@ try {
     });
   }
 } catch (e) {
-  results.push({ gate: 'M-Exist-5 阶段闸门记录表', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
+  results.push({ gate: 'M-Exist-5 阶段闸门记录表', pass: false, detail: `解析失败: ${e.message}`, severity: 'ERROR' });
 }
 
 }
@@ -834,7 +838,7 @@ try {
     });
   }
 } catch (e) {
-  results.push({ gate: 'M-Exist-6 审稿报告与期刊匹配', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
+  results.push({ gate: 'M-Exist-6 审稿报告与期刊匹配', pass: false, detail: `解析失败: ${e.message}`, severity: 'ERROR' });
 }
 
 }
@@ -941,7 +945,7 @@ try {
     });
   }
 } catch (e) {
-  results.push({ gate: 'M-Exist-7 交付说明字段齐备', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
+  results.push({ gate: 'M-Exist-7 交付说明字段齐备', pass: false, detail: `解析失败: ${e.message}`, severity: 'ERROR' });
 }
 
 }
@@ -1025,7 +1029,7 @@ try {
     });
   }
 } catch (e) {
-  results.push({ gate: 'M-Exist-8 批判报告覆盖', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
+  results.push({ gate: 'M-Exist-8 批判报告覆盖', pass: false, detail: `解析失败: ${e.message}`, severity: 'ERROR' });
 }
 
 }
@@ -1132,7 +1136,7 @@ try {
     });
   }
 } catch (e) {
-  results.push({ gate: 'M-Exist-9 审计报告 G 项覆盖', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
+  results.push({ gate: 'M-Exist-9 审计报告 G 项覆盖', pass: false, detail: `解析失败: ${e.message}`, severity: 'ERROR' });
 }
 
 }
@@ -1157,9 +1161,12 @@ try {
     //   移动一个文件即可关掉两道门。现按「未检（degraded）」如实陈述，并指向连带规则。
     results.push({
       gate: 'M-Exist-10 大纲 §11 精简段',
-      pass: true,
-      detail: 'N/A 且**未检**：未找到 analysis/分析大纲.md（若为轻量档主动省 T4，须按 SKILL.md 连带规则：主控代产最小 §11 精简段，或在 status.md + final/局限性.md 显式记豁免）',
-      severity: 'P2',
+      // v18.62.4（全量审计-v18.62.3 P1-5）：`pass: true` → `'SKIP'`。detail 早就写着「N/A 且**未检**…」
+      //   而机器侧记「通过」→ 移走 `analysis/分析大纲.md` 即可让本门静默变成 exit 0（同仓
+      //   `mexist-gates.mjs:15` 的等价情形用 `pass: 'SKIP'` → exit 3，本处漏了）。
+      pass: 'SKIP',
+      detail: 'N/A 且**未检**：未找到 analysis/分析大纲.md（若为轻量档主动省 T4，须按 SKILL.md 连带规则：主控代产最小 §11 精简段，或在 status.md + final/局限性.md 显式记豁免）——**不得读成通过**',
+      severity: 'SKIP',
     });
   } else {
     const ol10 = readFileSync(outline10, 'utf8').split('\n');
@@ -1246,7 +1253,7 @@ try {
     }
   }
 } catch (e) {
-  results.push({ gate: 'M-Exist-10 大纲 §11 精简段', pass: false, detail: `解析失败: ${e.message}`, severity: 'P1' });
+  results.push({ gate: 'M-Exist-10 大纲 §11 精简段', pass: false, detail: `解析失败: ${e.message}`, severity: 'ERROR' });
 }
 
 }
@@ -1492,9 +1499,10 @@ export function mExist11(ctx) {
     if (!outline) {
       results.push({
         gate: 'M-Exist-11 反方论证闭合（论点—证据—反方表）',
-        pass: true,
+        // v18.62.4（P1-5）：同 M-Exist-10 —— 未检 ≠ 通过
+        pass: 'SKIP',
         detail: 'N/A 且**未检**：未找到 analysis/分析大纲.md（若为轻量档主动省 T4，须按 SKILL.md 连带规则记豁免）。**不得读成通过**——反方论证闭合本项未核',
-        severity: 'P2',
+        severity: 'SKIP',
       });
       return;
     }
@@ -1503,10 +1511,11 @@ export function mExist11(ctx) {
     if (!headerFound) {
       results.push({
         gate: 'M-Exist-11 反方论证闭合（论点—证据—反方表）',
-        pass: true,
+        // v18.62.4（P1-5）：同 M-Exist-10 —— 未检 ≠ 通过
+        pass: 'SKIP',
         detail: 'N/A 且**未检**：分析大纲里未找到「论点—证据—反方」四列表（v18.27.0 起为 `分析大纲-template` 的表格要求；'
           + '老项目与轻量档不判死）。**不得读成通过**——「核心论点是否都有反方论证」本项未核',
-        severity: 'P2',
+        severity: 'SKIP',
       });
       return;
     }

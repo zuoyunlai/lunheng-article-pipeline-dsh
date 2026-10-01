@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // history-cli.mjs — 读 run/<id>/history.jsonl + 输出 --diff
-// 版本：v1.0.0
+// 版本：v1.0.3（论衡 v18.62.4）
 
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { resolve, join } from 'node:path';

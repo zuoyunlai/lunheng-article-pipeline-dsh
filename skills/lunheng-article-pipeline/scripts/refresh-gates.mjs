@@ -67,10 +67,36 @@ const sha = createHash('sha256').update(buf).digest('hex');
 const bytes = buf.length;
 
 // 待刷新目标：闸门记录 ×2 + 交付说明
+// ⚠️ v18.62.4（全量审计-v18.62.3 P1-8）：**交付说明的正则收窄 + 加「正文语境」守卫**。
+//   病灶（本脚本自己的边界声明就禁止这一形态，见文件头「只替换**已知形态**的旧指纹…不做
+//   『把所有 64 位 hex 都换掉』的危险操作（那会**误伤证据包 manifest 的条目 sha256**）」）：
+//   旧第 3 条的**首条**模式是裸 `sha256[:：]\s*`?([0-9a-f]{64})`?` —— 它按**行**匹配，于是任何写成
+//   「…sha256：<64hex>」的行都会被当成「本阶段正文指纹」并**整行替换**；模板 §9 正是「证据包指纹」
+//   一节（实测 27 份真实交付说明里有 5 处命中该模式）。一旦某项目把逐文件条目指纹写成同形，
+//   那些 `manifest` 条目 sha256 会被**静默改写成正文指纹**——清空该节的对照价值。
+//   现两层收口：
+//     ① 模式收紧：只保留**显式带「正文」标注**的一种形态（去掉裸 `sha256:` 那条）；
+//     ② 加**行内语境守卫**：命中的行必须同时含 `正文|定稿|被审|draft_sha256` 之一才算正文指纹。
+//        （为什么必须有守卫：`正文 sha256[:：]…` 这条模式本身也能匹配「旧版写法 / 错误写法」这类
+//          **说明行**，而那种行描述的是别的项目，不该被本项目的指纹覆盖。）
+//   残留边界（如实）：若某项目**逐文件**条目恰好写成「正文……sha256：<hex>」这种不可能的自然语句，
+//   仍会被替换；彻底消除需改为「按 `M-Gate-Report.json#verdict_scope.draft_sha256` 反查」，
+//   属增强而非修复，见本批修订记录的「未做项」。
+const CONTEXT_RE = /正文|定稿|被审|draft_sha256/;
 const targets = [
   { rel: 'audits/闸门记录-T2.5.md', patterns: [/正文 sha256[^`\n]*`([0-9a-f]{64})`/g, /draft_sha256=`([0-9a-f]{64})`/g] },
   { rel: 'audits/闸门记录-T7.5.md', patterns: [/正文 sha256[^`\n]*`([0-9a-f]{64})`/g, /draft_sha256=`([0-9a-f]{64})`/g] },
-  { rel: 'final/交付说明.md', patterns: [/sha256[:：]\s*`?([0-9a-f]{64})`?/g, /正文 sha256[:：]\s*`?([0-9a-f]{64})`?/g] },
+  // 交付说明的真实形态有**两种**，且都实测自存量项目（27 份 §9 抽样）：
+  //   ① 标签在前、值在后：`- **被审正文（定稿）sha256**：sha256：<hex>`（主流形态）
+  //   ② 标签与值同段：`正文 sha256：<hex>`
+  //   故交付说明用「关键词…→ 行内**第一个** sha256 值」这一条模式覆盖两形态（配合行内语境守卫）。
+  {
+    rel: 'final/交付说明.md',
+    patterns: [/sha256[:：]\s*`?([0-9a-f]{64})`?/g],
+    // 仅交付说明需要「关键词先行」的整体匹配（闸门记录的标签形态已足够精确，不需要再收）
+    keyFirstPatterns: [/(?:被审正文|正文|定稿)[^\n]*?sha256[:：]\s*`?([0-9a-f]{64})`?/g],
+    useKeyFirst: true,
+  },
 ];
 
 const results = [];
@@ -80,8 +106,17 @@ for (const t of targets) {
   if (!existsSync(abs)) { results.push({ file: t.rel, status: 'skip', note: '文件不存在' }); continue; }
   let text = readFileSync(abs, 'utf8');
   const found = new Set();
-  for (const re of t.patterns) {
-    for (const m of text.matchAll(re)) found.add(m[1]);
+  // v18.62.4（P1-8）：**逐行**匹配 + 行内语境守卫（见上方 CONTEXT_RE 注释）。
+  //   旧实现直接 `text.matchAll(re)`：一个 64 位 hex 只要在**文件任意位置**以该形态出现就被收进 olds，
+  //   然后全文件 `text.split(oldSha)` 替换 —— 即「模式命中的上下文」与「实际被替换的位置」可以不同。
+  //   现改为按行收集：行必须同时满足 ① 命中某个模式 ② 含正文语境词。
+  for (const line of text.split('\n')) {
+    if (!CONTEXT_RE.test(line)) continue;
+    const useKeyFirst = t.useKeyFirst === true;
+    const pats = useKeyFirst ? (t.keyFirstPatterns || []) : t.patterns;
+    for (const re of pats) {
+      for (const m of line.matchAll(new RegExp(re.source, re.flags))) found.add(m[1]);
+    }
   }
   const olds = [...found].filter((h) => h !== sha);
   if (!olds.length) {

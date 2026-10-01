@@ -1,7 +1,11 @@
 # examples/preset/ — 论衡分档安装指南
 
-> **v18.0.0 复核（v18.2.6 复核计数）**：本目录**只有两个文件**——`preset.yml`（给主人读的分档说明）+ 本文件（安装指南），
-> **不含任何可加载的 cordis 配置**。分档行为来自包根 `cordis.patch.yml` 的 **4 段 `- insert:` 行**（第 1 段 = 本包自注册行，第 2-4 段 = 三档分档工具），
+> **v18.62.4 更正（全量审计-v18.62.3 P1-12）**：本目录现有 **3 个条目**——`preset.yml`（给主人读的分档说明）
+> + 本文件（安装指南）+ **`agent-tiered/cordis.yml`**（v18.61.0/H6 落地的**可加载 preset 配置**，见 §6）。
+> 本行此前写「只有两个文件…**不含任何可加载的 cordis 配置**」——**该断言已被 H6 推翻**，而那份配置
+> **随包发布**（`package.json` 的 `files` 含 `examples`）→ 照旧文判断会以为分档只能靠环境变量、
+> **永远发现不了这份 preset**。分层行为来自包根 `cordis.patch.yml` 的 **4 段 `- insert:` 行**
+> （第 1 段 = 本包自注册行，第 2-4 段 = 三档分档工具），
 > 且**三档工具行默认不装载**（v18.2.6 起：不设任何 `LUNHENG_*` 时它们不挂载）。
 >
 > 历史变更（v2.5.2-dsh.12）：早期版本的 `agent.cordis.yml`（≈16KB standard 全量副本）**已删除**——
@@ -13,7 +17,7 @@
 ```sh
 # 1. 在 profile 里声明 bundle 依赖（DSH 读 dsh.bundle.patch 找到 cordis.patch.yml 加载）
 dsh plugin --profile web add lunheng-article-pipeline@dsh   # 推荐：跟随最新 DSH 迭代版
-# 锁定具体版本：dsh plugin --profile web add lunheng-article-pipeline@18.62.3
+# 锁定具体版本：dsh plugin --profile web add lunheng-article-pipeline@18.62.4
 
 # 2. （可选，但要让三档工具真的挂上就必做）设三档 subagent 工具的 provider/model 环境变量
 #    v18.2.6 起：不设任何变量 = 三档行**根本不装载**（不再是「装载但全继承」）
@@ -102,6 +106,12 @@ agentOptions: !!js "(e => { const p = e.LUNHENG_RETRIEVAL_PROVIDER, m = e.LUNHEN
 
 若希望「**只有选定了该预设的会话**才有这三个工具」，官方机制是**把同样的行挂到 preset 组合里**（工具注册落在该 preset 的作用域层：`docs/subsystems/tools.md:484-504`、`docs/subsystems/skills.md:13`；`docs/architecture.md:131` 是入口判据）。完整配方（三步 + 每步验证 + 回滚 + 五条已知限制）见
 [`../../skills/lunheng-article-pipeline/references/_shared/DSH-集成方案.md`](../../skills/lunheng-article-pipeline/references/_shared/DSH-集成方案.md) **§八**。
+
+> **本目录里已有一份现成配方：`agent-tiered/cordis.yml`**（v18.61.0 反哺 v4 / H6 落地）。它把三档 subagent 工具行
+> 写进 preset 作用域，并开 `modelSelectionSettings: true`（该 preset 内可用 `list_subagent_models` + per-call
+> `provider`/`model`/`reasoning_effort`）。**字段形态与包根 `cordis.patch.yml` 逐条对应**，改动须两处同批。
+> 安装方式：把它按你部署里的 preset 目录结构放好（先照抄一个已存在的预设目录，见下方要点①），
+> 再在会话空白期切到该预设（要点②）。**回退**：切回原预设即恢复包级行为。
 
 **三个要点先看**：① 官方知识库里**没有任何 preset 组合文件的完整示例**，且预设组合文件名（「preset cordis.yml」vs `agent.cordis.yml`）只有摘要级依据——**照抄你部署里已存在的预设目录**；② **预设只在会话空白期可切**（跑了就别换）；③ 本包**默认不动** patch（「装了不坏」优先），换作用域需要你自己选预设。
 

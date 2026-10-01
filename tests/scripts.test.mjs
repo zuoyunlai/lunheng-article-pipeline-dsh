@@ -1873,9 +1873,12 @@ test('m-gate-check M-Exist-10：大纲 §11 精简段六要素（缺段 / 缺要
     const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])
     return parseJson(r).results.find((x) => x.gate.startsWith('M-Exist-10'))
   }
-  // ① 无大纲 → N/A
+  // ① 无大纲 → 未检（SKIP）
+  //   v18.62.4（全量审计-v18.62.3 P1-5）：原断言 `pass === true`（N/A）——detail 写着「N/A 且**未检**…
+  //   不得读成通过」而退出码侧记「通过」，移走大纲即可静默关掉该门。现改记 `SKIP`（→ exit 3）。
   let it = item()
-  assert.equal(it.pass, true, '无大纲应记 N/A')
+  assert.equal(it.pass, 'SKIP', '无大纲 = 未检，不得读成通过')
+  assert.equal(it.severity, 'SKIP')
   assert.match(it.detail, /N\/A/)
 
   // ② 有纲但缺 §11 → P2（T5 会回退整读大纲）

@@ -72,6 +72,31 @@ test('拒绝①：改机械值但**没有证伪四件套** → exit 30，报告�
   } finally { rmSync(f.dir, { recursive: true, force: true }) }
 })
 
+test('P2-5 回归：**错误提示不得印出校验所依赖的关键词**（否则粘贴提示即可通过四件套校验）', () => {
+  const f = mkClean()
+  try {
+    run([M(), f.draft, f.ev, '--report', f.report])
+    // 造一个「非法 JSON」的裁定文件 → 走 :583 的解析失败分支（那里打印「期望 JSON」模板）
+    const bad = join(f.dir, 'bad-adjudicate.json')
+    writeFileSync(bad, '{ not json ')
+    const r = run([M(), f.draft, f.ev, '--report', f.report, '--adjudicate', bad])
+    assert.equal(r.code, 10, '裁定文件非 JSON 应 exit 10：' + r.out + r.err)
+    const all = String(r.out || '') + String(r.err || '')
+    const expectLine = all.split('\n').find((l) => l.includes('期望 JSON')) || ''
+    assert.ok(expectLine, '应给出期望 JSON 形状的提示')
+    // 与 m-gate-check.mjs 的 `FOUR = [/逐条/, /真阳性/, /规范/, /复核|独立/]` 一致：
+    //   提示行里**不得**出现这些字面量——否则把提示原文粘进 `llm_review` 即可满足校验。
+    //   ⚠️ 只断言**这一行**：拒绝分支的「理由」文本会正当引用关键词（那条路径 exit 30 不写盘，
+    //   不构成漏洞）——本用例第一版对全输出断言，被自己的诊断纠正（实测输出 §P2-5 那次 9/10 红）。
+    for (const kw of ['逐条', '真阳性', '规范', '复核', '独立']) {
+      assert.ok(
+        !expectLine.includes(kw),
+        `「期望 JSON」提示行里出现了校验关键词「${kw}」→ 粘贴提示即可通过四件套校验（P2-5 病灶）。该行：${expectLine.slice(0, 300)}`,
+      )
+    }
+  } finally { rmSync(f.dir, { recursive: true, force: true }) }
+})
+
 test('拒绝②：裁定文件缺 true_p0/true_p1 → exit 30', () => {
   const f = mkClean()
   try {

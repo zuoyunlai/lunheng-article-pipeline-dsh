@@ -93,6 +93,15 @@ test('F-BG：素材缺失 → **留痕**而非静默「通过」（未执行必�
   assert.ok(item, 'M-Fact-1 必须在场')
   assert.equal(item.pass, true, '无素材文件时不判失败（不猜）')
   assert.ok(item.materialSkipped, '必须带 materialSkipped 留痕：' + item.detail)
+  // v18.62.4（全量审计-v18.62.3 P1-6）：**留痕要机器可见**，不只写在 detail 里给人读。
+  //   为什么不在本项记 SKIP：数字跨节 / 术语两项**确实跑了**，把整条记为「未检」等于用
+  //   「一个子检查没跑」抵消「其他子检查的干净结论」（本批实测：那样改会让 tests/batch16 的 7 条用例全红）。
+  //   故子检查未执行 → 记在有 `unchecked[]` 里（`m-gate-check` 顶层数组，不改退出码）。
+  const rep = JSON.parse(readFileSync(join(c.d, 'r.json'), 'utf8'))
+  assert.ok(
+    Array.isArray(rep.unchecked) && rep.unchecked.some((u) => /素材/.test(u)),
+    '子检查未执行必须出现在报告顶层 unchecked[]：' + JSON.stringify(rep.unchecked),
+  )
   assert.match(item.detail, /未执行/, 'detail 须写明「未执行」——与「核过且无问题」不可同形')
   rmSync(c.d, { recursive: true, force: true })
 })
@@ -114,7 +123,12 @@ test('F-BH：M-Form-8 detail 含「档位依据」，且**severity 不受影响*
   assert.ok(it, 'M-Form-8 必须在场')
   assert.match(it.detail, /档位依据：/, 'detail 必须显式标出档位依据：' + it.detail)
   assert.match(it.detail, /只有本项决定档位/, '须明写其余观察不参与档位判定')
-  assert.ok(['P0', 'P1', 'P2', '通过'].includes(it.severity), 'severity 仍是既有四值之一（本项只改文案）')
+  // v18.62.4（全量审计-v18.62.3 P1-7）：允许集**显式加入 'SKIP'**——新增的「前置 H2 吞掉实质 H3 正文」
+  //   形态必须记「未检」而不是「通过」（旧版 detail 说「不是通过」而 severity 说通过）。
+  //   本守卫的**原意**保留：severity 只能是这几个**枚举值**之一，不得自由造词。
+  assert.ok(['P0', 'P1', 'P2', '通过', 'SKIP'].includes(it.severity), 'severity 仍是既定枚举值之一（本项只改文案与 0 段口径）')
+  // 本夹具形态 = `## 摘要` + `## 一、正文`（正文是 H2，非前后置词）→ **不得**判未检
+  assert.notEqual(it.severity, 'SKIP', '正文在 `## 一、正文` 里（H2 且非前后置词）→ 该段必须被正常判定，不得 SKIP：' + it.detail)
   rmSync(c.d, { recursive: true, force: true })
 })
 

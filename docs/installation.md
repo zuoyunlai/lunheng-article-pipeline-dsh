@@ -9,7 +9,7 @@
 #    ⚠️ **务必钉版本**：不写 `@<版本>` 时，装到哪个版本取决于本机包管理器**当时**的解析状态。
 #    实测过一次：同一条命令装到 **18.15.0**，而 registry 上的 `latest` 已是 18.20.4 —— 差了五个小版本，
 #    且按下面流程走下去**没有任何一步能让人察觉**。版本真源只有一处：`npm view lunheng-article-pipeline version`。
-dsh plugin --profile <profile> add lunheng-article-pipeline@18.62.3
+dsh plugin --profile <profile> add lunheng-article-pipeline@18.62.4
 
 # 1b) **核对装到的版本**（钉了版本也值得跑一次——它读的是 profile 里**实际落盘**的 package.json）
 node -e "console.log(require('<DSH_HOME>/profiles/<profile>/node_modules/lunheng-article-pipeline/package.json').version)"
@@ -23,7 +23,7 @@ node -e "console.log(require('<DSH_HOME>/profiles/<profile>/node_modules/lunheng
 
 安装后**两个**技能自动出现在会话的 `skill` 工具目录，无需手动复制到技能根：
 - `lunheng-article-pipeline`：主技能，9 角色流水线
-- `lunheng-commands`：伴随技能，11 个 `/lunheng-*` 斜杠命令（status / stats / compression-cycle / evidence-bundle / m-gate / handoff-check 等；薄壳 wrapper，不引入新角色 / 新 M 门）
+- `lunheng-commands`：伴随技能，11 个 `/lunheng` 斜杠命令（`-draft` / `-resume` / `-cite` / `-audit` / `-journal` / `-ppt` / `-history` / `-rollback` / `-status`（含 `--pending`）/ `-stats` / `-help`；薄壳 wrapper，不引入新角色 / 新 M 门）
 
 ## 安装前提与注意事项
 

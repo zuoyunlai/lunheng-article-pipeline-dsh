@@ -1,4 +1,4 @@
-> 版本：v18.62.3（DSH bundle 插件）
+> 版本：v18.62.4（DSH bundle 插件）
 
 
 # 论衡（lunheng-article-pipeline）— 通用深度长文多 Agent 流水线 运行手册（v2.2.14）
@@ -129,8 +129,10 @@
 /lunheng -journal <name>     # 改目标期刊 + 重跑 T9
 /lunheng -ppt                # 把当前定稿 → PPT 大纲
 /lunheng -history            # 列 run/* 历史
-/lunheng -rollback<id> --confirm  # 回滚到历史版本（必须 --confirm 二次确认）
+/lunheng -rollback <id> --confirm  # 回滚到历史版本（必须 --confirm 二次确认）
 /lunheng -status [id]        # 显示当前进度（≤15 行人类可读）
+/lunheng -status --pending   # 跨项目「待我决策」聚合收件箱（v18.62.0 F4）
+/lunheng -stats              # run/ 项目汇总看板
 /lunheng -help               # 列可用命令
 ```
 
