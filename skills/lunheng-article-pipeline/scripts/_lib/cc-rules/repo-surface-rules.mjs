@@ -290,7 +290,16 @@ if (gateModMissing) {
 //     发现首 3 字节 = EF BB BF 即报 P1（BOM 本身不破坏 UTF-8 解析，但会引起
 //     「首行内容匹配」类机检假阴性——如规则⑫ 的 `> 版本：` 首行匹配）。
 //   · 豁免：仓库根 `.git` / `node_modules` / `_backup` 下的所有文件不扫。
-for (const baseDir of [REPO_ROOT, join(REPO_ROOT, '.dsh', 'skills', 'lunheng-article-pipeline')]) {
+// v18.62.4（全量审计-v18.62.3 §8.3 #33）：**镜像路径必须复用 ⑨ 那一份**（`dshSkillDir`）。
+//   病灶：本处旧版**自己另写了一条路径** `join(REPO_ROOT, '.dsh', 'skills', …)` —— 而 ⑨（`:45`）用的是
+//   `join(REPO_ROOT, '..', '.dsh', 'skills', …)`。**两条口径指向不同目录**：
+//     本机实测 `<仓库根>/.dsh/...` → 指向**仓库内的** .dsh（**不存在**）
+//     而 ⑨ 的 `<仓库根>/../.dsh/...` → 指向**工作区级**的 .dsh（**存在，就是真镜像**）
+//   → 于是**规则 ㉖ 的镜像半在这一布局下被 `continue` 静默跳过**：仓库侧 BOM 扫得到、镜像侧从不扫。
+//   而按本规则自己的背景（`:286`），v18.9.0 那次 BOM 事故**波及 95 个文件 = 仓库 50 + 镜像 45**
+//   —— **镜像恰是重灾区**，却正是被静默跳过的半边。这与「门比被它守的东西更不可靠」是同一种病。
+//   修法：**不再另写路径**，复用 ⑨ 已带自比护栏的 `dshSkillDir`（单一真源）。
+for (const baseDir of [REPO_ROOT, dshSkillDir]) {
   if (!existsSync(baseDir)) continue;
   const stack = [baseDir];
   while (stack.length) {

@@ -92,7 +92,13 @@ export const TOMBSTONES = new Map([
  * 清理条件写在 reason 里——条目长期存疑就应升级为「修文档」或「修脚本」。
  */
 export const SUSPECT = new Map([
-  ['skills/README.md', '`consistency-check.mjs` 的**内部登记名**（`:308-315` 的 repoTargets 把它解析为 `skills/lunheng-article-pipeline/README.md`，磁盘上确无 `skills/README.md`）；引用处用的是脚本标签，属命名口径不一致而非文件缺失。建议脚本与文档统一为真实路径'],
+  // v18.62.4（全量审计-v18.62.3 §8.3 #37）：**去掉会腐烂的 `:308-315` 行号**。
+  //   病灶：该引用当年指 `consistency-check.mjs` 的 `repoTargets`，随后续批次插入内容已漂到 `:425`
+  //   ——**注释在说谎**，且没有门会发现（规则 ⑪ 只禁 `lib/**.js:LINE` 形态的**发布面**引用，
+  //   管不到仓库脚本注释里的互指）。实测全库同类引用共 9 处，这条是唯一已确认腐烂的。
+  //   修法：**按符号名定位**（`repoTargets` 可直接 grep；改名时能连带发现），不再写行号——
+  //   位置会漂，名字不会。
+  ['skills/README.md', '`consistency-check.mjs` 的**内部登记名**（其 `repoTargets` 把它解析为 `skills/lunheng-article-pipeline/README.md`，磁盘上确无 `skills/README.md`）；引用处用的是脚本标签，属命名口径不一致而非文件缺失。建议脚本与文档统一为真实路径'],
 ])
 
 /** 走查技能目录下的所有 .md。 */
