@@ -523,12 +523,18 @@ for (const [name, allowed] of Object.entries(EXIT_CONTRACT)) {
 // v18.12.0（L-68）：「装了 guard 必登记」的**覆盖面断言**（旧表靠人工维护，漏登记无门发现）。
 //   为什么把它放在逐脚本循环之后而不是并进去：它判的是**表本身完不完整**（集合关系），
 //   而不是某个脚本的内容——混进循环会让「新增脚本忘登记」看起来像那个脚本的错。
+// v18.62.4（全量审计-v18.62.3 §8.1 #13）：**两处 guard 探测必须同源**。
+//   病灶：本循环旧版用**自己另写的一条正则**（只认静态 `import … from`），而上方逐脚本检查
+//   （`:506` 的 `importRe`）**已认静态 + 动态 `import(…)` 两种形态**。于是用
+//   `await import('…/_lib/exit-guard.mjs')` 的脚本：**先通过**「真 import 检查」，
+//   却在本覆盖面断言里**不被算作装了 guard** → 只要它没登记进 EXIT_CONTRACT，就**静默逃逸**
+//   （正是本规则要拦的那个后门）。**同一事实两处实现，谁也不知道谁先漂** —— 本仓最反感的形态。
+//   修法：直接复用上方那条 `importRe`（单一真源），删掉本处另写的正则。
 const guardedButUnregistered = []
 for (const f of readdirSync(scriptDir).filter((x) => x.endsWith('.mjs'))) {
   if (EXIT_CONTRACT[f] || EXIT_GUARDED_EXEMPT[f]) continue
   const t = readFileSync(join(scriptDir, f), 'utf8')
-  const re = new RegExp(`(?:^|\\n)\\s*import[^\\n]*?from\\s*['"][^'"]*${GUARD.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]`)
-  if (re.test(t)) guardedButUnregistered.push(f)
+  if (importRe.test(t)) guardedButUnregistered.push(f)
 }
 if (guardedButUnregistered.length) {
   fail('exit-code', `${guardedButUnregistered.join(', ')}：装了 ${GUARD} 却未登记进 EXIT_CONTRACT——` +
