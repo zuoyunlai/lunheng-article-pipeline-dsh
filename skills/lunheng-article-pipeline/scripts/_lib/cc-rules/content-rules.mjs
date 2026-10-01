@@ -420,9 +420,22 @@ for (const f of active) {
     const rel = relative(ROOT, f).replaceAll('\\', '/');
     if (HIST.test(rel)) continue;
     readFileSync(f, 'utf8').split('\n').forEach((l, i) => {
-      if (/旧版|历史|当时|曾经|教训|漂移|更正|修复|不再|示例|形如/.test(l)) return;   // 清仓注解与「写法示例」可引用旧锚
-      for (const m of l.matchAll(/\]\(([^)\s]+\.md)?#([^)\s]+)\)/g)) {
-        const anchor = m[2];
+  // v18.62.4（全量审计-v18.62.3 §8.2 #26）：**豁免面从「整行」收到「链接本身」**。
+  //   病灶：旧写法 `if (/旧版|历史|当时|曾经|教训|漂移|更正|修复|不再|示例|形如/.test(l)) return;`
+  //   —— 其中「示例」「形如」是**极常用**的词，于是**任何**提到「示例」的行都整行跳过检查：
+  //   该行上的**真实断链**永不检查（豁免面一个常用词宽）。
+  //   修法（分两类处理，各按其本意）：
+  //     ① **历史性叙述**（旧版/当时/曾经/教训/漂移/更正/修复/不再）→ 仍是**整行豁免**：
+  //        这类行按本仓规范**必须**能引用旧锚（清仓注解）；
+  //     ② **写法示例**（示例/形如）→ 改为**只豁免「落在代码跨度或围栏内的链接」**：
+  //        那才是「写法示例」的载体；行内**其余链接照检**（不再被一个词连带放过）。
+  if (/旧版|历史|当时|曾经|教训|漂移|更正|修复|不再/.test(l)) return;
+  // 把反引号代码跨度与围栏内字符遮成等长空格（保偏移），用于判断「某个链接是否在示例里」
+  const codeMasked = l.replace(/`[^`]*`/g, (s) => ' '.repeat(s.length)).replace(/^\s*(?:```|~~~).*$/, (s) => ' '.repeat(s.length));
+  for (const m of l.matchAll(/\]\(([^)\s]+\.md)?#([^)\s]+)\)/g)) {
+    // 「写法示例」判定：该链接的起始位置落在代码跨度/围栏内 → 示例，豁免；否则照检
+    if (/示例|形如/.test(l) && codeMasked[m.index] === ' ') continue;
+    const anchor = m[2];
         const targetAbs = m[1] ? join(dirname(f), m[1]) : f;
         const targetRel = m[1] ? relative(ROOT, targetAbs).replaceAll('\\', '/') : rel;
         if (HIST.test(targetRel)) continue;
