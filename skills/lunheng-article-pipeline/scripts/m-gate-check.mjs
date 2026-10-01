@@ -62,7 +62,20 @@ const skillRoot = join(scriptDir, '..');
 //   阈值真源 = 下方 `THRESHOLDS` 对象；此处读自身源码解析（与 consistency-check ㉓ 的派生同法），
 //   避免把 THRESHOLDS 定义搬到文件头（改动面更小）。必须在解析位置参数之前短路：
 //   该旗标不接受 <定稿.md> <证据包目录>。
+// v18.62.4（全量审计-v18.62.3 §8.3 #41）：**短路前先做严格校验**。
+//   病灶：本分支在**参数解析之前**用 `process.argv.includes` 判定并直接 exit 0 —— 于是
+//   `m-gate-check --dump-thresholds --typo`、或 `--typo --dump-thresholds` 里的**拼错旗标被静默忽略**，
+//   用户以为自己的参数生效了。这与本仓的**严格解析政策**（见本文件 `:56-59` 与 `_lib/cli-args.mjs`）
+//   正面冲突：**同一个脚本里，一种旗标走严格解析、另一种旗标绕过解析**。
+//   修法：保留短路（该模式**确实**不接受 `<定稿.md> <证据包目录>`），但**只允许 argv 里出现它自己**——
+//   任何多余 token（含空格形式的 `--dump-thresholds=1`）一律 exit 10。位置参数与其它旗标都无意义。
 if (process.argv.includes('--dump-thresholds')) {
+  const stray = process.argv.slice(2).filter((a) => a !== '--dump-thresholds');
+  if (stray.length > 0) {
+    console.error(`--dump-thresholds 不接受任何其它参数（收到：${stray.join(' ')}）`);
+    console.error('用法: node m-gate-check.mjs --dump-thresholds');
+    process.exit(10);   // 参数错一律 10（与「1 = P1 内容失败」区分）
+  }
   const selfSrc = readFileSync(fileURLToPath(import.meta.url), 'utf8');
   const thBlock = selfSrc.match(/const THRESHOLDS = Object\.freeze\(\{([\s\S]*?)\n\}\)/);
   if (!thBlock) { console.error('无法解析 THRESHOLDS（Object.freeze 结构变化）'); process.exit(70); }
@@ -102,10 +115,12 @@ try {
 }
 const draftPath = positional[0];
 const evDir = positional[1];
-if (!draftPath || !evDir) {
-  console.error(MGATE_USAGE);
-  process.exit(10);   // 10 = 参数/路径错误（与「1 = P1 内容失败」区分，v2.5.2-dsh.13）
-}
+// v18.62.4（全量审计-v18.62.3 §8.3 #42）：**此处原有 `if (!draftPath || !evDir)` 守卫是不可达的** ——
+//   上方 `parseCliArgs({ minPositionals: 2, maxPositionals: 2 })` **已保证**恰好两个位置参数；
+//   不足或超出都会在那里以 `UsageError` → exit 10 收场。留着它读起来像一道「活的保险」，
+//   实则是**永不执行的死代码**（本仓对「写了却不生效的门」有明确态度：删掉或让它真生效）。
+//   故删除。**若将来把 `minPositionals` 放松**，必须同批把这条守卫恢复回来——已在
+//   `tests/scripts.test.mjs` 的「m-gate-check 缺参 → exit 10」用例里间接钉住该行为。
 if (!existsSync(draftPath)) {
   console.error(`定稿不存在: ${draftPath} —— 请先产出 final/定稿.md 再跑 M 门预检`);
   process.exit(10);   // v18.0.2 修：路径错误一律 10（旧版 1 与「P1 内容失败」撞码 → final-check 会误渲染成「存在 P1 残留，可触发 T5 修订」）
