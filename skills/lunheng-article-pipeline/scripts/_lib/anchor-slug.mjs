@@ -23,6 +23,16 @@
 // 实测教训（v18.22.2 落 CTX-3 时踩到）：`SKILL.md` 让读者读 `_shared/M-Gate-Algorithm.md#mgate`，
 //   而 `#mgate` **不是任何标题的 slug**——它是该文件第 19 行的 `<a id="mgate"></a>`。
 //   首版只扫标题 ⇒ ref-get 对文档里**正在使用的**锚点报「未命中」。故显式锚点是一等公民。
+//
+// ── v18.62.4（全量审计-v18.62.3 §8.2 #24）：**围栏感知** ─────────────────────
+//   实测病灶：本模块扫标题时**不遮围栏** → 代码块里的 `## 示例：…` 被当成真锚点收进锚点集。
+//   两处受害：① 一致性规则 ㉗ 会认为「围栏里那个锚点存在」（假绿）；
+//             ② `ref-get` 收到 `#示例` 时**自信地打印围栏内的示例节**（非空但错——正是本模块
+//                自己禁止的形态：「绝不返回空节」的姊妹条款是「也不得返回**错**节」）。
+//   修法 = 复用 `sections.mjs` 的 `maskFences`（本仓围栏语义的**唯一实现**，保长保行结构）。
+//   为什么两处都要遮：`anchorsWithRanges`（ref-get 用）与 `anchorSlugsOf`（规则 ㉗ 用）各自扫一遍
+//   ——只遮一处会让两个消费者对同一文档给出**不同锚点集**，那比都不遮更难查。
+import { maskFences } from './sections.mjs'
 
 /** 标题文本 → GitHub 锚点 slug（见文件头三条口径）。 */
 export function slugify(heading) {
@@ -38,8 +48,11 @@ export function slugify(heading) {
  */
 export function anchorSlugsOf(text) {
   const slugs = new Set();
-  for (const m of text.matchAll(/^#{1,6}\s+(.+?)\s*$/gm)) slugs.add(slugify(m[1]));
-  for (const m of text.matchAll(/<a\s+id="([^"]+)"/g)) slugs.add(m[1]);
+  // v18.62.4（#24）：与 `anchorsWithRanges` 同一口径——**必须同源**，否则规则 ㉗ 与 `ref-get`
+  //   会对同一文档给出不同锚点集（围栏里的标题/显式锚点都不得算真锚点）。
+  const masked = maskFences(text);
+  for (const m of masked.matchAll(/^#{1,6}\s+(.+?)\s*$/gm)) slugs.add(slugify(m[1]));
+  for (const m of masked.matchAll(/<a\s+id="([^"]+)"/g)) slugs.add(m[1]);
   return slugs;
 }
 
@@ -65,8 +78,11 @@ function headingLines(lines) {
  *   startLine: number, endLine: number, bytes: number, text: string}>}
  */
 export function anchorsWithRanges(text) {
+  // v18.62.4（#24）：**扫描用遮罩文本**（围栏内标题不算锚点）；但**正文切片仍用原文**
+  //   ——遮罩保长保行结构，故行号与区间偏移完全一致，`text: chunk` 取到的仍是未遮罩的真内容。
   const lines = text.split('\n');
-  const heads = headingLines(lines);
+  const maskedLines = maskFences(text).split('\n');
+  const heads = headingLines(maskedLines);
   const slice = (a, b) => lines.slice(a, b + 1).join('\n');
   const out = [];
 
@@ -84,9 +100,9 @@ export function anchorsWithRanges(text) {
     });
   }
 
-  // ② 显式锚点
-  for (let i = 0; i < lines.length; i++) {
-    for (const m of lines[i].matchAll(/<a\s+id="([^"]+)"/g)) {
+  // ② 显式锚点（v18.62.4 #24：同样扫**遮罩文本**——围栏里的 `<a id="…">` 是示例，不是真锚点）
+  for (let i = 0; i < maskedLines.length; i++) {
+    for (const m of maskedLines[i].matchAll(/<a\s+id="([^"]+)"/g)) {
       const id = m[1];
       const nextIdx = heads.findIndex((h) => h.line >= i);
       let endLine = lines.length - 1;

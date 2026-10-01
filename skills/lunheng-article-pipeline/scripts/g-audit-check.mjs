@@ -232,10 +232,22 @@ const g2 = (() => {
       skipReason: '未传 --cards 或目录内无素材卡：无法比对（不假装通过）', evidence: {} };
   }
   const cardNorm = normDigits(cardTexts.map((c) => c.text).join('\n'));
+  // v18.62.4（全量审计-v18.62.3 §8.2 #16）：**「卡里出现过这个数字」不等于「卡里有这条数据」**。
+  //   实测病灶：旧写法 `cardNorm.includes(digits)` 用**裸子串**比对 → 正文「占比 5%」被卡里
+  //   **任意一个 5** 满足（`2015` 年 / `[D05]` 编号 / `5000`），于是 1–2 位数字的定量声明
+  //   **永远不会进候选清单**——而那正是 T7 最该逐条定性的一类。
+  //   判据：**同一事实的两半必须一起匹配**——值 + 单位（`5%` ≠ `5`）且**带数字边界**
+  //   （`5` 不得命中 `2015`）。用逐 token 的动态正则（每次新建，避免 `/g` 的 `lastIndex` 残留）。
+  const cardHasToken = (digits, unit) => {
+    const u = String(unit || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(?<![\\d.])${digits.replace('.', '\\.')}\\s*${u}(?![\\d.])`);
+    return re.test(cardNorm);
+  };
   const hits = [];
   for (const m of bodyText.matchAll(QUANT_RE)) {
     const digits = normDigits(m[1]);
-    if (digits === '' || cardNorm.includes(digits)) continue;
+    if (digits === '') continue;
+    if (cardHasToken(digits, m[2])) continue;
     hits.push({ line: lineOf(m.index), token: m[0].trim(), digits, context: bodyText.slice(Math.max(0, m.index - 30), m.index + m[0].length + 30).replace(/\s+/g, ' ') });
   }
   const CAP = 40;
