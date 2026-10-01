@@ -32,6 +32,7 @@
  *   ⑥b 扫描集覆盖不变量（随包**文本文件** ⊆ ④/⑤/⑦ 扫描集 · 二次复审 M-1 · v18.20.4）
  *   ⑬ CHANGELOG 版本段结构自洽（段内小节编号递增 / 首段 == package.json / 无重复键 / 降序 · v18.18.13）
  *   ⑭ 外部 CLI pin 单点（运行面只允许一处 `dsh-plugin-guide@<semver>` · 三次复审 N-3 · v18.21.0）
+ *   ⑮ 宿主契约门（lib/index.js 的 `ctx.on` 监听器签名 + 事件名 vs 宿主 waterfall 契约 · 全量审计 P2-2 · v18.62.1）
  *
  *   ⚠️ 本清单**必须与实现同步**：v18.18.13 补 ⑩–⑬ 与 ⑦b/⑧b–d 时，本清单此前只列到 ⑨，
  *   即「门自己的头落后于门的实现」——与它守的「清单落后于代码」是同一病，故一并补齐。
@@ -58,6 +59,7 @@ import {
   MC_LABEL_ANCHORS,
   JOURNAL_POINTER_ANCHORS,
 } from './_lib/e-family-invariants.mjs' // E 族：可派生的单源不变量（见模块头，为什么不做字面禁令）
+import { reconcileHostContract } from './_lib/host-contract.mjs' // ⑮：lib/index.js 监听器签名 + 事件名 vs 宿主 waterfall 契约
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const isCI = Boolean(process.env.GITHUB_ACTIONS)
@@ -986,6 +988,23 @@ const inRunSurface = (p) =>
   } else if (!others.length) {
     notes.push(`⑭ 外部 CLI pin 单点：dsh-plugin-guide@${ownerHits[0].v} 仅出现于 ${CLI_PIN_OWNER}（运行面零分叉）`)
   }
+}
+
+// ⑮ 宿主契约门（v18.62.1 全量审计 P2-2）
+//   真教训：v18.61.0 把 H2 监听器写成 4 参 `(tool, args, result, next)`，而宿主 `tools/post-execute` 是
+//   3 参 waterfall——入参错位后真实宿主**每次工具调用**抛 `next is not a function`、被静默改写成 isError，
+//   却因「自建桩测试照着实现写」而 600 用例全绿。H4 同族（2 参且不调 next() → 截断下游模型选择）。
+//   本门静态解析 lib/index.js 的 `ctx.on(...)`，对每条断言「事件名存在于宿主契约表 + 形参个数逐位一致」。
+//   契约表真源与更新口径见 `_lib/host-contract.mjs` 头注释（宿主 0.2.0-rc.2 三个派发点）。
+try {
+  const libIndexSrc = readFileSync(join(ROOT, 'lib', 'index.js'), 'utf8')
+  const { regs, errors } = reconcileHostContract(libIndexSrc)
+  for (const e of errors) fail('host-contract', `⑮ 宿主契约：${e}`)
+  if (!errors.length) {
+    notes.push(`⑮ 宿主契约：${regs.length} 个 ctx.on 监听器（${regs.map((r) => r.event).join(' / ')}）签名与宿主 waterfall 契约逐位一致`)
+  }
+} catch (e) {
+  fail('host-contract', `⑮ 宿主契约对账无法执行：${e.message}`)
 }
 
 console.log('\n=== 仓库机械卫生门（repo-hygiene-check）===')

@@ -1,11 +1,11 @@
 ---
 name: "lunheng-article-pipeline"
-version: "18.62.1"
-description: "论衡 v18.62.1：DSH 原生多 Agent 深度长文流水线（学术论文 / 商业评论 / 行业分析 / 公众号）。9 个独立角色 T1-T9 + 主控；三角验证 + M 门 + G 审计 + 修订回环双轨（≤2 轮纠错 + 至多 +1 深化） + 期刊匹配 + auto_cite 预标注 + 内嵌 11 个 /lunheng 斜杠命令。适用：≥2000 字、证据须可追溯的长文（4 个人在环节点、**数小时**）。**不适用**：<2000 字短文与即时问答；文学创作；需数学推导或实验设计的理工科论文；营销软文；需一手数据而未投喂素材。版本增量见 CHANGELOG.md。"
+version: "18.62.2"
+description: "论衡 v18.62.2：DSH 原生多 Agent 深度长文流水线（学术论文 / 商业评论 / 行业分析 / 公众号）。9 个独立角色 T1-T9 + 主控；三角验证 + M 门 + G 审计 + 修订回环双轨（≤2 轮纠错 + 至多 +1 深化） + 期刊匹配 + auto_cite 预标注 + 内嵌 11 个 /lunheng 斜杠命令。适用：≥2000 字、证据须可追溯的长文（4 个人在环节点、**数小时**）。**不适用**：<2000 字短文与即时问答；文学创作；需数学推导或实验设计的理工科论文；营销软文；需一手数据而未投喂素材。版本增量见 CHANGELOG.md。"
 whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 description（v18.0.5：官方目录只渲染 name + description，本字段对模型不可见，保留仅供工具链与维护者阅读）。"
 ---
 
-> 版本：v18.62.1（DSH bundle 插件）
+> 版本：v18.62.2（DSH bundle 插件）
 > **逐版明细与历史成因外移（v18.22.1 CTX-1）**：本文件只留**现行口径**；逐版明细与成因（v18.12.1 / v18.12.0 / v18.11.0 / v18.10.0 / v18.8.0 / v18.7.x …）全部在**仓库根 `CHANGELOG.md`** 同名版本段——该文件**不在随包目录内**（npm 发布物与纯技能目录部署都没有它），读不到就跳过，**不要当成断链**。
 > **v2.5.2-dsh.8 角色语义定案（主人指令）**：**9 个角色 T1-T9 各自独立、不可相互替代**——T8 终检不是「主控兼做的杂活」而是独立角色（有独立角色卡），只是执行者由主控担任（**主控 = T0 调度 + T8 终检执行双重身份**），不 spawn 子代理；**T9 审稿可选、默认选中、学术论文必选**。
 
@@ -99,7 +99,7 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 
 ## ⚡ 启动速查表
 
-- 版本：v18.62.1｜角色：T0 主控（= T8 终检执行者）＋ T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / T8 终检（主控亲执行）/ T9 审稿（默认选中，学术必选）
+- 版本：v18.62.2｜角色：T0 主控（= T8 终检执行者）＋ T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / T8 终检（主控亲执行）/ T9 审稿（默认选中，学术必选）
 - Phase：0 定题 → 1 检索(T1∥T2∥T3) → 1.5 补检索(可选,spawn T1) → 2 分析 → 2.5 大纲(人) → 3 写作 → 3.5 洞察(人) → 3.6 批判 → 4 审计 → **4.2 修订回环(≤2 轮+A 轨)** → 4.5 审稿+G14终闸 → 5 终检(人)
   > **本行的权威性**：本行是主控排 `todo_write` 的**唯一 Phase 真源**；机检规则 **㉔** 断言「流水线全景出现的 Phase 编号 ⊆ 本行」。**流水线全景仍是 1.5 / 4.2 的详述真源**（`Phase 1.5` 定向补检索 / `Phase 4.2 修订`）。
 - G14 时点（**v18.2.8 删早闸，三层防御**）：**① T5 v1 自检（零 spawn）→ ② 修订轮收尾自查（零 spawn）→ ③ 终闸 4.5 与 T9 并行（唯一一次 spawn，报告 = 最终版本真源）**
@@ -121,22 +121,19 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 
 ## ⚡ v18.60.1 反哺 v3 DSH 新能力接缝（主人显式授权落地，详见 `audits/机制文件修订记录-2026-09-30-反哺v3全批.md`）
 
-论衡本版接 v18.60.0 / v18.60.1 自加能力，新增**三个 DSH-native 监听器**（仅看名称就够，按需读 §五 `DSH-集成方案.md`）：
+论衡本版接 v18.60.0 / v18.60.1 自加能力，新增 DSH-native 能力（H1 工具声明 + H2 监听器；仅看名称就够，按需读 §五 `DSH-集成方案.md`）：
 
 - **H1 `executionMode: 'parallel'`（声明位 = `lib/tools.js` 的 4 个 `defineTool`）**：4 个只读工具全部声明 `executionMode: 'parallel'`——DSH `tools.mode` 让 driver 用有界滚动池调度，子代理可并发调多工具而不再被主控串行限定。**未声明 `exclusive` 的工具**——论衡四件全是只读，无写面冲突，并发安全。
-- **H2 `tools/post-execute` 自动伦理脱敏（声明位 = `lib/index.js` 第 4 段 try/catch；`ctx.on('tools/post-execute', listener)`）**：监听器对所有**材料类工具**（`subagent_*` / `file_read` / `web_*`）的 result 自动调 `lunheng_ethics_sanitize`（basic 模式），把 `reviewFlags` 与 `ethicsSanitized` 计数注入 result。**边界**：① 不写盘（守住 v18.60.0 ethics_sanitize「只读」承诺）；② 脱敏失败不动 result（不让监听器阻断下游）；③ **诚实边界已转述**（v18.60.0 工具描述原话：降低泄露面，不构成合规保证）。
-- **H5 `file-watcher:change` refresh-gates HMR（声明位 = `lib/index.js` 第 5 段 try/catch）**：监听 `cordis.patch.yml` 变更 → 自动 `spawn` `scripts/refresh-gates.mjs`。**边界**：① 若宿主无 `file-watcher:change` 事件，监听器注册**无降级**（与 §H2 同样 fail-loud）；② refresh-gates 仍是幂等脚本（`exit 0` 无需刷新 / `exit 1` 已刷新），可手动跑，HMR 仅是**附加**触发面。
-
-> **v3 落地后状态**：H1/H2/H5 已落地，H3/H4/H6/H7 在 v18.61 反哺 v4 已落地（见下方「⚡ v18.61.0 反哺 v4」段）。v3 时的"未做"已清空。
+- **H2 `tools/post-execute` 自动伦理脱敏（声明位 = `lib/index.js`；`ctx.on('tools/post-execute', listener)`，**3 参 `(exec, result, next)`**——v18.62.1 全量审计 P0-1 修正了旧的 4 参错位）**：监听器对所有**材料类工具**（`read` / `web_*` / `subagent*`）的 result 自动调 `lunheng_ethics_sanitize`（basic 模式），把 `reviewFlags` 与 `ethicsSanitized` 计数注入 result。**边界**：① 不写盘（守住 v18.60.0 ethics_sanitize「只读」承诺）；② 脱敏失败不动 result（不让监听器阻断下游）；③ **诚实边界已转述**（v18.60.0 工具描述原话：降低泄露面，不构成合规保证）。
+> **v3 落地后状态**：H1/H2 已落地，H4/H6/H7 在 v18.61 反哺 v4 已落地（见下方「⚡ v18.61.0 反哺 v4」段）。v3 时的"未做"已清空。
 >
 > **未做（v18.61 反哺 v4 后仍 Backlog）**：**H8** `session-log` SessionEvent 投影（依赖 v2.5.2-dsh.5 双文件分工定案，主人 review 后再做）；**H9** `session-query-sqlite`（依赖 H8）；**H10** `web_profile`（价值小）；**H11** `workflow` / `goals` / `jobs`（AGENTS.md 显式禁接）。
 
 ## ⚡ v18.61.0 反哺 v4 DSH 新能力接缝（主人授权落地，详见 `audits/机制文件修订记录-2026-09-30-反哺v4全批.md`）
 
-v4 把 v3 留待 review 的 7 项里能落地的 3 项 + 1 项 H6 实证落地，**新增 3 个监听器 + 1 个 preset 目录**：
+v4 把 v3 留待 review 的 7 项里能落地的 3 项 + 1 项 H6 实证落地，**新增 2 个监听器（H4/H7）+ 1 个 preset 目录（H6）**：
 
-- **H3 `assistant/chunk` G14 启发式预筛**（声明位 = `lib/index.js`）：监听模型流式输出 → 用正则粗筛 v18.2.8 G14 §A 类（模板词：综上所述 / 值得关注的是 / 不容忽视 / 具有重要的…意义）+ §B 类（句式同质化：连续首先…其次…最后）→ 命中后在 chunk 上追加 `g14PreScreen = {hits, scannedAt, version}` 元数据，**不修改 chunk.text 内容**。**边界**：① 不替代 G14 终闸（v2.4.0 + v18.2.8 三层防御第 3 层仍需 LLM 推理判定）；② 是**减工作量**而非**省模型调用**（纠正之前「省 subagent」误解）；③ 精度不如 LLM，仅作高风险标注；④ 失败只 warn。
-- **H4 `system-prompt/assemble` 钩子**（声明位 = `lib/index.js`）：监听 prompt 装配 → **只追加不覆盖** dsh 默认内容（附加「论衡技能加载中」提示段，**严格遵守主人未审阅「动态覆盖静态」语义前的最保守模式**）。**边界**：① 严格**只追加**，**不修改 dsh 默认 prompt**；② listener 失败只 warn；③ phase 推断用「论衡技能加载中」通用段（不按 phase 分），主人裁定后下次落地可细化。
+- **H4 `system-prompt/assemble` 钩子**（声明位 = `lib/index.js`；**3 参 `(assembly, context, next)`，`await next()` 后向 sections 追加——v18.62.1 全量审计 P1-2 修正了旧的 2 参截断下游缺陷**）：监听 prompt 装配 → **只追加不覆盖** dsh 默认内容（附加「论衡技能加载中」提示段，**严格遵守主人未审阅「动态覆盖静态」语义前的最保守模式**）。**边界**：① 严格**只追加**、**不修改 dsh 默认 prompt**，且调 `next()` 驱动下游链（**不截断**模型选择等下游监听器）；② 追加失败只降级为「返回下游结果原样」；③ phase 推断用「论衡技能加载中」通用段（不按 phase 分），主人裁定后下次落地可细化。
 - **H6 agent preset 化 + `modelSelectionSettings:true`**（**新增**：`examples/preset/agent-tiered/cordis.yml`）：按 DSH-集成方案 §八 第 2 步配方写新 preset 目录；论衡三档 subagent（retrieval / strong / audit）开 `modelSelectionSettings:true` → 该 preset 内可用 `list_subagent_models` 工具 + per-call `provider`/`model`/`reasoning_effort`。**真源 roles**：retrieval = T1/T2/T3、strong = T4/T5、audit = T6/T7/T9/G14。**边界（DSH-集成方案 §八.3 不确定点 4）**：预设**只在会话空白期可切**——长跑中途换不了。
 - **H7 `agent/request` waterfall 模型路由**（声明位 = `lib/index.js`）：监听 `agent/request` 事件 → 论衡三档 subagent 请求时按 `LUNHENG_*_PROVIDER` / `LUNHENG_*_MODEL` env 覆盖 → **改 env 不重启 dsh 即可切模型**。**依赖 H6**：preset 内与 bundle 全局**双保险**。**边界**：① `agent/request` 是 dsh 0.1.7-rc.2 实验事件，本机无法实测（缺 API key），注册失败只 warn；② listener 只读 env + 写返回值——无 spawn / 无 IO / 无改仓库。
 

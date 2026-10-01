@@ -1,11 +1,13 @@
-// H3 + H4 + H7 集成测试（v18.61.0 反哺 v4，主人授权落地）
+// H4 + H7 集成测试（v18.61.0 反哺 v4 落地；v18.62.1 全量审计 P1-2 修复 H4 + P1-1 移除 H3）
 //
-// 验证 lib/index.js 的三个新增 ctx.on 监听器：
-//   · H3 `assistant/chunk` G14 启发式预筛（命中模板词 → 追加 g14PreScreen 元数据）
-//   · H4 `system-prompt/assemble` 钩子（**只追加不覆盖** — 安全模式）
+// 验证 lib/index.js 的两个新增 ctx.on 监听器：
+//   · H4 `system-prompt/assemble` 钩子（**只追加不覆盖** — 3 参 waterfall）
 //   · H7 `agent/request` waterfall 模型路由（按 LUNHENG_* env 覆盖 provider/model）
+//   H3 `assistant/chunk` 监听器已按 v18.62.1 全量审计 P1-1 移除（session 日志事件、无 ctx 派发方），不再测。
 //
 // 做法沿用 tests/h2-h5-listeners.test.mjs 同款：直接 import apply + 真 fire。
+// H4 关键差异（v18.62.1 修复前 vs 后）：修复前 2 参 `(prompt, next)` 不调 next()，把下游链（含模型选择）静默
+//   截断；修复后 3 参 `(assembly, context, next)`，`await next()` 拿到装配结果再向 sections 追加论衡段。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -54,62 +56,7 @@ async function fire(ctx, listeners, event, ...args) {
   return results
 }
 
-test('H3 G14 启发式预筛：assistant/chunk 含模板词 → g14PreScreen 元数据', async () => {
-  const { ctx, listeners } = makeCordaxLikeCtx()
-  const mod = await import(pathToFileURL(INDEX_MOD).href)
-  mod.apply(ctx, {})
-  await new Promise((r) => setTimeout(r, 50))
-
-  const handlers = listeners['assistant/chunk'] || []
-  assert.ok(handlers.length >= 1, 'H3 监听器未注册到 ctx.on(assistant/chunk)')
-
-  // 模拟模型流式输出（含模板词）
-  const chunk = { text: '综上所述，本研究具有重要的理论与现实意义。', content: '' }
-  await fire(ctx, listeners, 'assistant/chunk', chunk, () => {})
-  assert.ok(chunk.g14PreScreen, `未注入 g14PreScreen，chunk = ${JSON.stringify(chunk)}`)
-  assert.ok(chunk.g14PreScreen.hits.length >= 1, `至少 1 个模板词命中，实际 ${chunk.g14PreScreen.hits.length}`)
-  const kinds = chunk.g14PreScreen.hits.map((h) => h.kind)
-  assert.ok(kinds.includes('g14-A-template'), `应命中 g14-A-template，实际 kinds = ${kinds}`)
-})
-
-test('H3 启发式预筛：句式同质化（连续首先...其次...最后）', async () => {
-  const { ctx, listeners } = makeCordaxLikeCtx()
-  const mod = await import(pathToFileURL(INDEX_MOD).href)
-  mod.apply(ctx, {})
-  await new Promise((r) => setTimeout(r, 50))
-
-  const chunk = { text: '首先我们看到 A 趋势。其次我们看到 B 影响。最后我们看到 C 结果。' }
-  await fire(ctx, listeners, 'assistant/chunk', chunk, () => {})
-  assert.ok(chunk.g14PreScreen, '句式同质化应被命中')
-  const kinds = chunk.g14PreScreen.hits.map((h) => h.kind)
-  assert.ok(kinds.includes('g14-B-consecutive'), `应命中 g14-B-consecutive，实际 kinds = ${kinds}`)
-})
-
-test('H3 启发式预筛：干净文本不命中（不误报）', async () => {
-  const { ctx, listeners } = makeCordaxLikeCtx()
-  const mod = await import(pathToFileURL(INDEX_MOD).href)
-  mod.apply(ctx, {})
-  await new Promise((r) => setTimeout(r, 50))
-
-  const chunk = { text: '这是一段普通的论述，没有任何模板词。' }
-  await fire(ctx, listeners, 'assistant/chunk', chunk, () => {})
-  assert.equal(chunk.g14PreScreen, undefined, '干净文本不应误报')
-})
-
-test('H3 启发式预筛：不修改 chunk.text 内容（只追加元数据）', async () => {
-  const { ctx, listeners } = makeCordaxLikeCtx()
-  const mod = await import(pathToFileURL(INDEX_MOD).href)
-  mod.apply(ctx, {})
-  await new Promise((r) => setTimeout(r, 50))
-
-  const originalText = '综上所述，本研究...'
-  const chunk = { text: originalText }
-  await fire(ctx, listeners, 'assistant/chunk', chunk, () => {})
-  assert.equal(chunk.text, originalText, `chunk.text 必须保持原样，实际 = ${chunk.text}`)
-  assert.ok(chunk.g14PreScreen, '元数据 g14PreScreen 已注入')
-})
-
-test('H4 system-prompt 钩子：只追加不覆盖（安全模式）', async () => {
+test('H4 契约：listener 形参个数 = 3（assembly, context, next）', async () => {
   const { ctx, listeners } = makeCordaxLikeCtx()
   const mod = await import(pathToFileURL(INDEX_MOD).href)
   mod.apply(ctx, {})
@@ -117,31 +64,64 @@ test('H4 system-prompt 钩子：只追加不覆盖（安全模式）', async () 
 
   const handlers = listeners['system-prompt/assemble'] || []
   assert.ok(handlers.length >= 1, 'H4 监听器未注册到 ctx.on(system-prompt/assemble)')
-
-  // 模拟 dsh 默认 prompt
-  const dshDefault = '你是一个 AI 助手...'
-  const result = handlers[0](dshDefault, () => {})
-  // 监听器返回字符串（base + tail）
-  assert.ok(typeof result === 'string', 'listener 应返回字符串（追加模式）')
-  assert.ok(result.startsWith(dshDefault), '原 dsh 默认 prompt 必须**前置**（不覆盖）')
-  assert.ok(result.includes('lunheng-article-pipeline'), '应包含论衡技能提示段')
-  assert.ok(result.includes('v18.61.0'), '应包含版本号 v18.61.0')
-  assert.ok(result.includes('论衡'), '应包含"论衡"提示')
+  assert.equal(
+    handlers[0].length,
+    3,
+    'H4 监听器必须是 3 参 (assembly, context, next)——2 参会参数错位并截断下游链（含模型选择）',
+  )
 })
 
-test('H4 system-prompt 钩子：对象 prompt 也支持', async () => {
+test('H4 system-prompt 钩子：await next() 后向 sections 追加论衡段，不覆盖下游', async () => {
   const { ctx, listeners } = makeCordaxLikeCtx()
   const mod = await import(pathToFileURL(INDEX_MOD).href)
   mod.apply(ctx, {})
   await new Promise((r) => setTimeout(r, 50))
 
-  const result = listeners['system-prompt/assemble'][0](
-    { text: '你是一个 AI 助手...', other: 'metadata' },
-    () => {}
+  const handlers = listeners['system-prompt/assemble'] || []
+  assert.ok(handlers.length >= 1, 'H4 监听器未注册')
+
+  // 宿主真实装配结果形状（dsh-system-prompt assemble 返回）：sections/contexts/tools/variables
+  const assembly = {
+    sections: [{ name: 'persona', text: '你是一个 AI 助手...' }],
+    contexts: [],
+    tools: [],
+    variables: { provider: 'deepseek', model: 'deepseek-chat' },
+  }
+  let downstreamRan = false
+  const next = async () => {
+    downstreamRan = true
+    return assembly
+  }
+
+  const result = await handlers[0](assembly, { agent: {} }, next)
+
+  assert.ok(downstreamRan, 'H4 必须调用 next() 驱动下游链——不调会截断模型选择等下游监听器')
+  assert.ok(result && typeof result === 'object', 'H4 应返回装配结果对象')
+  assert.ok(Array.isArray(result.sections), 'result.sections 必须是数组')
+  assert.equal(result.sections.length, assembly.sections.length + 1, '应在原有 sections 基础上追加 1 段')
+  assert.equal(result.sections[0].text, '你是一个 AI 助手...', '原有 persona 段必须保留（不覆盖）')
+  assert.equal(result.sections[1].name, 'lunheng', '追加段的 name 应为 lunheng')
+  assert.ok(result.sections[1].text.includes('lunheng-article-pipeline'), '追加段应包含论衡技能提示')
+  // 下游写入的其它字段（如 variables 里的模型选择）必须保留
+  assert.deepEqual(result.variables, assembly.variables, '下游写入的 variables（模型选择）必须原样保留')
+})
+
+test('H4 system-prompt 钩子：next() 返回无 sections 的对象也安全追加', async () => {
+  const { ctx, listeners } = makeCordaxLikeCtx()
+  const mod = await import(pathToFileURL(INDEX_MOD).href)
+  mod.apply(ctx, {})
+  await new Promise((r) => setTimeout(r, 50))
+
+  const handlers = listeners['system-prompt/assemble'] || []
+  const result = await handlers[0](
+    { variables: {} },
+    {},
+    async () => ({ variables: { model: 'x' } }),
   )
-  assert.ok(result && typeof result === 'object', '对象 prompt → listener 应返回对象')
-  assert.equal(result.other, 'metadata', '原 metadata 必须保留')
-  assert.ok(result.text.includes('lunheng-article-pipeline'), 'text 字段应追加论衡提示')
+  assert.ok(Array.isArray(result.sections), '无 sections 时也应得到数组')
+  assert.equal(result.sections.length, 1, '应追加 1 段论衡段')
+  assert.equal(result.sections[0].name, 'lunheng', '追加段 name = lunheng')
+  assert.deepEqual(result.variables, { model: 'x' }, '下游字段保留')
 })
 
 test('H7 agent.request waterfall：subagent_retrieval + LUNHENG_RETRIEVAL_MODEL → 覆盖', async () => {
@@ -203,26 +183,20 @@ test('H7 agent.request waterfall：未设 env → 委托', async () => {
   }
 })
 
-test('基线契约：ctx.on 注册三个监听器（H3/H4/H7）+ H2/H5 共 5 个', async () => {
+test('基线契约：ctx.on 注册三个监听器（H2/H4/H7），H3/H5 已移除', async () => {
   const { ctx, listeners } = makeCordaxLikeCtx()
   const mod = await import(pathToFileURL(INDEX_MOD).href)
   mod.apply(ctx, {})
   await new Promise((r) => setTimeout(r, 50))
 
-  // v18.61.0 反哺 v4 之后，lib/index.js 应注册：
+  // v18.62.1 全量审计 P1-1 之后，lib/index.js 应注册 3 个监听器（全部有真实宿主派发方）：
   //   · tools/post-execute（H2）
-  //   · file-watcher:change（H5）
   //   · agent/request（H7）
-  //   · assistant/chunk（H3）
   //   · system-prompt/assemble（H4）
-  // 共 5 个监听器（agent/request 和 file-watcher:change 可能因宿主事件能力缺失而注册失败，
-  // 但 tools/post-execute / assistant/chunk / system-prompt/assemble 应**必然注册成功**）。
+  // H3（assistant/chunk）与 H5（file-watcher:change）已移除（宿主无派发方）。
   assert.ok((listeners['tools/post-execute'] || []).length >= 1, 'H2 应注册')
-  assert.ok((listeners['assistant/chunk'] || []).length >= 1, 'H3 应注册')
+  assert.ok((listeners['agent/request'] || []).length >= 1, 'H7 应注册')
   assert.ok((listeners['system-prompt/assemble'] || []).length >= 1, 'H4 应注册')
-  // 监听器数 >= 3 是硬契约
-  const totalCount = (listeners['tools/post-execute'] || []).length +
-                    (listeners['assistant/chunk'] || []).length +
-                    (listeners['system-prompt/assemble'] || []).length
-  assert.ok(totalCount >= 3, `三个核心监听器（tools/post-execute / assistant/chunk / system-prompt/assemble）合计应 ≥ 3，实际 ${totalCount}`)
+  assert.equal((listeners['assistant/chunk'] || []).length, 0, 'H3 应已移除（无派发方）')
+  assert.equal((listeners['file-watcher:change'] || []).length, 0, 'H5 应已移除（无派发方）')
 })

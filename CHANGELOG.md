@@ -2,6 +2,20 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.62.2 — 2026-10-01
+
+> **性质**：**P0 宿主契约缺陷修复批 + 结构性免疫**（依据主人显式指令「请详细阅读该文档，核实里面的问题，如果问题存在，请依次修复」→「依次全部修订」→「升号，发版吧」；机制文件写保护的授权例外条款）。
+> **为什么抬补丁版本**：核心是**修复运行期 P0 bug**——H2 监听器签名错位（4 参 vs 宿主 3 参 waterfall），真实宿主下**每次工具调用**都抛 `next is not a function` 并被 `dsh-tools` 的 `finalizeScheduledExecution` 静默改写成 isError（web profile 一装载即中招）。无新工具、无破坏性 API、无新增用户可见能力面；删除的 H3/H5 是**从未真正工作的死监听器**（宿主无派发方，删除不改变任何实际行为），新增的「宿主契约门」是**仓库级不随包**脚本（参考 v18.62.1 先例）。
+> **依据**：第三方全量审计《全量审计报告-论衡插件-v18.62.1.md》（P0-1 / P1-1 / P1-2 / P1-3 / P2-1 / P2-2 / P2-4）。
+> **P0-1（H2 签名错位）**：`ctx.on('tools/post-execute', (tool, args, result, next) => …)` 改 `(exec, result, next)`；工具名正则 `file_read`→`read`、`subagent_`→`subagent`（`file_read` 在宿主 99 个包里 0 命中）；`return next()` 移入 try；并处理真实 `result.content` 块数组（旧代码把数组当字符串脱敏、静默失效）。
+> **P1-1（死监听器）**：删除 H3 `assistant/chunk`（宿主里是 session 日志事件、无 ctx 派发方）与 H5 `file-watcher:change`（宿主全树 0 命中），连带删除不再使用的 `spawnChild` 导入。
+> **P1-2（H4 截断下游）**：`ctx.on('system-prompt/assemble', (prompt, next) => …)` 改 `async (assembly, _context, next)`，`await next()` 后向 `sections` 追加论衡段——旧 2 参写法参数错位且不调 next()，会截断下游链（含 dsh-agent 的模型选择）。
+> **P1-3（文档对齐）**：SKILL.md / SECURITY.md / DSH-集成方案.md 的 H2–H7 声明与实际能力对齐（H2/H4 补 3 参契约、H3/H5 删除过时声明，符合 consistency-check 规则㉘「常驻体只留现行口径」）。
+> **P2-1（peer 区间）**：三个 peer 依赖上界 `<0.2.0` → `<0.3.0`（宿主已 0.2.0-rc.x，0.2.0 稳定版一发布即落在区间外）。
+> **P2-2（结构性免疫）**：新增**宿主契约门** = `scripts/_lib/host-contract.mjs`（契约表 + 静态解析 + 比对）+ `repo-hygiene-check` 规则 ⑮ + `tests/host-contract.test.mjs`（8 用例，反事实证明门能抓到 4 参 / 2 参 / 死事件三类退化）+ `规范-机械门对照表.md` 补一行勾稽。监听器测试改按**宿主真实 3 参形状**驱动并新增**形参个数断言**（`listener.length === 3`）——堵住「自建桩与实现共错、恒绿」。
+> **P2-4（死代码）**：删除 `tests/h2-h5-listeners.test.mjs` 里从未被调用的 `makeCtx`。
+> **回滚点**：v18.62.1 = `cb65077`。
+
 ## 18.62.1 — 2026-09-30
 
 > **性质**：**发布链事后核对工具**（依据主人显式指令「做选项 B」；机制文件写保护的授权例外条款）。
