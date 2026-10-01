@@ -41,7 +41,18 @@
 - npm 强制包含根目录 `README*` 与 `LICENSE`（从 files 删掉、加 .npmignore 均无效，已实测）——五语 README 一定在包内，不是缺陷。
 - 发布 = 推 tag，由 `.github/workflows/publish.yml`（OIDC Trusted Publishing + `--provenance`）完成。
 - **`latest` dist-tag 不会自动前移**（`NPM_TOKEN` 已删；`--tag dsh` 只动 `dsh`）→ 每次发版后手工跑一次：
-  `npm dist-tag add lunheng-article-pipeline@<新版本> latest`（`dsh` 由 publish 工作流维护）。v18.12.0 发版后已执行，两个 tag 均指向 18.12.0。
+  `npm dist-tag add lunheng-article-pipeline@<新版本> latest --registry=https://registry.npmjs.org`（`dsh` 由 publish 工作流维护）。
+  ⚠️ **`--registry` 不能省**：本机 `~/.npmrc` 的默认 `registry` 指向**只读镜像** `registry.npmmirror.com`，
+  而 `_authToken` 是给 `registry.npmjs.org` 的 → 不带该参数会把 dist-tag 请求打到镜像，
+  报 `E401 Unauthorized … Login first`（**v18.62.4 发版实测踩到**）。
+  ⚠️ **顺序不能颠倒**：必须等 `publish` 作业 **success** 之后再改 tag。发布未完成时该版本在注册表里**不存在**，
+  加 tag 会 `E404`。**判据（两行都过再加）**：
+  ① `npm view lunheng-article-pipeline@<新版本> version --registry=https://registry.npmjs.org` 有输出；
+  ② 同一 registry 下 `dist-tags` 里已出现 `dsh: '<新版本>'`（`dsh` 由 publish 工作流维护，它先到位）。
+  > **核验 tips**：`npm view … dist-tags` **可能读到本机缓存**（v18.62.4 时曾仍显示旧 `latest`，实际已更新）。
+  > 要权威结论就直查注册表 API：
+  > `Invoke-RestMethod https://registry.npmjs.org/-/package/lunheng-article-pipeline/dist-tags`
+  （v18.12.0 发版后已执行，两个 tag 均指向 18.12.0。）
 
 ## 五、仓库级资源与技能体的边界（**L-25 定案**，v18.12.2）
 
