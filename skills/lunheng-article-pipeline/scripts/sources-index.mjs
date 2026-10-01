@@ -8,7 +8,10 @@
 //
 // 退出码：
 //   0  = 成功
-//   1  = `--check` 发现不合法行（本脚本**确实做内容判定**——校验 JSONL 行 schema 与 url 形态，故 1 是正当语义、不是撞码）
+//   1  = 发现不合法行（本脚本**确实做内容判定**——校验 JSONL 行 schema 与 url 形态，故 1 是正当语义、不是撞码）
+//        ⚠️ v18.62.4（全量审计-v18.62.3 §8.1 #7）：**`--check` 与 `--merge` 同判据**。旧版只有 `--check`
+//        会 exit 1，而 `--merge`（**Phase 2.5 实际跑的那个模式**）warn 后 exit 0 → 不合法行被静默跳过、
+//        索引缺来源，而主控只看退出码 → **数据丢了没人知道**。现两者都按「有无不合法行」定码。
 //   10 = 参数或路径错（未知参数 / 缺模式 / 一次给多个模式 / 项目目录不存在）
 //   70 = 内部错误（EX_SOFTWARE，见 _lib/exit-guard.mjs）
 //
@@ -46,7 +49,8 @@ if (args.includes('-h') || args.includes('--help')) {
 --check      校验每个分片：文件存在性 / 每行合法 JSON / 必填键齐备 / url 形如 http(s) / 统计跨线重复（重复是**预期收益**，只报不判错）
 --merge      合并三线分片 → <项目>/sources.json（按 url 去重、保留来源线标记 + 计数；**主控在 Phase 2.5 跑**）
 --query      打印去重后的索引（可带 needle 过滤 url/title/summary）
-退出码：0 成功｜1 --check 发现问题（行不合法）｜10 参数或路径错｜70 内部错误`);
+退出码：0 成功｜1 发现不合法行（--check 与 --merge **同判据**；--merge 仍写出 sources.json 但会报不完整）｜10 参数或路径错｜70 内部错误
+`);
   process.exit(0);
 }
 
@@ -166,7 +170,21 @@ if (mode === '--merge') {
   writeReport(out, JSON.stringify(report, null, 2), { protect: [] });
   console.log(`✓ 已合并 → ${out}`);
   console.log(`  三线合计 ${report.counts.total} 行｜去重 ${report.counts.unique} 个来源｜跨线重复 ${report.counts.crossLineDuplicates} 个`);
-  if (problems.length) console.warn(`  ⚠ 有 ${problems.length} 行不合法被跳过（先跑 --check 看明细）`);
+  // v18.62.4（全量审计-v18.62.3 §8.1 #7）：**同一缺陷两种退出码**。
+  //   病灶：`--check` 对不合法行 `process.exit(1)`，而 `--merge`（**Phase 2.5 实际跑的那个模式**）
+  //   只 `console.warn` 后 **exit 0** —— 同一份分片、同一个缺陷，换个模式就从「失败」变「成功」。
+  //   危害不是文案问题：不合法行**被静默跳过**（`sources.json` 里就是少了这些来源），而主控在
+  //   Phase 2.5 只看退出码 → 带着缺来源的索引继续跑三角验证，**没人知道数据丢了**。
+  //   修法：`--merge` 仍**写出** `sources.json`（已解析的行照常合并，不把好数据一起扣住），
+  //   但按**同一判据**定码：有跳过行 → exit 1 并指明这些行**不在**产物里；全合法 → exit 0。
+  //   判据一句话：**「掉了数据」必须让调用方能从退出码看出来**——模式不该改变同一缺陷的严重度。
+  if (problems.length) {
+    console.warn(`  ⚠ 有 ${problems.length} 行不合法被跳过（先跑 --check 看明细）`);
+    console.error(`\n✗ sources.json 已写出，但**不含上述 ${problems.length} 行**——索引不完整。`);
+    for (const p of problems.slice(0, 10)) console.error(`  · ${p.line}.jsonl:${p.line_no} — ${p.reason}`);
+    console.error('→ 退出码 1（与 --check 同判据：不合法行 = 有发现），请修正分片后重跑 --merge。');
+    process.exit(1);
+  }
   process.exit(0);
 }
 
