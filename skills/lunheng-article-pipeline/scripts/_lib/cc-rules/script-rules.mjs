@@ -18,9 +18,22 @@ const missingInDoc = diskNames.filter((s) => !declaredNames.includes(s));
 const extraInDoc = declaredNames.filter((s) => !diskNames.includes(s));
 if (missingInDoc.length > 0) errors.push(`[P1 白名单漏列] SKILL.md 未列：${missingInDoc.join(', ')}（磁盘共 ${diskScripts.length} 个）`);
 if (extraInDoc.length > 0) errors.push(`[P1 白名单多列] SKILL.md 列了不存在的脚本：${extraInDoc.join(', ')}`);
-const declaredCount = wlLine.match(/白名单（[^）]*?(\d+)\s*个/)?.[1];
-if (declaredCount && Number(declaredCount) !== diskScripts.length) {
-  errors.push(`[P1 白名单数量不符] SKILL.md 声明 ${declaredCount} 个 ≠ 磁盘 ${diskScripts.length} 个`);
+// v18.62.4（全量审计-v18.62.3 §8.2 #27）：**「解析不到计数」必须响亮失败，不得静默 no-op**。
+//   病灶：旧式单模式 `白名单（[^）]*?(\d+)\s*个` —— 措辞一旦变动（如改成「共 28 个脚本」/
+//   「白名单 28 个」/「共 28 个」）就**匹配不到**，而 `if (declaredCount && …)` 让它**静默通过**：
+//   门还在、红变绿，且**没有任何迹象**表明它这一轮其实没检（本仓最反感的形态）。
+//   修法：多模式兜底 + 兜不到就报 P1（要求同批把计数写成可解析的形态）。
+const declaredCountRaw =
+  wlLine.match(/白名单（[^）]*?(\d+)\s*个/)?.[1]                       // 白名单（vX 增补后：共 N 个）
+  ?? wlLine.match(/白名单[^0-9\n]{0,40}?共\s*(\d+)\s*个/)?.[1]          // 白名单 … 共 N 个
+  ?? wlLine.match(/白名单[^0-9\n]{0,40}?(\d+)\s*个\s*(?:\.mjs|脚本)/)?.[1] // 白名单 … N 个脚本 / N 个 .mjs
+  ?? wlLine.match(/白名单[^0-9\n]{0,40}?(\d+)\s*个/)?.[1];              // 兜底：白名单 … N 个
+if (declaredCountRaw === undefined) {
+  errors.push('[P1 白名单计数不可解析] SKILL.md 的「随包脚本白名单」行里找不到「N 个」计数'
+    + '——本规则**已静默失效**（不是通过）。请把计数写成可解析形态（如「白名单（…：共 N 个）」），'
+    + `或同批修订本规则的正则。磁盘真值 = ${diskScripts.length} 个`);
+} else if (Number(declaredCountRaw) !== diskScripts.length) {
+  errors.push(`[P1 白名单数量不符] SKILL.md 声明 ${declaredCountRaw} 个 ≠ 磁盘 ${diskScripts.length} 个`);
 }
 
 // ⑩b 脚本计数全库对账（v18.0.2 新增；**v18.2.6 审计修复：识别方式改为结构派生**）

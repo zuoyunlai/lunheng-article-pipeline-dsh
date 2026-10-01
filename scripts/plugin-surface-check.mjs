@@ -302,6 +302,18 @@ if (CLI_PIN_VERSION && cliVersion !== '未知' && cliVersion !== CLI_PIN_VERSION
 const blocking = []
 const waivedUsed = new Set()
 
+// v18.62.4（全量审计-v18.62.3 §8.2 #28）：**把 `CLI_CHECK_COUNT` 真正接上**。
+//   病灶：该常量此前**只被声明、从未被消费**——它只与 `AGENTS.md` 的散文挂钩，而**门自己从不比对
+//   CLI 实报的项数**。后果：上游若静默**删掉或改名**一条检查，本包的覆盖率缩水，而
+//   「通过 9 项」这类散文与常量都还写着 14 —— 全门仍绿。这与本仓已经防住的「skip 恒绿」同族
+//   （见下方 SKIP_ALLOWED），只是那一半有门、这一半没有。
+//   判据：**声明的项数必须等于 CLI 实报项数**；不等即阻塞，并要求同批更新常量与散文。
+if (Array.isArray(checks) && checks.length !== CLI_CHECK_COUNT) {
+  blocking.push(`[cli-check-count] CLI 实报检查项 ${checks.length} 项，而本包声明的 CLI_CHECK_COUNT = ${CLI_CHECK_COUNT}`
+    + `（${CLI_SPEC}）——上游可能**新增/删除/改名**了检查项。覆盖率已变，禁止静默放行：`
+    + `请核对 CLI 变更后同批更新 CLI_CHECK_COUNT 与 AGENTS.md 的项数散文（三处同源，见 tests/third-review-gates.test.mjs）`)
+}
+
 for (const check of checks) {
   const problems = blockingProblems(check)
   const isWaived = check.status === 'fail' && problems.length === 0

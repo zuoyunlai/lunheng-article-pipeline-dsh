@@ -96,13 +96,24 @@ try {
     ? readdirSync(libDir, { withFileTypes: true }).filter((e) => e.isFile() && e.name.endsWith('.js')).map((e) => e.name).sort()
     : []
   if (libModules.length === 0) bad('发布物 lib/ 下没有任何 .js（入口目录为空？`main` 会解析失败）')
+  // v18.62.4（§8.2 #30）：**期望清单必须来自真源树，不能来自被断言的那个目录**——旧版用
+  //   readdirSync(pkg/lib) 派生期望、再断言发布物里有它 = 同义反复，「发布物缺 lib 模块」永不报出。
+  const srcLibDir = join(ROOT, 'lib')
+  const srcLibModules = existsSync(srcLibDir)
+    ? readdirSync(srcLibDir, { withFileTypes: true }).filter((e) => e.isFile() && e.name.endsWith('.js')).map((e) => e.name).sort()
+    : []
+  if (srcLibModules.length === 0) bad('真源 lib/ 下没有任何 .js（仓库布局异常，本条会退化为空集断言）')
+  const libMissingInPkg = srcLibModules.filter((f) => !libModules.includes(f))
+  const libExtraInPkg = libModules.filter((f) => !srcLibModules.includes(f))
+  if (libMissingInPkg.length) bad(`发布物 lib/ 缺真源已有的模块：${libMissingInPkg.join(', ')}（入口会 ENOENT；检查 package.json files 白名单与打包过程）`)
+  if (libExtraInPkg.length) bad(`发布物 lib/ 多出真源没有的模块：${libExtraInPkg.join(', ')}（打包残留？）`)
   const mustExist = [
     'package.json',
     'cordis.patch.yml',
     `skills/${PKG_NAME}/SKILL.md`,
     `skills/${PKG_NAME}/AGENTS.md`,
     `skills/${PKG_NAME}/scripts/_lib/exit-guard.mjs`,
-    ...libModules.map((f) => `lib/${f}`),
+    ...srcLibModules.map((f) => `lib/${f}`),
   ]
   for (const rel of mustExist) {
     if (existsSync(join(pkg, rel))) ok(`随包：${rel}`)
