@@ -88,7 +88,7 @@ const sImradSeverity = imradMissing.length >= 3 ? 'P0' : imradMissing.length > 0
 // 关键词扫描（接受变体形式）
 const introBody = sectionBody(text, '引言');
 const introText = introBody || '';
-const FIELD_IMPORTANCE_KEYWORDS = ['重要性', '意义', '背景', '现状', '领域', '关注', '已成为', '近年来', '在全球', '在我国', '在 XX'];
+const FIELD_IMPORTANCE_KEYWORDS = ['重要性', '意义', '背景', '现状', '领域', '关注', '已成为', '近年来', '在全球', '在我国'];
 const KNOWLEDGE_GAP_KEYWORDS = ['不足', '缺乏', '尚未', '未充分', '鲜有', '缺少', '有待', '仍未', '还不清楚', '有待进一步', '尚未形成'];
 const CONTRIBUTION_KEYWORDS = ['本文', '本研究', '本课题', '我们', '笔者', '尝试', '旨在', '提出', '拟', '目标', '目的', '主要贡献', '边际贡献', '创新点', '推进'];
 function hasKeyword(text, keywords) {
@@ -110,8 +110,18 @@ const sIntroFunnelSeverity = introMissing.length === 3 ? 'P0' : introMissing.len
 const discussionBody = sectionBody(text, '讨论');
 const discussionText = discussionBody || '';
 const DISC_FINDING_KEYWORDS = ['本文', '本研究', '我们发现', '结果表明', '结果显示', '本研究发现', '上述', '主要发现'];
-const DISC_COMPARISON_KEYWORDS = ['与既有', '与已有', '与现有', '相比', '不同于', '类似', '一致', '相符', '不符', '相悖', '前人', '已有研究', '既有研究', 'L01', 'L02', 'L03', 'L04', 'L05', '[L'];
-const DISC_MECHANISM_KEYWORDS = ['机制', '机理', '可能的原因是', '可以解释', '解释为', '这意味着', '揭示了', '反映了', '表明', '说明', '由于'];
+// v18.62.4（全量审计-v18.62.3 §8.2 #18）：**「词表门槛」本身也是可空转项，须按信号强度分层**。
+//   实测病灶：旧表里 `DISC_MECHANISM_KEYWORDS` 含 `表明`/`说明`/`由于`、`DISC_COMPARISON_KEYWORDS`
+//   含 `相比`/`一致` —— 这几个词在中文行文里**无处不在**（「表 3 表明」「由于数据可得性」「与前述一致」），
+//   于是 `discMissing` 永远到不了 4，**「四要素全缺 → P0」这一档在正常行文下不可达**（死档）。
+//   判据：**当某项的成立条件里混入高频泛用词，该项事实上恒真**。修法 = 把「用什么词判该项」与
+//   「该项本身是否属于可强判定的形态」分开：**机制解释 / 与既有比较属复杂项，只认特征性短语**，
+//   泛用连接词不再单独作为成立证据。
+//   边界（如实）：本门只做**格式与措辞层**机检；「机制讲得对不对」「是否真在与既有研究对话」是语义判断，
+//   归 T7（`07-审计-auditor.md` 的 G/T7 分工）。收紧后本项**更保守**：宁可判缺（交 T7 目视），
+//   也不再用一个泛用词冒充「已写」。
+const DISC_COMPARISON_KEYWORDS = ['与既有', '与已有', '与现有', '不同于', '前人', '已有研究', '既有研究', '相较', '对照', '呼应', '印证', '相悖', '不符', '[L'];
+const DISC_MECHANISM_KEYWORDS = ['机制', '机理', '可能的原因是', '可以解释', '解释为', '这意味着', '揭示了', '反映了', '成因', '驱动因素', '之所以'];
 const DISC_LIMITATION_KEYWORDS = ['局限', '限制', '不足', '本文未', '本研究未', '未来', '进一步', '展望', '后续研究', '有待探索'];
 const discHasFinding = hasKeyword(discussionText, DISC_FINDING_KEYWORDS);
 const discHasComparison = hasKeyword(discussionText, DISC_COMPARISON_KEYWORDS);

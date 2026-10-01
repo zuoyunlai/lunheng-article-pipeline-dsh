@@ -68,19 +68,36 @@ const resultsBody = sectionBody(text, '结果') || '';
 const discussionBody = sectionBody(text, '讨论') || '';
 
 // === M-Form-12 方法节参数完整性 ===
+// v18.62.4（全量审计-v18.62.3 §8.2 #19）：**关键词表本身也会「虚增已检项」**。
+//   实测病灶：`'软硬件环境'` 里那个**单字母 `'R'`** 会被 `R²` / `R&D` / `Review` 命中；
+//   同表另有 `'lr'`（`Recall` / `Already`）、`'IV'` / `'iv'`（`give` / `IV` 罗马数字）
+//   一类**两字母片段**，以及 `'N ='`（可被 `in =` 命中）。
+//   后果方向是**危险的那一侧**：`methodFound` 被灌水 → `methodFound.length >= 4 ⇒ PASS`
+//   → **一份方法节根本没写参数的稿子被判「参数齐备」**（与「门空转」同源，只是方向相反）。
+//   修法 = 声明式：把每个参数的关键词分成
+//     · `phrases`：多字/多词特征串，直接 `includes`（安全）；
+//     · `patterns`：必须**带边界**的短 ASCII 记号（`n=100` / `p < 0.05` 这类**真实必需**的形态），
+//       用 `\b` + 边界字符类声明，避免子串误命中。
+//   边界（如实）：词表法**天然只能查「有没有写」，不能查「写得对不对」**——后者归 T7。
 const METHOD_PARAM_KEYWORDS = {
-  '样本量': ['样本量', 'n =', 'n=', 'N =', 'N=', '样本数', '受访者', '调查对象', 'participants', 'sample size', 'N=' ],
-  '抽样方式': ['抽样', '随机', '分层', '聚类', '便利抽样', '目的抽样', '滚雪球', 'sampling', 'stratified', 'cluster'],
-  '变量定义': ['变量', '因变量', '自变量', '协变量', '中介变量', '调节变量', '操作性定义', 'variable', 'covariate'],
-  '统计模型': ['回归', 'OLS', 'logit', 'probit', '中介', '调节', '结构方程', 'SEM', 'PLS', '倾向得分', 'PSM', 'DID', 'RDD', '工具变量', 'IV', 'regression'],
-  '超参数': ['学习率', 'lr', 'epoch', 'batch size', 'batch_size', '正则化', '正则', 'dropout', '超参数', 'hyperparameter', 'λ', 'alpha'],
-  '随机种子': ['random seed', 'seed', '种子', '随机数', 'rng'],
-  '软硬件环境': ['GPU', 'CPU', '内存', 'RAM', 'Python', 'R', 'Stata', 'SPSS', 'TensorFlow', 'PyTorch', 'sklearn', '硬件', '软件', 'environment'],
+  '样本量': {
+    phrases: ['样本量', '样本数', '受访者', '调查对象', 'participants', 'sample size'],
+    patterns: [/\b[Nn]\s*=\s*\d/],   // n = 100 / N=100；带 `\b` 与数字，防 `in =`
+  },
+  '抽样方式': { phrases: ['抽样', '随机', '分层', '聚类', '便利抽样', '目的抽样', '滚雪球', 'sampling', 'stratified', 'cluster'] },
+  '变量定义': { phrases: ['变量', '因变量', '自变量', '协变量', '中介变量', '调节变量', '操作性定义', 'variable', 'covariate'] },
+  '统计模型': { phrases: ['回归', 'OLS', 'logit', 'probit', '中介', '调节', '结构方程', 'SEM', 'PLS', '倾向得分', 'PSM', 'DID', 'RDD', '工具变量', 'regression'] },
+  '超参数': { phrases: ['学习率', 'learning rate', 'epoch', 'batch size', 'batch_size', '正则化', '正则', 'dropout', '超参数', 'hyperparameter', 'λ', 'alpha'] },
+  '随机种子': { phrases: ['random seed', '种子', '随机数', 'rng'] },
+  // 单字母 `R` 已移除：改为**无歧义**的语言/软件名（`R 语言` / `RStudio`），并保留其余具名软件
+  '软硬件环境': { phrases: ['GPU', 'CPU', '内存', 'RAM', 'Python', 'R 语言', 'RStudio', 'Stata', 'SPSS', 'TensorFlow', 'PyTorch', 'sklearn', '硬件', '软件', 'environment'] },
 };
 const methodFound = [];
 const methodMissing = [];
-for (const [param, keywords] of Object.entries(METHOD_PARAM_KEYWORDS)) {
-  if (keywords.some((k) => methodBody.includes(k))) methodFound.push(param);
+for (const [param, spec] of Object.entries(METHOD_PARAM_KEYWORDS)) {
+  const hit = (spec.phrases || []).some((k) => methodBody.includes(k))
+    || (spec.patterns || []).some((re) => re.test(methodBody));
+  if (hit) methodFound.push(param);
   else methodMissing.push(param);
 }
 // 至少 4 项才合规
@@ -107,6 +124,13 @@ const mExist11Severity = statMissing.length === 0 ? 'PASS' : 'P1';
 // === M-Exist-12 结果-方法闭环 ===
 // 每个结果叙述（以 ### / ## 开头或含 [Dxx] 引用）能否在方法节找到对应方法步骤
 // 简化版：检测结果节是否引用了方法节中出现的关键方法名（如「OLS / PSM / DID / 中介效应 / 倾向得分匹配」）
+// v18.62.4（全量审计-v18.62.3 §8.2 #20/#21）：两项修复，均为「**看似在检、实际不检**」：
+//   #21：重编译时 `.map((re) => re.source)` **丢掉了 `i` 旗标** → 方法写 `logit`、结果写 `Logit`
+//        即判「未回链」→ 假 P1。修法＝重编译时**逐条带上原旗标**（下方 `withFlags`）。
+//   #20：`methodNamesInMethod.length === 0 || …` 的 `||` 让「方法节**没有**任何受支持的方法名」时
+//        **恒真判 PASS** —— 质性/人文稿、以及任何用「多元线性回归」「政策文本分析」这类**表外方法名**
+//        的论文全部逃过该门。修法＝改为 **SKIP（未检，不算通过）**：本门只做「表内方法名的回链」这一
+//        可机检子集，表外情形必须**如实标未检**、交 T7 目视，而不是冒充通过。
 const METHOD_NAME_PATTERNS = [
   /OLS[^a-zA-Z]/,
   /倾向得分匹配/,
@@ -126,12 +150,36 @@ const METHOD_NAME_PATTERNS = [
   /probit/i,
 ];
 const methodNamesInMethod = METHOD_NAME_PATTERNS.filter((re) => re.test(methodBody)).map((re) => re.source);
-const resultsRefsMethod = methodNamesInMethod.length === 0 || methodNamesInMethod.some((name) => new RegExp(name).test(resultsBody));
+// ⚠️ 关键词只保留**特征性短语**：`不足`/`未来`/`进一步` 在中文行文里无处不在（人文稿尤其），
+//    会让「结果↔方法闭环」在缺方法时也恒真。故与 §8.2 #18 同一判据：**复杂项只认特征性短语**。
+const NEEDS_HUMAN_RE = /质性|访谈|田野|扎根|民族志|叙事|文本分析|话语分析|案例研究|人文学科|人文|哲学|史学/;
+/** 重编译时带上原旗标（`i` 不可丢——见 #21）。 */
+const withFlags = (str, srcRe) => new RegExp(str, srcRe.flags.replace('g', ''));
+let resultsRefsMethod;
+let mExist12Severity;
+let mExist12Note;
+if (methodNamesInMethod.length === 0) {
+  // #20：没有受支持的方法名 → **未检**，不是通过
+  resultsRefsMethod = 'SKIP';
+  mExist12Severity = 'SKIP';
+  mExist12Note = NEEDS_HUMAN_RE.test(methodBody)
+    ? '方法节未出现表内方法名，且该节含**质性/人文类**表述 → 本项机检**不适用**（T7 人工核「结果↔方法」是否对应）'
+    : '方法节未出现表内 17 个方法名之一 → 本项**未检**（SKIP，不算通过）；若确为表外方法（如「多元线性回归」「政策文本分析」），请由 T7 人工核结果节是否回链';
+} else {
+  const hit = methodNamesInMethod.filter((name) => withFlags(name, METHOD_NAME_PATTERNS.find((re) => re.source === name)).test(resultsBody));
+  resultsRefsMethod = hit.length > 0;
+  mExist12Severity = hit.length > 0 ? 'PASS' : 'P1';
+  mExist12Note = hit.length > 0
+    ? `结果节引用了方法节中的方法名：${hit.join(' / ')}`
+    : `方法节出现 ${methodNamesInMethod.join(' / ')}，但结果节**未回链**其中任何一个`;
+}
 const mExist12Pass = resultsRefsMethod;
-const mExist12Severity = resultsRefsMethod ? 'PASS' : 'P1';
 
 // --- 汇总 ---
-const allPass = mForm12Pass && mExist11Pass && mExist12Pass;
+// v18.62.4（#20）：`SKIP` **不计入 pass**（`=== true`），且**不产出干净的 exit 0** ——
+//   与 `g-audit-check` 的「SKIP 计入 skipped → exit 3」同语义：未检 ≠ 通过。
+//   末档 `3` 同时覆盖「仅 P2」「仅 SKIP」「非 P0/P1 的其它组合」——本门只有三档判定，语义即「需人工复核」。
+const allPass = mForm12Pass === true && mExist11Pass === true && mExist12Pass === true;
 const allSeverities = [mForm12Severity, mExist11Severity, mExist12Severity];
 const hasP1 = allSeverities.includes('P1');
 const hasP0 = allSeverities.includes('P0');
@@ -164,7 +212,8 @@ const result = {
       pass: mExist12Pass,
       severity: mExist12Severity,
       methodNamesFound: methodNamesInMethod,
-      note: '每个结果叙述能否回链到方法节具体步骤（简化版：方法节中的关键方法名是否在结果节被引用）',
+      // v18.62.4（#20）：未检（SKIP）时 note 说明**为什么未检 + 该谁核**，不让读者以为「已核且通过」
+      note: mExist12Note || '每个结果叙述能否回链到方法节具体步骤（简化版：方法节中的关键方法名是否在结果节被引用）',
     },
   },
   overall: { pass: allPass, exitCode },
