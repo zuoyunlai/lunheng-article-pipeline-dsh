@@ -26,6 +26,13 @@
 //   把「提到」当「做完」= 复现 18.12.3 的错误；本脚本刻意只报「需人工回核」而不报「已完成」。
 //
 // 退出码：0 = 两步均无发现；1 = 有发现（列在 stderr）；10 = 参数/路径错；70 = 内部错误。
+//
+// ⚠️ v18.62.4（全量审计-v18.62.3 §8.1 #5）：**`70` 此前只是「文档里的一个码」**——
+//   全文件没有任何 `process.exit(70)`，而文件读取与主判定**也没有 try/catch**。
+//   后果：任何内部异常（EACCES / EISDIR / TOCTOU 竞态 / 解析器缺陷）都会被 Node 以默认码收场，
+//   在本仓语境里**默认 1 = 「有发现」** —— 即**内部故障被读成「审计发现」**，方向恰好相反。
+//   修法（fail-closed）：把两步判定整体包进 `main()`，`catch` 一律 **exit 70** 并打印原始错误，
+//   与「0/1/10」三个**内容/参数语义**的码彻底分开。
 
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, resolve, relative } from 'node:path';
@@ -79,117 +86,128 @@ if (!recFiles.length) {
   console.error(`未在 ${recordsDir} 找到任何「机制文件修订记录-*.md」——拒绝在无记录的情况下判「已收口」`);
   process.exit(10);
 }
-const chgPath = join(repoRoot, 'CHANGELOG.md');
-const records = recFiles.map((r) => ({ ...r, text: readFileSync(r.path, 'utf8') }));
-const changelogText = existsSync(chgPath) ? readFileSync(chgPath, 'utf8') : '';
-const readmeText = existsSync(join(recordsDir, 'README.md')) ? readFileSync(join(recordsDir, 'README.md'), 'utf8') : '';
-const allRecordText = [...records.map((r) => r.text), changelogText, readmeText].join('\n');
+// __CLOSEOUT_MAIN_WRAPPED__（v18.62.4 §8.1 #5）：主体包一层 fail-closed —— 内部异常一律 exit 70，
+//   不再让 Node 的默认码（在本仓语境里 = 1 = 「有发现」）冒充判定结果。
+try {
+  const chgPath = join(repoRoot, 'CHANGELOG.md');
+  const records = recFiles.map((r) => ({ ...r, text: readFileSync(r.path, 'utf8') }));
+  const changelogText = existsSync(chgPath) ? readFileSync(chgPath, 'utf8') : '';
+  const readmeText = existsSync(join(recordsDir, 'README.md')) ? readFileSync(join(recordsDir, 'README.md'), 'utf8') : '';
+  const allRecordText = [...records.map((r) => r.text), changelogText, readmeText].join('\n');
 
-// ── 第 1 步：差集——审计报告里的 ID 必须至少被一处记录提及 ─────────────────────────────────
-const auditText = readFileSync(auditPath, 'utf8');
-const idsOf = (text) => [...new Set([...text.matchAll(/\bL-\d{2}\b/g)].map((m) => m[0]))].sort();
-const auditIds = idsOf(auditText);
-if (!auditIds.length) {
-  console.error(`审计报告里没找到任何 L-NN 形式的 ID（${relative(repoRoot, auditPath)}）——请确认报告格式`);
-  process.exit(10);
-}
-const mentioned = new Set(idsOf(allRecordText));
-const neverMentioned = auditIds.filter((id) => !mentioned.has(id));
+  // ── 第 1 步：差集——审计报告里的 ID 必须至少被一处记录提及 ─────────────────────────────────
+  const auditText = readFileSync(auditPath, 'utf8');
+  const idsOf = (text) => [...new Set([...text.matchAll(/\bL-\d{2}\b/g)].map((m) => m[0]))].sort();
+  const auditIds = idsOf(auditText);
+  if (!auditIds.length) {
+    console.error(`审计报告里没找到任何 L-NN 形式的 ID（${relative(repoRoot, auditPath)}）——请确认报告格式`);
+    process.exit(10);
+  }
+  const mentioned = new Set(idsOf(allRecordText));
+  const neverMentioned = auditIds.filter((id) => !mentioned.has(id));
 
-// ── 第 2 步：反向核验——某梯队登记的「未做」项，其后梯队必须再提到它（否则清单就是陈旧的）────
-// 「未做」标记的识别：视为**块起点**，块延伸到「下一个标题」或「下一个同级加粗行」为止。
-//   ⚠️ 实测教训（写本脚本时自己踩的）：真实记录里这个标记**不是小节标题**，而是加粗行
-//   `**仍未做（如实）**：`（后面跟一张表或一串行）。首版只认 `##` 标题 → 第四梯队/第六梯队的
-//   「仍未做」整块被**静默忽略**，脚本对真仓报「0 项」——这正是它要防的那种「门在此、却不生效」。
-//   故此处同时接受两种形态：`#{2,4}` 标题 与 `**…**` 加粗行；块内追平级新标记时切换/结束。
-const UNDONE_RE = /(仍未做|有意未做|本次不修|未做|暂不|延后|保留代价|刻意未加|不修)/;
-/** 该行是否为「未做」标记行；是则返回其层级与整行文本 */
-const undoneMarker = (line) => {
-  const h = /^(#{2,4})\s+(.*)$/.exec(line);
-  if (h && UNDONE_RE.test(h[2])) return { level: h[1].length, title: h[2] };
-  const b = /^\*\*(.+?)\*\*/.exec(line.trim());
-  if (b && UNDONE_RE.test(b[1])) return { level: 4, title: b[1], bold: true };
-  return null;
-};
-/** 收集某份记录里「被登记为未做」的 ID：标记块内出现的全部 ID（含块内的行内标记） */
-function undoneIds(text) {
-  const lines = text.split('\n');
-  const found = new Set();
-  let open = false;
-  let level = 0;
-  let boldSeen = new Set();          // 同一块内已出现过的加粗行标题（用于结束块）
-  for (const line of lines) {
-    const h = /^(#{1,6})\s+(.+)$/.exec(line);
+  // ── 第 2 步：反向核验——某梯队登记的「未做」项，其后梯队必须再提到它（否则清单就是陈旧的）────
+  // 「未做」标记的识别：视为**块起点**，块延伸到「下一个标题」或「下一个同级加粗行」为止。
+  //   ⚠️ 实测教训（写本脚本时自己踩的）：真实记录里这个标记**不是小节标题**，而是加粗行
+  //   `**仍未做（如实）**：`（后面跟一张表或一串行）。首版只认 `##` 标题 → 第四梯队/第六梯队的
+  //   「仍未做」整块被**静默忽略**，脚本对真仓报「0 项」——这正是它要防的那种「门在此、却不生效」。
+  //   故此处同时接受两种形态：`#{2,4}` 标题 与 `**…**` 加粗行；块内追平级新标记时切换/结束。
+  const UNDONE_RE = /(仍未做|有意未做|本次不修|未做|暂不|延后|保留代价|刻意未加|不修)/;
+  /** 该行是否为「未做」标记行；是则返回其层级与整行文本 */
+  const undoneMarker = (line) => {
+    const h = /^(#{2,4})\s+(.*)$/.exec(line);
+    if (h && UNDONE_RE.test(h[2])) return { level: h[1].length, title: h[2] };
     const b = /^\*\*(.+?)\*\*/.exec(line.trim());
-    const marker = undoneMarker(line);
-    if (open) {
-      // 结束条件：更高或同级标题；或出现**新的**同级加粗行（新的一句话/表头，说明未做块已结束）
-      if (h && h[1].length <= level) open = false;
-      else if (b && !marker) {
-        const key = b[1];
-        if (boldSeen.has(key) || boldSeen.size >= 1) open = false;   // 第二个加粗行即视为块结束
-        else boldSeen.add(key);
+    if (b && UNDONE_RE.test(b[1])) return { level: 4, title: b[1], bold: true };
+    return null;
+  };
+  /** 收集某份记录里「被登记为未做」的 ID：标记块内出现的全部 ID（含块内的行内标记） */
+  function undoneIds(text) {
+    const lines = text.split('\n');
+    const found = new Set();
+    let open = false;
+    let level = 0;
+    let boldSeen = new Set();          // 同一块内已出现过的加粗行标题（用于结束块）
+    for (const line of lines) {
+      const h = /^(#{1,6})\s+(.+)$/.exec(line);
+      const b = /^\*\*(.+?)\*\*/.exec(line.trim());
+      const marker = undoneMarker(line);
+      if (open) {
+        // 结束条件：更高或同级标题；或出现**新的**同级加粗行（新的一句话/表头，说明未做块已结束）
+        if (h && h[1].length <= level) open = false;
+        else if (b && !marker) {
+          const key = b[1];
+          if (boldSeen.has(key) || boldSeen.size >= 1) open = false;   // 第二个加粗行即视为块结束
+          else boldSeen.add(key);
+        }
+      }
+      if (marker) {
+        open = true;
+        level = marker.level === 4 && marker.bold ? 4 : marker.level;
+        boldSeen = new Set(marker.bold ? [marker.title] : []);
+        for (const m of line.matchAll(/\bL-\d{2}\b/g)) found.add(m[0]);
+        continue;
+      }
+      if (open) for (const m of line.matchAll(/\bL-\d{2}\b/g)) found.add(m[0]);
+    }
+    return found;
+  }
+  const staleDeferrals = [];
+  for (const rec of records) {
+    const undone = undoneIds(rec.text);
+    if (!undone.size) continue;
+    for (const id of undone) {
+      // 其后（rank 更大，或同 rank 但文件名在后）的记录里是否再出现该 ID
+      const laterText = records.filter((o) => o.rank > rec.rank).map((o) => o.text).join('\n') + '\n' + changelogText;
+      if (!new RegExp(`\\b${id}\\b`).test(laterText)) {
+        // 也查该记录自身后文是否「同一份里已结清」（如「本批未做」后又写「已补」）
+        staleDeferrals.push({ id, tier: rec.file.replace(/^机制文件修订记录-/, '').replace(/\.md$/, '') });
       }
     }
-    if (marker) {
-      open = true;
-      level = marker.level === 4 && marker.bold ? 4 : marker.level;
-      boldSeen = new Set(marker.bold ? [marker.title] : []);
-      for (const m of line.matchAll(/\bL-\d{2}\b/g)) found.add(m[0]);
-      continue;
-    }
-    if (open) for (const m of line.matchAll(/\bL-\d{2}\b/g)) found.add(m[0]);
   }
-  return found;
-}
-const staleDeferrals = [];
-for (const rec of records) {
-  const undone = undoneIds(rec.text);
-  if (!undone.size) continue;
-  for (const id of undone) {
-    // 其后（rank 更大，或同 rank 但文件名在后）的记录里是否再出现该 ID
-    const laterText = records.filter((o) => o.rank > rec.rank).map((o) => o.text).join('\n') + '\n' + changelogText;
-    if (!new RegExp(`\\b${id}\\b`).test(laterText)) {
-      // 也查该记录自身后文是否「同一份里已结清」（如「本批未做」后又写「已补」）
-      staleDeferrals.push({ id, tier: rec.file.replace(/^机制文件修订记录-/, '').replace(/\.md$/, '') });
-    }
+
+  // ── 输出 ────────────────────────────────────────────────────────────────────────────────
+  const report = {
+    auditFile: relative(repoRoot, auditPath).replaceAll('\\', '/'),
+    auditIdCount: auditIds.length,
+    recordFiles: records.length,
+    step1_neverMentioned: neverMentioned,
+    step2_staleDeferrals: staleDeferrals,
+    boundary: '本脚本只报「需人工回核」的项，**不判「已完成」**——语义那半必须逐条回代码/产物实测',
+  };
+  if (asJson) {
+    console.log(JSON.stringify(report, null, 2));
+    process.exit(neverMentioned.length || staleDeferrals.length ? 1 : 0);
   }
-}
 
-// ── 输出 ────────────────────────────────────────────────────────────────────────────────
-const report = {
-  auditFile: relative(repoRoot, auditPath).replaceAll('\\', '/'),
-  auditIdCount: auditIds.length,
-  recordFiles: records.length,
-  step1_neverMentioned: neverMentioned,
-  step2_staleDeferrals: staleDeferrals,
-  boundary: '本脚本只报「需人工回核」的项，**不判「已完成」**——语义那半必须逐条回代码/产物实测',
-};
-if (asJson) {
-  console.log(JSON.stringify(report, null, 2));
-  process.exit(neverMentioned.length || staleDeferrals.length ? 1 : 0);
-}
+  console.log(`收口批两步检查：审计 ${auditIds.length} 个 ID × ${records.length} 份修订记录`);
+  console.log(`  第 1 步 差集：从未被任何记录提及 = ${neverMentioned.length} 个`);
+  console.log(`  第 2 步 反向核验：登记为「未做」但其后无人再提 = ${staleDeferrals.length} 项`);
 
-console.log(`收口批两步检查：审计 ${auditIds.length} 个 ID × ${records.length} 份修订记录`);
-console.log(`  第 1 步 差集：从未被任何记录提及 = ${neverMentioned.length} 个`);
-console.log(`  第 2 步 反向核验：登记为「未做」但其后无人再提 = ${staleDeferrals.length} 项`);
+  const problems = [];
+  if (neverMentioned.length) {
+    problems.push(`[P1 差集] 以下 ID 在审计报告里存在，却**从未被任何修订记录/CHANGELOG 提及**（既不修也不登记）：\n` +
+      neverMentioned.map((x) => `    · ${x}`).join('\n'));
+  }
+  if (staleDeferrals.length) {
+    problems.push(`[P1 陈旧清单] 以下项在某梯队被登记为「未做/延后/保留代价」，但**其后所有梯队都没再提到**——` +
+      `必须逐条回代码/产物实测，并回标为「已做(附证据)」或保留在最新一批的未做清单里：\n` +
+      staleDeferrals.map((x) => `    · ${x.id}  （登记于：${x.tier}）`).join('\n'));
+  }
+  if (problems.length) {
+    console.error('\n收口批两步检查未通过：');
+    for (const p of problems) console.error('  - ' + p);
+    console.error('\n⚠️ 语义那半仍需人工：拿上面的清单逐条**回代码/产物实测**——' +
+      '「被提到」不等于「已做完」，把提到当做完正是 18.12.3 的错误。');
+    process.exit(1);
+  }
+  console.log('\n✓ 两步均无发现（差集为空 + 无陈旧「未做」登记）。' +
+    '\n  下一步（本脚本刻意不代劳）：把「已记录」项逐条回代码/产物实测——差集只能证明「被记录」。');
 
-const problems = [];
-if (neverMentioned.length) {
-  problems.push(`[P1 差集] 以下 ID 在审计报告里存在，却**从未被任何修订记录/CHANGELOG 提及**（既不修也不登记）：\n` +
-    neverMentioned.map((x) => `    · ${x}`).join('\n'));
+} catch (e) {
+  const code = (e && e.code) ? e.code : "EX_SOFTWARE";
+  const msg = (e && e.message) ? e.message : String(e);
+  console.error("⛔ closeout-verify 内部错误（" + code + "）：" + msg);
+  console.error("→ 退出码 70（内部错误，**与「0 无发现 / 1 有发现」无关**）——请修脚本或环境后重跑，不要把本次结果当作审计结论。");
+  process.exit(70);
 }
-if (staleDeferrals.length) {
-  problems.push(`[P1 陈旧清单] 以下项在某梯队被登记为「未做/延后/保留代价」，但**其后所有梯队都没再提到**——` +
-    `必须逐条回代码/产物实测，并回标为「已做(附证据)」或保留在最新一批的未做清单里：\n` +
-    staleDeferrals.map((x) => `    · ${x.id}  （登记于：${x.tier}）`).join('\n'));
-}
-if (problems.length) {
-  console.error('\n收口批两步检查未通过：');
-  for (const p of problems) console.error('  - ' + p);
-  console.error('\n⚠️ 语义那半仍需人工：拿上面的清单逐条**回代码/产物实测**——' +
-    '「被提到」不等于「已做完」，把提到当做完正是 18.12.3 的错误。');
-  process.exit(1);
-}
-console.log('\n✓ 两步均无发现（差集为空 + 无陈旧「未做」登记）。' +
-  '\n  下一步（本脚本刻意不代劳）：把「已记录」项逐条回代码/产物实测——差集只能证明「被记录」。');
