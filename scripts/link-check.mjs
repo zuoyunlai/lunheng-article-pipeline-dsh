@@ -37,7 +37,7 @@
  *     与本仓「零依赖」相冲突，且本包锚点是中文标题派生的，误报率高。
  *   · 不解析代码块里的路径（```text 布局树里的示意路径是**举例**，不是引用）。
  */
-import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs'
+import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 

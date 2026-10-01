@@ -27,7 +27,7 @@
 //   ③ 只核对**本仓库根**下的文件，不核对 `%TEMP%` 里的临时夹具（那正是测试该用的地方）。
 //   另一条必须显式处理的陷阱：**「子进程没跑起来」与「跑了但没改写」在快照上完全一样**——
 //   故本脚本对 spawn 失败单独判负（首版没有这一步，于是 `node node …` 的假绿被自己的测试抓出来）。
-import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { join, relative, sep } from 'node:path';

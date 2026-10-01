@@ -43,7 +43,7 @@
 import { readFileSync, existsSync, statSync, mkdtempSync, copyFileSync, rmSync, readdirSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
-import { join, dirname, relative, resolve, sep } from 'node:path'
+import { join, dirname, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { scanShipped } from './_lib/pack-negative.mjs' // D-1②：与 pack-smoke 共用同形负清单（结构上同形，不靠两份代码同步）
 import { scanLocalPaths, LOCAL_PATH_BASELINE } from './_lib/local-path-scan.mjs' // D-2②：本机绝对路径（发布物硬零 + 非随包树棘轮）
@@ -767,7 +767,15 @@ const ALWAYS_LIMIT = 70656  // v18.61.0 反哺 v4（主人授权落地）：SKIL
 const budgetBad = []
 let docOver = 0
 let residentTotal = 0
-for (const [rel, [limit, target, why]] of Object.entries(DOC_BUDGET)) {
+// v18.62.4（全量审计-v18.62.3 §8.3 #36）：**第 4 项不再被静默丢弃**。
+//   实测（运行时解析 DOC_BUDGET 字面量）：35 条里 **34 条 3 元、1 条 4 元** ——
+//   `references/_shared/外部检索源接入面.md` 是唯一的 4 元项：`[上限, 目标, 较新理由, 更早理由]`，
+//   而本行旧版只解构 `[limit, target, why]` → **那份更早的抬升理由被无声吃掉**。
+//   「数组多一项、解构少一项」最坏之处是**它不报错**：数据在源码里、读者以为它在生效。
+//   修法：显式接收第 4 项，并把两段理由**都**带进超限报错文案（多一条理由 = 多一条
+//   「为什么必须增长」的上下文，正是这条报错要回答的问题）。⚠️ 只改**本循环的解构与文案**，不动数据形状。
+for (const [rel, [limit, target, why, whyOlder]] of Object.entries(DOC_BUDGET)) {
+  const whyAll = whyOlder ? `${why}｜更早：${whyOlder}` : why
   const abs = join(ROOT, rel)
   if (!existsSync(abs)) { fail('doc-budget', `词预算表登记了不存在的文件：${rel}（表已过期，请删除该行）`); continue }
   const size = statSync(abs).size
@@ -777,7 +785,7 @@ for (const [rel, [limit, target, why]] of Object.entries(DOC_BUDGET)) {
     docOver++
     fail(
       'doc-budget',
-      `${rel} 已达 ${size} B（${kb(size)}），超出上限 ${limit} B（${kb(limit)}）——「${why}」。` +
+      `${rel} 已达 ${size} B（${kb(size)}），超出上限 ${limit} B（${kb(limit)}）——「${whyAll}」。` +
         `两条合法出路：① **先瘦身**（把细节移到按需加载的 references/，本文件只留指针与判据）；` +
         `② 若确需增长，在**同一次提交**里把 repo-hygiene-check.mjs 的 DOC_BUDGET 上限抬到 ≥${Math.ceil(size / 1024) * 1024} B 并在 CHANGELOG 写明为何必须增长。` +
         `目标（长期）${target} B（${kb(target)}），当前 ${pct}% 用了上限。`,
