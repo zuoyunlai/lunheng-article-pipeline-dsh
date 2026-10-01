@@ -186,6 +186,32 @@ test('L-08：--require-gates 且四门齐备 + §6 已回填 → 无 A7 硬项',
   rmSync(d, { recursive: true, force: true })
 })
 
+// v18.62.4（全量审计-v18.62.3 §8.1 #2）：占位符探测的双向网。
+//   旧判据 `<[^>\n]{2,40}>` 只要求「尖括号内有 2-40 个非 `>` 字符」→ **正文里的符号说明**被当成占位符 → 硬判 21。
+test('§8.1 #2：§6 里含**符号说明**（`<` 与 `>` 用法）不得被判占位符 → 无 A7', () => {
+  const g = FOUR_GATES()
+  // ⚠️ 关键：符号必须是**裸的**（不能写在反引号里）——实现会先剥掉代码跨度再匹配，
+  //   若把 `<` `>` 放进反引号，本用例对**新旧两版判据都不命中**，等于没钉住（首版即犯此错）
+  g['阶段确认-Phase0.md'] = `${g['阶段确认-Phase0.md']}\n如需使用 < 与 >，请统一为全角。\n`
+  const d = makeProject(g)
+  const j = parseJson(run([SCRIPT, '--project', d, '--role', 'T8', '--require-gates']))
+  const a7 = j.hard.filter((x) => x.check === 'A7')
+  assert.deepEqual(a7, [], '符号说明不得被当成占位符：' + JSON.stringify(a7))
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('§8.1 #2 真阳性侧：§6 仍含真实占位符 `<主人原话>` → 必须判 21（收紧后不得漏）', () => {
+  const g = FOUR_GATES()
+  g['阶段确认-Phase2.5.md'] = `# 确认单\n\n### 6. 主人回复（必填）\n\n- **主人原话**：<主人原话>\n`
+    + '- **回复时间**：<YYYY-MM-DD>\n- **提问方式**：ask_user_question\n'
+    + '- **主控落盘结论**：<结论>\n- **轮次计数**：首轮\n'
+  const d = makeProject(g)
+  const r = run([SCRIPT, '--project', d, '--role', 'T8', '--require-gates'])
+  assert.equal(r.code, 21, '真实占位符必须硬判 21：' + r.out.slice(0, 300))
+  const h = parseJson(r).hard.find((x) => x.check === 'A7' && /占位符/.test(x.detail))
+  assert.ok(h, '应报占位符硬项：' + JSON.stringify(parseJson(r).hard))
+  rmSync(d, { recursive: true, force: true })
+})
 test('L-08：缺门 → exit 20 且点名缺哪几份', () => {
   const g = FOUR_GATES(); delete g['阶段确认-Phase3.5.md']; delete g['阶段确认-Phase5.md']
   const d = makeProject(g)
