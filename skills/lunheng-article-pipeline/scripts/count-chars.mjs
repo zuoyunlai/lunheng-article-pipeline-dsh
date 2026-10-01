@@ -51,6 +51,17 @@ if (flag === '--warn-threshold') {
     process.exit(10);
   }
   warnThreshold = n;
+  // v18.62.4（全量审计-v18.62.3 §8.3 #40）：**带值旗标之后的多余 token 也必须拒绝**。
+  //   病灶：旧版取完 `argvTokens[2]` 就 `flag = undefined` 了事 —— 于是 `--warn-threshold 12000 --ful`
+  //   （`--ful` 是本脚本从未支持的拼写）里那个 token **被静默吞掉**，用户以为旗标生效。
+  //   本仓政策是**严格解析**（其余脚本已统一走 `_lib/cli-args.mjs`，本脚本未迁），
+  //   且同类守卫在紧邻的 else 分支里**已经存在**（`:55` 拒绝多余 token）——本分支漏了同一件事。
+  const extra = argvTokens.slice(3);
+  if (extra.length > 0) {
+    console.error(`--warn-threshold 之后有多余参数: ${extra.join(' ')}（--warn-threshold 不与其它旗标同用）`);
+    console.error('用法: node count-chars.mjs <文件.md> [--full | --summary | --warn-threshold <N>]');
+    process.exit(10);
+  }
   flag = undefined;  // 不与 --full/--summary 同用
 } else if (argvTokens.length > 2) {
   // 非 --warn-threshold 形态下，多余 token 一律拒绝（与 handoff-check 同源「带值旗标缺值守卫」）
