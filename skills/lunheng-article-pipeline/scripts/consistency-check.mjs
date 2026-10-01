@@ -668,8 +668,20 @@ runRepoSurfaceRules(ctx);
 })();
 
 if (errors.length) {
-  console.error(`一致性自检未通过，共 ${errors.length} 处：`);
+  // v18.62.4（全量审计-v18.62.3 §8.1 #12）：**严重度必须进退出码**。
+  //   病灶：旧版全库错误一律 `exit 1` —— 于是 `[P0 版本一致性]`（版本红线：frontmatter/版本头/
+  //   必带文件与 package.json 不符）与 `[P2 …]` 卫生项**在同一码里**。而本仓别处（M 门 / 战略门）
+  //   的语义是 `2 = P0 / 1 = P1 / 3 = 仅 P2·软提示`，人读与上层脚本都会**按那套语义解释本门的 1**
+  //   → 版本红线被读成「一般 P1」。
+  //   修法：按**已有标签**分档，并与全仓退出码语义对齐：有 `[P0 …]` → **2**；否则有 `[P1 …]` → **1**；
+  //   否则（仅 `[P2 …]` 等）→ **3**。CI 只判非 0，故本改动不改变 CI 行为，只恢复码的语义。
+  const p0 = errors.filter((e) => /\[P0[ \-\]]/.test(e)).length;
+  const p1 = errors.filter((e) => /\[P1[ \-\]]/.test(e)).length;
+  console.error(`一致性自检未通过，共 ${errors.length} 处（P0 ${p0} / P1 ${p1} / 其余 ${errors.length - p0 - p1}）：`);
   for (const e of errors) console.error('  - ' + e);
-  process.exit(1);
+  const code = p0 > 0 ? 2 : (p1 > 0 ? 1 : 3);
+  if (code === 2) console.error('→ 退出码 2（**含 P0：版本红线**，与 M 门 / 战略门同义——优先于 P1 处理）');
+  else if (code === 3) console.error('→ 退出码 3（**仅 P2 / 软提示**：需复核，但不属版本红线或 P1）');
+  process.exit(code);
 }
 console.log(`一致性自检通过：${files.length} 个 .md 文件 + cordis.patch.yml/examples/.dsh 同步，0 处漂移。`);

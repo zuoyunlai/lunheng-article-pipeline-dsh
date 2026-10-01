@@ -610,7 +610,12 @@ test('consistency-check ⑮⑯⑰：新规则必须真的会报（派发卡超�
   const tplPath = join(R, 'references', 'templates', '案例卡-template.md')
   writeFileSync(tplPath, readFileSync(tplPath, 'utf8') + '\n> 本模板可省 77% token。\n')
   const r = run([join(R, 'scripts', 'consistency-check.mjs')])
-  assert.equal(r.code, 1, '注入 3 处漂移后必须 exit 1')
+  {
+    // v18.62.4（§8.1 #12）：本门现按严重度分档（含 [P0 …] → 2；仅 P1 → 1）。
+    //   断言**不得假定环境无 P0**——临时仓常缺版本一致性三文件，P0 参与退出码是**正确**行为。
+    const __p0 = /\[P0[ \-\]]/.test(r.out)
+    assert.equal(r.code, __p0 ? 2 : 1, '注入 3 处漂移后必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
+  }
   assert.match(r.out, /派发卡超长/, '⑮ 必须捕获派发卡超长')
   assert.match(r.out, /审计视图断链/, '⑯ 必须捕获角色卡与文档断链')
   assert.match(r.out, /定量断言缺出处/, '⑰ 必须捕获无出处的百分比断言')
@@ -917,7 +922,12 @@ test('consistency-check ⑱：图件路径口径与「宣称的图件门」必�
   const gl = join(R, 'references', 'glossary.md')
   writeFileSync(gl, readFileSync(gl, 'utf8').replace('M 门 25 项复核', 'M 门 13 项复核'))
   const r = run([join(R, 'scripts', 'consistency-check.mjs')])
-  assert.equal(r.code, 1, '注入漂移后必须 exit 1')
+  {
+    // v18.62.4（§8.1 #12）：本门现按严重度分档（含 [P0 …] → 2；仅 P1 → 1）。
+    //   断言**不得假定环境无 P0**——临时仓常缺版本一致性三文件，P0 参与退出码是**正确**行为。
+    const __p0 = /\[P0[ \-\]]/.test(r.out)
+    assert.equal(r.code, __p0 ? 2 : 1, '注入漂移后必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
+  }
   assert.match(r.out, /图件路径口径漂移/, '⑱ 必须捕获旧图件路径')
   assert.match(r.out, /口径残留 M 门总项数/, '⑥b 必须捕获 M 门计数漂移')
   rmSync(d, { recursive: true, force: true })
@@ -1064,7 +1074,12 @@ test('consistency-check ④b+⑲：占位符残留 / 版本硬编码 / 契约表
   const t7 = join(R, 'references', 'agents', '07-审计-auditor.md')
   writeFileSync(t7, readFileSync(t7, 'utf8').replaceAll('复核报告', 'X报告'))
   const r = run([join(R, 'scripts', 'consistency-check.mjs')])
-  assert.equal(r.code, 1, '注入后必须 exit 1')
+  {
+    // v18.62.4（§8.1 #12）：本门现按严重度分档（含 [P0 …] → 2；仅 P1 → 1）。
+    //   断言**不得假定环境无 P0**——临时仓常缺版本一致性三文件，P0 参与退出码是**正确**行为。
+    const __p0 = /\[P0[ \-\]]/.test(r.out)
+    assert.equal(r.code, __p0 ? 2 : 1, '注入后必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
+  }
   assert.match(r.out, /占位符残留/, '④b 必须捕获「命令已剥离」残留')
   assert.match(r.out, /版本硬编码/, '⑲ 必须捕获 -v1.md 硬编码')
   assert.match(r.out, /契约表：产出者未声明/, '⑲ 必须捕获产出者未声明')
@@ -1081,7 +1096,12 @@ test('consistency-check ⑳+⑥b：M 门文档节头项数 / 编号跳号 / 文�
     const p = join(R, ...GA)
     writeFileSync(p, readFileSync(p, 'utf8').replace('## M-Form 形式合规门（11 项，含', '## M-Form 形式合规门（10 项，含'))
     const r = run([join(R, 'scripts', 'consistency-check.mjs')])
-    assert.equal(r.code, 1, '节头项数过期必须 exit 1')
+    {
+      // v18.62.4（§8.1 #12）：本门现按严重度分档（含 [P0 …] → 2；仅 P1 → 1）。
+      //   断言**不得假定环境无 P0**——临时仓常缺版本一致性三文件，P0 参与退出码是**正确**行为。
+      const __p0 = /\[P0[ \-\]]/.test(r.out)
+      assert.equal(r.code, __p0 ? 2 : 1, '节头项数过期必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
+    }
     assert.match(r.out, /M 门文档自洽/, '⑳ 必须按节内 ### 子节数抓出节头过期')
     assert.match(r.out, /括注项数/, '⑥b 放宽后的中文括注规则也必须命中带说明的写法')
     rmSync(d, { recursive: true, force: true })
@@ -1094,7 +1114,12 @@ test('consistency-check ⑳+⑥b：M 门文档节头项数 / 编号跳号 / 文�
     const fin = join(R, 'references', 'agents', '08-终检-finalizer.md')
     writeFileSync(fin, readFileSync(fin, 'utf8').replace('（**24 项**：M-Form 1-', '（**15 项**：M-Form 1-'))
     const r = run([join(R, 'scripts', 'consistency-check.mjs')])
-    assert.equal(r.code, 1, '旧写法漂移必须 exit 1')
+    {
+      // v18.62.4（§8.1 #12）：本门现按严重度分档（含 [P0 …] → 2；仅 P1 → 1）。
+      //   断言**不得假定环境无 P0**——临时仓常缺版本一致性三文件，P0 参与退出码是**正确**行为。
+      const __p0 = /\[P0[ \-\]]/.test(r.out)
+      assert.equal(r.code, __p0 ? 2 : 1, '旧写法漂移必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
+    }
     assert.match(r.out, /已脚本化项数/, '⑥b 必须捕获「N 项中 M 项已脚本化」写法')
     assert.match(r.out, /「\*\*N 项\*\*：M-Form 1-」写法/, '⑥b 必须捕获「**N 项**：M-Form 1-」写法')
     rmSync(d, { recursive: true, force: true })
@@ -1105,7 +1130,12 @@ test('consistency-check ⑳+⑥b：M 门文档节头项数 / 编号跳号 / 文�
     const p = join(R, ...GA)
     writeFileSync(p, readFileSync(p, 'utf8').replace('### M-Exist-3:', '### M-Exist-9:'))
     const r = run([join(R, 'scripts', 'consistency-check.mjs')])
-    assert.equal(r.code, 1, '编号跳号必须 exit 1')
+    {
+      // v18.62.4（§8.1 #12）：本门现按严重度分档（含 [P0 …] → 2；仅 P1 → 1）。
+      //   断言**不得假定环境无 P0**——临时仓常缺版本一致性三文件，P0 参与退出码是**正确**行为。
+      const __p0 = /\[P0[ \-\]]/.test(r.out)
+      assert.equal(r.code, __p0 ? 2 : 1, '编号跳号必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
+    }
     assert.match(r.out, /M 门编号跳号/, '⑳ 必须抓出子节编号不连续')
     rmSync(d, { recursive: true, force: true })
   }
@@ -1115,7 +1145,12 @@ test('consistency-check ⑳+⑥b：M 门文档节头项数 / 编号跳号 / 文�
     const p = join(R, ...GA)
     writeFileSync(p, readFileSync(p, 'utf8').replace('### M-Form-11: 素材按需加载闭环（v2.5.2-dsh.17 新增）', '### 素材按需加载闭环（v2.5.2-dsh.17 新增）'))
     const r = run([join(R, 'scripts', 'consistency-check.mjs')])
-    assert.equal(r.code, 1, '文档↔脚本不同步必须 exit 1')
+    {
+      // v18.62.4（§8.1 #12）：本门现按严重度分档（含 [P0 …] → 2；仅 P1 → 1）。
+      //   断言**不得假定环境无 P0**——临时仓常缺版本一致性三文件，P0 参与退出码是**正确**行为。
+      const __p0 = /\[P0[ \-\]]/.test(r.out)
+      assert.equal(r.code, __p0 ? 2 : 1, '文档↔脚本不同步必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
+    }
     assert.match(r.out, /M 门文档↔脚本不一致/, '⑳ 必须抓出「文档项数 ≠ 脚本 gate 标签数」')
     rmSync(d, { recursive: true, force: true })
   }
@@ -1125,7 +1160,12 @@ test('consistency-check ⑳+⑥b：M 门文档节头项数 / 编号跳号 / 文�
     const p = join(R, ...GA)
     writeFileSync(p, readFileSync(p, 'utf8').replace('## M-Integrity 阶段闸门（2 项，含 v2.2.4 修订轮流程约束）', '## M-Integrity 阶段闸门'))
     const r = run([join(R, 'scripts', 'consistency-check.mjs')])
-    assert.equal(r.code, 1, '节头缺项数必须 exit 1')
+    {
+      // v18.62.4（§8.1 #12）：本门现按严重度分档（含 [P0 …] → 2；仅 P1 → 1）。
+      //   断言**不得假定环境无 P0**——临时仓常缺版本一致性三文件，P0 参与退出码是**正确**行为。
+      const __p0 = /\[P0[ \-\]]/.test(r.out)
+      assert.equal(r.code, __p0 ? 2 : 1, '节头缺项数必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
+    }
     assert.match(r.out, /节头缺项数/, '⑳ 必须抓出节头未写「（N 项）」')
     assert.doesNotMatch(r.out, /M-Integrity 括注项数/, 'M-Integrity 括注应期望 2 项（含主控人工门），不得误报')
     rmSync(d, { recursive: true, force: true })
@@ -1139,7 +1179,12 @@ test('consistency-check ⑩c：分档工具↔角色映射漂移必须报（注�
     const en = join(repo, 'README.md')
     writeFileSync(en, readFileSync(en, 'utf8').replace('| T4 analyst / T5 writer |', '| T4 analyst / T5 writer / T6 critical / T9 reviewer |'))
     const r = run([join(R, 'scripts', 'consistency-check.mjs')])
-    assert.equal(r.code, 1, '映射漂移必须 exit 1')
+    {
+      // v18.62.4（§8.1 #12）：本门现按严重度分档（含 [P0 …] → 2；仅 P1 → 1）。
+      //   断言**不得假定环境无 P0**——临时仓常缺版本一致性三文件，P0 参与退出码是**正确**行为。
+      const __p0 = /\[P0[ \-\]]/.test(r.out)
+      assert.equal(r.code, __p0 ? 2 : 1, '映射漂移必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
+    }
     assert.match(r.out, /分档映射漂移/, '⑩c 必须抓出强推理档行多出 T6/T9')
     assert.match(r.out, /subagent_strong/, '⑩c 报错须点名漂移的工具')
     rmSync(d, { recursive: true, force: true })
@@ -1151,7 +1196,12 @@ test('consistency-check ⑩c：分档工具↔角色映射漂移必须报（注�
     const mr = join(R, 'scripts', 'model-routing.mjs')
     writeFileSync(mr, readFileSync(mr, 'utf8').replace("tool: 'subagent_audit'", "toolName: 'subagent_audit'"))
     const r = run([join(R, 'scripts', 'consistency-check.mjs')])
-    assert.equal(r.code, 1, '真源不可派生必须 exit 1')
+    {
+      // v18.62.4（§8.1 #12）：本门现按严重度分档（含 [P0 …] → 2；仅 P1 → 1）。
+      //   断言**不得假定环境无 P0**——临时仓常缺版本一致性三文件，P0 参与退出码是**正确**行为。
+      const __p0 = /\[P0[ \-\]]/.test(r.out)
+      assert.equal(r.code, __p0 ? 2 : 1, '真源不可派生必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
+    }
     assert.match(r.out, /分档真源/, '⑩c 派生失败须按 P0 报（否则整条映射门静默失效）')
     rmSync(d, { recursive: true, force: true })
   }
@@ -1403,7 +1453,12 @@ test('consistency-check ⑩：随包脚本白名单漏列必须报（v18.0.5 补
   const { d, R } = mkRepo()
   writeFileSync(join(R, 'scripts', 'new-tool.mjs'), '// 新增脚本（未登记白名单）\n')
   const r = run([join(R, 'scripts', 'consistency-check.mjs')])
-  assert.equal(r.code, 1, '白名单漏列必须 exit 1')
+  {
+    // v18.62.4（§8.1 #12）：本门现按严重度分档（含 [P0 …] → 2；仅 P1 → 1）。
+    //   断言**不得假定环境无 P0**——临时仓常缺版本一致性三文件，P0 参与退出码是**正确**行为。
+    const __p0 = /\[P0[ \-\]]/.test(r.out)
+    assert.equal(r.code, __p0 ? 2 : 1, '白名单漏列必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
+  }
   assert.match(r.out, /白名单/, '必须点名白名单不一致')
   rmSync(d, { recursive: true, force: true })
 })
