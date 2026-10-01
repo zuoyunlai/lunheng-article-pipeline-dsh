@@ -30,7 +30,7 @@ installExitGuard()
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(HERE, '..')
 const PKG_NAME = 'lunheng-article-pipeline'
-const HOST_CORE_ALLOW = new Set(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh', '@deepseek-ai/dsh-tool-subagent'])
+import { HOST_CORE_ALLOW } from './_lib/host-contract.mjs' // §8.3 #35：宿主核心包白名单单一真源（原先两处各写一份且内容不同）
 
 // 路径规范化（v18.1.1，CI 实测踩到）：`mkdtempSync(tmpdir())` 拿到的路径**可能不是真实路径**——
 // macOS 的 `os.tmpdir()` 返回 `/var/folders/…`，而 `/var` 是指向 `/private/var` 的符号链接；

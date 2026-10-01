@@ -105,3 +105,19 @@ export function reconcileHostContract(source) {
   }
   return { regs, errors }
 }
+
+/**
+ * **宿主核心包白名单**（v18.62.4 · 全量审计-v18.62.3 §8.3 #35）——本模块是该事实的**唯一真源**。
+ *
+ * 为什么上提到这里：`pack-smoke.mjs` 与 `plugin-surface-check.mjs` **各写了一份同名常量**
+ * （`HOST_CORE_ALLOW`），而**内容不同**：前者 3 个、后者 1 个。两处的心智模型是同一句话——
+ * 「宿主标准组合树自带、无法也不该由本包声明版本的核心包」——**同一事实两处维护即必然漂移**
+ * （本仓反复立规的那类缺陷）。**注意**：实测两处当前**都不漏**（`@deepseek-ai/dsh-tool-subagent`
+ * 已在 `peerDependencies` 里声明、`@deepseek-ai/dsh` 也在），所以这是**潜在**漂移而非现行漏检——
+ * 如实记录，不夸大成「正在漏」。
+ *
+ * 判据：**允许集收窄 = 更严的门**。本表只保留**实测确认**为宿主核心的两个；
+ * 其余包一律要求**显式声明**（`dependencies` / `peerDependencies`）——
+ * 那样宿主改名/移除时 `npm install` 与 `manifest-peers` 会一起发现，而不是靠一张手维护的表放行。
+ */
+export const HOST_CORE_ALLOW = new Set(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh'])

@@ -51,6 +51,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { HOST_CORE_ALLOW } from './_lib/host-contract.mjs' // §8.3 #35：宿主核心包白名单单一真源
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(HERE, '..')
@@ -381,7 +382,8 @@ const warned = checks.filter((c) => c.status === 'warn').length
 //   而负对照实测：把行名改成不存在的包 → `failed to import loader entry …` → **整棵 profile 起不来**。
 // 规则：patch 里每个 `name:` 必须是①本包自己的名字（自注册行）②`dependencies`/`peerDependencies`
 //   里声明过的包，或③显式白名单里的宿主核心包（宿主标准组合树自带、无法也不该由本包声明版本）。
-const HOST_CORE_ALLOW = new Set(['@deepseek-ai/dsh-base'])
+// v18.62.4（§8.3 #35）：白名单**上提为单一真源**——本处原先自己写了一份 `new Set(['@deepseek-ai/dsh-base'])`，
+//   而 `pack-smoke.mjs` 另写了一份（3 个），两处同名不同内容。现统一 import `_lib/host-contract.mjs` 的 `HOST_CORE_ALLOW`。
 const pkgPath = path.join(ROOT, 'package.json')
 const patchPath = path.join(ROOT, 'cordis.patch.yml')
 if (existsSync(pkgPath) && existsSync(patchPath)) {
