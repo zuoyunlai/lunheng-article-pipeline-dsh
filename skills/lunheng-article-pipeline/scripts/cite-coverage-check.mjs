@@ -17,7 +17,7 @@
 
 import { readFileSync, existsSync } from 'node:fs';
 import { installExitGuard, requireExistingFile } from './_lib/exit-guard.mjs';
-import { sectionBody, firstEndnoteIndex, bodyStartAfterAbstract } from './_lib/sections.mjs';
+import { sectionBody, firstEndnoteIndex, bodyStartAfterAbstract, maskFences } from './_lib/sections.mjs';
 import { writeReport } from './_lib/destructive-write.mjs';   // 报告写盘守卫（v18.12.0，全量审计 L-50）
 import { refRegex } from './_lib/refs.mjs';                   // v18.16.0（A-2 反哺）：任意位数 L 编号，与 m-gate-check 同源
 installExitGuard();
@@ -140,18 +140,24 @@ const cStrengthSeverity = decorativeRatio > 0.20 ? 'P1' : (weakRatio > 0.50 ? 'P
 //   句内 ≥4 篇不同引用且句内无差异关键词 → **P1**（**规格未变，收窄的只是「同时」的尺度**）。
 const REDUNDANCY_THRESHOLD = 4;
 const redundancyViolations = [];
+// v18.62.4（全量审计-v18.62.3 §8.2 #23）：**本章此前自建标题正则、未过 `maskFences`**。
+//   病灶：围栏代码块里的 `### 示例`（格式示例 / 模板片段）被当作真段落扫描——若该示例句里
+//   引了 ≥4 条 `[Lxx]` 且没有差异关键词，就会在**正确内容**上产生 P2 → 把整门推到 exit 3。
+//   本仓的围栏语义有**唯一实现**（`_lib/sections.mjs` 的 `maskFences`，保长保行结构），
+//   故此处改为「**用遮罩文本定位标题、用原文取段落正文**」——偏移一致，语义与其余消费者对齐。
 const paragraphRe = /^(#{2,4})\s+(.+)$/gm;
 const paragraphs = [];
 const DIFFERENCE_KEYWORDS = ['不同', '差异', '相比', '区别', '与之相比', '有别于', '不同于'];
-for (const m of text.matchAll(paragraphRe)) {
+const maskedForScan = maskFences(text);
+for (const m of maskedForScan.matchAll(paragraphRe)) {
   const start = m.index;
   const level = m[1].length;
   const nextRe = new RegExp(`^#{1,${level}}\\s+`, 'gm');
   nextRe.lastIndex = start + m[0].length;
-  const next = nextRe.exec(text);
+  const next = nextRe.exec(maskedForScan);
   const end = next ? next.index : text.length;
   const ptitle = m[2].trim();
-  const pbody = text.slice(start, end);
+  const pbody = text.slice(start, end);   // 正文仍取**原文**（遮罩保长，偏移可直接复用）
   // v18.23.0 EFF-1 第二层修复（**由第一层修复暴露**）：扫描面必须是**正文区**。
   //   第一层修掉 `L${x[1]}` → `Lundefined` 的假绿后，本规则**第一次真的会触发**，于是当场暴露：
   //   `## 参考文献` 节自身列了 N 条 `[Lxx]`，天然满足「同段 ≥4 篇且无差异关键词」→ **每一篇合格论文
@@ -164,7 +170,7 @@ for (const m of text.matchAll(paragraphRe)) {
   //   → 永远 < 阈值 4 → 「同段引 ≥4 篇且未指明差异 → P1」**从未触发过**。
   //   实测（2026-09-27）：一段引 5 条不同 [Lxx] 且无差异关键词 → 旧版报 `pass: true / violations: []`。
   //   同文件上方两处消费点（`L_IN_TEXT` / `L_COUNT`）在 v18.16.0 已改用 `stripL(m[0])`，本行是漏网的一处。
-  for (const sent of pbody.split(/(?<=[。；！？])|\n/)) {
+  for (const sent of maskedForScan.slice(start, end).split(/(?<=[。；！？])|\n/)) {
     const refsInS = [...sent.matchAll(L_REGEX)].map((x) => `L${stripL(x[0])}`);
     const uniqueRefs = [...new Set(refsInS)];
     if (uniqueRefs.length < REDUNDANCY_THRESHOLD) continue;
@@ -193,9 +199,21 @@ const cRedundancySeverity = redundancyViolations.length === 0 ? 'PASS' : 'P2';
 //   - 5+ 年前（当前年 - 5+）
 //   - 中间年代（近 4-5 年）
 // 理想比例：近 3 年 ≥30% + 5+ 年前 ≥20% + 中间 ≥20%（即三层都有覆盖）
+// v18.62.4（全量审计-v18.62.3 §8.2 #22）：**「四位数字」不等于「出版年」**。
+//   病灶：旧实现直接在参考文献全文上跑 `/(?:19|20)(\d{2})/g`，于是一串常见形态会把**页码/卷期/标识号**
+//   当年份：`2018, 12(3): 2015-2030.` 会额外产出 **2015 与 2030** 两个「年份」；`doi:10.1000/2019.123`
+//   同理。后果是**年份分布失真** → 干净的稿子也可能被推到 exit 3（`cDistributionSeverity`）。
+//   修法：先**剥掉「明显不是年份」的数字区**，再在剩下的文本上抽年份。剥除顺序与形态都来自真实
+//   参考文献条目（括号卷期 → 页码区间 → URL/DOI → 标识号），且每步只剥数字与紧邻标点，不碰汉字。
+const refsForYears = String(referencesBody)
+  .replace(/\(\s*\d{1,4}\s*\)/g, ' ')                       // 卷/期：`12(3)`
+  .replace(/\b\d{1,5}\s*[-–—~]\s*\d{1,5}\b/g, ' ')          // 页码区间：`2015-2030`
+  .replace(/(?:https?:\/\/|www\.)\S+/gi, ' ')                // URL
+  .replace(/\b(?:doi|DOI)\s*[:：]?\s*\S+/g, ' ')            // DOI
+  .replace(/\b(?:ISBN|ISSN)\b[^\s]*/gi, ' ');               // 标识号
 const YEAR_REGEX = /(?:19|20)(\d{2})/g;
 const yearCount = {};
-for (const m of referencesBody.matchAll(YEAR_REGEX)) {
+for (const m of refsForYears.matchAll(YEAR_REGEX)) {
   const year = parseInt(m[0], 10);
   if (year >= 1990 && year <= 2030) {
     yearCount[year] = (yearCount[year] || 0) + 1;
@@ -210,11 +228,17 @@ const recentRatio = totalYears > 0 ? recent3Years / totalYears : 0;
 const oldRatio = totalYears > 0 ? oldYears / totalYears : 0;
 const midRatio = totalYears > 0 ? midYears / totalYears : 0;
 const cDistributionHealthy = recentRatio >= 0.30 && oldRatio >= 0.20 && midRatio >= 0.20;
-const cDistributionPass = cDistributionHealthy;
-const cDistributionSeverity = !cDistributionHealthy && totalYears > 5 ? 'P2' : 'PASS';
+// v18.62.4（全量审计-v18.62.3 §8.2 #22 暴露）：**样本不足时不得出现 `pass:false` + `severity:'PASS'`**。
+//   旧式 `!healthy && totalYears > 5 ? 'P2' : 'PASS'` 在 `totalYears ≤ 5` 时给出
+//   `pass: false` 而 `severity: 'PASS'` —— **同一记录自相矛盾**，读者无法判断该不该处置。
+//   现按本仓既有语义收口为三态：样本不足以判分布 → **SKIP（未检，不计入 pass）**。
+const cDistributionEnough = totalYears > 5;
+const cDistributionPass = cDistributionEnough ? cDistributionHealthy : 'SKIP';
+const cDistributionSeverity = !cDistributionEnough ? 'SKIP' : (cDistributionHealthy ? 'PASS' : 'P2');
 
 // --- 汇总 ---
-const allPass = cStrengthPass && cRedundancyPass && cDistributionPass;
+// v18.62.4：`SKIP` **不计入 pass**（`=== true`），且**不产出干净的 exit 0**（未检 ≠ 通过）。
+const allPass = cStrengthPass === true && cRedundancyPass === true && cDistributionPass === true;
 const allSeverities = [cStrengthSeverity, cRedundancySeverity, cDistributionSeverity];
 const hasP1 = allSeverities.includes('P1');
 const exitCode = allPass ? 0 : (hasP1 ? 1 : 3);
