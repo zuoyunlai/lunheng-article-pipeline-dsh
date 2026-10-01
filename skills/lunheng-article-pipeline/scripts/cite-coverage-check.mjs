@@ -19,7 +19,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { installExitGuard, requireExistingFile } from './_lib/exit-guard.mjs';
 import { sectionBody, firstEndnoteIndex, bodyStartAfterAbstract, maskFences } from './_lib/sections.mjs';
 import { writeReport } from './_lib/destructive-write.mjs';   // 报告写盘守卫（v18.12.0，全量审计 L-50）
-import { refRegex } from './_lib/refs.mjs';                   // v18.16.0（A-2 反哺）：任意位数 L 编号，与 m-gate-check 同源
+import { refRegex, normalizeRefId } from './_lib/refs.mjs';                   // v18.16.0（A-2 反哺）：任意位数 L 编号，与 m-gate-check 同源
 import { packageVersionTag } from './_lib/pkg-version.mjs';   // §8.3 #39：产物 version 单一真源
 installExitGuard();
 
@@ -95,7 +95,7 @@ const bodyText = text.slice(0, bodyEndIdx);
 const L_IN_TEXT = new Set();
 // v18.16.0（A-2 反哺 · 收尾）：refs.mjs 的 refRegex 不带捕获组（`m[1]` 是 undefined），
 //   旧消费点用 `m[1]` 取序号 → 现状下每条引用都变成 `"Lundefined"`。现从 `m[0]`（完整匹配）剥前缀/后缀。
-const stripL = (s) => s.replace(/^\[L/, '').replace(/\]$/, '');
+const stripL = (s) => normalizeRefId(s.replace(/^\[L/, '').replace(/\]$/, ''));
 for (const m of bodyText.matchAll(L_REGEX)) L_IN_TEXT.add(stripL(m[0]));
 const referencesBody = sectionBody(text, '参考文献') || '';
 const refsInList = new Set();
@@ -104,7 +104,10 @@ const refsListRegex = refRegex('L');  // v18.16.0（A-2 反哺）：与 L_REGEX 
 //   旧消费点用 `m[1]` 取序号 → 现状下每条引用都变成 `"Lundefined"`。现从 `m[0]`（完整匹配）剥前缀/后缀。
 for (const m of referencesBody.matchAll(refsListRegex)) refsInList.add(stripL(m[0]));
 // 装饰性 = 仅在文末列表，未在正文出现
-const decorative = [...refsInList].filter((r) => !L_IN_TEXT.has(r));
+// v18.62.4（§8.3 #45 方案 A）：**统一为 `L` + 归一序号**，与强/中/弱**同形状**。
+//   旧版这里存**裸数字**（`'02'`），而强/中/弱存 `L2` —— 同一字段族里两种形状，
+//   读者必须知道「哪个数组是特殊的那一个」。归一后四档一律 `L<n>`。
+const decorative = [...refsInList].filter((r) => !L_IN_TEXT.has(r)).map((r) => `L${r}`);
 // 在正文出现 1 次 = 弱；2 次 = 中；≥3 次 = 强
 const L_COUNT = {};
 for (const m of bodyText.matchAll(L_REGEX)) {

@@ -77,9 +77,11 @@ test('cite-coverage L-63：正文出现 1 次的引用判「弱」，不被文�
   const j = parseJson(r)
   const strength = j.checks['C-Strength']
 
-  assert.deepEqual(strength.strength['弱'].map((x) => x.id), ['L01'], '正文 1 次 → 弱档')
+  // v18.62.4（§8.3 #45 方案 A）：编号**归一** + `装饰性` **统一为 `L<n>`**（与强/中/弱同形状）。
+  //   故期望由 `'L01'` / `['02']` 变为 `'L1'` / `['L2']`——这是**对外契约的同一批变更**，不是用例变松。
+  assert.deepEqual(strength.strength['弱'].map((x) => x.id), ['L1'], '正文 1 次 → 弱档')
   assert.deepEqual(strength.strength['中'], [], '不得出现「中」——文末条目行不是正文引用')
-  assert.deepEqual(strength.strength['装饰性'], ['02'], 'L02 只在清单 → 幽灵引用（该数组存的是编号数字）')
+  assert.deepEqual(strength.strength['装饰性'], ['L2'], 'L02 只在清单 → 幽灵引用（形状与强/中/弱统一为 L<n>）')
   assert.equal(strength.decorativeRatio, 0.5, '1/2 = 0.50')
   assert.equal(strength.severity, 'P1', '50% > 20% → P1')
 })
@@ -114,7 +116,7 @@ test('cite-coverage L-63：围栏内的伪文末节不得截断正文区（引�
   const j = parseJson(r)
   const strength = j.checks['C-Strength']
 
-  assert.deepEqual(strength.strength['强'].map((x) => x.id), ['L01'], '正文 3 次 → 强档（围栏未截断正文）')
+  assert.deepEqual(strength.strength['强'].map((x) => x.id), ['L1'], '正文 3 次 → 强档（围栏未截断正文）')
   assert.deepEqual(strength.strength['装饰性'], [], 'L09 是围栏内示例、不在真清单里 → 不算幽灵引用')
 })
 
