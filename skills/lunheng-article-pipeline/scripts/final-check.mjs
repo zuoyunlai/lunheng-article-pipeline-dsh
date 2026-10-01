@@ -25,10 +25,10 @@
 //   ④ 导入的 `EXIT_USAGE` 旧版未使用 → 现用于渲染与判定（不再让 10 只以字面量出现）。
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { installExitGuard, requireExistingDir, EXIT_USAGE, EXIT_INTERNAL } from './_lib/exit-guard.mjs'; // 退出码硬化（v18.0.5）
-import { writeReport } from './_lib/destructive-write.mjs';   // 报告写盘守卫（v18.12.0，全量审计 L-50）
+import { writeReport, pathKey } from './_lib/destructive-write.mjs';   // 报告写盘守卫（v18.12.0，全量审计 L-50）
 import { parseArgs as parseCliArgs, USAGE_CODE as CLI_USAGE_CODE } from './_lib/cli-args.mjs';          // 参数解析唯一实现（v18.2.9，审计 A7）
 installExitGuard();   // fs 类异常 → 10；其余内部错误 → 70（不再让崩溃伪装成「1 = P1 内容残留」）
 
@@ -273,9 +273,29 @@ if (wantJson) {
 const finalReportPath = reportPath || join(project, 'audits', 'final-check-v0.json');
 const reportDir = dirname(finalReportPath);   // 旧版硬编码反斜杠 → POSIX 与正斜杠 --report 都会崩（v2.5.2-dsh.13 修复）
 if (!existsSync(reportDir)) mkdirSync(reportDir, { recursive: true });
+// v18.62.4（全量审计-v18.62.3 §8.1 #4，**主人裁定方案 (C)**）：**保持 `--report` 的 CWD 相对语义，
+//   但把「它落在哪」由静默变成显式**。
+//   为什么选 (C) 而不是改基准：`--report` 在全仓（m-gate-check / g-audit-check / cite-coverage-check /
+//   apply-diff / quality-score）**都是 CWD 相对**，且 `pipeline-readme.md` 记过一次「子代理用
+//   `--report final/M-Gate-Report.json` **覆盖了 T8 阶段裁定报告**」的事故——该基准是**被认知且被依赖**的约定，
+//   改它 = 改全族语义。而原实现的真问题是：`writeReport` 与下方 `mkdirSync` 都会 `recursive: true`，
+//   于是**误传相对路径会在 CWD 静默造目录/覆盖文件**，没有任何提示。
+//   故此处只做两件事：① 打印**解析后的绝对路径**；② 若它落在**仓库根/包根**下（脚本目录向上回溯探测，
+//   与 `writeReport` 的解析口径一致——都用 `resolve(base, v)`，不用 `join`），**响亮警告**。
+const absReportPath = resolve(finalReportPath);
+//   ⚠️ 探测层级（我第一次自证就踩到）：`scriptDir` = `<pkg>/skills/lunheng-article-pipeline/scripts`，
+//   故**仓库布局**下包根在**向上三级**；**技能即包根**布局下是向上两级。首版只探了两级 →
+//   真仓布局下**永远探不到** `package.json` → 这条警告**根本不触发**（实测：落仓库根却无警告）。
+const pkgRootProbe = [join(scriptDir, '..', '..'), join(scriptDir, '..'), join(scriptDir, '..', '..', '..')]
+  .find((p) => existsSync(join(p, 'package.json')));
+if (pkgRootProbe && pathKey(absReportPath).startsWith(pathKey(pkgRootProbe))) {
+  console.warn(`\n⚠ --report 目标落在**仓库/包根**内：${absReportPath}`);
+  console.warn('  `--report` 的相对路径以**当前工作目录（CWD）**为基准——若非本意，请改用绝对路径或 <项目>/ 下的路径。');
+  console.warn('  已知事故：曾用 `--report final/M-Gate-Report.json` 覆盖掉 T8 阶段的裁定报告。\n');
+}
 // v18.12.0（全量审计 L-50）：`--report` 旧版是裸 writeFileSync —— 路径敲成 final/定稿.md 即销毁交付物。
 //   现走 writeReport：与定稿同文件 → exit 10；并留时间戳 .bak。
 writeReport(finalReportPath, JSON.stringify(report, null, 2), { protect: [final] });
-if (!wantJson) console.log(`\n📄 总报告: ${finalReportPath}`);
+if (!wantJson) console.log(`\n📄 总报告: ${finalReportPath}（绝对路径：${absReportPath}）`);
 
 process.exit(exitCode);
