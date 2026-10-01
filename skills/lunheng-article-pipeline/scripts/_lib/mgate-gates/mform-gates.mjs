@@ -11,7 +11,7 @@
 //   回写 ctx（下游 mForm9 / M-Exist-3 / M-Integrity-1 在其后读 ctx，时序不变）。
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
-import { refsOf, dataCardIds } from '../refs.mjs'
+import { refsOf, dataCardIds, REF_ID_TOKEN } from '../refs.mjs'
 import { TRUST_COMPLIANT_RE, TRUST_LOOSE_RE } from '../trust.mjs'
 import { splitCard } from '../cards.mjs'
 import { ENDNOTE_SECTIONS, ENDNOTE_ORDER, h2Headings } from '../sections.mjs'
@@ -983,7 +983,12 @@ try {
   // v18.0.0 修复（冲突⑦）：统一「素材编号全形态」正则，纳入基线编号 `[D-基-x-NN]` 与先行者 `[先NN]`。
   //   旧实现用 refsOf(body,'L'|'D'|'C') 三类编号 → 基线编号与先行者全部漏计（实战：本项目实际 40 条 vs 脚本计 30 条），
   //   导致「已加载 ⊆ 卡片」的核对面少 10 条（虽然 >90% 软提示结论巧合一致）。
-  const REF_TOKEN = '[LDC]\\d+|D-基-[A-Z]-\\d+|先\\d+';
+  // v18.62.4（全量审计-v18.62.3 §8.3 #44）：**编号形态取自单一真源**（`_lib/refs.mjs` 的 `REF_ID_TOKEN`）。
+  //   旧版此处手写一份 `'[LDC]\\d+|D-基-[A-Z]-\\d+|先\\d+'`，与 `m-gate-check.mjs` 的
+  //   `refRe`（`L|D|C-主|C|先` + 版本后缀）**各自手抄**——语义相同、形态表不同，
+  //   正是「同一事实两处维护」。现两处同源，且并入 `C-主` 与版本后缀（**超集**）：
+  //   本处用途是「正文引用了哪些编号」，取超集只会让 `cited11` 更全，不会漏。
+  const REF_TOKEN = REF_ID_TOKEN;
   const refRe11 = new RegExp('\\[(' + REF_TOKEN + ')\\]', 'g');
   const cited11 = new Set([...body.matchAll(refRe11)].map((m) => '[' + m[1] + ']'));
   // 卡片侧真源：正文条目编号（幽灵判定）+ 索引段编号（选择性判定）
