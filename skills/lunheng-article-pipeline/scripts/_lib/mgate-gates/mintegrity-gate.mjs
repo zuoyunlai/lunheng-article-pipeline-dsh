@@ -1,6 +1,13 @@
 // M-Integrity-1 T2.5 完整性门（v18.3.1 审计 B2 阶段 1：从 m-gate-check.mjs 抽离，行为逐字等价——
-//   run/ 49 组真实项目 baseline 对账）。简报解析失败/缺卡的处理口径与抽离前一致（含
-//   「简报路径与正文相同 → exit 10」的进程级退出，主进程已装 exit-guard）。
+//   run/ 49 组真实项目 baseline 对账）。简报解析失败/缺卡的处理口径与抽离前一致。
+// ⚠️ v18.62.4（全量审计-v18.62.3 §8.1 #6）：**门模块内不得 `process.exit`**。
+//   旧版在「简报路径与正文相同」时直接 `process.exit(10)` —— 一个**被 import 的纯函数**结束整个进程：
+//   ① 调用方（`m-gate-check.mjs`）的退出码与报告汇总逻辑**被绕过**：`--report` 不会写出，
+//      于是「门因参数/解析问题中止」这件事**在报告产物里不留痕**（只看得到进程没了）；
+//   ② 库的语义被污染——本文件其余部分都是「往 `results` 里 push 一条结果」，只有这一处例外；
+//   ③ 同一函数被其它入口 import 时（测试、复用），会**连测试进程一起杀掉**。
+//   修法：改为**push 一条 P0 级失败结果后返回**（`results` 由 ctx 传入、调用方据此汇总与定码），
+//   与文件内其它分支同形；「脚本自身没核到位」的语义也与下方 `SCRIPT_SKIP_RE` 的口径一致。
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { dataCardIds } from '../refs.mjs'
@@ -30,11 +37,19 @@ try {
   const briefPath = findBriefUpward(dirname(draftPath));
   // 自检：解析结果不得与被审正文同路径（同路径 = 「把正文当简报读」）→ 直接报参数/解析错误，禁止静默降级
   if (briefPath && briefPath === draftPath) {
-    console.error(
-      `M-Integrity-1 解析错误：任务简报路径与被审正文相同（${briefPath}）\n` +
-        `  —— 说明未能在项目目录中找到 01-任务简报.md，请检查项目目录结构（应为 run/<项目名>/01-任务简报.md）`,
-    );
-    process.exit(10);
+    // v18.62.4（§8.1 #6）：**不再 process.exit(10)** —— 改为记录一条结果后返回（见文件头说明）。
+    //   严重度取 **P0**：这是「简报 = 正文」的**解析/输入结构性错误**，脚本无法给出任何有效佐证，
+    //   绝不能降级成「脚本跳过」而被读成「已核过」。
+    const why = `任务简报路径与被审正文相同（${briefPath}）`
+      + ' —— 说明未能在项目目录中找到 01-任务简报.md，请检查项目目录结构（应为 run/<项目名>/01-任务简报.md）';
+    console.error(`M-Integrity-1 解析错误：${why}`);
+    results.push({
+      gate: 'M-Integrity-1 T2.5 完整性',
+      pass: false,
+      detail: `解析错误（脚本无法佐证）：${why}`,
+      severity: 'P0',
+    });
+    return;
   }
   if (briefPath && existsSync(briefPath)) {
     briefData.hasBrief = true;
