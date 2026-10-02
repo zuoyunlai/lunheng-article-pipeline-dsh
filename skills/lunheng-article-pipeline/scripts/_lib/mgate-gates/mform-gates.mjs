@@ -10,7 +10,7 @@
 //   唯一非逐字变换：mForm6 原以顶层 let dataCard/dataCardReadError 与下游门共享，现改为函数尾
 //   回写 ctx（下游 mForm9 / M-Exist-3 / M-Integrity-1 在其后读 ctx，时序不变）。
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { join, dirname, basename } from 'node:path'
 import { refsOf, dataCardIds, REF_ID_TOKEN } from '../refs.mjs'
 import { TRUST_COMPLIANT_RE, TRUST_LOOSE_RE } from '../trust.mjs'
 import { splitCard } from '../cards.mjs'
@@ -388,7 +388,7 @@ if (dataCard) {
 // === M-Form-8 三角验证（v2.5.2-dsh.5 修订：每论点强制含 L + coverage ≥ 2）===
 export function mForm8(ctx) {
   const { body, refRe, stripCodeSpans, THRESHOLDS, draftPath, evDir, findCard, results } = ctx;
-let mform8Findings = { L_missing: 0, weak: 0, total: 0, details: [], soft: [] };
+let mform8Findings = { L_missing: 0, weak: 0, total: 0, details: [], soft: [], accepted: [], weakNames: [] };
 try {
   // v2.5.2-dsh.5 修复：排除前置/收尾非论点段（摘要/关键词/引言/结语）——摘要与引言天然不引 [Lxx]
   // （引言以 [先xx] 声明原创性差异点，属论衡原创性机制而非论点论证），之前把「摘要」当正文段查 [Lxx] 导致恒 P0 误报。
@@ -420,6 +420,45 @@ try {
   //   只扫前 20 段，第 21 段起**静默不扫**，而 detail 写「20 段：0 段缺 L」——读者会读成「全文都检了」。
   //   本包定位是 ≥2000 字深度长文（实测项目正文到 16,000+ 汉字），二级节数超 20 是常态。
   //   纯正则扫描无性能理由保留上限；改为全量扫，并在 detail 如实标出段数。
+  // ── v18.62.7（反哺-主控实测 A3）：**「已接受缺口」机读声明（ACCEPTED-GAPS）** ────────────────
+  //   病灶（实测 aigc-yixiangxing-meixue）：`analysis/分析大纲.md` §十一 11.1 已把「论点1/论点2/论点8
+  //     无 [Dxx]/[Cxx] 角」显式判定为 **Permanent Gap、主人已知接受**，并写明「以制度侧一致性检验替代」——
+  //     而 M-Form-8 只按 H2 段做机械 cov 计数，**不解析缺口表** → 该段照旧判「覆盖 <2 类证据」P1。
+  //     即：**「已接受缺口」这一合法状态在机械层不存在**，写手改稿也无法消除（除非编造编号）。
+  //   修法（报告 §A3 修法①）：大纲（或任务简报）里写一行**机读声明**，M-Form-8 读它并把对应段从
+  //     弱段/缺证据判定中排除；**未声明时行为逐字不变**（防滥用）。
+  //   声明形态（唯一口径，逐字）：
+  //       ACCEPTED-GAPS: <段标题片段1> | <段标题片段2>      （可带括注理由，括注不参与匹配）
+  //     为什么按**段标题**而不是论点号：本门的分节口径是 H2（见上方 h2Headings），
+  //     论点号→段 的映射在机检层不存在；声明段标题是**可机械核对**且与判据同粒度的那一半。
+  //     留痕：命中的段**不消失**——detail 里无条件列出「已接受缺口（不计弱段）：…」，且声明里
+  //     出现的片段若匹配不到任何段，会被记为软提示（防「声明了但没对上」的静默空转）。
+  const normKey7 = (s) => String(s).replace(/[\s*`·、，,。.．:：|｜]/g, '');
+  const acceptedGaps = [];
+  const acceptedShort = [];
+  {
+    const projDir8a = dirname(dirname(draftPath));
+    const declSrcs = [
+      join(projDir8a, 'analysis', '分析大纲.md'), join(evDir, '分析大纲.md'),
+      join(projDir8a, '01-任务简报.md'),
+    ];
+    for (const p of declSrcs) {
+      if (!existsSync(p)) continue;
+      let m = null;
+      try { m = readFileSync(p, 'utf8').match(/^[ \t>*+-]*ACCEPTED-GAPS\s*[:：]\s*(.+)$/m) } catch { continue }
+      if (!m) continue;
+      for (const raw of m[1].split(/[|｜;；,，]/)) {
+        const frag = normKey7(raw.replace(/[（(].*$/, ''));
+        // 长度闸门 = **2**（不是 3）：中文段名两个字的是常态（「讨论」「结论」「摘要」全 2 字）——
+        //   首版写 ≥3，实测把声明里的「讨论」**静默丢弃**（它正好 2 字），于是该段照旧被算弱段、
+        //   而声明看起来「已生效但没生效」。1 字片段才判过短（那种片段会匹配上几乎任何段）。
+        if (frag.length >= 2) acceptedGaps.push({ frag, src: p });
+        else if (frag) acceptedShort.push(frag);
+      }
+      break;   // 只在**第一处**命中声明的载体生效（避免两个载体各写一半时口径分叉）
+    }
+  }
+  const gapUnmatched = acceptedGaps.map((g) => g.frag);
   for (const sec of sections) {
     if (sec.length < THRESHOLDS.mform8MinSecLen) continue;
     const secTitle = sec.split('\n')[0].trim();
@@ -440,9 +479,30 @@ try {
     mform8Findings.total++;
     const secProse = stripCodeSpans(sec);          // 剥掉代码/反引号里的字面量编号
     const hasL = /\[L\d+\]/.test(secProse);
+    // v18.62.7（反哺-主控实测 A2）：**[先NN] 是第四类证据族**。
+    //   病灶（实测 aigc-yixiangxing-meixue）：`## 六 讨论` 的 §六.2 以 [先01]–[先19] 承载「与既有研究的
+    //   差异对账」（同段另含 [L16][L18][L19][L20][L28]）→ 旧 cov 只数 L/D/C = 1 → 判「覆盖 <2 类证据」P1。
+    //   [先NN] 是**《机检硬格式》确认的合法编号族**（先行者清单；T1 独立产出、M-Exist-1 已白名单），
+    //   在 M-Form-8 的类别字母表里却**不存在** → 「以与先行者对话为主要论证方式」的稿件恒吃这个 P1，
+    //   且**改稿无法消除**（除非把先行者编号换成普通文献编号 = 内容降级）。
+    //   修法（报告 §A2 修法①）：纳入字母表；并让「文献族」= [Lxx] ∪ [先NN]（先行者即「与既有研究对话」，
+    //   属文献侧证据）——故只有 [先NN] 而无 [Lxx] 的段不再落「缺任意证据 / 仅 1 类且缺 [Lxx]」两档。
+    //   ⚠️ 已知代价（如实登记）：[先NN] 与 [Lxx] 存在**同篇双列**（实测 [先01]=[L07] 等），故本项确实
+    //     **放宽**了「≥2 类」这一档（同一批文献可同时贡献两类）。这是**有意的口径选择**，不是疏漏：
+    //     判据是「与既有研究的对话」在本包内本就是**独立证据流**（T1 产先行者清单，与三张素材卡并列）。
+    const hasX = /\[先\d+\]/.test(secProse);
     const hasD = /\[D\d+\]/.test(secProse);
     const hasC = /\[C\d+\]/.test(secProse);
-    const cov = (hasL ? 1 : 0) + (hasD ? 1 : 0) + (hasC ? 1 : 0);
+    const cov = (hasL ? 1 : 0) + (hasD ? 1 : 0) + (hasC ? 1 : 0) + (hasX ? 1 : 0);
+    const litFamily = hasL || hasX;   // 文献族 = [Lxx] ∪ [先NN]
+    // ── v18.62.7（反哺-主控实测 A3）：本段是否命中「已接受缺口」机读声明（见上方 ACCEPTED-GAPS 段） ──
+    const secKey7 = normKey7(secTitle);
+    const gap = acceptedGaps.find((g) => secKey7.includes(g.frag) || g.frag.includes(secKey7));
+    if (gap) {
+      const gi = gapUnmatched.indexOf(gap.frag);
+      if (gi >= 0) gapUnmatched.splice(gi, 1);   // 命中即从「未匹配」名单移出
+      mform8Findings.accepted.push(`「${secTitle.slice(0, 20)}」（声明来源 ${basename(gap.src)}）`);
+    }
     // ── v18.50.0（反哺 F-AH · **主人裁定取方案 ③**）：「缺 [L]」**分三档**，不再一律 P0 ──
     // 为什么改：旧口径把「**段缺任意证据**」与「**有证据但未回引 [Lxx]**」都算进 `L_missing` → 一律 P0。
     //   实测不公：题1（**描述性研究**）的 `## 4 描述性结果` / `## 5 案例深描` 以 `[D]/[C]` 承重
@@ -453,7 +513,7 @@ try {
     //     · **零证据**（cov === 0）→ 仍记 `L_missing` ⇒ **P0**（**B9 的原意图完整保留**：真缺口不得降档）；
     //     · **单类证据**（cov === 1）→ 由既有的「覆盖 <2 类」规则 ⇒ **P1**（本档**无需新代码**）；
     //     · **≥2 类证据但缺 [L]**（cov ≥ 2）→ ⇒ **P2 软提示**（三角验证已成立，只是未回引文献）。
-    if (!hasL) {
+    if (!litFamily && !gap) {
       if (cov === 0) {
         mform8Findings.L_missing++;
         mform8Findings.details.push(`段缺任意证据: ${sec.split('\n')[0].slice(0, 30)}`);
@@ -465,7 +525,10 @@ try {
         mform8Findings.soft.push(`「${secTitle.slice(0, 20)}」有 ${cov} 类证据但未回引 [Lxx]（三角验证已成立，P2 提示）`);
       }
     }
-    if (cov < 2) mform8Findings.weak++;
+    // v18.62.7（A3）：命中「已接受缺口」的段**不计弱段**——但**不消失**：
+    //   它进 mform8Findings.accepted，由下方 detail 无条件带出（「未检 ≠ 通过」的同一条判据）。
+    // v18.62.7：弱段**点名**（旧版只给计数，读者得自己回头数是哪一段——与 F-BH「就近归因」同根）。
+    if (cov < 2 && !gap) { mform8Findings.weak++; mform8Findings.weakNames.push(`${secTitle.replace(/^#+\s*/, '').slice(0, 16)}（${cov} 类）`); }
     // 裸断言段（v18.3.0 方案 G 下沉）：长段落零引用 → P2 软提示（机械只挑可疑，定罪归 G3/G6）
     const secHan = countHan(secProse);
     const secRefs = (secProse.match(refRe) || []).length;
@@ -686,9 +749,10 @@ try {
         ? `P1：${wall8.overload.length ? '承重墙超载' : '承重墙幽灵编号'}`
         : (mform8Findings.weak > 0
           ? `P1：${mform8Findings.weak} 段覆盖 <2 类证据（F-AH ② 档）`
+            + `${mform8Findings.weakNames.length ? `——弱段：${mform8Findings.weakNames.slice(0, 4).join(' / ')}${mform8Findings.weakNames.length > 4 ? ' 等' : ''}` : ''}`
           : (noLOnly8 > 0
             ? `P2：${noLOnly8} 段有证据但缺 [Lxx]（F-AH ③ 档）`
-            : '通过：三段判定与承重墙硬项均无命中')));
+            : `通过：三段判定与承重墙硬项均无命中${mform8Findings.accepted.length ? `（另有 ${mform8Findings.accepted.length} 段按 ACCEPTED-GAPS 声明豁免，见下）` : ''}`)));
   const sevBit = `档位依据：${sevCause}（**只有本项决定档位**；上方「承重墙 …条标注」/「备注」/「P2 提示」均为观察，不参与档位判定）`;
   results.push({
     gate: 'M-Form-8 三角验证',
@@ -702,6 +766,18 @@ try {
       wall8.parseError || '',   // v18.2.6：解析异常**无条件**出现在 detail（不再无痕跳过）
       (wall8.checked && wall8.rows > 0 && !wall8.overload.length && wall8.notes.length) ? `备注：${wall8.notes[0]}` : '',
       mform8Findings.soft.length ? `P2 提示（裸断言段）：${mform8Findings.soft.slice(0, 2).join('；')}${mform8Findings.soft.length > 2 ? ` 等 ${mform8Findings.soft.length} 段` : ''}` : '',
+      // v18.62.7（A3）：**「已接受缺口」必须可见**——不计弱段 ≠ 消失（同「未检 ≠ 通过」的判据）。
+      //   两个方向都留痕：① 命中的段逐条列出（含声明来源文件）；② 声明了却没匹配到任何段的片段
+      //   也列出（防「写了个声明但段标题没对上」的静默空转——那会让声明看起来生效、实际没生效）。
+      mform8Findings.accepted.length
+        ? `已接受缺口（ACCEPTED-GAPS 声明，**不计弱段/不计缺证据**）：${mform8Findings.accepted.join('；')}`
+        : '',
+      gapUnmatched.length
+        ? `ACCEPTED-GAPS 声明了但**未匹配到任何段**：${gapUnmatched.join(' / ')}——请核对段标题片段是否写错`
+        : '',
+      acceptedShort.length
+        ? `ACCEPTED-GAPS 有 ${acceptedShort.length} 个**过短片段被忽略**（须 ≥2 字）：${acceptedShort.join(' / ')}`
+        : '',
       sevBit,
     ].filter(Boolean).join(' ｜ '),
     severity: mform8Severity,
@@ -867,6 +943,21 @@ try {
     //   正解：索引段条目须按规定格式写方括号（`| [L01] | 作者 | …`，见 `_shared/机检硬格式.md` 条 3）；
     //   表格写成 `| L01 |`（无方括号）**本就是不合规**，脚本报缺条是**正确行为**，不得为迁就单篇放宽。
     const idxIds = new Set([...indexBlock.matchAll(/\[([LDC])(\d+)\]/g)].map((m) => m[1] + m[2]));
+    // ── v18.62.7（反哺-主控实测 A4）：**索引段独有的特殊编号不进「正文条目」对账** ──────────────
+    //   病灶（实测 aigc-yixiangxing-meixue）：`literature/文献卡.md` 索引段顶部按
+    //   《机检硬格式》§二 增了 `[L00] 方法论原始文献` 与 `[L99] 对立证据` 两行——该格式**明文规定**
+    //   它们是「索引段顶部增一行」「**不计入「总条数」声明**」的**索引段独有行**，正文不会有 `### [L00]` 条目。
+    //   而本门按「索引 ↔ 正文条目一一对应」判 → `extra` 命中 → 软提示「索引段有 2 个编号在正文无对应条目
+    //   （L00,L99）」→ `pass=false` / severity P2。**合规稿必然带这一条**（与该段 :958-959 的
+    //   「合规稿必然拿不到 exit 0」是同一族病灶，只是本次实测的触发点是特殊编号而不是瘦索引行）。
+    //   修法：把《机检硬格式》§二 的三个特殊编号从**悬空对账**里**显式豁免**（它们不对账正文条目）。
+    //   ⚠️ 只在 `extra`（悬空）方向豁免，**不动 `missing`（缺条）方向**：若某项目真在正文写了
+    //      `### [L00]` 条目而索引段漏了它，那仍是「索引缺条」——豁免必须**单向**，否则会开一个假绿口子。
+    //   实测口径（如实，纠正反哺报告的一处措辞）：`[L-cross]` **本来就不在 idxIds 里**——上面这条
+    //     正则要求 `[LDC]` 后**紧跟数字**，`L-cross` 匹配不上，故它既不报缺也不报悬空（本次实测
+    //     只出现 `L00,L99` 两个，与代码一致）。此处仍把 `L-cross` 列进豁免表，是为了在**未来**把
+    //     编号形态放宽成「字母+任意后缀」时不重新引入这个假阳性（防御性登记，不是现修项）。
+    const SPECIAL_INDEX_ONLY = new Set(['L00', 'L99', 'L-cross']);
     // v18.12.0（全量审计 L-52 同族 / L-45 配套）：`bodyIds` 旧版只认 `### [Dxx]` **标题式**条目
     //   （`ENTRY_ID_RE = /^#{2,4}\s*\[([LDC])(\d+)\]/gm`），而三卡模板规定的条目是**行首式**
     //   `[D01] 数值 | 机构 | 年份 | URL` → 一张完全照模板写的卡会让 `bodyIds` 为空 →
@@ -910,7 +1001,7 @@ try {
     const bodyIds = new Set([...entryIds(cardText)].map((id) => id.slice(1, -1)));   // 标题式 `### [Dxx]`
     for (const m of entryLines.join('\n').matchAll(/^\[([LDC])(\d+)\]/gm)) bodyIds.add(m[1] + m[2]);   // 行首式（模板形态）
     const missing = [...bodyIds].filter((x) => !idxIds.has(x));       // 索引缺条 → 下游漏卡（硬）
-    const extra = [...idxIds].filter((x) => !bodyIds.has(x));         // 索引悬空（软）
+    const extra = [...idxIds].filter((x) => !bodyIds.has(x) && !SPECIAL_INDEX_ONLY.has(x));  // 索引悬空（软；特殊编号豁免）
     // v18.12.0（全量审计 L-45）：判据由**字数阈值**改为**结构判据**。
     //   旧式「去掉编号与分隔符后剩余 < 6 字」与模板规定的形态错配：三卡模板要求的是
     //   `| 编号 | 主题 | 支撑论点 |` 三列（或围栏内 `[D01] 甲 ｜ 主题 ｜ 论点1` 三段），

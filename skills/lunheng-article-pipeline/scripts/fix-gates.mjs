@@ -161,6 +161,14 @@ for (const [label, rel] of CARD_FILES) {
 }
 
 // ── ④ 交付说明 12 字段（M-Exist-7） ────────────────────────────────────────
+//   v18.62.7（反哺-主控实测-2026-10-02 §A16）：**补第二种失败形态**。
+//   病灶（实测）：主控在交付说明里写了两处尖括号形态（一个命令行示例里的占位、一个待定值）→
+//     `M-Exist-7` 判 **P1**（「字段『成本指标』/『主人决策记录』仍含模板占位符」），而本工具当时
+//     报「✅ 未发现可机械修复项」——**两个工具对同一份产物给出相反结论**。
+//   根因：本类旧判据只「列出缺失的字段标题」，只管**字段在不在**，不管**字段正文里有没有 `<…>`**；
+//     而 M-Exist-7 的失败形态有两种（字段缺失 / 字段含占位符）。
+//   判据与门**同源**：占位符正则照抄 `mexist-gates.mjs` 的 `/<[^>]{1,60}>/`（两处必须同形，否则
+//     本工具又会生成「照修了还是红」的假修法）。
 {
   const p = join(projectDir, 'final', '交付说明.md')
   if (existsSync(p)) {
@@ -173,6 +181,21 @@ for (const [label, rel] of CARD_FILES) {
       push('M-Exist-7', 'final/交付说明.md', `缺 ${missing.length} 个固定字段`,
         `缺：${missing.join(' / ')}\n修法：按 \`references/templates/交付说明-template.md\` 补节；\n` +
         `⚠️ 追加段（如字数统计）只能放在 §12 之后，不得插在 12 节序列中间。`)
+    }
+    // ② 字段正文含 `<…>` 模板占位符（M-Exist-7 的第二种失败形态）
+    const phFields = []
+    for (const h of h2Headings(txt)) {
+      if (!REQ.some((r) => h.title.includes(r))) continue
+      const body7 = sectionBody(txt, h.title) ?? ''
+      const hits = [...new Set([...body7.matchAll(/<[^>]{1,60}>/g)].map((m) => m[0]))]
+      if (hits.length) phFields.push(`${h.title}：${hits.slice(0, 4).join(' ')}`)
+    }
+    if (phFields.length) {
+      push('M-Exist-7', 'final/交付说明.md', `${phFields.length} 个字段正文含尖括号占位符（M-Exist-7 判 P1 的第二种形态）`,
+        `命中：\n${phFields.map((x) => `  · ${x}`).join('\n')}\n` +
+        `修法：正文里表示「待定 / 占位」一律用**圆括号**（如 （待主人确认））或直接写「待定」；\n` +
+        `**不得用尖括号** —— M-Exist-7 把字段正文里的 \`<…>\` 判为「模板占位符未填」；命令行示例里的占位同样改用圆括号。\n` +
+        `⚠️ 只改交付说明的**正文**：模板里的示例占位符属模板文件，不在本项范围内。`)
     }
   }
 }

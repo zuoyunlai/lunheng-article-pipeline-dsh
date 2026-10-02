@@ -275,7 +275,37 @@ try {
             findings.push(`复核报告 ${reviewCands.map((c) => c.name).join(' / ')} 未覆盖 ${missBest.miss.length} 个审计编号：${missBest.miss.slice(0, 5).join(',')}`);
           }
         } else if (revNotes.length) {
-          findings.push(`已有修订说明（${revNotes.length} 份）但缺同号复核报告——修订复核必须落盘 audits/复核报告-v${audit.n}.md`);
+          // ── v18.62.7（反哺-主控实测-2026-10-02 §A6）：**区分「复核尚未到期」与「复核已逾期」** ──────
+          //   病灶（实测 aigc-yixiangxing-meixue，与 `handoff-check` 的 A1 口径相反）：T5 **每一轮**都产
+          //   `drafts/修订说明-vN.md`（v1 起就有），而本门旧判据只是 `revNotes.length > 0` → **首轮审计
+          //   必然命中**：那一轮的打回**发生在任何修订之前**，`audits/复核报告-vN.md` 在那一刻物理上不可能
+          //   存在 → T7 只能补交一份内容全为「✗未关闭（未复核）」的形式产物，再被同号覆盖、归档。
+          //   **一次无意义的写入 + 一次归档，且全程无人需要那份初版内容。**（A6 的判据：口径相反的两门，
+          //   至少不能对同一份项目给出一致性无法解释的相反结论。）
+          //   正解判据 = 「是否真的发生过**本轮审计之后**的修订」：`修订说明-vN` 的 N > 被审正文的 N。
+          //     · **逾期**（已发生修订而无复核）→ **硬**（「复核必须落盘」的原锋芒逐字保留）；
+          //     · **未逾期**（停在首轮审计，只有 T5 的历史修订说明）→ **软提示**（写明若修订已完成须补交）。
+          //   `handoff-check` 的 A1 把复核报告列为「修订轮产物 → 首轮可缺」软提示——两门在「未逾期」档
+          //   由此**同号同向**（都软）；在「逾期」档本门更严（硬），A1 仍软，属**有意的分工**：
+          //   本门是**项目终局**的审计条目闭环（T8 前必须成立），A1 是**单次派发**的产物存在性检查。
+          //   ⚠️ 边界（如实）：审计报告没写 `被审正文：` 声明 → **无法判定** → 退回硬判（保守，不放过）。
+          const declAudited = /\*{0,2}被审正文\*{0,2}\s*[：:]\s*`?([^\s`|，。]+\.md)/.exec(text);
+          const auditedN6 = (() => {
+            if (!declAudited) return null;
+            const m = /初稿-v(\d+)\.md$/.exec(declAudited[1].replaceAll('\\', '/'));
+            if (m) return Number(m[1]);
+            return /定稿\.md$/.test(declAudited[1]) ? Infinity : null;   // 审的是定稿 → 无「之后的修订」可比
+          })();
+          const latestNoteN6 = revNotes
+            .map((f) => Number((f.match(/^修订说明-v(\d+)\.md$/) || [])[1]))
+            .filter((n) => Number.isInteger(n))
+            .reduce((a, b) => Math.max(a, b), 0);
+          const overdue6 = auditedN6 === null ? true : latestNoteN6 > auditedN6;
+          if (overdue6) {
+            findings.push(`已有修订说明（${revNotes.length} 份，最新 v${latestNoteN6}）但缺同号复核报告——修订复核必须落盘 audits/复核报告-v${audit.n}.md`);
+          } else {
+            soft.push(`已有修订说明（${revNotes.length} 份，最新 v${latestNoteN6}）但本轮**尚未到复核时点**（被审正文 v${auditedN6}）——修订**已完成**时须落盘 audits/复核报告-v${audit.n}.md（v18.62.7 A6：首轮审计的打回发生在任何修订之前，此时复核报告不可能已存在，故只作提示）`);
+          }
         }
       }
     }
@@ -669,16 +699,58 @@ try {
     const findings6 = [];
     const soft6 = [];
     const DIMS = ['原创性', '方法论', '证据强度', '论证结构', '写作质量', '引文规范'];
+    // ── v18.62.7（反哺-主控实测-2026-10-02 §A10）：6 维取分**限定在含「总评分」的那张表内** ─────────
+    //   病灶：旧实现是 `rt.match(...)`（整份报告找**首个**匹配）——若 T9 把**三视角各自的 6 维**与
+    //   **整合 6 维**放进同一份报告（三视角模式下的常态），脚本取到的是三视角里**第一个**的 6 维
+    //   → 与整合总评分比对 → 判「评分表与总分自相矛盾」（**P0**）。而护栏只是「读契约记住」。
+    //   本次实测的主控就是靠**事前读契约**、改用叙述式评分（「原创性 4 分」不带 `/5`）才绕开——
+    //   「正确性依赖人读注释」正是本仓反复批判的形态。
+    //   修法：先定位「总评分」所在行；若它在表格内，则把取分范围收窄到**该表的连续表格块**；
+    //   收窄后仍取不到的维度再回退全文（保旧行为，不制造新的假阴性）。
+    const total6 = rt.match(/总评分[^\d]{0,8}(\d{1,2}(?:\.\d)?)\s*\/\s*30/) || rt.match(/总分[^\d]{0,12}(\d{1,2}(?:\.\d)?)\s*\/\s*30/);
+    const declaredTotal = total6 ? Number(total6[1]) : null;
+    // 选表规则（唯一口径）：候选 = **含 ≥2 个维度名的表格块**；打分 = 命中维度数 +（该块含「总评分/总分」? +10 : 0）；
+    //   取分最高者，**同分取靠后**（「整合评分」表按 T9 契约排在三视角之后；实测报告亦然）。
+    //   为什么不用「总评分那一行所在的表」单判据：总评分**不一定在表内**（实测有 `> **总评分**：21/30`
+    //   写在表外的合法形态）——单判据会在那种报告上退回全文，等于没修。
+    let dimScope = rt;
+    let dimScopeNote = '';
+    {
+      const tLines = rt.split('\n');
+      const blocks = [];
+      for (let i = 0; i < tLines.length; i++) {
+        if (!/^\s*\|/.test(tLines[i])) continue;
+        let b = i;
+        while (b + 1 < tLines.length && /^\s*\|/.test(tLines[b + 1])) b++;
+        blocks.push({ a: i, b });
+        i = b;
+      }
+      const best = blocks
+        .map((blk) => {
+          const t = tLines.slice(blk.a, blk.b + 1).join('\n');
+          return { blk, hits: DIMS.filter((d) => t.includes(d)).length, hasTotal: /总评分|总分/.test(t) };
+        })
+        .filter((x) => x.hits >= 2)
+        .sort((x, y) => ((x.hits + (x.hasTotal ? 10 : 0)) - (y.hits + (y.hasTotal ? 10 : 0))) || (x.blk.a - y.blk.a))
+        .pop();
+      if (best) {
+        dimScope = tLines.slice(best.blk.a, best.blk.b + 1).join('\n');
+        dimScopeNote = `6 维取自候选表（第 ${best.blk.a + 1}–${best.blk.b + 1} 行，命中 ${best.hits}/6 维${best.hasTotal ? ' 且含总评分' : ''}）`;
+      } else {
+        dimScopeNote = '未找到含 ≥2 个维度名的表格 → 6 维退回全文取首个匹配（旧行为）';
+      }
+    }
     const dimScores = [];
     for (const d of DIMS) {
       // v18.5.1（反哺报告-v1 B3 补深，主人授权修订）：支持小数半分制（4.0 / 3.5 / 4.5）——实战 T9 打半分，
       //   旧正则 `(\d)` 对「4.0/5」回溯错取 0、对「3.5/5」错取 5 → 维度和失真；总评 24.5 同理失配。
-      const m = rt.match(new RegExp(`${d}[^\\n]*?(\\d(?:\\.\\d)?)\\s*/\\s*5`)) || rt.match(new RegExp(`${d}\\s*\\|\\s*(\\d(?:\\.\\d)?)\\s*/\\s*5`));
+      //   v18.62.7（A10）：先在 dimScope（= 总评分那张表）里找，找不到再回退全文。
+      const mk = (src) => src.match(new RegExp(`${d}[^\\n]*?(\\d(?:\\.\\d)?)\\s*/\\s*5`))
+        || src.match(new RegExp(`${d}\\s*\\|\\s*(\\d(?:\\.\\d)?)\\s*/\\s*5`));
+      const m = mk(dimScope) || (dimScope === rt ? null : mk(rt));
       if (!m) soft6.push(`未找到「${d}」的 x/5 评分（模板 6 维须齐全）`);
       else dimScores.push(Number(m[1]));
     }
-    const total6 = rt.match(/总评分[^\d]{0,8}(\d{1,2}(?:\.\d)?)\s*\/\s*30/) || rt.match(/总分[^\d]{0,12}(\d{1,2}(?:\.\d)?)\s*\/\s*30/);
-    const declaredTotal = total6 ? Number(total6[1]) : null;
     if (declaredTotal === null) findings6.push('审稿报告缺「总评分 XX/30」');
     else if (dimScores.length === 6) {
       const sum = dimScores.reduce((a, b) => a + b, 0);
@@ -737,6 +809,15 @@ try {
       const head6 = tableCells(jLines[jHead]);
       const col6 = (kw) => head6.findIndex((h) => kw.test(h));
       const iComp = col6(/综合/), iTheme = col6(/主题/), iStyle = col6(/风格/), iCycle = col6(/审稿周期/), iWhy2 = col6(/推荐理由|理由/);
+      // ── v18.62.7（反哺-主控实测-2026-10-02 §A15，**实测复现**）：刊名取**「期刊」那一列**，不再取首格 ──
+      //   病灶：旧实现写死 `r[0]`；而派发话术里的期刊表示例是 `| 排名 | 期刊 | 综合 | … |`，
+      //   首格是 `🥇 1` → 脚本拿「🥇 1」去查 `期刊数据库.md` → 报「『🥇 1』未在本库内找到」软提示。
+      //   实测复现：把排名列改成纯数字 `1/2/3`，该软提示即消失（= 与刊名无关）。
+      //   修法：按**表头**定位含「期刊 / 刊名 / 刊物」的那一列；表头认不出时退回首格（保旧行为）。
+      //   另一层防御：解析出的格子若**形如排名**（`🥇`/数字/`No.` 等、无书名号与汉字刊名特征），
+      //   直接跳过刊名核对——免得换个表头写法又重新踩同一个坑。
+      const iName = col6(/期刊|刊名|刊物|期刊名/);
+      const rankLike = (s) => /^[\s\p{Emoji_Presentation}\p{Extended_Pictographic}]*\d+\s*$|^No\.?\s*\d+$/u.test(String(s || '').trim());
       let dbText = '';
       // v18.2.6 审计修复 P1-7：旧写法 `catch { /* 降级 */ }` 让「刊名数据库读不到」与
       //   「刊名都在库里」在输出里完全同形 —— 「杜撰刊名」这条检查**静默失效**而报告照常显示
@@ -745,8 +826,10 @@ try {
       catch (e) { soft6.push(`期刊数据库（references/_shared/期刊数据库.md）读取失败 → 「刊名是否在本库内」子检查已降级为本项跳过：${e.message}`); }
       const pct = (s) => { const m = String(s || '').match(/(\d+(?:\.\d+)?)\s*%/); return m ? Number(m[1]) : null; };
       for (const r of jRows) {
-        const name = (r[0] || '').replace(/[*《》\s]/g, '');
+        const rawNameCell = r[iName >= 0 ? iName : 0] || '';
+        const name = String(rawNameCell).replace(/[*《》\s]/g, '');
         if (!name) { findings6.push('期刊匹配表有行缺刊名'); continue; }
+        if (rankLike(rawNameCell)) continue;   // v18.62.7（A15）：排名格不是刊名 → 不参与库内核对
         if (dbText && !dbText.includes(name.slice(0, Math.max(2, name.length - 1)))) {
           // ── v18.49.0（反哺 F-AU）：**措辞降级**——旧文案「疑似杜撰刊名」把「本库覆盖不全」写成了
           //   「作者编造」。实测反例：《哲学研究》《政治学研究》**均为真实的中文核心刊物**（CSSCI / 北大核心），
@@ -754,22 +837,22 @@ try {
           //   判据：**「本库查不到」只支持「未在本库内找到」这一个结论**；「杜撰」需要「格式非法 / 明显不存在」
           //   这类独立证据，而本检查**没有**那种证据。故措辞降级，并显式输出本库规模，防「查不到」被读成「不存在」。
           const dbScale = (dbText.match(/^\s*[-|]\s*《/gm) || []).length;
-          soft6.push(`「${r[0]}」**未在** references/_shared/期刊数据库.md 内找到`
+          soft6.push(`「${rawNameCell}」**未在** references/_shared/期刊数据库.md 内找到`
             + `（**不等于该刊不存在**——本库为精选集${dbScale ? `，当前收录约 ${dbScale} 条` : ''}，不穷尽全部刊物；`
             + `请人工核验其收稿范围与字数要求后再定稿）`);
         }
         const comp = pct(r[iComp]), theme = pct(r[iTheme]), style = pct(r[iStyle]);
         if (comp === null || theme === null || style === null) {
-          findings6.push(`「${r[0]}」匹配度列缺百分比（综合/主题/风格都要有）`);
+          findings6.push(`「${rawNameCell}」匹配度列缺百分比（综合/主题/风格都要有）`);
         } else if (declaredTotal !== null) {
           const normScore = Math.max(0, Math.min(1, (declaredTotal - 16) / 14));
           const expectComp = 0.5 * theme + 0.3 * style + 0.2 * normScore * 100;
           if (Math.abs(comp - expectComp) > 1.5) {
-            findings6.push(`「${r[0]}」综合匹配度 ${comp}% ≠ 复算值 ${expectComp.toFixed(1)}%（=0.5×${theme} + 0.3×${style} + 0.2×${(normScore * 100).toFixed(1)}）——数字不可复算`);
+            findings6.push(`「${rawNameCell}」综合匹配度 ${comp}% ≠ 复算值 ${expectComp.toFixed(1)}%（=0.5×${theme} + 0.3×${style} + 0.2×${(normScore * 100).toFixed(1)}）——数字不可复算`);
           }
         }
-        if (iCycle !== -1 && !/[0-9]/.test(r[iCycle] || '')) soft6.push(`「${r[0]}」审稿周期为空或无数值`);
-        if (iWhy2 !== -1 && (r[iWhy2] || '').replace(/[\s.。…-]/g, '').length < 6) soft6.push(`「${r[0]}」推荐理由过短（须含主题契合 + 风格契合 + 周期依据）`);
+        if (iCycle !== -1 && !/[0-9]/.test(r[iCycle] || '')) soft6.push(`「${rawNameCell}」审稿周期为空或无数值`);
+        if (iWhy2 !== -1 && (r[iWhy2] || '').replace(/[\s.。…-]/g, '').length < 6) soft6.push(`「${rawNameCell}」推荐理由过短（须含主题契合 + 风格契合 + 周期依据）`);
       }
     }
     // ---- 审稿建议的「可消费 + 落地追踪」（v2.5.2-dsh.17 增补）----
@@ -832,6 +915,8 @@ try {
         hard6 ? `硬问题：${findings6.slice(0, 3).join('；')}` : '评分自洽、期刊匹配可复算',
         // v18.2.6：简报缺失属**合法差序输入**——留痕在 detail（不推 soft6，故不影响 pass）
         journalNote ? `备注：${journalNote}` : '',
+        // v18.62.7（A10）：取分范围必须**说得出来**——否则「6 维是取自哪张表」又要靠人读代码。
+        dimScopeNote,
         soft6.length ? `软提示：${soft6.slice(0, 2).join('；')}` : '',
       ].filter(Boolean).join(' ｜ '),
       severity: hard6 ? (findings6.length > 2 ? 'P0' : 'P1') : (soft6.length ? 'P2' : '通过'),

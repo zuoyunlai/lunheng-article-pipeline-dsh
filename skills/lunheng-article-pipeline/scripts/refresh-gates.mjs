@@ -9,10 +9,17 @@
 //   实测（论衡实测项目-夫妻收入差异家庭权力）：终检期正文演进 3 次，主控每轮手工同步 4 处，
 //   属「必做但全靠记忆」的机械动作——本脚本把它收敛为一条命令。
 //
-// 边界（如实声明，三条）：
+// 边界（如实声明，四条）：
 //   · **只替换已知形态的旧指纹**：正则锚定在「正文 sha256 / draft_sha256 / sha256:」字样附近，
 //     不做「把所有 64 位 hex 都换掉」的危险操作（那会误伤证据包 manifest 的**条目** sha256）。
-//   · 抓不到旧指纹 → 如实报「无可刷新项」并**不写盘**（这不是错误）。
+//     ⚠️ v18.62.7（反哺-主控实测 A1）——**只抓**已知形态**不够**：实据列写 `` `路径` sha256 `<hex>` ``
+//     时旧模式在第一个反引号处截断 → 一个指纹都抓不到 → 报 `ok`。现模式允许跨反引号（限长 200 + 不跨行），
+//     并把「标签在、指纹抓不到」单列为 `warn`（见下）。**替换只动 64 位指纹本身，从不改写标签文本。**
+//   · 抓不到旧指纹 → **分两种，不再同形**：
+//       ① 文件里**没有**该形态的标签 → 如实报「无可刷新项」并**不写盘**（这不是错误）；
+//       ② 文件里**有**标签却解析不出指纹 → 报 `warn` + 输出告警（**未写盘**，退出码仍 0，须人工处理）。
+//       判据：**「无可刷新」与「解析失败」必须能被读者区分开**——两者同形时，工具会说「已同步」而
+//       下一步的门（M-Exist-5）判 P1，变成「两个工具各说各话，人得自己查」。
 //   · **不改正文、不改 `final/M-Gate-Report.json`**——后者的 `exit` 权威值只能由
 //     `m-gate-check.mjs --adjudicate` 写入（本脚本不越权）。
 //
@@ -96,9 +103,28 @@ const bytes = buf.length;
 //   仍会被替换；彻底消除需改为「按 `M-Gate-Report.json#verdict_scope.draft_sha256` 反查」，
 //   属增强而非修复，见本批修订记录的「未做项」。
 const CONTEXT_RE = /正文|定稿|被审|draft_sha256/;
+// ⚠️ v18.62.7（反哺-主控实测 A1，**本批修**）：闸门记录的两个模式**原写作 `[^`\n]*`**——
+//   而 `[^`\n]` **不允许跨越反引号**，于是实据列只要写成「标签 | `路径` sha256 `指纹`」（路径自带
+//   反引号，这是 M-Exist-5 契约为「可读」而鼓励的写法），模式在**第一个反引号处就被截断**，
+//   一个指纹都抓不到 → 报 `ok（无可刷新项）`。
+//   实测（反哺报告-主控实测-2026-10-02 §A1 受控对照）：同一份文件，实据写 `正文 sha256 <hex>`
+//   → `would-replace ×2`；写成 `` `final/定稿.md` sha256 <hex> `` → 静默 `ok`。
+//   修法：`[^`\n]*` → `[^\n]{0,200}?`（**允许跨反引号**，且**限长 200 字符 + 不跨行**，避免在同段
+//   远处误抓别的 hex）；指纹两侧的反引号改为**可选**（`\`?`），兼容不带反引号的写法。
+//   既有 `CONTEXT_RE` 行内语境守卫**保留不动**——它才是挡住「误伤 manifest 逐文件条目 sha256」的那一层
+//   （见 :122-127 注释与 `refresh-gates.test.mjs` 的反向自证用例）。
+//   ① 替换的安全性：下面只做 `text.split(oldSha).join(sha)`——**只替换 64 位指纹本身，从不改写标签文本**，
+//      故「放宽模式会把检查项单元格里的标签也改掉」这一担心不成立（v18.62.7 已加回归用例钉住）。
+const gateRecordPatterns = () => [
+  /正文\s*sha256[^\n]{0,200}?`?([0-9a-f]{64})`?/g,
+  /draft_sha256=`?([0-9a-f]{64})`?/g,
+];
+// 「标签在，但指纹抓不到」的探测器（**非全局**，避免 lastIndex 状态；只用于报「解析失败」告警）
+const gateRecordLabel = /正文\s*sha256/;
+const deliverLabel = /(?:被审正文|正文|定稿)[^\n]*?sha256[:：]/;
 const targets = [
-  { rel: 'audits/闸门记录-T2.5.md', patterns: [/正文 sha256[^`\n]*`([0-9a-f]{64})`/g, /draft_sha256=`([0-9a-f]{64})`/g] },
-  { rel: 'audits/闸门记录-T7.5.md', patterns: [/正文 sha256[^`\n]*`([0-9a-f]{64})`/g, /draft_sha256=`([0-9a-f]{64})`/g] },
+  { rel: 'audits/闸门记录-T2.5.md', patterns: gateRecordPatterns(), label: gateRecordLabel },
+  { rel: 'audits/闸门记录-T7.5.md', patterns: gateRecordPatterns(), label: gateRecordLabel },
   // 交付说明的真实形态有**两种**，且都实测自存量项目（27 份 §9 抽样）：
   //   ① 标签在前、值在后：`- **被审正文（定稿）sha256**：sha256：<hex>`（主流形态）
   //   ② 标签与值同段：`正文 sha256：<hex>`
@@ -106,6 +132,7 @@ const targets = [
   {
     rel: 'final/交付说明.md',
     patterns: [/sha256[:：]\s*`?([0-9a-f]{64})`?/g],
+    label: deliverLabel,
     // 仅交付说明需要「关键词先行」的整体匹配（闸门记录的标签形态已足够精确，不需要再收）
     keyFirstPatterns: [/(?:被审正文|正文|定稿)[^\n]*?sha256[:：]\s*`?([0-9a-f]{64})`?/g],
     useKeyFirst: true,
@@ -113,6 +140,7 @@ const targets = [
 ];
 
 const results = [];
+const warnings = [];   // v18.62.7（A1）：**「解析失败」不再与「无可刷新项」同形**
 let replaced = 0;
 for (const t of targets) {
   const abs = join(project, t.rel);
@@ -133,7 +161,31 @@ for (const t of targets) {
   }
   const olds = [...found].filter((h) => h !== sha);
   if (!olds.length) {
-    results.push({ file: t.rel, status: 'ok', note: found.size ? '指纹已是当前值' : '无可刷新项（未找到已知形态指纹）' });
+    // v18.62.7（反哺-主控实测 A1）：**区分「真的没有旧值」与「标签在、指纹抓不到」**。
+    //   旧实现把两者都报 `ok`，于是「模式不兼容导致一个指纹都没抓到」这一**失败**是静默的——
+    //   主控看到 `ok` 会认为「已同步」，而 M-Exist-5 下一步判 P1（两个工具各说各话）。
+    //   现：文件里**存在**该目标的指纹标签、却一个 hex 都没解析出来 → 报 `warn`（并在 stdout/JSON 显著告警）。
+    //   ⚠️ 退出码**不变（仍 0）**，如实登记为「未刷新、需人工处理」：本脚本头部 :21-32 已立明文约束
+    //     「新增退出码属契约层决定」，且本脚本**不得被任何自动化链消费**——故本批只做**可见性**修复，
+    //     是否新增专用软码留主人裁定（见本批修订记录 §未做项）。
+    if (found.size === 0 && t.label.test(text)) {
+      // ⚠️ 先排除**合法的「本阶段无正文」形态**：T2.5 记录在 Phase 3 之前必然写
+      //   「本阶段无正文…该行留待 T7.5 首次填实值 | N/A」——它有标签、无指纹，且**是对的**。
+      //   判据：**同一行**内若已写明 `N/A` / `不适用`，就不是解析失败。
+      const suspicious = text.split('\n').filter((line) =>
+        t.label.test(line) && !/N\/A|不适用/.test(line) && !/[0-9a-f]{64}/.test(line));
+      if (!suspicious.length) {
+        results.push({ file: t.rel, status: 'ok', note: '无可刷新项（标签行为 N/A 形态，无指纹可刷）' });
+        continue;
+      }
+      warnings.push(
+        `${t.rel}: 检测到「正文 sha256」类标签，但**未解析到任何 64 位指纹**——实据列的写法与本脚本的模式不兼容`
+        + `（最典型：标签与指纹之间夹着另一段反引号路径）。请人工核对，或改写成 \`正文 sha256 \`<64位hex>\`\` 形态。`,
+      );
+      results.push({ file: t.rel, status: 'warn', note: '检测到标签但指纹解析失败（**未写盘**）' });
+    } else {
+      results.push({ file: t.rel, status: 'ok', note: found.size ? '指纹已是当前值' : '无可刷新项（未找到已知形态指纹）' });
+    }
     continue;
   }
   // 逐字符替换：仅替换被判定的旧指纹（各出现处）
@@ -154,8 +206,11 @@ for (const t of targets) {
 const out = {
   project, source: src.rel, sha256: sha, bytes, dryRun,
   replaced, results,
+  warnings,   // v18.62.7（A1）：非空 = 有目标「标签在、指纹抓不到」→ 必须人工处理（退出码仍 0，见上）
   note: replaced === 0
-    ? '无旧指纹可刷新（各交付件的正文指纹已是当前值，或未见已知形态指纹）——未写盘'
+    ? (warnings.length
+      ? `⚠️ 未刷新任何指纹，但有 ${warnings.length} 个目标**解析失败**（≤ 不是「已同步」）——见 warnings，须人工核对后台账`
+      : '无旧指纹可刷新（各交付件的正文指纹已是当前值，或未见已知形态指纹）——未写盘')
     : `${dryRun ? '将' : '已'}刷新 ${replaced} 处正文指纹 → ${sha.slice(0, 12)}…（源 = ${src.rel}）`,
 };
 if (wantJson) console.log(JSON.stringify(out, null, 2));
@@ -165,6 +220,7 @@ else {
     const c = r.count ? ` ×${r.count}` : '';
     console.log(`· ${r.file}: ${r.status}${c}${r.note ? `（${r.note}）` : ''}`);
   }
+  for (const w of warnings) console.log(`⚠️ ${w}`);
   console.log(out.note);
 }
 process.exit(replaced > 0 && !dryRun ? 1 : 0);

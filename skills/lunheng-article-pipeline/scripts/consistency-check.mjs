@@ -577,8 +577,14 @@ for (const f of files) {
     checkGateCounts(text, rel);
     // ⑥c 非 DSH 工具名黑名单（v2.5.2-dsh.13 新增：文档不得把不存在的工具声明为可用）
     //     负向表述（不存在/不得调用/已废止/历史/旧版/误声明/教训）豁免，避免误伤纠错说明
+    //     ⚠️ v18.62.7（反哺-主控实测 §A19/§A23）：**`read_page` 从名单移除**——它**已不是幻影工具**：
+    //       本机实测由 `@liustack/modsearch` 提供（会话工具面里在，报告 §9.1 的插件清单亦列明），
+    //       与本批新登记的 `x_search` 同源。原名单立时（OpenClaw 时代）它确实不存在，**那是当时的判断**。
+    //       为什么移除而不是继续豁免：本批给三卡与接入面加了「**工具面存在性优先**」的前置判据（§0）——
+    //       **「这个工具在不在」由 Phase 0 探测回答**，不再由一张写死的黑名单回答。保留它反而会
+    //       让「插件的工具被当成幻影」这一新型错位无人可查（本次实测的病灶正是「卡里点名的工具没装」）。
     {
-      const BANNED = ['read_page', 'read_url', 'fetch_page', 'gm_search', 'gm_record', 'session-kill'];
+      const BANNED = ['read_url', 'fetch_page', 'gm_search', 'gm_record', 'session-kill'];
       text.split('\n').forEach((l, i) => {
         for (const b of BANNED) {
           if (l.includes(b) && !/不存在|不得调用|已废止|历史|旧版|误声明|教训|残骸/.test(l)) {

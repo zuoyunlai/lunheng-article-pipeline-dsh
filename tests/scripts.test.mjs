@@ -4,6 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { writeFileSync, readFileSync, existsSync, rmSync, mkdirSync, cpSync, statSync, readdirSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -2407,11 +2408,18 @@ test('m-gate-check M-Form-10：索引段缺条必须报（下游按索引定位�
   assert.equal(item.pass, true, '索引补齐后应通过：' + item.detail)
   assert.match(item.detail, /未找到/, '缺卡只作备注')
   // 索引悬空 + 头部声明不符 → 硬/软问题
-  writeFileSync(lit, readFileSync(lit, 'utf8').replace('# 文献卡', '# 文献卡\n\n> 合计 5 条').replace('[L02] Putnam 1995 ｜ 公民参与 ｜ 论点1', '[L99] 悬空'))
+  // ⚠️ v18.62.7（反哺-主控实测 A4）：**悬空用例改用普通编号 `L98`** —— `[L99]` 是《机检硬格式》§二
+  //   明文规定的**索引段独有编号**（对立证据，不计入总条数、正文无对应条目），本批起已从悬空对账豁免。
+  //   旧用例把 `[L99]` 当悬空样本，等于把「合规形态」钉成了「必须报错」——这正是 A4 的病灶。
+  writeFileSync(lit, readFileSync(lit, 'utf8').replace('# 文献卡', '# 文献卡\n\n> 合计 5 条').replace('[L02] Putnam 1995 ｜ 公民参与 ｜ 论点1', '[L98] 悬空'))
   item = gate()
   assert.equal(item.pass, false, '头部声明与悬空必须报')
   assert.match(item.detail, /头部声明 5 条 ≠ 正文条目 2 条/)
-  assert.match(item.detail, /L99/)
+  assert.match(item.detail, /L98/, '**普通编号**的索引悬空仍必须报（豁免只针对特殊编号）：' + item.detail)
+  // 反向钉：`[L99]` 不得再被判「正文无对应条目」
+  writeFileSync(lit, readFileSync(lit, 'utf8').replace('[L98] 悬空', '[L99] 悬空'))
+  item = gate()
+  assert.ok(!/L99/.test(item.detail), '[L99] 属《机检硬格式》§二 的索引段独有编号，不得判「索引悬空」：' + item.detail)
   // 三张卡都没有 → N/A
   rmSync(lit, { force: true })
   rmSync(join(ev, '数据卡.md'), { force: true })
@@ -3002,6 +3010,54 @@ test('v18.3.1 审计 B9：M-Exist-6 总评分≠分项和 P1 / 期刊行缺百�
   rmSync(d, { recursive: true, force: true })
 })
 
+// ── v18.62.7（反哺-主控实测-2026-10-02 §A10/§A15）两条回归钉 ────────────────────────────────
+//   · A10：M-Exist-6 的 6 维取分旧版是**整份报告的首个匹配** → 三视角表（表格形态）与整合表并存时
+//          取到三视角的 6 维 → 与整合总评分比对 → 判「评分表与总分自相矛盾」**P0**（契约级陷阱，
+//          护栏却只是「读文档记住」）。
+//   · A15：期刊表表头含「排名」列时，旧版拿**首格**（`🥇 1`）当刊名去查库 → 恒报「未在本库内找到」。
+test('A10：三视角 6 维表与整合表并存 → M-Exist-6 必须取整合表（含「总评分」/靠后那张）', () => {
+  const { d, fin, ev, aud } = mkProject({ audits: true })
+  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n'
+    + '## 数据来源\n\n[D01] d\n\n## 案例来源\n\n[C01] c\n\n## 先行者文献\n\n[先01] p\n\n## AI 使用声明\n\nAI。\n')
+  const DIMS = ['原创性', '方法论', '证据强度', '论证结构', '写作质量', '引文规范']
+  const row = (v) => DIMS.map((x) => `| ${x} | ${v}/5 |`).join('\n')
+  // 三视角表在前（全 5）、整合表在后（全 3）；总评分写在**表外**（合法形态：`> **总评分**：18/30`）
+  writeFileSync(join(aud, '审稿报告-v2.md'), '# 同行评审报告\n\n## 一、三视角分项\n\n'
+    + '| 维度 | T9-d | T9-m | T9-s |\n|---|---|---|---|\n' + row(5) + '\n\n'
+    + '## 二、整合评分\n\n> **总评分**：18/30（major）\n\n'
+    + '| 维度 | 整合得分 |\n|---|---|\n' + row(3) + '\n'
+    + '\n## 给作者的具体修改建议（按优先级）\n\n1. §二 第 2 段：补 [L02] 支撑该论点\n2. §四 第 1 段：收紧因果表述\n')
+  const it = parseJson(run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])).results.find((x) => x.gate.startsWith('M-Exist-6'))
+  assert.equal(it.pass, true, '必须取整合表的 6 维（6×3=18 = 总评分），不得取三视角的 5 分：' + it.detail)
+  assert.match(it.detail, /6 维取自候选表/, 'detail 必须交代取分范围（否则又要靠人读代码）：' + it.detail)
+  // 反向钉：整合表若真与总分不一致，仍必须报（证明本修法不是「一律放行」）
+  writeFileSync(join(aud, '审稿报告-v2.md'), readFileSync(join(aud, '审稿报告-v2.md'), 'utf8').replace('> **总评分**：18/30（major）', '> **总评分**：24/30（major）'))
+  const it2 = parseJson(run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])).results.find((x) => x.gate.startsWith('M-Exist-6'))
+  assert.equal(it2.pass, false, '整合表 6 维之和 ≠ 总评分时仍必须报：' + it2.detail)
+  assert.match(it2.detail, /自相矛盾/)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('A15：期刊表带「排名」列（`🥇 1`）时不得把排名格当刊名（实测复现的软提示源）', () => {
+  const { d, fin, ev, aud } = mkProject({ audits: true })
+  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n'
+    + '## 数据来源\n\n[D01] d\n\n## 案例来源\n\n[C01] c\n\n## 先行者文献\n\n[先01] p\n\n## AI 使用声明\n\nAI。\n')
+  const DIMS = ['原创性', '方法论', '证据强度', '论证结构', '写作质量', '引文规范']
+  const jRows = [
+    '| 🥇 1 | 《社会学研究》 | 88.6% | 100% | 100% | 88.6% | 期刊数据库 §X 行 N |',
+    '| 🥈 2 | 《文艺研究》 | 80.0% | 90% | 90% | 80.0% | 期刊数据库 §Y 行 M |',
+    '| 🥉 3 | 《哲学研究》 | 75.0% | 85% | 85% | 75.0% | 期刊数据库 §Z 行 K |',
+  ].join('\n')
+  writeFileSync(join(aud, '审稿报告-v2.md'), '# 同行评审报告\n\n> **总评分**：21/30（minor）\n\n'
+    + '| 维度 | 得分 |\n|---|---|\n' + DIMS.map((x) => `| ${x} | 3.5/5 |`).join('\n') + '\n\n'
+    + '| 排名 | 期刊 | 综合 | 主题 | 风格 | 综合匹配度 | 来源 |\n|---|---|---|---|---|---|---|\n' + jRows + '\n'
+    + '\n## 给作者的具体修改建议（按优先级）\n\n1. §二 第 2 段：补 [L02] 支撑该论点\n2. §四 第 1 段：收紧因果表述\n')
+  const it = parseJson(run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])).results.find((x) => x.gate.startsWith('M-Exist-6'))
+  assert.ok(!/🥇/.test(it.detail), '排名格（🥇 1）不得被当刊名（旧版据此报「未在本库内找到」）：' + it.detail)
+  assert.equal(it.pass, true, '带排名列的合规期刊表应通过：' + it.detail)
+  rmSync(d, { recursive: true, force: true })
+})
+
 test('v18.3.1 审计 B9：M-Exist-7 缺 1 固定字段 P1 / 缺 5 字段 P0（防降档）', () => {
   const { d, proj, fin, ev } = mkProject()
   writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
@@ -3264,5 +3320,150 @@ test('v18.22.2 CTX-3 ref-get：区间自洽 + 两类锚点 + 未命中响亮失�
   assert.ok(Array.isArray(lj.sections) && lj.sections.length > 10, `--list 应列出全部锚点，实得 ${lj.sections?.length}`)
   assert.ok(lj.sections.every((s) => typeof s.bytes === 'number' && s.slug), '每条须含 slug 与 bytes')
   assert.ok(lj.sections.some((s) => s.via === 'explicit'), '--list 必须包含显式锚点（不能只列标题）')
+})
+
+// ── v18.62.7（反哺-主控实测-2026-10-02 §A2/§A3/§A4）三条回归钉 ────────────────────────────
+// 三条都来自同一份真实项目的实测（`aigc-yixiangxing-meixue`），且都是「合规稿拿不到 exit 0」族：
+//   · A2：`[先NN]` 不在 M-Form-8 的证据类别字母表里 → 以「与先行者对话」承重的段恒判「覆盖 <2 类」P1；
+//   · A3：「已声明且主人已接受的缺口」在机械层不存在 → 已接受缺角的段照旧判 P1，改稿无法消除；
+//   · A4：《机检硬格式》§二 的索引段独有编号（[L00]/[L99]）被当「正文无对应条目」→ M-Form-10 恒 P2。
+
+/** 造一份「两段正文 + 五节文末」的定稿：甲段 L+先（2 类）、乙段仅先（1 类）。 */
+function mkTriFixture() {
+  const { d, proj, fin, ev } = mkProject({ analysis: true })
+  const pad = '本段为凑足节长而写的叙述文字，刻意不含任何编号。'.repeat(5)
+  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n摘要若干字。\n\n'
+    + `## 一、甲段\n\n${pad} 见 [L01] 与 [先01]。\n\n`
+    + `## 二、乙段\n\n${pad} 见 [先02]。\n\n`
+    + '## 参考文献\n\n[L01] a\n\n## 数据来源\n\n[D01] d\n\n## 案例来源\n\n[C01] c\n\n'
+    + '## 先行者文献\n\n[先01] p\n[先02] q\n\n## AI 使用声明\n\nAI。\n')
+  return { d, proj, fin, ev }
+}
+const mform8Of = (fin, ev) =>
+  parseJson(run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])).results.find((x) => x.gate.startsWith('M-Form-8'))
+
+test('A2：M-Form-8 把 [先NN] 计为证据类别——[L]+[先] 段达 2 类，不再判「覆盖 <2 类」', () => {
+  const { d, proj, fin, ev } = mkTriFixture()
+  writeFileSync(join(proj, 'analysis', '分析大纲.md'), '# 分析大纲\n\n## 承重墙清单\n\n| 承重证据 top1 | 服务于 |\n|---|---|\n| [L01] | 论点1 |\n')
+  const it = mform8Of(fin, ev)
+  // 甲段（L+先）不得被算作弱段；弱段只剩乙段（仅 [先02]，单类证据）
+  assert.match(it.detail, /1 段覆盖 <2 类/, '甲段（[L]+[先]，2 类）不得再判弱段——弱段应只剩乙段：' + it.detail)
+  assert.match(it.detail, /0 段缺任意证据/, '[先NN] 属文献族 → 乙段不得落「缺任意证据」P0：' + it.detail)
+  assert.match(it.detail, /乙段/, '弱段必须点名到乙段（否则本条断言证明不了是哪段弱）')
+  assert.ok(!/甲段.*覆盖 <2 类/.test(it.detail), '甲段不得出现在弱段明细里')
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('A3：ACCEPTED-GAPS 机读声明让「已接受缺口」的段不计弱段，且**留痕**（不消失）', () => {
+  const { d, proj, fin, ev } = mkTriFixture()
+  // 声明第二个段（2 字片段「乙段」——首版 ≥3 字闸门会把它静默丢掉，本用例正是钉这一点）
+  writeFileSync(join(proj, 'analysis', '分析大纲.md'),
+    '# 分析大纲\n\nACCEPTED-GAPS: 乙段\n\n> 理由：论点2 无 [Cxx] 角，属 Permanent Gap，主人已知接受。\n\n'
+    + '## 承重墙清单\n\n| 承重证据 top1 | 服务于 |\n|---|---|\n| [L01] | 论点1 |\n')
+  const it = mform8Of(fin, ev)
+  assert.equal(it.pass, true, '声明后该段不得再算弱段：' + it.detail)
+  assert.match(it.detail, /0 段覆盖 <2 类/, it.detail)
+  // 「不计弱段」≠「消失」：豁免必须逐条带出处出现在 detail 里（同「未检 ≠ 通过」的判据）
+  assert.match(it.detail, /已接受缺口/, '豁免必须留痕（不得静默消失）：' + it.detail)
+  assert.match(it.detail, /乙段/, '留痕必须点名到具体段')
+  assert.match(it.detail, /分析大纲\.md/, '留痕必须给出声明来源文件')
+  // 未声明时行为不变（防滥用）：同一夹具去掉声明 → 回到 P1
+  writeFileSync(join(proj, 'analysis', '分析大纲.md'), '# 分析大纲\n\n## 承重墙清单\n\n| 承重证据 top1 | 服务于 |\n|---|---|\n| [L01] | 论点1 |\n')
+  const it2 = mform8Of(fin, ev)
+  assert.equal(it2.pass, false, '无声明时不得豁免（行为逐字不变）：' + it2.detail)
+  assert.match(it2.detail, /1 段覆盖 <2 类/)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('A3 边界：声明了但与任何段都对不上 → 软留痕提示（防「声明看似生效、实则空转」）', () => {
+  const { d, proj, fin, ev } = mkTriFixture()
+  writeFileSync(join(proj, 'analysis', '分析大纲.md'), '# 分析大纲\n\nACCEPTED-GAPS: 这个段名不存在\n')
+  const it = mform8Of(fin, ev)
+  assert.match(it.detail, /未匹配到任何段/, '对不上的声明必须被点名：' + it.detail)
+  assert.equal(it.pass, false, '对不上的声明不产生任何豁免效果')
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('A4：M-Form-10 不再把《机检硬格式》§二 的 [L00]/[L99] 判成「索引悬空」', () => {
+  const { d, fin, ev } = mkProject()
+  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n'
+    + '## 数据来源\n\n[D01] d\n\n## 案例来源\n\n[C01] c\n\n## 先行者文献\n\n[先01] p\n\n## AI 使用声明\n\nAI。\n')
+  writeFileSync(join(ev, '文献卡.md'), '# 文献卡\n\n## 📇 索引段\n\n'
+    + '| 编号 | 主题 | 支撑论点 |\n|---|---|---|\n'
+    + '| [L00] | 方法论原始文献 | 论点1 |\n| [L99] | 对立证据 | 论点1 |\n| [L01] | 甲 | 论点1 |\n\n'
+    + '## 正文\n\n### [L01] 条目\n信任级别：已发布\n')
+  const it = parseJson(run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])).results.find((x) => x.gate.startsWith('M-Form-10'))
+  assert.equal(it.pass, true, '索引段独有的 [L00]/[L99] 不得再触发「索引悬空」：' + it.detail)
+  assert.ok(!/L00|L99/.test(it.detail), '豁免后 detail 里不应再出现这两个编号：' + it.detail)
+  rmSync(d, { recursive: true, force: true })
+})
+
+// ── v18.62.7（反哺-主控实测-2026-10-02 §A5）：**交付判据 = 稳定态** ──────────────────────────
+//   病灶（实测）：机械值 1、T8 已裁定 0，而 `final-check` 的**进程退出码 = 1**、recommendation 写
+//   「存在 P1 残留，可触发 T5 修订一轮」→ 同一件事两个读数，且退出码偏向悲观（会把已裁定干净的稿子
+//   再送进一轮付费修订）。本用例钉住：`exit`/进程码 = 稳定态；机械值另存 `script_exit_raw`；两数同屏。
+test('A5：final-check 交付判据取稳定态（机械 1 / 裁定 0）——exit 与 recommendation 同源，机械值另存', () => {
+  const { d, proj, fin, ev } = mkProject()
+  setupCards(ev)
+  // M-Integrity-1 需要项目根的 01-任务简报.md：缺它该门失败 → 命中**硬 P0 红线** → 裁定被门拒绝
+  //   （那是设计正确行为，但会让本用例证不到 A5）。故补一份最小简报。
+  writeFileSync(join(proj, '01-任务简报.md'),
+    '# 任务简报 — A5 夹具\n\n## 目标篇幅\n\n13000 汉字\n\n## 研究问题（1 个子问题）\n\n1. 甲问？\n\n## 数据需求\n\n需找数据点：1\n')
+  const draft = join(fin, '定稿.md')
+  // 在 DRAFT_OK 的正文区插一段**单类证据**（只引 [D01]）→ M-Form-8 的 F-AH ② 档 = 恰好 1 个 P1
+  const body = '本段只引数据，刻意不引其他证据类别。'.repeat(8)
+  writeFileSync(draft, DRAFT_OK.replace('\n\n## 参考文献', `\n\n## 二、乙段\n\n${body} 见 [D01]。\n\n## 参考文献`))
+  // 先确证「机械值就是 1」——否则本用例证不了任何东西（断言不建立在假定上）
+  const mech = run([join(SCRIPTS, 'm-gate-check.mjs'), draft, ev])
+  assert.equal(mech.code, 1, '夹具必须先产出「机械 exit 1」：' + mech.out.slice(-260))
+  const sha = createHash('sha256').update(readFileSync(draft)).digest('hex')
+  // 预置一份**有效的** T8 裁定报告（指纹自述绑定本稿 → m-gate-check 复跑时会保留裁定值）
+  writeFileSync(join(fin, 'M-Gate-Report.json'), JSON.stringify({
+    exit: 0, script_exit_raw: 1, verdict_stale: false,
+    verdict_scope: { draft_name: 'final/定稿.md', draft_sha256: sha },
+    _t8_conclusion: { note: `已就 final/定稿.md（sha256: ${sha}）裁定：1 项属机制假阳性（已随文留痕）` },
+    _t8_adjudicated_by: 'T8（主控亲执行）',
+  }))
+  const r = run([join(SCRIPTS, 'final-check.mjs'), proj, '--no-summary', '--report', join(d, 'fc.json')])
+  assert.equal(r.code, 0, '进程退出码必须取稳定态 0（旧版取机械值 1）：' + r.out.slice(-300))
+  const j = JSON.parse(readFileSync(join(d, 'fc.json'), 'utf8'))
+  assert.equal(j.exit, 0, 'report.exit 应为稳定态（交付判据）')
+  assert.equal(j.script_exit_raw, 1, '机械读数必须另存 script_exit_raw（两个数都在）：' + JSON.stringify({ exit: j.exit, raw: j.script_exit_raw }))
+  assert.match(j.summary.recommendation, /稳定态 0/, 'recommendation 必须点明稳定态：' + j.summary.recommendation)
+  assert.match(j.summary.recommendation, /机械读数 1/, 'recommendation 必须同时可见机械读数：' + j.summary.recommendation)
+  assert.match(j.summary.recommendation, /✅ 终检通过/, '稳定态为 0 时文案不得再说「存在 P1 残留」')
+  rmSync(d, { recursive: true, force: true })
+})
+
+// ── v18.62.7（反哺-主控实测-2026-10-02 §A6）：M-Exist-4 的「复核义务」按**修订是否已发生**判 ──────
+//   病灶：`修订说明-vN.md` 从初稿 v1 起就存在（T5 每轮都产），旧判据只数「有几份」→ **首轮审计必然**
+//   被要求交一份当时不可能存在的 `复核报告-vN.md`（T7 因此补了一份全为「未复核」的形式产物）。
+//   新判据：`修订说明-vN` 的 N > 被审正文的 N 才算「逾期」，逾期判硬、未逾期判软提示。
+test('A6：M-Exist-4 复核义务——「修订尚未发生」判软（首轮审计）、「修订已发生而无复核」仍判硬', () => {
+  const { d, proj, fin, ev, aud } = mkProject({ audits: true, drafts: true })
+  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n'
+    + '## 数据来源\n\n[D01] d\n\n## 案例来源\n\n[C01] c\n\n## 先行者文献\n\n[先01] p\n\n## AI 使用声明\n\nAI。\n')
+  const HEAD = '| 编号 | 严重度 | 改哪里（文件+位置） | 怎么改（具体动作） | 验收标准 | 关闭状态 |\n|---|---|---|---|---|---|\n'
+  const ROW = (id) => `| ${id} | P1 | 初稿.md §三第 2 段 | 补 [L01] 支撑该论点 | 该段含 [L01] 且 M-Form-8 通过 | 待复核 |\n`
+  const item = () => parseJson(run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])).results.find((x) => x.gate.startsWith('M-Exist-4'))
+  // 场景①：首轮审计审 v2，drafts 里只有 T5 的历史修订说明 v1（**修订尚未发生**）→ 软提示，不得判硬
+  writeFileSync(join(aud, '审计报告-v2.md'), `# 审计报告 v2\n\n> **被审正文**：\`drafts/初稿-v2.md\`\n\n结论：打回修订 ❌\n\n## 修订任务书\n\n${HEAD}${ROW('P1-1')}`)
+  writeFileSync(join(proj, 'drafts', '修订说明-v1.md'), '# 修订说明 v1\n')
+  let it = item()
+  assert.equal(it.severity, 'P2', '「修订尚未发生」必须降为提示（旧版判硬 → 首轮审计构造性假阳性）：' + it.detail)
+  assert.match(it.detail, /尚未到复核时点/, it.detail)
+  assert.ok(!/必须落盘/.test(it.detail), '未逾期档不得再要求「必须落盘」：' + it.detail)
+  // 场景②：同一份审计报告，但 drafts 出现 v3 修订说明（**修订已发生**）→ 回到硬判（原锋芒保留）
+  writeFileSync(join(proj, 'drafts', '修订说明-v3.md'), '# 修订说明 v3\n')
+  it = item()
+  assert.equal(it.pass, false, '修订已发生而无复核必须判硬')
+  assert.equal(it.severity, 'P1', it.detail)
+  assert.match(it.detail, /必须落盘/, it.detail)
+  // 场景③：审计报告无 `被审正文：` 声明 → 无法判定 → 退回硬判（保守，不放过；存量口径不变）
+  rmSync(join(proj, 'drafts', '修订说明-v3.md'), { force: true })
+  writeFileSync(join(aud, '审计报告-v2.md'), `# 审计报告 v2\n\n结论：打回修订 ❌\n\n## 修订任务书\n\n${HEAD}${ROW('P1-1')}`)
+  it = item()
+  assert.equal(it.pass, false, '无法判定审的是哪一版时应保守判硬：' + it.detail)
+  rmSync(d, { recursive: true, force: true })
 })
 

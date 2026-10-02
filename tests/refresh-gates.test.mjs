@@ -173,3 +173,99 @@ test('fix-gates：零写盘形态——输出建议但不改任何文件（P2-6 
   assert.equal(readFileSync(join(d, 'final', '定稿.md'), 'utf8'), before, 'fix-gates 必须**零写盘**（它只输出可粘贴的修法）')
   rmSync(d, { recursive: true, force: true })
 })
+
+// ── v18.62.7（反哺-主控实测-2026-10-02 §A1）：**静默漏判**的三条回归钉 ──────────────────────
+//   病灶（实测受控对照，同一份文件只改写法）：
+//     实据 = `正文 sha256 <hex>`      → `would-replace ×2`（正常）
+//     实据 = `` `final/定稿.md` sha256 `<hex>` `` → `ok（无可刷新项）`（**静默漏判**）
+//   根因：模式的 `[^`\n]*` 不允许跨反引号，而闸门记录的实据列**恰恰鼓励写带反引号的路径**。
+//   本组三条：① 真实形态必须被识别；② 「标签在、指纹抓不到」不得再报 ok；③ 替换只动指纹、不动标签。
+
+/** 造一个「实据列 = 带反引号路径 + sha256 标签 + 旧指纹」的 T7.5 记录。 */
+function mkBacktickProject(hexOrNull) {
+  const d = tmp('rf-bt-')
+  mkdirSync(join(d, 'final'), { recursive: true })
+  mkdirSync(join(d, 'audits'), { recursive: true })
+  const draft = '# 标题\n\n## 摘要\n\n正文内容。\n'
+  writeFileSync(join(d, 'final', '定稿.md'), draft)
+  const sha = createHash('sha256').update(draft).digest('hex')
+  const cell = hexOrNull ? `\`final/定稿.md\` sha256 \`${hexOrNull}\`` : '`final/定稿.md` sha256（未回填）'
+  writeFileSync(join(d, 'audits', '闸门记录-T7.5.md'),
+    `# 闸门记录\n\n| 检查项 | 实据 | 结论 | 失败原因 |\n|---|---|---|---|\n| **本阶段正文 sha256** | ${cell} | ✓ |  |\n`)
+  return { d, sha }
+}
+
+test('A1：实据写成「`路径` sha256 `<hex>`」必须被识别（旧模式在第一个反引号处截断 → 静默漏判）', () => {
+  const { d } = mkBacktickProject(OTHER)
+  const r = run([d, '--dry-run', '--json'])
+  assert.equal(r.code, 0, 'dry-run 应 exit 0：' + r.out.slice(0, 300))
+  const j = JSON.parse(r.out.slice(r.out.indexOf('{')))
+  const t75 = j.results.find((x) => x.file === 'audits/闸门记录-T7.5.md')
+  assert.equal(t75.status, 'would-replace', '带反引号路径的实据必须被识别（这正是 A1 的判据本体）：' + JSON.stringify(t75))
+  assert.equal(j.replaced, 1, '应恰好抓到一个旧指纹：' + JSON.stringify(j.results))
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('A1：**替换只动 64 位指纹本身，不改写标签与路径**（放宽模式后的必备回归）', () => {
+  const { d, sha } = mkBacktickProject(OTHER)
+  const r = run([d, '--json'])          // 非 dry-run：真写盘
+  assert.equal(r.code, 1, '有替换 → exit 1（本脚本语义）：' + r.out.slice(0, 300))
+  const t75 = readFileSync(join(d, 'audits', '闸门记录-T7.5.md'), 'utf8')
+  assert.ok(t75.includes(sha), '指纹应被刷新为当前正文值')
+  assert.ok(!t75.includes(OTHER), '旧指纹应已消失')
+  assert.ok(t75.includes('本阶段正文 sha256'), '**检查项单元格的标签文本不得被改写**：' + t75)
+  assert.ok(t75.includes('`final/定稿.md` sha256'), '**实据里的路径与标签也不得被改写**：' + t75)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('A1：**有标签却解析不出指纹** → 报 warn（不得再报 ok），exit 0 且不写盘', () => {
+  const { d } = mkBacktickProject(null)   // 有标签、无指纹
+  const before = readFileSync(join(d, 'audits', '闸门记录-T7.5.md'), 'utf8')
+  const r = run([d, '--json'])
+  assert.equal(r.code, 0, '未发生替换 → exit 0（本批不新增退出码，见脚本头 :21-32 的契约约束）')
+  const j = JSON.parse(r.out.slice(r.out.indexOf('{')))
+  const t75 = j.results.find((x) => x.file === 'audits/闸门记录-T7.5.md')
+  assert.equal(t75.status, 'warn', '「标签在、指纹抓不到」必须与「无可刷新项」区分开：' + JSON.stringify(t75))
+  assert.equal(j.warnings.length, 1, 'warnings 必须非空（可见性修复的判据）：' + JSON.stringify(j.warnings))
+  assert.match(j.warnings[0], /解析失败|不兼容/)
+  assert.match(j.note, /解析失败|不是「已同步」/)
+  assert.equal(readFileSync(join(d, 'audits', '闸门记录-T7.5.md'), 'utf8'), before, 'warn 形态必须零写盘')
+  rmSync(d, { recursive: true, force: true })
+})
+
+// ── v18.62.7（反哺-主控实测-2026-10-02 §A16）：fix-gates ④ 补「字段含 <…>」形态 ──────────────────
+//   病灶（实测）：交付说明 12 字段**齐备**但其中两处正文含 `<…>` → `M-Exist-7` 判 P1，而 `fix-gates`
+//   报「✅ 未发现可机械修复项」——**两个工具结论相反**。根因：本类旧判据只列「字段标题缺不缺」。
+test('A16：fix-gates ④ 必须报「字段正文含 <…> 占位符」（与 M-Exist-7 同形判据）', () => {
+  const d = tmp('fg-ph-')
+  mkdirSync(join(d, 'final'), { recursive: true })
+  writeFileSync(join(d, 'final', '定稿.md'), '# 标题\n\n## 摘要\n\n正文。\n')
+  const REQ = ['路径', '图件清单', '遗留风险', '人工核验项', '数据溯源', '成本指标',
+    '建议 merge 的反哺清单', 'AI 使用披露', '证据包指纹', '投稿就绪检查表', '主人决策记录', '终检结论']
+  const note = '# 交付说明\n\n' + REQ.map((t, i) => {
+    const bad = t === '成本指标' ? '：~5M（其中 <待实测> 部分为估算）'
+      : t === '主人决策记录' ? '：Phase 0 通过（原话 <主人原话>）' : `：已填（第 ${i + 1} 节）`
+    return `## ${i + 1}. ${t}\n\n- 内容${bad}\n`
+  }).join('\n')
+  writeFileSync(join(d, 'final', '交付说明.md'), note)
+  const runFix = (extraArgs) => {
+    try {
+      return { code: 0, out: execFileSync(process.execPath, [join(SCRIPTS, 'fix-gates.mjs'), ...extraArgs], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) }
+    } catch (e) {
+      return { code: e.status ?? -1, out: String(e.stdout || '') + String(e.stderr || '') }
+    }
+  }
+  const r1 = runFix([d, '--json'])
+  const j = JSON.parse(r1.out.slice(r1.out.indexOf('{')))
+  const hit = j.suggestions.find((s) => s.id === 'M-Exist-7' && /尖括号|占位符/.test(s.detail))
+  assert.ok(hit, '字段正文含 <…> 必须被列出（旧版只查字段缺失 → 与 M-Exist-7 相反）：' + JSON.stringify(j.suggestions))
+  assert.match(hit.fix, /成本指标/, '修法里必须点名到**具体字段**（否则读者仍要自己找）：' + hit.fix)
+  assert.match(hit.fix, /主人决策记录/)
+  assert.match(hit.fix, /圆括号/, '修法必须给出可粘贴的替代写法：' + hit.fix)
+  // 反向：字段齐备且无占位符 → 本类不得再报（防假阳性）
+  writeFileSync(join(d, 'final', '交付说明.md'), note.replace('（其中 <待实测> 部分为估算）', '（其中待实测部分为估算）').replace('（原话 <主人原话>）', '（原话：维持 13000）'))
+  const r2 = runFix([d, '--json'])
+  const j2 = JSON.parse(r2.out.slice(r2.out.indexOf('{')))
+  assert.ok(!j2.suggestions.some((s) => s.id === 'M-Exist-7'), '无占位符时不得再报 M-Exist-7：' + JSON.stringify(j2.suggestions))
+  rmSync(d, { recursive: true, force: true })
+})

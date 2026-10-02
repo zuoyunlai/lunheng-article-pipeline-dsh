@@ -21,7 +21,7 @@
 //   · 回报六要素段名：交接报告六要素（做了什么/产物在哪/怎么验证/已知问题/下一步/状态机更新）+ AI 使用披露
 //
 // 只读：不联网、不写盘、不 spawn 子进程。stdout 只有 JSON（--summary 时 artifacts 只留失败项）。
-import { readFileSync, existsSync, statSync } from 'node:fs'
+import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs'
 import { join, basename } from 'node:path'
 import { createHash } from 'node:crypto'   // v18.13.0（L-06）：A4c 复算最新正文 sha256，与 M 门审定对象比对
 import { installExitGuard, requireExistingDir } from './_lib/exit-guard.mjs'
@@ -43,6 +43,9 @@ const HELP = [
   '  --require-gates  加验**人在环四门**（阶段确认-Phase0/2.5/3.5/5.md 四份齐备 + §6 主人回复段五项字段已回填）——**A7 只在此旗标下判**。',
   '                   主人在 2026-09-25 定案「四门必须」→ 主控在 **Phase 5 交付前**调用本旗标做机械校验；',
   '                   不加此旗标则不判四门（向后兼容 T1-T4/T6/T9 等中期角色的收报，那时后几门本就还没开）。',
+  '报告编号命名契约（v18.62.7 A7 —— 别再靠读源码猜）：',
+  '  · 审计族（审计报告 / 复核报告 / 反哺报告）的 N = **审计轮次**；复核必须与它复核的那轮审计同号。',
+  '  · 审稿报告 / G14-检测报告 的 N = **正文轮次**（= drafts/初稿-vN.md 的 N）。',
   '退出码：0 合格 / 20 产物缺失或 0 字节 / 21 结构·版本·成对·回报段不合 / 22 仅软提示 / 10 参数路径错 / 70 内部错误',
 ].join('\n')
 
@@ -180,6 +183,37 @@ if (required.length === 0) {
 // 被审正文最新版本（A4 版本对齐用）
 const latestDraft = latestReport(join(project, 'drafts'), '初稿')
 
+// ── v18.62.7（反哺-主控实测-2026-10-02 §A6）：**复核义务的判据（与 `mexist-gates.mjs` 的 M-Exist-4 同源）**
+//   病灶：`复核报告` 被登记为「修订轮产物 → 首轮可缺」（本文件 A1 的软档），而 M-Exist-4 对
+//   「有修订说明、无复核报告」判**硬** —— 两门口径相反。实测后果：T7 首审**必然**被 M-Exist-4 要求交
+//   一份当时不可能存在的复核报告，只能补交「内容全为『未复核』」的形式产物，再由同号覆盖 + 归档。
+//   判据（两门共用）：**只有当「本轮审计之后真的发生过修订」时，复核才算逾期** ——
+//   `修订说明-vN` 的 N > 审计报告 `被审正文：drafts/初稿-vN.md` 的 N。
+//   ⚠️ 与 M-Exist-4 **刻意不对称**（如实登记）：M-Exist-4 在「缺 `被审正文：` 声明」时**保守判硬**
+//     （它是 T8 前的项目终局门，而 A4c 本就要求那一行，故那里不产生新的翻红）；而本门是**单次派发**
+//     的产物存在性检查，且 **basic 档也跑 A1**——若对未声明的存量形态一律判硬，会给一批本来只报
+//     软提示的历史项目**新增 20 号红**。故此处只在**可证**（声明在盘且 `修订说明-vN` 的 N > 被审 N）
+//     时升硬；声明缺失时维持「首轮可缺」的软档（不放过由 M-Exist-4 兜）。
+const reviewOverdue = (() => {
+  if (role !== 'T7') return false
+  const ap = resolveArtifact(project, '审计报告')
+  if (!ap.path || !existsSync(ap.path)) return false
+  let t = ''
+  try { t = readFileSync(ap.path, 'utf8') } catch { return false }
+  const decl = /\*{0,2}被审正文\*{0,2}\s*[：:]\s*`?([^\s`|，。]+\.md)/.exec(t)
+  if (!decl) return false
+  const rel = decl[1].replaceAll('\\', '/')
+  const m = /初稿-v(\d+)\.md$/.exec(rel)
+  if (!m) return false
+  const auditedN = Number(m[1])
+  const draftsDir = join(project, 'drafts')
+  if (!existsSync(draftsDir)) return false
+  const noteNs = readdirSync(draftsDir)
+    .map((f) => Number((f.match(/^修订说明-v(\d+)\.md$/) || [])[1]))
+    .filter((n) => Number.isInteger(n))
+  return noteNs.length > 0 && Math.max(...noteNs) > auditedN
+})()
+
 for (const artifact of required) {
   const art = resolveArtifact(project, artifact)
   const isCond = CONDITIONAL.has(artifact)
@@ -188,8 +222,16 @@ for (const artifact of required) {
   artifacts.push({ name: artifact, path: art.path, exists, bytes, version: art.version })
 
   if (!exists) {
-    if (isCond) addSoft('A1', artifact, `修订轮产物「${artifact}」不存在（首轮可缺，缺了不判 20）`)
-    else addHard('A1', artifact, `产物不存在（族名 ${artifact} → 解析路径 ${art.path}）`, 20)
+    if (isCond) {
+      // v18.62.7（A6/A7 配套）：`复核报告` 的「首轮可缺」**只在修订尚未发生时成立**——与 M-Exist-4 同判据。
+      //   两门若各说各话，就会重演「T7 被迫补交形式产物」那一次（实测 A6）。
+      if (artifact === '复核报告' && reviewOverdue) {
+        const ap = resolveArtifact(project, '审计报告')
+        addHard('A1', artifact, `**修订已发生**但缺复核报告——必须落盘 \`audits/复核报告-v${ap.version ?? 'N'}.md\`（N = 审计轮次；与 M-Exist-4 同判据，v18.62.7 A6）`, 20)
+      } else {
+        addSoft('A1', artifact, `修订轮产物「${artifact}」不存在（**本轮修订尚未发生 → 首轮可缺**，缺了不判 20）`)
+      }
+    } else addHard('A1', artifact, `产物不存在（族名 ${artifact} → 解析路径 ${art.path}）`, 20)
     continue
   }
   if (bytes === 0) {
@@ -228,7 +270,9 @@ if (strict && role === 'T7') {
   const review = artifacts.find((a) => a.name === '复核报告')
   if (audit && review && audit.exists && review.exists && audit.version != null && review.version != null) {
     if (audit.version !== review.version) {
-      addHard('A4b', 'T7 审计↔复核', `审计报告 v${audit.version} 与复核报告 v${review.version} **不同轮**——复核必须与它复核的那一轮审计同号（N = 审计轮次）`, 21)
+      addHard('A4b', 'T7 审计↔复核', `审计报告 v${audit.version} 与复核报告 v${review.version} **不同轮**——复核必须与它复核的那一轮审计同号（N = 审计轮次）。`
+        + `**可执行指引**：把该文件改名为 \`audits/复核报告-v${audit.version}.md\`（现为 \`复核报告-v${review.version}.md\`）；`
+        + '命名契约一句话 = **审计族（审计报告 / 复核报告 / 反哺报告）跟审计轮次；审稿报告 / G14-检测报告跟正文轮次**（v18.62.7 A7）', 21)
     }
   }
 }
@@ -354,13 +398,23 @@ if (strict && role === 'T7') {
 }
 
 // A6 agents-log（strict）：该角色「### Tn 执行记录」至少一条
+//   v18.62.7（反哺-主控实测 §A12）：**项目已有 ≥3 个角色的执行记录时升为硬问题**。
+//   病灶：全流程 20 个角色**没有一个**被要求追加 agents-log，直到 T7 复核时本项报软提示才暴露；
+//   而软提示不改退出码 → **20 次都没拦住**。判据 = 「追加 agents-log」在走满 3 个角色后已是**既成约定**
+//   （模板 + AGENTS.md 都要求），首轮角色可缺（文件可能还没建）。
 if (strict) {
   const logPath = join(project, 'agents-log.md')
   if (existsSync(logPath)) {
     const log = readFileSync(logPath, 'utf8')
     const token = role === 'G14' ? 'G14' : role
     if (!new RegExp(`###\\s*${token}\\s*执行记录`).test(log)) {
-      addSoft('A6', 'agents-log.md', `缺「### ${token} 执行记录」段落（中断续接快照不全）`)
+      const others = new Set([...log.matchAll(/^###\s*(T\d+|G14)\s*执行记录/gm)]
+        .map((m) => m[1]).filter((t) => t !== token))
+      if (others.size >= 3) {
+        addHard('A6', 'agents-log.md', `缺「### ${token} 执行记录」——项目已有 ${others.size} 个角色的记录（≥3），追加 agents-log 已是既成约定，缺节判硬（v18.62.7 A12；` + '`00-主控-扩展职责.md` §子系统巡检 的派发话术含可粘贴模板）', 21)
+      } else {
+        addSoft('A6', 'agents-log.md', `缺「### ${token} 执行记录」段落（中断续接快照不全；项目已有 ${others.size} 个角色记录，达 3 个后本项升硬）`)
+      }
     }
   } else {
     addSoft('A6', 'agents-log.md', '项目无 agents-log.md（中断续接快照缺失）')

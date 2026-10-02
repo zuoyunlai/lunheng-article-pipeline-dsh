@@ -210,9 +210,17 @@ const g8 = (() => {
       : bufferBand
         ? ' · 简报标 `BUF=on` **且**超限落在 +5%~+9% → **例外通道的 ① ② 条满足**：请 T7 核第 ③ 条「T5 交接报告是否已标注本轮估算字数（含 +20% buffer）」，三条齐则本档记 **P2、不触发 v3**（否则回 P1）'
         : ' · 简报标 `BUF=on` 但超限**不在** +5%~+9% 内 → 例外通道不适用，按主判 **P1 触发 v3**';
+  // v18.62.7（反哺-主控实测-2026-10-02 §C3）：**候选区间必须自解释**。
+  //   病灶：实测项目简报档位是 13000±2%，而本项 detail 显示「候选区间 5000–13000」——
+  //   `candidates` 是从简报**文本**里解析出的**全部**候选值（模板里常并列多个可选档），
+  //   于是 lo–hi 跨度远宽于主人实际选的档位。**T7 与 G14 都独立注意到该不一致并如实记录**
+  //   （「v1/v2 同现象，未深究」）——不影响判级，但让**每一个**经手的审计角色反复怀疑。
+  //   修法：把「候选从哪来 / 共几个 / 区间判据是什么 / 判级归谁」写进 detail（不动任何判级逻辑）。
+  const candNote = `候选值来自简报字段「${String(cand.raw || '').trim().slice(0, 40)}」，共 ${cand.candidates.length} 个`
+    + `（模板常并列多个可选档 → 区间跨度可能远宽于实际档位；**判级以简报实际档位为准**，本项只判「是否落在候选区间」）`;
   const detail = inBand
-    ? `在候选区间内：${hanChars} 字 vs 候选 ${lo}${hi !== lo ? `–${hi}` : ''} 字`
-    : `${hanChars} 字 vs 简报候选 ${lo}${hi !== lo ? `–${hi}` : ''} 字 = ${(hanChars / hi).toFixed(3)}×（对上界）→ **候选，判级归 T7**：先核 status.md / 交付说明.md 是否已声明字数豁免或篇幅变更（实测存在「简报 16k / 定稿 40k + 交付说明记主人豁免」与「简报为 Phase 0 原始文档、后经 v4 增补扩篇」两类真实情形，均不构成缺陷）${bufNote}`;
+    ? `在候选区间内：${hanChars} 字 vs 候选 ${lo}${hi !== lo ? `–${hi}` : ''} 字 ｜ ${candNote}`
+    : `${hanChars} 字 vs 简报候选 ${lo}${hi !== lo ? `–${hi}` : ''} 字 = ${(hanChars / hi).toFixed(3)}×（对上界）→ **候选，判级归 T7**：先核 status.md / 交付说明.md 是否已声明字数豁免或篇幅变更（实测存在「简报 16k / 定稿 40k + 交付说明记主人豁免」与「简报为 Phase 0 原始文档、后经 v4 增补扩篇」两类真实情形，均不构成缺陷） ｜ ${candNote}${bufNote}`;
   return {
     name: '字数偏差（正文纯汉字 vs 任务简报篇幅字段）', checked: true, pass: inBand, severity: inBand ? 'PASS' : 'P2',
     detail, evidence: { hanChars, candidates: cand.candidates, briefField: cand.raw, ratioToUpper: +(hanChars / hi).toFixed(4), brief: briefPath,

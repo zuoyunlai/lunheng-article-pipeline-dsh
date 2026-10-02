@@ -397,3 +397,63 @@ test('A4c ② 断链回归：模板含门认的锚点形状、两份文档指向
   )
   rmSync(d, { recursive: true, force: true })
 })
+
+// ── v18.62.7（反哺-主控实测-2026-10-02 §A7/§A12/§A6）三条回归钉 ──────────────────────────────
+//   · A7：`A4b` 报「不同轮」时必须给出**可执行指引**（正确文件名）——报告实测「只说不同轮，没说该写几」。
+//   · A12：`A6`（agents-log 缺节）在**项目已有 ≥3 个角色记录**时升为硬 —— 旧版恒软提示，
+//          实测全流程 20 个角色**一个都没被拦住**。
+//   · A6：`复核报告` 的「首轮可缺」只在**修订尚未发生**时成立；`修订说明-vN` 的 N > 被审正文的 N
+//          = 修订已发生 → 判硬 20（与 M-Exist-4 同判据，消除两门相反口径）。
+
+test('A7：A4b 报「审计↔复核不同轮」时必须给可执行指引（正确文件名 + 命名契约）', () => {
+  const d = makeProject({
+    'drafts/初稿-v2.md': '# 初稿 v2\n## 摘要\n正文。\n',
+    'audits/审计报告-v2.md': '# 审计报告 v2\n> **被审正文**：`drafts/初稿-v2.md`\n\n## 结论\n打回。\n',
+    'audits/复核报告-v1.md': '# 复核报告 v1\n## 已读范围\n- 读了 §1。\n',
+  })
+  const j = parseJson(run([SCRIPT, '--project', d, '--role', 'T7', '--level', 'strict']))
+  const a4b = j.hard.find((h) => h.check === 'A4b')
+  assert.ok(a4b, '审计 v2 与复核 v1 不同轮应判硬：' + JSON.stringify(j.hard))
+  assert.match(a4b.detail, /复核报告-v2\.md/, '必须给出正确的目标文件名（旧版只说「不同轮」）：' + a4b.detail)
+  assert.match(a4b.detail, /审计轮次/, '必须写明命名契约（审计族跟审计轮次）')
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('A12：agents-log 缺节——项目已有 ≥3 个角色记录时判硬（旧版恒软提示，20 个角色无人拦）', () => {
+  // ① 只有 1 个角色记录 → 软提示（首次角色可缺）
+  const d1 = makeProject({ 'agents-log.md': '### T1 执行记录\n开始\n' })
+  const j1 = parseJson(run([SCRIPT, '--project', d1, '--role', 'T2', '--level', 'strict']))
+  assert.ok(j1.soft.some((x) => x.check === 'A6'), '记录不足 3 个角色时应仍是软提示：' + JSON.stringify(j1.soft))
+  assert.ok(!j1.hard.some((x) => x.check === 'A6'), '不得在首次角色上判硬')
+  rmSync(d1, { recursive: true, force: true })
+  // ② 已有 3 个其他角色记录 → 缺本节判硬
+  const d2 = makeProject({ 'agents-log.md': '### T1 执行记录\na\n### T3 执行记录\nb\n### T4 执行记录\nc\n' })
+  const j2 = parseJson(run([SCRIPT, '--project', d2, '--role', 'T2', '--level', 'strict']))
+  const a6 = j2.hard.find((x) => x.check === 'A6')
+  assert.ok(a6, '已走满 3 个角色后缺节必须判硬：' + JSON.stringify(j2.hard))
+  assert.equal(j2.exit, 21, '硬判走 21 档：' + a6.detail)
+  rmSync(d2, { recursive: true, force: true })
+})
+
+test('A6：复核报告「首轮可缺」只在修订尚未发生时成立——修订已发生缺复核 → 判硬 20', () => {
+  const base = {
+    'drafts/初稿-v2.md': '# 初稿 v2\n## 摘要\n正文。\n',
+    'audits/审计报告-v2.md': '# 审计报告 v2\n> **被审正文**：`drafts/初稿-v2.md`\n\n## 结论\n打回。\n',
+    'agents-log.md': '### T1 执行记录\na\n### T2 执行记录\nb\n### T3 执行记录\nc\n',
+  }
+  // ① 只有 T5 的历史修订说明 v1（被审 v2）→ 修订**未发生** → 软提示，不得判硬
+  const d1 = makeProject({ ...base, 'drafts/修订说明-v1.md': '# 修订说明 v1\n' })
+  const j1 = parseJson(run([SCRIPT, '--project', d1, '--role', 'T7', '--level', 'strict']))
+  assert.ok(!j1.hard.some((x) => x.check === 'A1' && /复核报告/.test(x.detail)),
+    '修订尚未发生不得因缺复核报告判硬（首轮审计构造性假阳性）：' + JSON.stringify(j1.hard))
+  assert.ok(j1.soft.some((x) => x.check === 'A1' && /复核报告/.test(x.detail)), '应留软提示')
+  rmSync(d1, { recursive: true, force: true })
+  // ② 出现修订说明 v3（> 被审 v2）→ 修订**已发生** → 判硬 20，且给出目标文件名
+  const d2 = makeProject({ ...base, 'drafts/修订说明-v3.md': '# 修订说明 v3\n' })
+  const j2 = parseJson(run([SCRIPT, '--project', d2, '--role', 'T7', '--level', 'strict']))
+  const a1 = j2.hard.find((x) => x.check === 'A1' && /复核报告/.test(x.detail))
+  assert.ok(a1, '修订已发生而缺复核报告必须判硬：' + JSON.stringify(j2.hard))
+  assert.equal(j2.exit, 20, '缺产物走 20 档：' + a1.detail)
+  assert.match(a1.detail, /复核报告-v2\.md/, '必须给出目标文件名（N = 审计轮次）：' + a1.detail)
+  rmSync(d2, { recursive: true, force: true })
+})

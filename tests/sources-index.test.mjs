@@ -79,3 +79,33 @@ test('sources-index：参数/路径错一律 exit 10（未知参数 / 缺模式 
   assert.equal(run([S, 'C:/__nope__/x', '--check']).code, 10, '目录不存在')
   assert.equal(run([S]).code, 10, '缺项目参数')
 })
+
+// ── v18.62.7（反哺 §A22）：**溯源字段 tool/engine/query** ─────────────────────────────────────
+//   口径：**要么三个都不写**（旧格式行 → 软提示、不判红）**要么写齐**（写一个就必须三个全有）。
+//   为什么：没有它们，「某条是不是用规定的检索源取的」在交付物里查不到（实测只能回翻 DSH 会话缓存）。
+test('A22：溯源字段「要么都不写、要么写齐」；写齐则随 --merge 进 sources.json', () => {
+  // ① 全缺（旧格式行）→ exit 0，且**软提示点名**（不判红：存量项目不该因此翻红）
+  const d1 = mkProj({ T1: [OK('https://a/1')] })
+  const r1 = run([S, d1, '--check'])
+  assert.equal(r1.code, 0, '旧格式行（无溯源字段）不得判红：' + r1.out.slice(-200))
+  assert.match(r1.out, /无溯源字段/, '必须软提示点名（否则「没标注」与「已标注」同形）：' + r1.out.slice(-200))
+
+  // ② 三个写齐 → exit 0；--merge 后 sources.json 保留三字段（可核验「哪条由哪个工具/引擎/query 取得」）
+  const full = JSON.stringify({ url: 'https://a/2', title: '标题', fetchedAt: '2026-09-27', summary: '摘要', tool: 'multi_search', engine: 'exa+tavily', query: 'AIGC 意向性' })
+  const d2 = mkProj({ T1: [full] })
+  assert.equal(run([S, d2, '--check']).code, 0, '三字段齐备应合法')
+  const r2 = run([S, d2, '--merge'])
+  assert.equal(r2.code, 0, r2.out.slice(-200))
+  const j = JSON.parse(readFileSync(join(d2, 'sources.json'), 'utf8'))
+  assert.equal(j.entries[0].tool, 'multi_search')
+  assert.equal(j.entries[0].engine, 'exa+tavily')
+  assert.equal(j.entries[0].query, 'AIGC 意向性')
+
+  // ③ 写一个缺两个 → **不合法**（否则「写了一半」会被读成「已标注」）
+  const part = JSON.stringify({ url: 'https://a/3', title: '标题', fetchedAt: '2026-09-27', summary: '摘要', tool: 'advanced_search' })
+  const d3 = mkProj({ T1: [part] })
+  const r3 = run([S, d3, '--check'])
+  assert.equal(r3.code, 1, '溯源字段不齐必须判不合法：' + r3.out.slice(-200))
+  assert.match(r3.out, /溯源字段不齐/)
+  assert.match(r3.out, /engine,query/, '必须点名缺哪几个字段：' + r3.out.slice(-200))
+})

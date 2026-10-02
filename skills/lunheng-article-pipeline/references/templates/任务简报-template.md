@@ -1,4 +1,4 @@
-> 版本：v18.62.6（DSH bundle 插件）
+> 版本：v18.62.7（DSH bundle 插件）
 
 >
 > **注解聚合（v18.8.0）**：本文 vX.Y.Z 注解已按同主题合并——头部声明为最终权威（引用模式锁定 = v2.2.10；9 件必走 = v2.2.x 系列；AI 披露/期刊匹配 = v2.5.0；引用数量与质量控制 + 卷期页码 = v18.7.1 借鉴 Ai4Scholar）。下方段落内的 `（vX.Y.Z ...）` 完整演进见 git log 与 CHANGELOG.md。
@@ -37,17 +37,26 @@
 - **主题**：
 - **论文类型**：课程论文 / 期刊投稿 / 学位论文章节 / 公众号长文 / 商业评论 / 行业分析 / 其他
   - **AI 使用披露**：学术期刊投稿 → final/定稿.md 需加「AI 使用声明」段；公众号发布 → 仅交付说明.md 加「AI 使用披露」段（注解聚合：v18.8.0；v2.2.2）
+- **⚠️ 检索工具面（v18.62.7 反哺 §A19/A20 —— **主控在 Phase 0 填，逐字**）**：
+  > ```
+  > 检索工具面: <本会话实际可用的检索类工具，逐项列全；只列真实存在的>
+  > 例：advanced_search / multi_search / platform_search / free_search_test / web_fetch / web_search（本机无 AI4Scholar 三源）
+  > 本轮档位: A 档（advanced_search + multi_search + web_fetch） | B 档（A 档叠加 search_papers / search_arxiv） | D 档保底（web_search + web_fetch）
+  > ```
+  > **判据**：① T1/T2/T3 卡点名的工具**必须在本行之内**，不在则**依次降级**（A → B 叠加 → **D 保底**）；② **本轮档位写定即锁定**——同一项目不同轮次不得换档（换了 = 两轮检索口径不可比），确需换档须在来源索引逐条标注 `tool`/`engine`/`query`；③ 派发 T1/T2/T3 时**把本行随话术给出**；④ **D 档无需任何插件、任何宿主都有**——`论衡不要求装任何第三方检索插件`，档次只决定「怎么检索」，不决定「能不能检索」。分档口径 = [`../_shared/外部检索源接入面.md`](../_shared/外部检索源接入面.md) §0。
 - **v2.5.0 可选项**（默认全部关闭/最小化）：
   - **启用扩展检索源**（v18.21.2 新增）：T1/T2/T3 是否启用 DSH 学术 + web 引擎接入面。
     主人**逐项勾选**已部署且开通可用的源；agent 自动按可用性调用；**未勾选 = 不调**。
     详见 [`../_shared/外部检索源接入面.md`](../_shared/外部检索源接入面.md)。
-    - ✅ AI4Scholar 学术套件（`search_papers` + `search_arxiv` + `search_semantic`；默认推荐，**多数免费**——Semantic Scholar / PubMed / arXiv / bioRxiv / medRxiv 都不计费）
+    - ✅ AI4Scholar 学术套件（`search_papers` + `search_arxiv` + `search_semantic`；**多数免费**——Semantic Scholar / PubMed / arXiv / bioRxiv / medRxiv 都不计费）
+      > **⚠️ v18.62.7（§A19）：勾选前先确认该插件**真的装在本机**（它属于 `package.json` 里的独立插件）——实测本机**未安装**，而旧版把它默认勾成「默认推荐」，导致 T1/T2/T3 看不到规定工具、回落到「备用层」的 `web_search`。**装了才勾**；未装则本项不生效，按 A 档（`advanced_search` + `multi_search`）跑。**判据 = Phase 0 的 `检索工具面:` 行**。
     - □ Google Scholar（`search_google_scholar`，**按信用点计费**，约 50-150 信用点/轮；**主轮饱和后才启用**，详见接入面文档 §四.1）
     - □ Tavily（如主会话已配 `tavily_api_key`；T2 时效数据）
     - □ Exa（如主会话已配 `exa_api_key`；T1 深度学术检索）
     - □ Firecrawl（如主会话已配 `firecrawl_api_key`；反爬强场景）
     - □ Consensus（如主会话已配 `consensus_api_key`；**写手阶段调用**，T1/T2/T3 不调）
     - **⚠️ 不勾选 = T1/T2/T3 默认仍调 `web_search` + `web_fetch`**，证据底座不变（与 v18.21.2 之前的默认行为一致）。
+      > **v18.62.7 更正**：此句在「本机未装 AI4Scholar」时**是事实描述**（实测确实回落到 `web_search`）——但**那正是 §A19 要修的病**：正确默认应为 A 档的 `advanced_search` + `multi_search`（装了 `dsh-free-search` 即有），**不是** `web_search`。
   - **启用期刊匹配**（学术论文模式才需）：T9 评审后自动匹配 Top 3 推荐期刊（中文 CSSCI + 英文 SSCI 期刊库，**规模真源 = `期刊数据库.md` 表行数**，本模板不写死数字；主题契合 50% + 风格匹配 30% + T9 评分 20%）。勾选后 T9 评审报告自动含「期刊投稿建议 Top 3」
   - **启用中文数据源集成**（v2.5.1 修订）：检索环节（T1/T2/T3）并行补充中文文献（与 web_search/tavily 并行不替代，启用后中文文献更全 + 多语言证据不受影响）。**3 梯队可选**：
     - ✅ **第一梯队（默认推荐，无需 Key）**：OpenAlex API（4.7 亿+ 元数据，含大量中文学术期刊）+ Crossref API（DOI 元数据）

@@ -174,11 +174,65 @@ for (const f of optionalFailures) notes.push(`可选步骤「${f.step}」非零�
 //   那就等于把本项要修的「通过」与「关键输入缺失」并存原样保留。
 if (exitCode === 0 && notes.length > 0) exitCode = 3;
 
+// ── v18.62.7（反哺-主控实测-2026-10-02 §A5）：**交付判据 = 稳定态（stableExit）** ──────────────
+//   病灶（实测 aigc-yixiangxing-meixue）：M 门机械值 = 1、T8 经 `--adjudicate` 裁定为 0（报告里
+//     `exit`=0 / `script_exit_raw`=1 另存），而 `final-check` 的**进程退出码 = 1**、recommendation 写
+//     「终检存在 P1 残留，主控**可**触发 T5 修订一轮」→ **同一件事在交付终结点上有两个读数，且退出码偏向悲观**。
+//     T8 照 recommendation 走 = 对一份已被证伪四件套裁定为干净的稿子再开一轮修订（B 轨额度用尽时等于
+//     无路可走）；照 T8 角色卡走 = 必须**忽略**脚本文案。**两种做法都不该由人来选。**
+//   修法（报告 §A5 修法①②）：① 把 mGate 段抽出（下方报告直接引用）；② **裁定已覆盖本次非零**时，
+//     `exit` 与进程退出码取裁定值，机械值**另存 `script_exit_raw`**（与 `m-gate-check.mjs` 的
+//     同名字段同构：**两个数都在，权威那个更显眼**）；③ 文案里两个数同时可见。
+//   ⚠️ 「裁定已覆盖」的判据是**窄的**（不是「有裁定就一律用裁定」）：只当本次非零**正是 M 门那一步**
+//     造成的（`exitCode === mGateInfo.hardExit` —— steps 循环遇硬依赖失败即 `break`，而 M 门是最后一步，
+//     故这个等式成立就是「M 门是首个失败步」），且裁定值存在且 ≠ 机械值。
+//     **其它步骤**（count-chars 口径失真 → 3 / 内部错误 70 / 参数错 10）一律**原样保留**：
+//     裁定只对 M 门的机械值有权威，不得把别的失败一并掩掉。
+const mGateInfo = (() => {
+  const mg = parsedOutputs['m-gate'];
+  if (!mg || mg.exit === undefined) return null;
+  let adjudicatedExit = null, adjudicatedBy = null;
+  try {
+    const rp = join(project, 'final', 'M-Gate-Report.json');
+    if (existsSync(rp)) {
+      const rep = JSON.parse(readFileSync(rp, 'utf8'));
+      if (rep._t8_conclusion && typeof rep.exit === 'number' && rep.exit !== rep.script_exit_raw) {
+        adjudicatedExit = rep.exit;
+        adjudicatedBy = rep._t8_adjudicated_by || 'T8（主控亲执行）';
+      }
+    }
+  } catch { /* 报告读不动不影响机械值——只是裁定值不可见，如实留 null */ }
+  return {
+    total: mg.total,
+    pass: mg.pass,
+    p0: mg.p0 || 0,
+    p1: mg.p1 || 0,
+    p2: mg.p2 || 0,
+    soft: mg.soft || 0,
+    skips: mg.skips || 0,
+    hardExit: mg.exit,                        // 机械值（= M-Gate-Report.json 的 script_exit_raw 语义）
+    adjudicatedExit,                          // T8 经 --adjudicate 写入的裁定值（null = 未裁定）
+    adjudicatedBy,
+    stableExit: adjudicatedExit ?? mg.exit,   // **交付件应引用的稳定态**（有裁定取裁定）
+    note: adjudicatedExit !== null
+      ? `机械值 ${mg.exit} → T8 裁定 ${adjudicatedExit}（稳定态 = ${adjudicatedExit}；交付件只引用稳定态，v18.52.0 F-BB）`
+      : '无 T8 裁定（稳定态 = 机械值）',
+  };
+})();
+const adjudicationCoversFailure = !!(mGateInfo && typeof mGateInfo.hardExit === 'number'
+  && exitCode === mGateInfo.hardExit
+  && mGateInfo.adjudicatedExit !== null
+  && mGateInfo.adjudicatedExit !== mGateInfo.hardExit);
+const stableExitCode = adjudicationCoversFailure ? mGateInfo.adjudicatedExit : exitCode;
+
 const report = {
   project,
   date: new Date().toISOString(),
   elapsedSec: parseFloat(elapsed),
-  exit: exitCode,
+  // v18.62.7（A5）：`exit` = **交付判据（稳定态）**；机械读数另存 `script_exit_raw`。两者不同时，
+  //   报告本身把「为什么不同」写在 recommendation 里（不让人去猜）。
+  exit: stableExitCode,
+  script_exit_raw: exitCode,
   steps: summary,
   outputs: parsedOutputs,
   // 友好摘要（人类快速判断）
@@ -197,53 +251,28 @@ const report = {
     //   出现「M-Gate-Report 说 0 / final-check 说 3」的**自相矛盾**（实测：论衡实测项目-夫妻收入
     //   差异家庭权力 需主控手工同步 `final-check-v0.json` 的 5 个字段才解除）。
     //   判据：**机械值与裁定值都必须可见**；`stableExit` = 交付件应引用的**稳定态**（v18.52.0 F-BB）。
-    mGate: (() => {
-      const mg = parsedOutputs['m-gate'];
-      if (!mg || mg.exit === undefined) return null;
-      let adjudicatedExit = null, adjudicatedBy = null;
-      try {
-        const rp = join(project, 'final', 'M-Gate-Report.json');
-        if (existsSync(rp)) {
-          const rep = JSON.parse(readFileSync(rp, 'utf8'));
-          if (rep._t8_conclusion && typeof rep.exit === 'number' && rep.exit !== rep.script_exit_raw) {
-            adjudicatedExit = rep.exit;
-            adjudicatedBy = rep._t8_adjudicated_by || 'T8（主控亲执行）';
-          }
-        }
-      } catch { /* 报告读不动不影响机械值——只是裁定值不可见，如实留 null */ }
-      return {
-        total: mg.total,
-        pass: mg.pass,
-        p0: mg.p0 || 0,
-        p1: mg.p1 || 0,
-        p2: mg.p2 || 0,
-        soft: mg.soft || 0,
-        skips: mg.skips || 0,
-        hardExit: mg.exit,                        // 机械值（= M-Gate-Report.json 的 script_exit_raw 语义）
-        adjudicatedExit,                          // T8 经 --adjudicate 写入的裁定值（null = 未裁定）
-        adjudicatedBy,
-        stableExit: adjudicatedExit ?? mg.exit,   // **交付件应引用的稳定态**（有裁定取裁定）
-        note: adjudicatedExit !== null
-          ? `机械值 ${mg.exit} → T8 裁定 ${adjudicatedExit}（稳定态 = ${adjudicatedExit}；交付件只引用稳定态，v18.52.0 F-BB）`
-          : '无 T8 裁定（稳定态 = 机械值）',
-      };
-    })(),
+    //   v18.62.7（A5）：本段抽成上方 `mGateInfo`，这里直接引用（同一份实现，不再有两处 IIFE）。
+    mGate: mGateInfo,
     // v18.0.0 修复：旧版只处理 0/1，其余一律落 `else` → **exit 3（仅 P2，无 P0/P1）被误报「存在 P0 致命问题」**。
     //   现按 M-Gate-Algorithm.md 的 exit 语义分档（0/1/2/3/10）。
     // v18.2.6：末档不再把「任何非 0/1/2/3/70 的码」都渲染成 exit 10（那是误导）——10 与非 10 分开。
-    recommendation: exitCode === 0
+    // v18.62.7（A5）：**本字段与 `exit` 都由稳定态渲染**（有 T8 裁定取裁定）；两数不同时前缀点明，
+    //   使「脚本说 1、报告说 0」这类自相矛盾在**同一条文案里**就被解释掉（不再要求人去比对两份 JSON）。
+    recommendation: (stableExitCode !== exitCode
+      ? `[交付判据 = 稳定态 ${stableExitCode}；机械读数 ${exitCode} 已被 T8 裁定覆盖（两份读数都在报告里）] `
+      : '') + (stableExitCode === 0
       ? '✅ 终检通过（无失败项），可交付主人终审'
-      : exitCode === 1
+      : stableExitCode === 1
       ? '⚠️ 终检存在 P1 残留，主控可触发 T5 修订一轮'
-      : exitCode === 2
+      : stableExitCode === 2
       ? '❌ 终检存在 P0 致命问题，禁止标记终检完成'
-      : exitCode === 3
+      : stableExitCode === 3
       ? (notes.length
         ? `🔍 不足以判「通过」：${notes[0]}${notes.length > 1 ? `（另有 ${notes.length - 1} 条见 summary.notes）` : ''}——须 T8 逐项复核后以 T8 裁定值放行`
         : '🔍 仅 P2 / LLM兜底 / SKIP 残留（无 P0/P1）——须 T8 逐项复核后以 T8 裁定值放行（不得当作失败，也不得无条件当作通过）')
-      : exitCode === EXIT_INTERNAL
+      : stableExitCode === EXIT_INTERNAL
       ? '🛠️ 内部错误（EX_SOFTWARE 70）——子步骤未跑起来或脚本缺陷，**与正文内容无关**；核对上面的 spawnError/栈后重跑'
-      : exitCode === EXIT_USAGE
+      : stableExitCode === EXIT_USAGE
       ? '⛔ 参数/路径错误（exit 10）——检查 m-gate-check 的定稿/证据包/图件目录参数'
       // v18.62.4（全量审计-v18.62.3 §8.1 #3）：**「不在 M 门契约里」不等于「未预期」**。
       //   病灶：旧文案把 30/4/20/21/22 这些**各自脚本契约内的合法码**统称为「未预期的退出码」——
@@ -256,7 +285,7 @@ const report = {
         + ' **40** = 导出被拒（md2html 族）；'
         + ' **20/21/22** = `handoff-check` 交接门（20 产物缺失 / 21 结构不合 / 22 仅软提示）；'
         + ' **4** = `model-routing` 需人工决定。'
-        + ' → 请按上面 `steps[]` 里**失败那一步自身的语义**判读并查该步 stderr，**不要默认当成 10，也不要判为脚本坏了**',
+        + ' → 请按上面 `steps[]` 里**失败那一步自身的语义**判读并查该步 stderr，**不要默认当成 10，也不要判为脚本坏了**'),
   },
 };
 // v18.2.6（P1-9①）：exitCode 的改写已在构造 report 之前完成（见上方 notes 之后），此处不再二次改写。
@@ -298,4 +327,6 @@ if (pkgRootProbe && pathKey(absReportPath).startsWith(pathKey(pkgRootProbe))) {
 writeReport(finalReportPath, JSON.stringify(report, null, 2), { protect: [final] });
 if (!wantJson) console.log(`\n📄 总报告: ${finalReportPath}（绝对路径：${absReportPath}）`);
 
-process.exit(exitCode);
+// ⚠️ v18.62.7（A5）：进程退出码与 `report.exit` **同源 = 稳定态**（`repo-hygiene-check` 契约表里
+//   `final-check.mjs: [0,1,2,3,10,70]` 不变；变的只是**取哪个数**）。
+process.exit(stableExitCode);

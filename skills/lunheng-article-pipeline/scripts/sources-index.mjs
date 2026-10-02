@@ -26,8 +26,15 @@
 //   （子代理各自追加）分离的同一条判据。合并成单文件 `sources.json` 的动作**由主控**在 Phase 2.5 跑 `--merge`。
 //
 // ── 行 schema（JSONL，一行一个对象；真源 = references/templates/sources-索引-template.md）──
-//   { "url": "https://…", "title": "…", "fetchedAt": "YYYY-MM-DD", "summary": "一行摘要", "line": "T1" }
+//   { "url": "https://…", "title": "…", "fetchedAt": "YYYY-MM-DD", "summary": "一行摘要", "line": "T1",
+//     "tool": "advanced_search", "engine": "exa", "query": "…" }
 //   必填 url / title / fetchedAt / summary；`line` 缺省取分片名（T1/T2/T3）。
+//   **溯源字段（v18.62.7 §A22）**：`tool` / `engine` / `query`——**要么都不写（旧格式行，软提示）**，
+//     **要么写齐**（写一个就要求三个全有，缺则判不合法）；`tool` = 实际调用的检索工具名
+//     （`advanced_search` / `multi_search` / `platform_search` / `web_fetch` / `search_papers` …），
+//     `engine` = 该次调用的引擎（`advanced_search` 的 `engine` 参数值；`multi_search` 可写聚合名 + `seenIn` 数），
+//     `query` = 该条来源对应的检索式。**为什么必需**：没有它，「某条是不是用规定的源取的」无法核验
+//     （实测要回答「检索用了哪些插件」，交付物里查不到，只能回翻 DSH 会话缓存）。
 //
 // ── 不是门（如实声明）─────────────────────────────────────────────────────────
 //   本脚本**不判定「该不该抓某个源」**，也不阻断任何流程：`--check` 只校验**行是否合法**与**统计重复**；
@@ -46,7 +53,7 @@ if (args.includes('-h') || args.includes('--help')) {
   console.log(`${USAGE}
 
 <项目目录>   run/<项目名>（须已存在；分片在 <项目>/sources/{T1,T2,T3}.jsonl）
---check      校验每个分片：文件存在性 / 每行合法 JSON / 必填键齐备 / url 形如 http(s) / 统计跨线重复（重复是**预期收益**，只报不判错）
+--check      校验每个分片：文件存在性 / 每行合法 JSON / 必填键齐备 / url 形如 http(s) / **溯源字段「要么都不写、要么写齐」** / 统计跨线重复（重复是**预期收益**，只报不判错）
 --merge      合并三线分片 → <项目>/sources.json（按 url 去重、保留来源线标记 + 计数；**主控在 Phase 2.5 跑**）
 --query      打印去重后的索引（可带 needle 过滤 url/title/summary）
 退出码：0 成功｜1 发现不合法行（--check 与 --merge **同判据**；--merge 仍写出 sources.json 但会报不完整）｜10 参数或路径错｜70 内部错误
@@ -73,11 +80,20 @@ if (!mode) { console.error(`需给一个模式：--check / --merge / --query\n${
 
 const LINES = ['T1', 'T2', 'T3'];
 const REQUIRED = ['url', 'title', 'fetchedAt', 'summary'];
+// ── v18.62.7（反哺-主控实测 §A22）：**溯源字段** ────────────────────────────────────
+//   病灶：`sources.json` / `sources/*.jsonl` 旧 schema 只有 `line/url/title/fetchedAt/summary`
+//     ——**没有工具、引擎、query**。于是「某条数据是不是用规定的检索源取的」**无法核验**：
+//     实测要回答「检索用了哪些插件」，交付物里查不到，只能回翻 DSH 会话缓存数工具调用
+//     （而那正是 §A19「角色卡点名了本机未安装的工具」这个错位能被藏住的原因）。
+//   口径（**与「不对历史形态过度收紧」一致**）：三字段**要么都不写**（旧格式行）**要么写齐**
+//     ——写了一个就必须三个全有；**全缺只记软提示并点名到行**（不判红），存量项目不因此翻红。
+//     `tool` / `engine` / `query` 写入后随 `--merge` 进 `sources.json`，`--query` 亦可显示。
+const PROVENANCE = ['tool', 'engine', 'query'];
 const shardPath = (p, line) => join(p, 'sources', `${line}.jsonl`);
 
-/** 读全部分片 → `{ entries, problems, shards }`（不判「该不该抓」，只判行是否合法）。 */
+/** 读全部分片 → `{ entries, problems, provenance, shards }`（不判「该不该抓」，只判行是否合法）。 */
 const readShards = (p) => {
-  const entries = [], problems = [], shards = {};
+  const entries = [], problems = [], provenance = [], shards = {};
   for (const line of LINES) {
     const f = shardPath(p, line);
     if (!existsSync(f)) { shards[line] = { path: f, exists: false, lines: 0 }; continue; }
@@ -92,14 +108,22 @@ const readShards = (p) => {
       const miss = REQUIRED.filter((k) => !o[k] || String(o[k]).trim() === '');
       if (miss.length) problems.push({ line, line_no: i + 1, reason: `缺必填键：${miss.join(',')}` });
       if (o.url && !/^https?:\/\//i.test(String(o.url))) problems.push({ line, line_no: i + 1, reason: `url 不是 http(s)：${String(o.url).slice(0, 40)}` });
-      entries.push({ line: o.line || line, url: String(o.url || ''), title: String(o.title || ''), fetchedAt: String(o.fetchedAt || ''), summary: String(o.summary || '') });
+      // 溯源字段：写了一个就必须三个全有；全缺 → 软提示（旧格式行）
+      const got = PROVENANCE.filter((k) => o[k] && String(o[k]).trim() !== '');
+      if (got.length > 0 && got.length < PROVENANCE.length) {
+        problems.push({ line, line_no: i + 1, reason: `溯源字段不齐：写了 ${got.join(',')}，缺 ${PROVENANCE.filter((k) => !got.includes(k)).join(',')}（要么都不写，要么写齐）` });
+      } else if (got.length === 0) {
+        provenance.push({ line, line_no: i + 1, url: String(o.url || '').slice(0, 60) });
+      }
+      entries.push({ line: o.line || line, url: String(o.url || ''), title: String(o.title || ''), fetchedAt: String(o.fetchedAt || ''), summary: String(o.summary || ''),
+        ...(got.length === PROVENANCE.length ? { tool: String(o.tool), engine: String(o.engine), query: String(o.query) } : {}) });
     });
     shards[line] = { path: f, exists: true, lines: n, bytes: statSync(f).size };
   }
-  return { entries, problems, shards };
+  return { entries, problems, provenance, shards };
 };
 
-const { entries, problems, shards } = readShards(project);
+const { entries, problems, provenance, shards } = readShards(project);
 
 if (mode === '--check') {
   // 跨线重复：**这是本机制的收益来源**，只统计不判错（同一 URL 被两线各抓一次 = 本可只付一次）
@@ -124,6 +148,13 @@ if (mode === '--check') {
     process.exit(1);
   }
   console.log('\n✓ 全部分片行合法（空分片/缺分片不算问题——那是「该线尚未登记」）');
+  // v18.62.7（反哺 §A22）：**溯源字段缺口只报软提示、不改退出码**——存量项目（旧格式行）不该因此翻红。
+  if (provenance.length) {
+    console.log(`\nℹ ${provenance.length}/${entries.length} 行**无溯源字段**（tool/engine/query）——旧格式行，可缺；`);
+    console.log('  但**新写入的行必须写齐三字段**：否则「某条是不是用规定的检索源取的」在交付物里查不到（§A22/A19）。');
+    for (const p of provenance.slice(0, 3)) console.log(`    · ${p.line}.jsonl:${p.line_no} ${p.url}`);
+    if (provenance.length > 3) console.log(`    · …另有 ${provenance.length - 3} 行`);
+  }
   process.exit(0);
 }
 

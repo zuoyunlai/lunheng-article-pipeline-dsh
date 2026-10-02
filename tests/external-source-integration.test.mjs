@@ -111,3 +111,83 @@ test('v18.21.3 B：T1/T2/T3 卡主轮默认层（前 60 行）不含 web_search 
     )
   }
 })
+
+// ── v18.62.7（反哺-主控实测 §A19/§A20/§A21/§A23）：**工具面存在性 + 交叉印证 + 引擎位归属** ──────
+//   为什么必须钉在源文本上：本族三条都是「**指引面**」修改，机械层测不了「模型是否照做」，
+//   但能测「指引面自己有没有说错」——而本次实测的病灶恰恰是**指引面点名的工具本机未安装**
+//   （三卡把 AI4Scholar 三源写成默认层，而本机无该插件 → 子代理回落到「备用层」的 web_search）。
+//   本组同时钉**反向**：接入面**不得**再出现 `web_search(engine=…)` 这一形态（engine 参数不在该工具上）。
+const TOOLFACE_RE = /检索工具面/
+test('A19 三检索员卡：源面必须过「工具面存在性」，且点名 A 档工具（advanced_search / multi_search）', () => {
+  for (const c of ['01-文献检索-literature-scout.md', '02-数据检索-data-scout.md', '03-案例检索-case-scout.md']) {
+    const t = read(`references/agents/${c}`)
+    assert.ok(TOOLFACE_RE.test(t), `${c} 必须含「检索工具面」存在性判据——否则又会出现「卡里点名的工具本机没装」（§A19）`)
+    assert.match(t, /advanced_search/, `${c} 必须点名 A 档默认工具 advanced_search（本机真实存在的那一档）`)
+    assert.match(t, /multi_search/, `${c} 必须含 §A21 的交叉印证动作（multi_search / seenIn）`)
+    assert.ok(
+      !/默认学术层（主轮并行这 3 件）/.test(t),
+      `${c} 不得再把 AI4Scholar 三源写成无条件的「默认学术层」——B 档必须经工具面探测确认（§A19）`,
+    )
+  }
+})
+test('A19 任务简报模板：必须含 Phase 0 的 `检索工具面:` 行（档位锁定的唯一依据）', () => {
+  const brief = read('references/templates/任务简报-template.md')
+  assert.match(brief, /检索工具面\s*:/, '任务简报模板必须含 `检索工具面:` 行——主控在 Phase 0 填，T1/T2/T3 按它执行')
+  assert.match(brief, /本轮档位/, '必须含「本轮档位」声明（§A20：不同轮次不得换档，换了要逐条标注归属）')
+})
+test('A21 接入面必须把 multi_search 立为承重条目的交叉印证指定工具（含 seenIn 口径）', () => {
+  const t = read('references/_shared/外部检索源接入面.md')
+  assert.match(t, /multi_search/, '接入面必须点名 multi_search（实测 6 个检索会话 0 次调用 = 工具在、方法没接上）')
+  assert.match(t, /seenIn/, '必须写明 seenIn 口径（≥2 才算跨源印证）')
+  assert.match(t, /承重/, '必须与「承重条目」挂钩（否则又是「工具在但不指定谁用」）')
+})
+test('A23 接入面：`engine` 参数的归属必须更正到 advanced_search，且不得再出现 `web_search(engine=` 形态', () => {
+  const t = read('references/_shared/外部检索源接入面.md')
+  assert.ok(
+    !/web_search\(engine/.test(t),
+    '接入面不得再把 engine 参数绑到 web_search 上（该工具 schema 只有 queries）——§A23 病灶原形',
+  )
+  assert.ok(
+    !/引擎降级链（`web_search` 内部）/.test(t),
+    '不得再把引擎降级链归给 web_search（它属于 advanced_search）',
+  )
+  assert.match(t, /advanced_search/, '必须点名 advanced_search 为引擎位所在工具')
+  assert.match(t, /free_search_test/, '引擎集与顺序必须以运行时为准（free_search_test 可实测），不得硬编码当契约')
+})
+test('A19 反向自证：屏蔽三卡里的「检索工具面」判据 → 本组断言必须能红（证明不是空转）', () => {
+  const t1 = read('references/agents/01-文献检索-literature-scout.md')
+  const masked = t1.replace(/检索工具面/g, '××工具面')   // 同长度、但不再是该判据串
+  assert.notEqual(masked, t1, '夹具假设 T1 卡含「检索工具面」——若未含，本用例无法反向自证')
+  assert.ok(!TOOLFACE_RE.test(masked), '屏蔽后仍命中 → 本组判据是空转（假绿）')
+})
+
+// ── v18.62.7 二修（**通用性回归网**）：论衡不要求宿主安装任何第三方检索插件 ──────────────────────
+//   为什么必须钉：首版 §A19 落地把「A 档（装了 dsh-free-search）」写成**默认主线**，却没定义
+//   「连它也没有」的那一档 → 一个只装 DSH base 的宿主在**文档层没有可执行的默认层**
+//   （而它其实有 `web_search` + `web_fetch`）。**这等于把 §A19 的病往上抬了一级**：
+//   从「点名了本机没装的工具」变成「默认层的前提在别的宿主上不成立」。
+//   判据（两条方向都要）：① **保底档必须存在**（D 档 = 仅 base 的 `web_search` + `web_fetch`），
+//   三卡与接入面的降级链必须**终止**在它；② **不得**出现「必须安装某插件」这类前置要求。
+test('通用性：接入面必须有 D 档保底（无需任何插件），且三卡降级链必须终止于它', () => {
+  const t = read('references/_shared/外部检索源接入面.md')
+  assert.match(t, /D 档/, '接入面必须定义 D 档保底（只有 DSH 自带的 web_search + web_fetch）')
+  assert.match(t, /不要求[^\n]{0,20}任何第三方检索插件/, '必须写明通用性底线：论衡不要求宿主安装任何第三方检索插件')
+  for (const c of ['01-文献检索-literature-scout.md', '02-数据检索-data-scout.md', '03-案例检索-case-scout.md']) {
+    const x = read(`references/agents/${c}`)
+    assert.match(x, /D 档/, `${c} 的降级链必须终止于 D 档保底——否则「A 档也不可用」时子代理无指令可执行`)
+  }
+})
+test('通用性反向钉：接入面与三卡**不得**把第三方插件写成前置要求', () => {
+  const files = ['references/_shared/外部检索源接入面.md', 'references/agents/01-文献检索-literature-scout.md', 'references/agents/02-数据检索-data-scout.md', 'references/agents/03-案例检索-case-scout.md']
+  for (const f of files) {
+    const x = read(f)
+    assert.ok(
+      !/必须(先)?安装[^\n]{0,20}(dsh-free-search|AI4Scholar)/.test(x),
+      `${f} 不得把第三方插件写成「必须安装」的前置要求——档次只决定「怎么检索」，不决定「能不能检索」`,
+    )
+    assert.ok(
+      !/未安装[^\n]{0,20}(则)?(中止|停止检索)/.test(x),
+      `${f} 不得因插件缺失而中止检索（缺插件只降档，不降可行性）`,
+    )
+  }
+})
