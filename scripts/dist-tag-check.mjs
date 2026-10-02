@@ -4,12 +4,18 @@
 //
 // 为什么存在（具体事故）：v18.62.0 发布成功、`dsh` 正确指向 18.62.0，但 **`latest` 仍停在 18.60.1**
 //   → npmjs.com 包页（默认展示 `latest`）与「不带版本的安装命令」双双停在旧版，主人看到后以为没发出去。
-//   根因不是故障而是**政策**：`SECURITY.md` 记「主人 2026-09-29 决定：不依赖 NPM_TOKEN 自动同步 `latest`，
-//   改为发版后由维护者手工补打」。而 `npm publish` 走 OIDC、`npm dist-tag add` 仍需写鉴权 → **CI 永远动不了 `latest`**。
-//   ⇒ 缺的不是能力，是**提醒**。本脚本就是那道提醒：**只读、零凭据、不进发布链**。
+//   当时的根因不是故障而是**政策**：`SECURITY.md` 记「主人 2026-09-29 决定：不依赖 NPM_TOKEN 自动同步 `latest`，
+//   改为发版后由维护者手工补打」。而 `npm publish` 走 OIDC、`npm dist-tag add` 仍需写鉴权 → 当时结论「CI 动不了 `latest`」。
 //
-// ⚠️ 它**不是发布门**：刻意不接进 CI。理由——CI 无法修复（无 token），挂上去只会每次发版亮红灯，
-//   制造「习以为常的红」（与 quality-score 挂门同一判据）。它是**发版后手动跑一次**的核对工具。
+// ⚠️ **v18.62.8 更新：上面那句「CI 动不了 `latest`」已过期**——npm 于 **2026-09-30** 为 trusted publishing
+//   新增 **opt-in 的 dist-tag 权限**（`Allow npm dist-tag`，与直接 publish 权限相互独立、默认关闭），
+//   dist-tag 写入**不再需要长期凭据**（npm CLI ≥ 11.21.0）。`publish.yml` 的 dist-tag 步已改为
+//   **OIDC 自动前移 `latest`**（失败只 warning、不阻断发布）。故本脚本的定位随之收窄：
+//   **它不再是「唯一的提醒」，而是一道独立的只读复核**（CI 自报成功也可能因缓存/传播延迟被误读）。
+//   本机 2026-10-02 实测：`npm view` 显示 `latest: 18.62.6`，而注册表与 npmmirror 均为 `18.62.7` —— 「绕开缓存」这一步仍然必需。
+//
+// ⚠️ 它**仍不是发布门**：刻意不接进 CI。理由——发布链已自己前移（见上），再挂一道只会制造
+//   「习以为常的红/绿」（与 quality-score 挂门同一判据）。它是**发版后手动跑一次**的核对工具。
 //
 // 用法：
 //   node scripts/dist-tag-check.mjs                # 读 package.json 的 name/version

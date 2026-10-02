@@ -1,6 +1,6 @@
 # 维护者手册（maintainers.md）
 
-> 版本：v18.62.7｜**读者**：维护者/主人。**本文件不进任何运行期读清单**（角色/主控不读）；它承接 v18.8.0 文档瘦身从 SKILL.md 迁出的维护者向元信息（rank 考证 / guard 缺口 / 更正史）。改本文件不受「同一事实多处漂移」约束——运行期事实仍以 SKILL.md 为唯一真源，此处是背景与考证。
+> 版本：v18.62.8｜**读者**：维护者/主人。**本文件不进任何运行期读清单**（角色/主控不读）；它承接 v18.8.0 文档瘦身从 SKILL.md 迁出的维护者向元信息（rank 考证 / guard 缺口 / 更正史）。改本文件不受「同一事实多处漂移」约束——运行期事实仍以 SKILL.md 为唯一真源，此处是背景与考证。
 
 ## 一、技能来源 rank 考证（v18.0.0 对齐官方；v18.0.5 修两处官方事实）
 
@@ -40,19 +40,21 @@
 - npm 包不含 `.github/`、`tests/`、`scripts/`（仓库级）、`CHANGELOG.md`、`CONTRIBUTING.md`——由 `package.json` files 白名单 + `repo-hygiene-check` 规则⑥ 负清单 + `pack-smoke` mustNotShip **双重机械保证**（非自觉）。
 - npm 强制包含根目录 `README*` 与 `LICENSE`（从 files 删掉、加 .npmignore 均无效，已实测）——五语 README 一定在包内，不是缺陷。
 - 发布 = 推 tag，由 `.github/workflows/publish.yml`（OIDC Trusted Publishing + `--provenance`）完成。
-- **`latest` dist-tag 不会自动前移**（`NPM_TOKEN` 已删；`--tag dsh` 只动 `dsh`）→ 每次发版后手工跑一次：
-  `npm dist-tag add lunheng-article-pipeline@<新版本> latest --registry=https://registry.npmjs.org`（`dsh` 由 publish 工作流维护）。
-  ⚠️ **`--registry` 不能省**：本机 `~/.npmrc` 的默认 `registry` 指向**只读镜像** `registry.npmmirror.com`，
+- **`latest` dist-tag 自 v18.62.8 起由 CI 自动前移**（**OIDC**，无需任何长期凭据）——前提是 npm 侧已为该包勾选 **Allow npm dist-tag**（见 SECURITY.md「NPM_TOKEN 的用途与治理」的 2026-10-02 更新）。发版后**先看该次 publish 运行的 dist-tag 步日志**：
+  - 打 `✓ latest 已前移 → <ver>（OIDC…）` = 已自动完成，**无须任何手工动作**；
+  - 打 warning = npm 侧权限未勾选（或 CLI 过旧）→ 按 SECURITY.md 补齐后 `gh workflow run publish.yml` 重跑（幂等，不会重发 npm）；
+  - 只有上面两条都不可用时，才用**兜底**人工命令：`npm dist-tag add lunheng-article-pipeline@<新版本> latest --registry=https://registry.npmjs.org`（`dsh` 由 publish 工作流维护，永远无须手工动）。
+  ⚠️ **`--registry` 不能省**（**人工兜底路径**）：本机 `~/.npmrc` 的默认 `registry` 指向**只读镜像** `registry.npmmirror.com`，
   而 `_authToken` 是给 `registry.npmjs.org` 的 → 不带该参数会把 dist-tag 请求打到镜像，
-  报 `E401 Unauthorized … Login first`（**v18.62.4 发版实测踩到**）。
-  ⚠️ **顺序不能颠倒**：必须等 `publish` 作业 **success** 之后再改 tag。发布未完成时该版本在注册表里**不存在**，
+  报 `E401 Unauthorized … Login first`（**v18.62.4 发版实测踩到**）。（CI 内无此问题：publish 作业已设 `registry-url`。）
+  ⚠️ **顺序不能颠倒**（**人工兜底路径**）：必须等 `publish` 作业 **success** 之后再改 tag。发布未完成时该版本在注册表里**不存在**，
   加 tag 会 `E404`。**判据（两行都过再加）**：
   ① `npm view lunheng-article-pipeline@<新版本> version --registry=https://registry.npmjs.org` 有输出；
   ② 同一 registry 下 `dist-tags` 里已出现 `dsh: '<新版本>'`（`dsh` 由 publish 工作流维护，它先到位）。
-  > **核验 tips**：`npm view … dist-tags` **可能读到本机缓存**（v18.62.4 时曾仍显示旧 `latest`，实际已更新）。
-  > 要权威结论就直查注册表 API：
+  > ⚠️ **不回退（v18.62.8 新增保护）**：工作流只在「本次版本 == registry 最新版」时前移 `latest`——补推历史 tag 的 run 不会把 dist-tag 拉回旧版。
+  > **核验 tips**：`npm view … dist-tags` **可能读到本机缓存**（v18.62.4 曾如此；**2026-10-02 再实测一次：`npm view` 显示 `latest: 18.62.6`，而注册表与 npmmirror 都是 `18.62.7`**）。
+  > 要权威结论就直查注册表 API（或直接跑 `node scripts/dist-tag-check.mjs`）：
   > `Invoke-RestMethod https://registry.npmjs.org/-/package/lunheng-article-pipeline/dist-tags`
-  （v18.12.0 发版后已执行，两个 tag 均指向 18.12.0。）
 
 ## 五、仓库级资源与技能体的边界（**L-25 定案**，v18.12.2）
 

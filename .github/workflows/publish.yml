@@ -112,51 +112,58 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/') && steps.guard.outputs.skip == 'false'
         run: npm publish --access public --provenance --tag dsh
 
-      # dist-tag 核对与补打。要点（v2.5.2-dsh.13 实测修正）：
+      # dist-tag 核对与**前移**。要点：
       #   ① OIDC 发布已由 `npm publish --tag dsh` 自动把 dsh 指向本次版本 —— **不需要**再 add 一次；
-      #   ② 无 token 时 `npm dist-tag add` 会因无鉴权而 exit 1，把整步（并连带跳过发布后审计）弄红 ——
-      #      故本步改为「先只读打印，有 token 才写」，**缺** token 时永不失败。
-      # v18.2.4 两处修正（实测：v18.2.4 发布时 CI 侧 NPM_TOKEN 已失效 → 本步 E401 红）：
-      #   ③ **触发条件补 dispatch**：旧条件只有 `skip == 'false'`，而本工作流的 `workflow_dispatch`
-      #      自称用途是「手动补 dist-tag（如 latest 未跟随最新版时）」——可手动跑时目标版本**早已发布**
-      #      → 幂等守卫必然把 skip 置真 → 本步被**整个跳过** → **文档承诺的手工补救路径从来不会执行**。
-      #      这是「文档声称强于事实」的又一例，只有真的需要补救时才暴露。现改为「待发布」或「手动 dispatch」都跑。
-      #   ④ **失败必须可操作（区分「缺」与「失效」）**：缺 token 仍是 warning（设计如此）；但 token
-      #      **存在却失效**（E401 = 已撤销/过期/无 dist-tag:write 范围）是真问题——它让 latest 静默卡在旧版。
-      #      故捕获后打 `::error::` 并给出**可直接复制**的补救命令，仍 exit 1（fail-closed，不把「latest 没跟上」伪装成成功）。
-      # v18.57.x 现状（2026-09-29 实测更正；旧注释写「NPM_TOKEN 已在 repo secrets 恢复」**不可复现，已删**）：
-      #   v18.58.0 发布时两条触发路径（tag push 与 workflow_dispatch）都拿到**空值** → 本步走空值分支。
-      #   `gh secret list` 显示 `NPM_TOKEN` **名存在**（updatedAt 2026-09-21，此后未变），但 workflow 内
-      #   `env: NPM_TOKEN: ${{ secrets.NPM_TOKEN }}` 注入的是空串。**判据：「secret 名存在」≠「secret 可用」**，
-      #   只能以该次运行的实际输出为准。
-      #   **本仓决定（主人 2026-09-29）**：**不依赖 token 自动同步 `latest`**，改为发版后由维护者**手工补打**
-      #   （`npm dist-tag add <pkg>@<ver> latest`；理由：只此一处用得上 token，而它需 90 天轮换
-      #   且 npm 正在把这类直接写入的令牌路径淘汰、官方推荐 OIDC——而发布本身早已走 OIDC）。
-      #   故下方空值分支是**预期路径**、不是配置故障；有 token 时自动同步的分支保留（将来若真配上仍然可用）。
-      #   token 治理要求见 SECURITY.md「NPM_TOKEN 的用途与治理」。
-      - name: 核对 dist-tag（只读；有 token 才补打 latest）
-        # v18.2.9（第三方审计 B8）：dispatch 限定默认分支——token 一旦按上方注释重新签发，
-        #   任何有 write 权限者本可对任意分支 dispatch 触发含 NPM_TOKEN 的作业；限定默认分支收窄该面。
+      #   ② 旧世界：`npm dist-tag` 需写鉴权，而本仓 2026-09-29 决定不配 NPM_TOKEN → `latest` **不会**自动前移，
+      #      每次发版后由维护者手工补打（v18.62.0 就因漏补而让包页与「不带版本的安装命令」双双停在旧版）。
+      #   ③ **v18.62.8 起改为 OIDC 自动前移**：npm 于 **2026-09-30** 为 trusted publishing 新增 **opt-in 的
+      #      dist-tag 权限**（`Allow npm dist-tag`，与直接 publish 权限**相互独立**、**默认关闭**）——
+      #      「CI 动不了 latest」这一**技术前提当日消失**（本轮实测发现，故本条是**前提已变的旧决策修正**，
+      #      不是推翻 2026-09-29 的**意图**——那次决定的理由是「不引入需 90 天轮换的长期凭据」，OIDC 恰好不需要它）。
+      #      两个前提（缺一即走下方 warning 分支，**永不失败**）：
+      #        · npm 侧：该包的 trusted publisher 配置里勾上 `Allow npm dist-tag`（**一次性人工动作**，见 SECURITY.md §NPM_TOKEN 治理）；
+      #        · CLI 侧：npm **≥ 11.21.0**（Node 24 自带 11.19.0 → 故本步**显式安装 pinned npm**）。
+      #      为什么 `npm i -g` 放在**发布之后**：发布用的仍是 runner 自带 npm（发布环境可复现性不变），
+      #        这里只影响本步的 dist-tag 写入。
+      #   ④ **不回退**：仅当「本次版本 == registry 最新版」时才前移 `latest` —— 补推历史 tag 的 run
+      #      不会把 dist-tag 拉回旧版（旧实现有此风险：它无条件 add 本次版本）。
+      #   ⑤ 两处坑照旧（**手工兜底路径**仍适用）：本机 `~/.npmrc` 默认 registry 是只读镜像 → 手工命令**必须**带
+      #      `--registry=https://registry.npmjs.org`；且必须等 publish 作业 success 之后再改 tag（否则 E404）。
+      - name: 核对并前移 dist-tag（OIDC 优先 / token 兜底 / 失败不阻断）
+        # v18.2.9（第三方审计 B8）：dispatch 限定默认分支——凭据作业只允许从默认分支手动触发。
         #   tag 触发路径不受影响（tag 本身即受保护语义）。
         if: (steps.guard.outputs.skip == 'false' || github.event_name == 'workflow_dispatch') && (startsWith(github.ref, 'refs/tags/') || github.ref == format('refs/heads/{0}', github.event.repository.default_branch))
         env:
+          # v18.62.8 修（旧实现从未真正生效）：setup-node 写的 `.npmrc` 读的是 `NODE_AUTH_TOKEN`，
+          #   而旧版只注入了 `NPM_TOKEN` → token 分支即使配上凭据也走不到。现两者都给。
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           VER="$(node -p "require('./package.json').version")"
-          echo '--- 发布后 dist-tags ---'
+          echo '--- 发布后 dist-tags（前） ---'
           npm view "$PKG" dist-tags --json
-          if [ -n "${NPM_TOKEN}" ]; then
-            if npm dist-tag add "$PKG@$VER" dsh && npm dist-tag add "$PKG@$VER" latest; then
-              echo "已同步 dsh + latest → $VER"
+          NEWEST="$(npm view "$PKG" version 2>/dev/null | tr -d '[:space:]')"
+          echo "本次版本=$VER ｜ registry 最新=$NEWEST"
+          if [ "$VER" != "$NEWEST" ]; then
+            echo "::notice::本次 $VER ≠ registry 最新 $NEWEST（补推历史 tag 的 run？）→ **不动** latest，避免把 dist-tag 拉回旧版。如需前移，对最新版所在的 tag 重跑本工作流。"
+            exit 0
+          fi
+          # CLI 侧前提：dist-tag 的 OIDC 权限自 npm 11.21.0 起支持 → 显式装 pinned 版（确定性优先，不做版本比较分支）
+          npm install -g npm@11.21.0 --no-audit --no-fund >/dev/null 2>&1 || true
+          echo "npm $(npm --version)（dist-tag OIDC 需 ≥11.21.0）"
+          if npm dist-tag add "$PKG@$VER" latest; then
+            echo "✓ latest 已前移 → $VER（**OIDC trusted publishing**，无需任何长期凭据）"
+          elif [ -n "${NPM_TOKEN}" ]; then
+            if npm dist-tag add "$PKG@$VER" latest --registry=https://registry.npmjs.org; then
+              echo "✓ latest 已前移 → $VER（NPM_TOKEN 兜底路径）"
             else
-              echo "::error::NPM_TOKEN 存在但鉴权失败（E401 = 令牌已失效或被撤销）——latest 可能仍停在旧版。发布本身已成功、**无需重发**；请在维护者有凭据的机器上执行：npm dist-tag add $PKG@$VER latest && npm dist-tag add $PKG@$VER dsh，并在 npm 侧换发细粒度 token 后 gh secret set NPM_TOKEN"
+              echo "::error::NPM_TOKEN 存在但鉴权失败（E401 = 令牌已失效/被撤销/无 dist-tag:write 范围）——**发布本身已成功、无需重发**。请在 npm 侧换发细粒度 token 后 gh secret set NPM_TOKEN，或（推荐）改为在 npm 侧开启 OIDC dist-tag 权限后重跑本工作流；临时兜底：npm dist-tag add $PKG@$VER latest --registry=https://registry.npmjs.org"
               exit 1
             fi
           else
-            # v18.57.x（审计修订）：**这是本仓的预期路径，不是配置故障**（主人 2026-09-29 决定不依赖 token）。
-            #   文案改为「刻意不配 + 确切命令」，避免下次被读成「secret 掉了、快去配一个」而重开这个决定。
-            echo "::warning::本仓刻意不配置 NPM_TOKEN（主人 2026-09-29 决定）：仅 dsh 指向本次版本（由 npm publish --tag dsh 自动完成），latest 需维护者手工补打 → npm dist-tag add $PKG@$VER latest（复核用 npm view $PKG dist-tags --prefer-online）。若将来要恢复 CI 自动同步，见 SECURITY.md『NPM_TOKEN 的用途与治理』"
+            echo "::warning::latest 未自动前移（OIDC dist-tag 权限未开启，且本仓未配 NPM_TOKEN）。**发布本身已成功、无需重发**。闭合路径二选一：①（推荐，一次性）npmjs.com → 该包 Settings → Trusted Publishers → 为 publish.yml 勾选 **Allow npm dist-tag** → 重跑本工作流；②（兜底）本地执行 npm dist-tag add $PKG@$VER latest --registry=https://registry.npmjs.org（核验用 node scripts/dist-tag-check.mjs 或查注册表 API，勿只信 npm view 的本机缓存）"
           fi
+          echo '--- 发布后 dist-tags（后） ---'
           npm view "$PKG" dist-tags --json
 
       # 发布后审计：核对 npm 上该版本的 gitHead 与本次提交一致、dist-tag 指向本版本。

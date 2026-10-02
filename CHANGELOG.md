@@ -2,6 +2,35 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.62.8 — 2026-10-02
+
+> **性质**：**发布链修正（政策前提已变）**——把 `latest` dist-tag 从「每次发版后人工补打」改为 **CI 用 OIDC 自动前移**。**起因**：主人追问「latest 的问题你帮我搞好」，核查中发现 **2026-09-29 那条决定的「技术前提」已于次日消失**。
+> **为什么抬补丁版本**：`SECURITY.md` 与 `references/maintainers.md` **随包**（`package.json` files 白名单含它们），故发布物有变化；`.github/workflows/publish.yml` 与 `scripts/dist-tag-check.mjs` 为仓库级（不随包）。
+
+**① 旧结论「CI 永远动不了 `latest`」的前提已消失（前提变更，非推翻决定）**
+
+- **旧事实（写在功能上线之前）**：`npm publish` 走 OIDC，而 `npm dist-tag add` **仍需写鉴权** → 本仓 2026-09-29 决定**不配 `NPM_TOKEN`**、改由维护者发版后手工补打（`SECURITY.md` 与 `dist-tag-check.mjs` 头注释均按此写）。
+- **新事实（npm，2026-09-30）**：trusted publishing 新增 **opt-in 的 dist-tag 权限**（`Allow npm dist-tag`，与「直接 publish」权限**相互独立**、**默认关闭**）→ dist-tag 写入**不再需要长期凭据**（CLI 需 **npm ≥ 11.21.0**）。
+  依据：[GitHub Changelog 2026-09-30](https://github.blog/changelog/2026-09-30-opt-in-dist-tag-permissions-for-npm-trusted-publishing/)｜[npm Docs · Adding dist-tags](https://docs.npmjs.com/adding-dist-tags-to-packages/)｜[npm Docs · Trusted publishing](https://docs.npmjs.com/trusted-publishers/)。
+- **判据**：2026-09-29 决定的**理由**是「不引入需 90 天轮换的长期凭据」——**OIDC 恰好不需要它**，故自动前移与该决定的**意图一致**；变的只是「当时为真、现在已假」的技术前提。
+
+**② `publish.yml` 的 dist-tag 步重写（OIDC 优先 / token 兜底 / 失败不阻断 / 不回退）**
+
+- **真去写**：先尝试 `npm dist-tag add "$PKG@$VER" latest`（**OIDC**，不要求 `NPM_TOKEN` 非空）；失败且有 token 才走 token 兜底（顺带修一处旧缺陷：setup-node 写的 `.npmrc` 读的是 **`NODE_AUTH_TOKEN`**，而旧版只注入 `NPM_TOKEN` → **token 分支从未真正生效**，现两者都注入）。
+- **CLI 前提**：该步**显式安装 pinned `npm@11.21.0`**（Node 24 自带 11.19.0 不满足）——**只在该步**，发布用的一直是 runner 自带 npm（发布环境可复现性不变）。
+- **失败不阻断**：无凭据 → `::warning::` + 两条闭合路径（推荐：npm 侧勾选 `Allow npm dist-tag` 后重跑；兜底：本地 `npm dist-tag add … latest --registry=https://registry.npmjs.org`）；**不 exit 1**（发布不可逆，tag 前移失败不该把发布判红）。token **存在却失效**（E401）仍 `::error::` + exit 1——那是真问题。
+- **不回退（新增保护）**：仅当「本次版本 == registry 最新版」时才前移 `latest` → **补推历史 tag 的 run 不会把 dist-tag 拉回旧版**（旧实现无条件 add 本次版本，有此风险）。
+- 保留既有的 dispatch 限定默认分支（第三方审计 B8）与幂等守卫语义。
+
+**③ 文档与工具同步（避免「文档声称强于事实」）**
+
+- `SECURITY.md`：标注 2026-09-29 决定**技术前提已变**（保留原文留痕）、给出 npm 侧一次性动作与两个前提、把 `NPM_TOKEN` **降级为兜底**、更新完整发布链。
+- `references/maintainers.md` §四：发版后**先看该次 publish 运行的 dist-tag 步日志**（打 ✓ = 已自动完成）；人工命令降为兜底路径（`--registry` 与顺序两条坑**仍对兜底路径适用**，故保留）。
+- `scripts/dist-tag-check.mjs` 头注释：把「CI 永远动不了 latest」标为**已过期**，并说明本脚本定位收窄为「独立只读复核」（仍未接进 CI，理由不变）。
+
+> **验证**：全量 `node --test` **671/671 全绿**（新增 1 条：`tests/third-review-gates.test.mjs` 钉住「OIDC 优先 / 失败不阻断 / pinned npm / 不回退」四件事）；`consistency-check.mjs` 0 处漂移；`repo-hygiene-check.mjs` 全部通过；`closeout-verify.mjs` 差集 0 + 反向核验 0。**实测**：v18.62.7 发版后本机 `npm view dist-tags` 显示 `latest: 18.62.6`，而注册表 API 与 npmmirror 均为 `18.62.7`（**同一现象第三次复现 → 已写入 maintainers 核验 tips**）。
+> **依据**：`audits/机制文件修订记录-2026-10-02-latest自动前移.md`
+
 ## 18.62.7 — 2026-10-02
 
 > **性质**：**反哺落地批**——依据 `audits/反哺报告-主控实测-2026-10-02.md`（T0 主控在 `run/aigc-yixiangxing-meixue` 全链路实测 20 个 spawn 后写出的 25 条可 merge 项），**先逐条核验（对真源代码/产物实测，不采信报告结论）再落地**。**主人显式指令**：「根据这份报告，核实并修订」（= `AGENTS.md` §机制文件写保护 的**主人授权例外**；已按该条款走改前全量备份 + `edit` 精确改 + 改后验证 + 可回滚）。

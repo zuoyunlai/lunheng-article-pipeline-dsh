@@ -1,6 +1,6 @@
 # 安全策略（SECURITY）
 
-> 版本：v18.62.7（DSH 原生插件）
+> 版本：v18.62.8（DSH 原生插件）
 
 ## 上报漏洞
 
@@ -46,14 +46,18 @@
   > **当前状态（2026-09-29 实测更正）**：**不可假定该 token 可用**。v18.58.0 发布时实测**两条触发路径都拿到空值**——`gh secret list` 显示 `NPM_TOKEN` **名存在**（updatedAt 2026-09-21T14:07:46Z，此后未变），但 workflow 内 `env: NPM_TOKEN: ${{ secrets.NPM_TOKEN }}` 注入的是**空串** → dist-tag 步走 `::warning::未配置 NPM_TOKEN` 分支（tag push 与 `workflow_dispatch` 各实测一次，结论一致）。
   >   ⚠️ **本行旧文（2026-09-25 记录）曾写「v18.8.0 末起 `NPM_TOKEN` 已恢复（v18.10.0 / v18.15.0 / v18.16.0 三次发布均自动同步成功）」——该声明今日不可复现，已删。** 教训与「文档声称强于事实」同型：**「secret 名存在」≠「secret 可用」**，判据必须是**该次 CI 的实际输出**。
   > **本仓决定（主人 2026-09-29）**：**不依赖 `NPM_TOKEN` 自动同步 `latest`**，改为**发版后由维护者手工补打**（就一条命令、几秒钟，且不引入需 90 天轮换的长期凭据）。故 dist-tag 步的空值分支是**预期路径**，不是配置故障；其 warning 文案已按此改写为「本仓刻意不配 + 给出确切命令」。
+  > **⚠️ 2026-10-02 更新（v18.62.8）——上面那条决定的「技术前提」当日已消失，改走 OIDC 自动前移**：npm 于 **2026-09-30** 为 trusted publishing 新增 **opt-in 的 dist-tag 权限**（`Allow npm dist-tag`，与「直接 publish」权限**相互独立**、默认关闭），dist-tag 写入**不再需要长期凭据**（[GitHub Changelog](https://github.blog/changelog/2026-09-30-opt-in-dist-tag-permissions-for-npm-trusted-publishing/)｜[npm Docs · Adding dist-tags](https://docs.npmjs.com/adding-dist-tags-to-packages/)｜[npm Docs · Trusted publishing](https://docs.npmjs.com/trusted-publishers/)）。
+  >   * **为什么这是「前提已变」而不是「推翻那次决定」**：2026-09-29 决定的**理由**是「不引入需 90 天轮换的长期凭据」——**OIDC 恰好不需要它**，故自动前移与该决定的**意图一致**。旧结论「`npm dist-tag` 仍需写鉴权 → CI 永远动不了 `latest`」写在**该功能上线之前**，属**当时为真、今日已假**。
+  >   * **两个前提**：① **npm 侧一次性人工动作**——npmjs.com → 该包 → Settings → **Trusted Publishers** → 为 `publish.yml` 勾选 **Allow npm dist-tag**（**默认关闭**；不启用则 workflow 走 warning 分支，**不失败**）；② CLI 侧 **npm ≥ 11.21.0**（Node 24 自带 11.19.0 → `publish.yml` 的 dist-tag 步已**显式安装 pinned `npm@11.21.0`**，且**只在该步**，发布环境仍是 runner 自带 npm）。
+  >   * **`NPM_TOKEN` 的定位降级为「兜底」**：不再需要它；若某天配了有效 token，工作流会在 OIDC 失败后用它兜底（并已修一处旧缺陷：setup-node 写的 `.npmrc` 读 `NODE_AUTH_TOKEN`，旧版只注入 `NPM_TOKEN` → 该分支**从未真正生效**，现两者都注入）。上方的治理要求与轮换纪律**对该兜底 token 仍然适用**。
   > **故障排查（维护者侧）**：
   >   1. `npm view lunheng-article-pipeline dist-tags` 应见 `latest` / `dsh` 同步到当前最新 tag；
-  >   2. 若 `latest` 落后（**当前预期如此**）→ 本地执行 `npm dist-tag add lunheng-article-pipeline@<版本> latest`（`dsh` 永远由 OIDC `npm publish --tag dsh` 自动指向，无须修）。复核时**绕开本地缓存**：`npm view … dist-tags --prefer-online` 或直接查 `https://registry.npmjs.org/-/package/lunheng-article-pipeline/dist-tags`——实测补打后本地缓存会短暂显示旧值；
+  >   2. 若 `latest` 落后 → **先看该次 publish 运行的 dist-tag 步日志**：① 打 `✓ latest 已前移 …（OIDC）` = 已自动完成；② 打 warning = npm 侧 `Allow npm dist-tag` 未勾选（或 npm CLI 过旧）→ 按上方「两个前提」补齐后**重跑该 workflow**（`gh workflow run publish.yml`，幂等，不会重发 npm）；③ 临时兜底才是本地 `npm dist-tag add lunheng-article-pipeline@<版本> latest --registry=https://registry.npmjs.org`（`dsh` 永远由 OIDC `npm publish --tag dsh` 自动指向，无须修）。复核时**绕开本地缓存**：`npm view … dist-tags --prefer-online` 或直接查 `https://registry.npmjs.org/-/package/lunheng-article-pipeline/dist-tags`——实测补打后本地缓存会短暂显示旧值（**2026-10-02 实测：npm view 显示 18.62.6 而注册表已是 18.62.7**）；
   >   2b. ✅ **优先用 `node scripts/dist-tag-check.mjs`（v18.62.1 新增）代替手抄第 1/2 条**：它把「读 `package.json` 版本 → 查 registry → 断言 `dsh`/`latest` 双指向」机械化，**已优先读 `?write=true` 绕 CDN 传播延迟**（实测补打后公共端点约 45s 才更新——手查很容易在这个窗口里误判「补打没生效」），不一致时**直接打印可复制的修复命令**并 exit 1。**只读、零凭据、刻意不进 CI**（理由见 CONTRIBUTING §升级流程）；
-  >   3. CI dist-tag 步若打 `NPM_TOKEN 存在但鉴权失败（E401）` → token 在 npm 端失效，按治理 ⑤ `npm token revoke <id>` 后重新签发并 `gh secret set NPM_TOKEN <新 token>`；
+  >   3. CI dist-tag 步若打 `NPM_TOKEN 存在但鉴权失败（E401）` → token 在 npm 端失效，按治理 ⑤ `npm token revoke <id>` 后重新签发并 `gh secret set NPM_TOKEN <新 token>`（或直接删掉该 secret 走 OIDC）；
   >   4. CI dist-tag 步若打空值 warning → **先别急着 `gh secret list`**：实测**名存在也可能注入空值**（见上方当前状态）。若确要让 CI 自动同步，须以**该次运行的日志**为准逐项确认，而不是只确认 secret 名在不在；
-  >   5. workflow_dispatch 手动路径：UI → Actions → publish.yml → Run workflow → 默认分支 master → 触发「仅 dist-tag 不重发 npm」的补救（idempotent guard 见 `publish.yml` 的「幂等检查」步）。**⚠️ 该路径也已实测拿不到 token**（2026-09-29），故它现在起不到「自动补 latest」的作用——补 `latest` 请直接用第 2 条。
-  > **完整发布链（2026-09-29 实测更新）**：本地门 → git commit → tag push → CI gates（4门 + 回归） → OIDC npm publish（`--tag dsh` 自动指向）→ dist-tag 步（**实测空值 → warning，不失败**）→ 发布后审计（gitHead 轮询等待） → release job（创建 GitHub Release + 附 tgz 资产）→ **维护者手工补 `latest`**（第 2 条；用 `node scripts/dist-tag-check.mjs` 核对，第 2b 条）。
+  >   5. workflow_dispatch 手动路径：UI → Actions → publish.yml → Run workflow → 默认分支 master → 触发「仅 dist-tag 不重发 npm」的补救（幂等守卫见 `publish.yml` 的「幂等检查」步）。**该路径现在是 `latest` 未自动前移时的标准重跑手段**（配合第 2 条 ②）。
+  > **完整发布链（2026-10-02 更新）**：本地门 → git commit → tag push → CI gates（4门 + 回归） → OIDC npm publish（`--tag dsh` 自动指向）→ **dist-tag 步：OIDC 自动前移 `latest`**（未开权限则 warning，不失败；仅当本次版本 == registry 最新版才动，**不回退**）→ 发布后审计（gitHead 轮询等待） → release job（创建 GitHub Release + 附 tgz 资产）→ 用 `node scripts/dist-tag-check.mjs` 核对（正常情况下**不再需要任何手工步骤**）。
 
 ## 支持的版本
 

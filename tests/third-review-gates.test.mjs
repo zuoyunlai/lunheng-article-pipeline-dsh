@@ -166,3 +166,33 @@ test('审计修订 P1-2：测试 glob 三处同源——publish.yml 不得漏跑
     }
   }
 })
+
+// ── v18.62.8：`latest` dist-tag 的 OIDC 自动前移（前提已变 → 旧政策修正） ─────────────────────────
+//   背景：2026-09-29 的决定「不依赖 NPM_TOKEN 自动同步 latest，改为维护者手工补打」**技术前提已消失**——
+//     npm 于 **2026-09-30** 为 trusted publishing 新增 opt-in 的 dist-tag 权限（Allow npm dist-tag，
+//     与直接 publish 权限相互独立、默认关闭），dist-tag 写入不再需要长期凭据（CLI 需 ≥11.21.0）。
+//   本组钉四件事，缺任一条就等于退回「CI 动不了 latest」：① 真去尝试 OIDC 写入（不是只打印）；
+//     ② 失败**不阻断发布**（warning 而非 exit 1）——发布不可逆，不能因 tag 前移失败把它判红；
+//     ③ 装了 pinned npm ≥11.21.0（CLI 前提）；④ **不回退**：仅当本次版本 == registry 最新版时才动 tag。
+test('v18.62.8：publish.yml 的 dist-tag 步 OIDC 优先 / 失败不阻断 / 不回退', () => {
+  const wf = read('.github/workflows/publish.yml')
+  const start = wf.indexOf('- name: 核对并前移 dist-tag')
+  assert.ok(start > 0, 'publish.yml 必须有「核对并前移 dist-tag」步——否则 latest 又只能靠人工补打')
+  const rest = wf.slice(start)
+  const next = rest.indexOf('\n      - name:')
+  const step = next > 0 ? rest.slice(0, next) : rest
+
+  // ① 真尝试 OIDC 写入（旧写法是「有 token 才补打」，无 token 时**一次都不试**）
+  assert.match(step, /npm dist-tag add "\$PKG@\$VER" latest/, '必须真的尝试前移 latest')
+  assert.ok(
+    !/if \[ -n "\$\{NPM_TOKEN\}" \]; then\s*\n\s*npm dist-tag add/.test(step),
+    '不得退回「NPM_TOKEN 非空才尝试」的单一门槛——那条路径在无 token 时一次都不试，等于 CI 动不了 latest',
+  )
+  // ② CLI 前提：pinned npm ≥ 11.21.0（Node 24 自带 11.19.0 不满足 OIDC dist-tag）
+  assert.match(step, /npm install -g npm@11\.21\.0/, '必须显式装 pinned npm@11.21.0（OIDC dist-tag 的 CLI 前提）')
+  // ③ 不回退：本次版本 ≠ registry 最新版时不动 tag
+  assert.match(step, /"\$VER" != "\$NEWEST"/, '必须有「本次版本 == registry 最新版才前移」的守卫（防补推历史 tag 拉回旧版）')
+  // ④ 失败不阻断：无凭据 = warning（发布已成功，tag 前移失败不该判红）
+  assert.match(step, /::warning::latest 未自动前移/, 'OIDC 权限未开时必须是 warning（非阻断），并给出闭合路径')
+  assert.ok(!/::error::latest 未自动前移/.test(step), '该分支不得用 ::error::（会把发布跑红）')
+})
