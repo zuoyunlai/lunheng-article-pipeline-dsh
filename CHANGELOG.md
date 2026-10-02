@@ -2,6 +2,32 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.62.9 — 2026-10-02
+
+> **性质**：**v18.62.8 的自证缺陷修正**——`latest` 自动前移的「不回退」守卫**自我否定**，由**该步首跑的真实 CI 日志**抓出。**主人显式指令**：「latest 的问题你帮我搞好」（续批）。
+> **为什么抬补丁版本**：`references/maintainers.md` **随包**（判据句在其中），故发布物有变化。
+
+**缺陷（v18.62.8 引入，同批首跑即暴露）**
+
+- 守卫写成 `NEWEST="$(npm view "$PKG" version)"` + `[ "$VER" != "$NEWEST" ]` → 但 `npm view <pkg> version` 解析的是 **`latest` 标签指向的版本**，而 `latest` 正是**坏掉的那一个**。
+- **实测日志（v18.62.8 的 publish run 37005938621，dist-tag 步）**：
+  ```text
+  本次版本=18.62.8 ｜ registry 最新=18.62.7
+  ##[notice]本次 18.62.8 ≠ registry 最新 18.62.7（补推历史 tag 的 run？）→ **不动** latest
+  ```
+  → 守卫**在唯一需要它的场景（`latest` 落后）下拒绝前移**：`dsh` 已到 18.62.8，`latest` 仍停在 18.62.7（注册表 API 实测）。
+- **判据（可迁移）**：**「不回退」的参照物必须是「版本序」而不是「某个标签」**——用标签去判标签，等于拿被监控对象当基准。**典型自证缺陷**：守卫的失败模式与它要防的缺陷**外观相同**（都是"tag 没动"），故**只有真跑才有信号**。
+
+**修法**
+
+- 判据改为**「是否存在严格更新的版本」**：`NEWER="$(npm view "$PKG@>$VER" version 2>/dev/null | tr -d '[:space:]' | tail -n1 || true)"`——无匹配时 npm 报 E404，用 `|| true` 兜住 `bash -e`（否则整步被 abort）。
+- 语义不变：`NEWER` 非空 = 本次是补推的历史 tag → `::notice::` + `exit 0`，**不动** dist-tag。
+- `references/maintainers.md` §四 同步更正判据句（并保留缺陷实例，供后人识别同型）。
+- 回归网加强（`tests/third-review-gates.test.mjs` 同一条用例）：新增**反向断言**——判据**不得**退回 `npm view "$PKG" version` 形态；正向断言改为匹配 `@>$VER` 探测。
+
+> **验证**：本机实测该探测的两种取值——`npm view 'lunheng-article-pipeline@>18.62.8' version` → **E404（无更新版本）**；`@>18.62.7` → **18.62.8（有）**。全量 `node --test` **671/671 全绿**；`consistency-check` 0 漂移；`repo-hygiene-check` 全部通过；`plugin-surface-check` 11/0/0；`closeout-verify` 差集 0；`no-write-check` 全步 exit 0、零改写。
+> **依据**：`audits/机制文件修订记录-2026-10-02-latest自动前移.md` §七
+
 ## 18.62.8 — 2026-10-02
 
 > **性质**：**发布链修正（政策前提已变）**——把 `latest` dist-tag 从「每次发版后人工补打」改为 **CI 用 OIDC 自动前移**。**起因**：主人追问「latest 的问题你帮我搞好」，核查中发现 **2026-09-29 那条决定的「技术前提」已于次日消失**。

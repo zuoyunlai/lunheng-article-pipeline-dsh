@@ -125,8 +125,9 @@ jobs:
       #        · CLI 侧：npm **≥ 11.21.0**（Node 24 自带 11.19.0 → 故本步**显式安装 pinned npm**）。
       #      为什么 `npm i -g` 放在**发布之后**：发布用的仍是 runner 自带 npm（发布环境可复现性不变），
       #        这里只影响本步的 dist-tag 写入。
-      #   ④ **不回退**：仅当「本次版本 == registry 最新版」时才前移 `latest` —— 补推历史 tag 的 run
-      #      不会把 dist-tag 拉回旧版（旧实现有此风险：它无条件 add 本次版本）。
+      #   ④ **不回退**：仅当 registry 上**不存在更新版本**时才前移 `latest` —— 补推历史 tag 的 run
+      #      不会把 dist-tag 拉回旧版。**判据必须是「有无更新版本」，不能是 `npm view $PKG version`**
+      #      （后者解析的就是 `latest` 标签本身 → 首跑实测的自我否定缺陷，见下方 v18.62.9 注）。
       #   ⑤ 两处坑照旧（**手工兜底路径**仍适用）：本机 `~/.npmrc` 默认 registry 是只读镜像 → 手工命令**必须**带
       #      `--registry=https://registry.npmjs.org`；且必须等 publish 作业 success 之后再改 tag（否则 E404）。
       - name: 核对并前移 dist-tag（OIDC 优先 / token 兜底 / 失败不阻断）
@@ -142,12 +143,17 @@ jobs:
           VER="$(node -p "require('./package.json').version")"
           echo '--- 发布后 dist-tags（前） ---'
           npm view "$PKG" dist-tags --json
-          NEWEST="$(npm view "$PKG" version 2>/dev/null | tr -d '[:space:]')"
-          echo "本次版本=$VER ｜ registry 最新=$NEWEST"
-          if [ "$VER" != "$NEWEST" ]; then
-            echo "::notice::本次 $VER ≠ registry 最新 $NEWEST（补推历史 tag 的 run？）→ **不动** latest，避免把 dist-tag 拉回旧版。如需前移，对最新版所在的 tag 重跑本工作流。"
+          # ⚠️ v18.62.9 修（**本步首跑实测抓出的自证缺陷**）：判据**不能**用 `npm view "$PKG" version`
+          #   ——它解析的是 **`latest` 标签指向的版本**，而 `latest` 正是**坏掉的那个**：
+          #   首跑实测日志「本次版本=18.62.8 ｜ registry 最新=18.62.7」→ 守卫直接 exit 0，
+          #   **恰恰在最需要它的场景（latest 落后）拒绝修 latest**（自我否定）。
+          #   正确判据 = **「是否存在严格更新的版本」**：`@>$VER` 无匹配时 npm 报 E404（故 `|| true` 兜住 `bash -e`）。
+          NEWER="$(npm view "$PKG@>$VER" version 2>/dev/null | tr -d '[:space:]' | tail -n1 || true)"
+          if [ -n "$NEWER" ]; then
+            echo "::notice::registry 上存在更新版本（$NEWER）→ 本次 $VER 是补推的历史 tag，**不动** latest，避免把 dist-tag 拉回旧版。如需前移，对最新版所在的 tag 重跑本工作流。"
             exit 0
           fi
+          echo "本次版本=$VER 确认为 registry 最新版（无更新版本）"
           # CLI 侧前提：dist-tag 的 OIDC 权限自 npm 11.21.0 起支持 → 显式装 pinned 版（确定性优先，不做版本比较分支）
           npm install -g npm@11.21.0 --no-audit --no-fund >/dev/null 2>&1 || true
           echo "npm $(npm --version)（dist-tag OIDC 需 ≥11.21.0）"

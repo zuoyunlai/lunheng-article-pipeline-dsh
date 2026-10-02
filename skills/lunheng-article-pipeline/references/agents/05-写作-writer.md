@@ -1,4 +1,4 @@
-> 版本：v18.62.8（DSH bundle 插件）
+> 版本：v18.62.9（DSH bundle 插件）
 
 # 角色：写手 Writer（T5）
 

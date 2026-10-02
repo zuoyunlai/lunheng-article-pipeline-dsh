@@ -190,8 +190,15 @@ test('v18.62.8：publish.yml 的 dist-tag 步 OIDC 优先 / 失败不阻断 / �
   )
   // ② CLI 前提：pinned npm ≥ 11.21.0（Node 24 自带 11.19.0 不满足 OIDC dist-tag）
   assert.match(step, /npm install -g npm@11\.21\.0/, '必须显式装 pinned npm@11.21.0（OIDC dist-tag 的 CLI 前提）')
-  // ③ 不回退：本次版本 ≠ registry 最新版时不动 tag
-  assert.match(step, /"\$VER" != "\$NEWEST"/, '必须有「本次版本 == registry 最新版才前移」的守卫（防补推历史 tag 拉回旧版）')
+  // ③ 不回退：存在**严格更新**的版本时不动 tag（防补推历史 tag 把 dist-tag 拉回旧版）
+  //    ⚠️ v18.62.9 修（**本步首跑实测抓出的自证缺陷**）：判据**不得**用 `npm view "$PKG" version`
+  //    ——它解析的是 `latest` 标签**本身**，于是在「latest 落后」这一**唯一需要它的场景**下拒绝前移
+  //    （首跑实测日志：「本次版本=18.62.8 ｜ registry 最新=18.62.7」→ 守卫 exit 0，latest 没被修）。
+  assert.match(step, /npm view "\$PKG@>\$VER" version/, '「不回退」判据必须是「有无更新版本」的探测（`@>$VER`）')
+  assert.ok(
+    !/npm view "\$PKG" version 2>/.test(step),
+    '判据不得退回 `npm view "$PKG" version`（解析 `latest` 标签 → 自我否定）',
+  )
   // ④ 失败不阻断：无凭据 = warning（发布已成功，tag 前移失败不该判红）
   assert.match(step, /::warning::latest 未自动前移/, 'OIDC 权限未开时必须是 warning（非阻断），并给出闭合路径')
   assert.ok(!/::error::latest 未自动前移/.test(step), '该分支不得用 ::error::（会把发布跑红）')

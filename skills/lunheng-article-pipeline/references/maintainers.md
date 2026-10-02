@@ -1,6 +1,6 @@
 # 维护者手册（maintainers.md）
 
-> 版本：v18.62.8｜**读者**：维护者/主人。**本文件不进任何运行期读清单**（角色/主控不读）；它承接 v18.8.0 文档瘦身从 SKILL.md 迁出的维护者向元信息（rank 考证 / guard 缺口 / 更正史）。改本文件不受「同一事实多处漂移」约束——运行期事实仍以 SKILL.md 为唯一真源，此处是背景与考证。
+> 版本：v18.62.9｜**读者**：维护者/主人。**本文件不进任何运行期读清单**（角色/主控不读）；它承接 v18.8.0 文档瘦身从 SKILL.md 迁出的维护者向元信息（rank 考证 / guard 缺口 / 更正史）。改本文件不受「同一事实多处漂移」约束——运行期事实仍以 SKILL.md 为唯一真源，此处是背景与考证。
 
 ## 一、技能来源 rank 考证（v18.0.0 对齐官方；v18.0.5 修两处官方事实）
 
@@ -51,7 +51,8 @@
   加 tag 会 `E404`。**判据（两行都过再加）**：
   ① `npm view lunheng-article-pipeline@<新版本> version --registry=https://registry.npmjs.org` 有输出；
   ② 同一 registry 下 `dist-tags` 里已出现 `dsh: '<新版本>'`（`dsh` 由 publish 工作流维护，它先到位）。
-  > ⚠️ **不回退（v18.62.8 新增保护）**：工作流只在「本次版本 == registry 最新版」时前移 `latest`——补推历史 tag 的 run 不会把 dist-tag 拉回旧版。
+  > ⚠️ **不回退（v18.62.8 新增保护；v18.62.9 修判据）**：工作流只在 registry 上**不存在严格更新的版本**时才前移 `latest`——补推历史 tag 的 run 不会把 dist-tag 拉回旧版。
+  >   **判据必须是「有无更新版本」的探测**（`npm view <pkg>@><ver> version`），**不是** `npm view <pkg> version`——后者解析的就是 `latest` 标签**本身**，于是在「latest 落后」这一**唯一需要它的场景**下拒绝前移（**v18.62.8 首跑实测抓出的自我否定缺陷**：日志「本次版本=18.62.8 ｜ registry 最新=18.62.7」→ 守卫直接 exit 0，`latest` 没被修）。
   > **核验 tips**：`npm view … dist-tags` **可能读到本机缓存**（v18.62.4 曾如此；**2026-10-02 再实测一次：`npm view` 显示 `latest: 18.62.6`，而注册表与 npmmirror 都是 `18.62.7`**）。
   > 要权威结论就直查注册表 API（或直接跑 `node scripts/dist-tag-check.mjs`）：
   > `Invoke-RestMethod https://registry.npmjs.org/-/package/lunheng-article-pipeline/dist-tags`
