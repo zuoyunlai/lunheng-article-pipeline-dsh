@@ -1,7 +1,7 @@
 ---
 name: "lunheng-commands"
 version: "1.0.3"
-description: "lunheng-commands v1.0.3：论衡 v18.62.4 **内嵌子技能**，提供 11 个 /lunheng 斜杠命令 UX（-draft/-resume/-cite/-audit/-journal/-ppt/-history/-rollback/-status/-stats/-help）。薄壳设计：不引入新角色 / 新阶段 / 新 M 门；所有重活仍走论衡 9 角色流水线。-rollback 需 --confirm 二次确认；-stats 显示 run/ 项目汇总看板（包装论衡 v18.5.0 lunheng-stats.mjs）；**-status --pending = 跨项目「待我决策」聚合收件箱**（v1.0.2）；**v1.0.3 修复 CLI 入口不可用**（-draft 等命令此前在任何真实 `node` 调用下都必然报用法错）。**不适用**：<2000 字短文与即时问答；实时聊天 / 朋友圈 / 邮件。"
+description: "lunheng-commands v1.0.3：论衡 v18.62.5 **内嵌子技能**，提供 11 个 /lunheng 斜杠命令 UX（-draft/-resume/-cite/-audit/-journal/-ppt/-history/-rollback/-status/-stats/-help）。薄壳设计：不引入新角色 / 新阶段 / 新 M 门；所有重活仍走论衡 9 角色流水线。-rollback 需 --confirm 二次确认；-stats 显示 run/ 项目汇总看板（包装论衡 v18.5.0 lunheng-stats.mjs）；**-status --pending = 跨项目「待我决策」聚合收件箱**（v1.0.2）；**v1.0.3 修复 CLI 入口不可用**（-draft 等命令此前在任何真实 `node` 调用下都必然报用法错）。v18.62.5 起：history-cli / pending-cli 的 `--run-dir` 与 `projectId` 入参**统一三层围栏**（词法 → 结构 → 物理 realpath），与 `/lunheng-stats` 同源——与 lib/run-path-fence.mjs 共用实现。**不适用**：<2000 字短文与即时问答；实时聊天 / 朋友圈 / 邮件。"
 whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 description（v18.0.5：官方目录只渲染 name + description，本字段对模型不可见，保留仅供工具链与维护者阅读）。v18.7.1 起：本技能随论衡 bundle 自动安装——`dsh plugin add lunheng-article-pipeline` 即获，无需单独 install。"
 ---
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // pending-cli.mjs — /lunheng -status --pending 薄壳：跨项目「待我决策」聚合收件箱
-// 版本：v1.0.3（论衡 v18.62.4）｜v18.62.0 F4 新增
+// 版本：v1.0.3（论衡 v18.62.5）｜v18.62.0 F4 新增
 //
 // 为什么存在：主人侧三件套（进展-主人版 / 阶段确认单 / 主人投喂清单）全部位于 run/<项目>/，
 //   是**单项目内视角**。主人同时跑 2 个项目时，「现在需要我做什么」分散在两处，无聚合视图。
@@ -22,8 +22,9 @@
 //   ⚠️ 本脚本**不做内容判定**，故不存在 1/2/3——按本仓判据，非判定类脚本的 `1` 一律是撞码。
 
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, resolve, isAbsolute } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { isSafeProjectArg } from '../../../lib/run-path-fence.mjs';
 
 /** 四门固定文件名（真源 = templates/主人确认-template.md 的「命名真源」） */
 export const GATES = ['Phase0', 'Phase2.5', 'Phase3.5', 'Phase5'];
@@ -166,10 +167,28 @@ function main(argv) {
   const args = argv.slice(2);
   const json = args.includes('--json');
   const i = args.indexOf('--run-dir');
-  let runDir = resolve(process.cwd(), 'run');
+  const cwd = process.cwd();
+  let runDir = resolve(cwd, 'run');
   if (i >= 0) {
     if (!args[i + 1]) { console.error('--run-dir 需要一个路径参数'); process.exit(10); }
-    runDir = resolve(args[i + 1]);
+    // v18.62.5 P2-6：三层围栏同源要求值落在 `<cwd>/run` 内（与 lib/commands.js 的 run-dir 收口一致）。
+    //   词法 + 结构层：拒绝绝对路径 / 含 `..` 段 / 多级路径（脚本调用者可能误用绝对路径）；
+    //   物理层由 `existsSync` 兜底；realpath 不在本脚本做（执行时间敏感，避免拖慢）。
+    const raw = String(args[i + 1]).trim();
+    if (isAbsolute(raw)) {
+      console.error(`--run-dir 不接受绝对路径（防止越界读 / 之外的文件）：${raw}——请用相对 <工作目录> 的路径`);
+      process.exit(10);
+    }
+    // 解析到 `<cwd>/run` 之下（与 stats-cli 的 `inside` 同一口径）
+    const cand = resolve(cwd, raw);
+    const baseRun = resolve(cwd, 'run');
+    const norm = (p) => resolve(p).replace(/[\\/]+$/, '').replace(/\//g, '\\').toLowerCase();
+    const a = norm(baseRun), b = norm(cand);
+    if (b !== a && !b.startsWith(a + '\\')) {
+      console.error(`--run-dir 超出 <工作区>/run 范围：${raw}（防止把脚本的读面指向任意目录）`);
+      process.exit(10);
+    }
+    runDir = cand;
   }
   const unknown = args.filter((a, idx) => a.startsWith('--') && a !== '--json' && a !== '--run-dir' && idx !== i + 1);
   if (unknown.length) { console.error(`未知参数：${unknown.join(', ')}`); process.exit(10); }

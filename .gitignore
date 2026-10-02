@@ -7,6 +7,14 @@ npm-debug.log*
 # 本地备份（不提交）
 .dsh/adapt-backup/
 
+# 工具本地态（不提交；v18.62.6 新增）
+#   `.workbuddy/` 是外部 agent 工具的**记忆存储**（实测只有 `memory/YYYY-MM-DD.md`）：
+#   内容是成文当日的观测记录、常含**第三方原文引用**，既非本仓文档、也不随包发布
+#   （不在 `package.json` 的 `files` 白名单）。它已被行号引用门按目录豁免
+#   （`scripts/_lib/lib-line-refs.mjs` 的 HISTORICAL_DOC_PATTERNS），此处再加一道
+#   「防误提交」——否则 `git add -A` 会把它连同明文引文一起提交进仓库。
+.workbuddy/
+
 # 凭据类（防误提交；v2.5.2-dsh.13 新增）
 .env
 .env.*

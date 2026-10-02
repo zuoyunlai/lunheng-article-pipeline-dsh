@@ -30,11 +30,23 @@ export function findLibLineRefs(text) {
   return out
 }
 
-/** 历史留痕文件（记录的是「当时」的状态，不拿今天的代码去核）。 */
+/** 历史留痕文件（记录的是「当时」的状态，不拿今天的代码去核）。
+ *
+ *  v18.62.6 增补 `^\.workbuddy\//`：该目录是**外部 agent 工具的记忆存储**（本仓实测只有
+ *    `.workbuddy/memory/YYYY-MM-DD.md`），其中内容是**成文当日的观测记录**，且常**引用第三方原文**——
+ *    实例：`2026-10-02.md` 引用 GitHub issue 作者的原话 `lib/index.js:329 以 4 参挂载 tools/post-execute…`。
+ *    该引用里的行号是**引文的组成部分**，改它等于篡改引文；而不改则门永远红（与下方 `audits/` 同一两难）。
+ *    另一层理由：该目录**不随包发布**（不在 `package.json` 的 `files` 白名单），也不是本仓文档。
+ *    本模块的职责是「管本仓自己的文档」，故按目录豁免是**收口扫描语义**，不是放宽判据。
+ *
+ *  ⚠️ 该豁免是**两处调用点的单一真源**：`tests/lib-line-refs.test.mjs`（CI 侧）与
+ *    `scripts/repo-hygiene-check.mjs` 规则⑪（仓库门侧）都读本函数。改这里 = 两处同时生效——
+ *    v18.62.6 之前两侧各自实现 `walk()`/`scanSet()` 过滤，导致同一事实两处口径（本批实测踩到）。 */
 export const HISTORICAL_DOC_PATTERNS = [
   /^CHANGELOG\.md$/,
   /^audits\//,
   /^docs\/审计与修订记录\//,
+  /^\.workbuddy\//,
 ]
 
 /** 该路径是否为历史留痕文件。 */

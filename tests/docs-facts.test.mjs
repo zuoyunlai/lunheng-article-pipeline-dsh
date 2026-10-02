@@ -235,6 +235,8 @@ const NUM_WORDS = {
   3: /\b(three|tres|três)\b|三|तीन/i,
   4: /\b(four|cuatro|quatro)\b|四|चार/i,
   5: /\b(five|cinco)\b|五|पाँच|पांच/i,
+  6: /\b(six|seis)\b|六|छह/i,
+  7: /\b(seven|siete|sete)\b|七|सात/i,
 }
 
 /** 在 surface 里找锚点行：`both` 全部命中才算该行（防命中同文件别处的偶发提及）。
@@ -258,7 +260,7 @@ test('C-1 对外声明 ↔ 代码真源：工具/配置/命令/技能 四集合�
 
   // 非空断言：派生退化（正则失配、文件改名）必须**响亮失败**，否则本门会静默变成恒真断言
   assert.equal(tools.length, 4, `应从 lib/tools.js 派生出 4 个工具，实测 ${tools.length}——派生正则可能已与源码脱节`)
-  assert.equal(config.length, 5, `应从 lib/index.js 的 CONFIG_SPEC 派生出 5 个配置键，实测 ${config.length}`)
+  assert.equal(config.length, 7, `应从 lib/index.js 的 CONFIG_SPEC 派生出 7 个配置键（v18.62.5 全量审计-性能与安全 新增 hookRewriteContent / hookMaxBlockChars），实测 ${config.length}`)
   assert.equal(commands.length, 2, `应从 lib/commands.js 派生出 2 条命令，实测 ${commands.length}`)
   assert.equal(skills.length, 2, `应从 skills/*/SKILL.md 派生出 2 个技能，实测 ${skills.length}`)
 

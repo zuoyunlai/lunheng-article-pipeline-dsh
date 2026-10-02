@@ -131,3 +131,53 @@ test('E-15 MODES 受控：非法 mode 回落到 basic 而不是崩溃', () => {
   const r = sanitize('受访者周八说。', { mode: 'bogus', dicts })
   assert.equal(r.mode, 'basic', '非法模式应回落 basic')
 })
+
+// ── E-16 / E-17（v18.62.6）：邮箱正则的二次回退回归网 ─────────────────────────────
+// 为什么需要（独立复测发现，未进任何既有报告）：原写法 `[A-Za-z0-9._%+-]+@…` 在「无 `@` 的长
+//   ASCII 段」上是 **O(n²)**——实测 'A'×10k→41 ms / ×20k→163 ms / ×40k→663 ms / ×80k→2927 ms
+//   （每翻倍 ×4）。真实可达：base64url 49k→996 ms、长十六进制串 44.8k→850 ms、data URI 37.6k→584 ms。
+//   危害面 = 主数据通路（钩子对每个 read/web_*/subagent* 结果同步跑；工具侧无体积上限）。
+//   修法：① `required:'@'` 短路；② 量词按 RFC 5321 §4.5.3.1 限长（local ≤64 / domain ≤255）。
+// 断言选择：**不用绝对耗时**（CI 机器快慢不一，会 flaky），改用**比值判据**——
+//   二次曲线下 2× 输入 → ~4× 耗时；线性下 → ~2×。取 2.5 作分界，留足噪声余量。
+
+/** 跑一次 basic 脱敏并返回耗时（ms）。取三次最小值以平抑 GC / 调度抖动。 */
+function timeOf(text) {
+  let best = Infinity
+  for (let i = 0; i < 3; i++) {
+    const t0 = performance.now()
+    sanitize(text, { mode: 'basic', dicts, maxChars: Number.MAX_SAFE_INTEGER })
+    best = Math.min(best, performance.now() - t0)
+  }
+  return best
+}
+
+test('E-16 邮箱正则不得在「无 @ 的长 ASCII 段」上二次回退（O(n²) 回归网）', () => {
+  const N = 40000
+  const t1 = timeOf('A'.repeat(N))
+  const t2 = timeOf('A'.repeat(N * 2))
+  // 基线保护：若单次已 >2 s，无论比值如何都不可能是线性实现（原实现在 80k 时已达 ~2.9 s）
+  assert.ok(t1 < 2000, `40k 无 @ ASCII 段耗时 ${t1.toFixed(0)} ms——疑似二次回退复活（原实现 ~663 ms，线性实现 ~0 ms）`)
+  const ratio = t2 / Math.max(t1, 0.5)   // 分母设下限，避免「0 ms / 0 ms」除零后比值无意义
+  assert.ok(
+    ratio < 2.5,
+    `2× 输入耗时比 ${ratio.toFixed(2)}（${t1.toFixed(1)} → ${t2.toFixed(1)} ms）≥ 2.5，符合二次曲线而非线性——` +
+      '邮箱正则的限长/短路可能被回退掉了（真源 = lib/ethics-sanitize.js 的 HARD_PATTERNS.email）',
+  )
+})
+
+test('E-17 邮箱限长后仍必须识别合法地址（收紧不得变成漏报）', () => {
+  const cases = [
+    'foo@bar.com',
+    'first.last+tag@sub.example.co.uk',
+    'a_b%c-d@example.org',
+    'x'.repeat(64) + '@example.com',            // local-part 恰好 64（RFC 上限，必须仍命中）
+  ]
+  for (const s of cases) {
+    assert.ok(sanitize(s, { mode: 'basic', dicts }).counts.email >= 1, `合法邮箱被漏报：${s}`)
+  }
+  // 多邮箱同现
+  const multi = sanitize('联系 zhangsan@company.cn 或 lisi@mail.com', { mode: 'basic', dicts })
+  assert.equal(multi.counts.email, 2, '同段多邮箱必须逐个命中')
+})
+

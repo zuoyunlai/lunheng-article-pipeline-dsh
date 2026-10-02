@@ -2,6 +2,66 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.62.6 — 2026-10-02
+
+> **性质**：**架构评审（`audits/架构优化评审-2026-10-02.md`）落地批之一**——只做该报告「低成本高收益」的下半段，**刻意不做**报告建议的入口解耦 / 编排状态契约 / 退出码信封 / guard 路径中心化（理由见下「本版未做」）。
+> **为什么抬补丁版本**：核心是**修一条活跃的运行期性能缺陷**（邮箱正则 O(n²)，实测 262 KB 输入最坏 ~28 s 同步阻塞）+ **修一处版本自证串的漂移**；并新增 2 条回归门 + 1 条契约门。
+>
+> **本版交付**：
+> ① **P0（活跃缺陷）：`lib/ethics-sanitize.js` 邮箱正则的二次回退**。原写法 `[A-Za-z0-9._%+-]+@…` 在「无 `@` 的长 ASCII 段」上是 **O(n²)**——实测 `'A'×10k→41 ms / ×20k→163 ms / ×40k→663 ms / ×80k→2 927 ms`（每翻倍 ×4）。**真实可达形态**（非构造）：base64url 49.2k→996 ms、长十六进制串 44.8k→850 ms、Markdown 内嵌 data URI 37.6k→584 ms；对照纯中文 10 万字符仅 5 ms。**危害面 = 主数据通路**：H2 钩子对每个 `read`/`web_*`/`subagent*` 结果同步跑，`lunheng_ethics_sanitize` 工具侧更是 `maxChars: MAX_SAFE_INTEGER` 无上限（1 MB 含 base64 → 约 7 分钟）。**修法两层**：`required:'@'` 短路（正文无 `@` 时整条跳过，邮箱必含 `@`）+ 量词按 **RFC 5321 §4.5.3.1** 限长（local ≤64 / domain ≤255）——后者**比原写法更正确**（原写法接受长度非法的"邮箱"）。**修后实测**：262 144 字符 → **0 ms**；三种真实致病形态 → 0–2 ms。
+>   > **如实登记（本仓自责）**：该缺陷是 v18.62.5 那一轮**已实测到**的——当时把测试填充字符从 `'A'.repeat(150000)` 换成中文以绕开它，并在测试注释里写下「为规避…邮箱正则的回退爆炸（实测 ~10s）」，但**既未修也未上报**。这正是本仓明令禁止的「静默降级」形态，性质与 v18.62.4 报告批评的 P0-1 相同。本版补修并补门。
+> ② **版本自证串的漂移（`lib/index.js` H4 尾注）**：v18.62.4 的「尾注版本号不再硬编码」**只改了一半**——正文换成 `${pkgVersion}`，标题 `## 论衡·按需追加（v18.62.5）` 仍是**字面量**，于是 v18.62.5 bump 时它照旧漂移。根因有二：`bump-version.mjs` 的 12 条形态表不含该形态；`lib/**` 不在任何版本门扫描面内。**现标题也走 `${pkgVersion}`**——该串内不再有任何版本字面量，结构上不可能再漂。
+> ③ **新增门 ①（行为级）：`tests/h3-h4-h7-listeners.test.mjs` 的 H4 版本自证用例**——驱动 `system-prompt/assemble` 钩子，断言**运行时实际渲染出的尾注文本**里出现的**所有** `vX.Y.Z` 都等于当前包版本。判据只看渲染结果（注释/历史注记天然不参与），故零假阳性；**反向自证已做**（把标题改回字面量 → 立刻红并点名 `18.62.4（当前 = 18.62.5）`）。
+> ④ **新增门 ②（回归网）：`tests/ethics-sanitize.test.mjs` 的 E-16 / E-17**——E-16 用**比值判据**守 O(n²)（2× 输入耗时比须 < 2.5；二次曲线下约 4×，线性下约 2×），刻意**不用绝对耗时**以免 CI 机器差异造成 flaky；E-17 守「限长后不得漏报」（含 local-part 恰好 64 的 RFC 边界与同段多邮箱）。**反向自证已做**（旧正则 → E-16 红，E-17 仍绿——证明两者各守一面）。
+> ⑤ **行号引用门（规则⑪）的豁免收口到单一真源**：`.workbuddy/memory/2026-10-02.md` 被门扫到，其中一行是**第三方 GitHub issue 原文的引用**（`lib/index.js:329 以 4 参挂载…`，issue 作者原话）。该目录是**外部 agent 工具的记忆存储**（dated 观测记录，含引文），**不随包发布**（不在 `files` 白名单）、也非本仓文档；而引用里的行号是**引文的组成部分，改它等于篡改引文**（与 `audits/` 同一两难）。**修法**：在共享模块 `scripts/_lib/lib-line-refs.mjs` 的 `HISTORICAL_DOC_PATTERNS` 增补 `^\.workbuddy\//`。**为什么修在这里**：该函数是**两个调用点的单一真源**（CI 侧 `tests/lib-line-refs.test.mjs` + 仓库门侧 `repo-hygiene-check.mjs` 规则⑪）——v18.62.6 之前两侧**各自实现过滤**（`walk()` vs `scanSet()`），本批实测到「同族两处口径」（正是评审报告 P1-5「应共用同一事实派生函数」指出的形态）。**不是放宽判据**：本仓文档（README / SECURITY / docs / references / CHANGELOG）一处未少扫。**反向自证已做（两侧各一次）**：往 `SECURITY.md` 注入 `lib/index.js:57` → 测试侧与仓库门侧**均**精确点名变红。
+>
+> **本版未做（如实登记 + 理由）**：报告的执行序里下列各项**本版刻意不做**，理由是「结构债 vs 活跃缺陷」的定级判断（详见评审意见）：
+> - **P0-1 的 A/B（入口解耦 / 钩子模块化）与 P1-2 的声明式钩子注册表** —— **推迟**。钩子经 v18.62.2/v18.62.5 两轮修复后已正确且有 8 条测试盯着；移动监听器会触发**真实红灯**（`host-contract.test.mjs` 三处硬断言 `regs.length === 3`，且解析正则只认 `lib/index.js`）；且**没有 forcing function**。判据：等下一次必须改 H2/H4/H7 行为时再顺手模块化。
+> - **P0-3 的 `run-state.json` 编排状态契约** —— **不做**。它会在「漂移最危险」的编排层引入**第二个真源**，等于把 P0-2 诊断出的病复制过去；而本插件实际使用面是 1 主人 × 少量项目，第一失败模式是「模型没把文档读全」，JSON 状态文件治不了。报告自己的风险栏已提示此点。（其「编排不变量门」半段是小而安全的，留待后续。）
+> - **P1-1 的 guard「路径中心化」** —— **不做**。v18.62.5 已实测过半步：加「顶层 + 绝对路径 + 键名非内容类」兜底后**立刻被迫引入 30 键的 `CONTENT_KEYS` 排除表**才能不误伤，这本身是「路径中心判定注定要输」的实证；且会扩大对**主人自己**写机制文件的误拦面。（其「路径归一化合并为单模块」纯重构半段是好的，留待后续。）
+> - **P1-3 退出码 `kind/verdict` 信封** —— **不做**（报告自评风险「高」；触及全部 38 个脚本与消费方，对单用户工具收益 << 风险）。
+> - **P1-5 批次测试重组 / P2-2 CHANGELOG 归档拆分** —— **不做**（前者纯 churn；后者 `CHANGELOG.md` 不随包且已有棘轮讨论）。
+>
+> **本版附带修掉一处长期假阳性**：规则 ⑩b（脚本计数全库对账）原先只按**命名枚举**豁免审计快照（`audits/反哺报告-` / `audits/*审计报告`），故每出现一种新报告命名就复发一次——本批已是第三次（`架构优化评审-2026-10-02.md` 的「根 `tests/` **64** 个」与「仓库 **10** 个脚本」被误判为脚本计数漂移，而它们记的是**测试数**与**仓库根脚本数**）。**现改为 `^audits\//` 整目录豁免**，与兄弟规则 `lib-line-refs.mjs` 早已采用的 `HISTORICAL_DOC_PATTERNS = [^audits\//]` 口径统一；该目录在本仓被明定为「自由格式审查报告目录」，其中内容全是 dated 快照。**不是放宽判据**：权威现行计数只住 `SKILL.md` 白名单行（规则 ⑩ 双向核验未动）。**反向自证已做**（往 `SECURITY.md` 注入「随包脚本 99 个脚本」→ 仍精确点名 `SECURITY.md:4` 抓红）。`audits/架构优化评审-2026-10-02.md` 本身**一字未改**（快照不得回溯改写）。
+>
+> **验证**：全量 `node --test` **647/647 全绿**（v18.62.5 的 644 + 3：E-16 / E-17 / H4 版本自证）；`consistency-check.mjs` **0 处漂移**（80 个 .md + patch/examples/.dsh；**连续两版的 2 条假阳性 P1 已随 ⑩b 口径统一一并清除**）；语法门全过。
+> **依据**：`audits/架构优化评审-2026-10-02.md`（事实核查：13 项断言 12 项属实）+ 本批独立复测（邮箱正则 O(n²)，**该缺陷未进任何既有报告**）。
+> **回滚点**：v18.62.5 段头。
+
+## 18.62.5 — 2026-10-02
+
+> **性质**：**性能与安全全量审计-落地批**（依据 `audits/代码审查报告-2026-10-02-性能与安全.md` §修复优先级建议 + 主人显式指令「依次全部修订」；机制文件写保护的授权例外条款）。
+> **为什么抬补丁版本**：核心是**修复 9 项 P0–P2 安全/性能缺陷**——其中 2 项 P0（**数据静默丢失** 与 **工具结果被静默改写**）属「每次工具调用都受影响」的运行期高危形态；新增 2 项 opt-in 配置（`hookRewriteContent` / `hookMaxBlockChars`）会**改变消费方预期的语义**，故必须显式发版留痕。
+>
+> **⚠️ 未单独发布（v18.62.6 发版时如实登记）**：本段（18.62.5）**从未单独提交或打 tag**——其全部改动与 18.62.6 同处一个工作区，最终**随 18.62.6 首发**（与 `## 17.0.0`「从未推到 npm/GitHub，内容随 18.0.0 首发」同一处理）。故 npm 上**不存在** `18.62.5` 这一个版本；安装 pin 请写 `@18.62.6`。本段保留为**变更记录**（它精确描述了 18.62.6 相对 18.62.4 的第一批改动）。
+>
+> **§语义变更（消费方须知）**：
+> ① H2 伦理脱敏监听器**默认改写 `result.content` → 默认只标记不改写**（与 v18.62.4 及更早版本行为不一致——下游若依赖「默认就把读到的内容脱敏」，需显式设 `Config.hookRewriteContent: true`）；`result.ethicsSanitized.rewriteApplied` 字段如实声明本次是否改写。
+> ② H2 监听器对单 text 块 > `Config.hookMaxBlockChars`（默认 **262144** = 256 KB）的输入**跳过脱敏**，仅注入 `too-large-for-hook` 标记到 `reviewFlags`——避免在不可控体积上同步占用「原文 + 脱敏副本」两份内存。
+> ③ `Config` 现共 **7 个键**（前 6 + `hookRewriteContent` + `hookMaxBlockChars`）；`docs-facts.test.mjs` 的 `NUM_WORDS` 同步扩到 7。
+> ④ `/lunheng-stats` 与 `history-cli` / `pending-cli` 三个入口的 `run/` 路径围栏**统一为同一套三层收口**（词法 → 结构 → 物理 realpath），实现在 `lib/run-path-fence.mjs`——任何入口的 `--run-dir` / `projectId` 都不得越出 `<工作区>/run`。
+>
+> **本版交付**：
+> ① **P0-1**（静默数据丢失）`lib/index.js` H2 钩子默认传 `maxChars: Number.MAX_SAFE_INTEGER` + 完整上传 `truncated` 字段到 `result.ethicsSanitized`——钩子的职责是「脱敏」不是「限流」，限流应由宿主/工具侧负责。**新增回归** `tests/h2-h5-listeners.test.mjs` 的 150 000 字符 read 用例（v18.62.4 报告 §P2-4 推荐）。
+> ② **P0-2**（默认「只标记不改写」）H2 钩子默认行为改为「命中项只注入 `reviewFlags` + `ethicsSanitized` 元数据」，**不动 `result.content`**；改写 `result.content` 改为**显式 opt-in**（`Config.hookRewriteContent: true`，默认 `false`）。`SECURITY.md` 第 25 行同步声明默认行为。`docs/` / `README*.md` 五语种同步把「`/lunheng-stats` 白名单」描述从「仅 `--json`」扩为「`--json` + 受围栏的 `--run-dir`」（与 v18.62.4 实现一致）。
+> ③ **P1-1**（守卫三类绕过防御性收紧）`lib/guard.js` 的 `WRITE_TOOLS` 扩 6 个（`write_file`/`create_file`/`notebook_edit`/`fs_write`/`file_write`/`save_file`）；`PATH_KEYS` 扩 14 个（`targetPath`/`pathToFile`/`absolute_path`/`destination`/`dest`/…/`filepath`）；数字键位参 + 绝对路径值兜底纳入；新增 `CONTENT_KEYS` 白名单显式排除 `content`/`text`/`old_string`/`new_string`/`url`/`source` 等常见内容键防止误判；写工具命中但**收不到任何候选路径**时降噪 warn（仅当参数含**非内容类键**——`{content,mode}` 不报警）。
+> ④ **P1-2**（守卫 catch fail-open 静默）`lib/guard.js` 的 catch 分支调用 `report?.('warn', …)` 留痕——保留 fail-open 但「降级必须可观察」。
+> ⑤ **P2-1**（执行链分片解码损坏汉字）`lib/tools.js` 的 `runScript` 加 `child.stdout.setEncoding('utf8')` / `stderr.setEncoding('utf8')`——用 `StringDecoder` 跨分片拼接，原写法的 `String(d)` 在 64 KB 边界切碎多字节字符（实测 36 000 字中文出 3 个 `U+FFFD`）。
+> ⑥ **P2-2**（大文本脱敏无上限同步阻塞）新增 `Config.hookMaxBlockChars`（默认 262144 = 256 KB）；H2 钩子单 text 块超限时跳过改写，仅注入 `too-large-for-hook` 标记。
+> ⑦ **P2-3**（`ethicsSanitized.summary` 取最后一个块）H2 钩子在 `map` 外维护 `aggCounts` / `aggReplacements` 累加器，`counts` / `replacements` / `distinctPersonBlocks` 全文聚合，`truncated` 完整上传。
+> ⑧ **P2-4**（行为级回归）`tests/h2-h5-listeners.test.mjs` 新增 150 000 字符读结果回归 + `hookMaxBlockChars` 跳过改写两条用例。
+> ⑨ **P2-5**（SECURITY.md 漂移）`SECURITY.md` 第 24/25 行同步：`/lunheng-stats` 白名单扩面 + H2 行声明默认「只标记不改写」+ opt-in 行为；`Config` 键清单从 5 → 7 同步（README 五语种 + docs-facts.test NUM_WORDS）。
+> ⑩ **P2-6**（同族路径围栏不一致）抽出 `lib/run-path-fence.mjs`（`isSafeProjectArg` + `isDirectChildOf` + `resolveProjectDir` 三层收口）——`lib/commands.js` 的 `pickProject` / `history-cli.mjs` 的 `readHistory` / `diffProjects` / `pending-cli.mjs` 的 `--run-dir` 全部统一引用同源实现，防止「同族收紧 ≠ 一致」缺陷复发。
+>
+> **配套**：README 五语种同步新增 `hookRewriteContent` / `hookMaxBlockChars` 两键描述；`docs-facts.test.mjs` 的 `NUM_WORDS` 加 `seven|siete|sete|七|सात`；`tests/h2-h5-listeners.test.mjs` 总数 6 → 8（新增默认 mark-only / opt-in rewrite / 150k / 体积上限 4 条）；v18.62.4 全量审计 `docs-facts` 配置键断言 5 → 6 → 7 同步。
+>
+> **验证**：全量 `node --test` **644/644 全绿**（= 根 `tests/` 608 + `skills/*/tests/` 36；v18.62.4 的 641 累计 +3：H2 opt-in / 150k / 体积上限）；`consistency-check.mjs` 80 个 .md + cordis.patch.yml/examples/.dsh **0 漂移**；静态门、镜像同步均按既定流程通过。
+>
+> **已知未消 P1（如实登记）**：`consistency-check` 规则 ⑩b 把 `audits/架构优化评审-2026-10-02.md:25` 的「根 `tests/` 64 个 `*.test.mjs`」与 `:177` 的「仓库 10 个脚本」误识为「脚本计数漂移」（其实该报告记的是测试数与仓库根脚本数，不是技能内随包脚本数）——是 `consistency-check` 规则 ⑩b 的判据过宽问题，**非本批引入**（v18.62.4 时同文件已存在）。本批未顺手修，留待下一轮与 `repo-hygiene-check` 一并讨论判据细化。
+>
+> **依据**：`audits/代码审查报告-2026-10-02-性能与安全.md`（P0-1 / P0-2 / P1-1 / P1-2 / P2-1 / P2-2 / P2-3 / P2-4 / P2-5 / P2-6 共 9 项 P0–P2）。
+> **回滚点**：v18.62.4 = 上一版 `CHANGELOG.md` 段头。
+
 ## 18.62.4 — 2026-10-01
 
 > **性质**：**第三方全量审计（v18.62.3）落地批**（依据 `audits/全量审计报告-v18.62.3.md` §6 修复优先级表；主人显式指令「依次全部修订」；机制文件写保护的授权例外条款）。

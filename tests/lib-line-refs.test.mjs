@@ -32,7 +32,7 @@ test('**不命中**：上游包路径 / 非本仓 lib / 非 .js / 无行号', ()
 })
 
 test('历史留痕豁免**按目录声明**（不是「凡引用都放过」）', () => {
-  for (const p of ['CHANGELOG.md', 'audits/反哺报告-v1.md', 'docs/审计与修订记录/论衡插件-修订记录-v18.2.7.md']) {
+  for (const p of ['CHANGELOG.md', 'audits/反哺报告-v1.md', 'docs/审计与修订记录/论衡插件-修订记录-v18.2.7.md', '.workbuddy/memory/2026-10-02.md']) {
     assert.ok(isHistoricalDoc(p), `${p} 应判为历史留痕`)
   }
   for (const p of ['SECURITY.md', 'README.md', 'docs/usage.md', 'docs/troubleshooting.md', 'skills/lunheng-article-pipeline/references/glossary.md']) {
@@ -53,6 +53,9 @@ test('真实树：当前文档零裸行号引用，且历史留痕确实含引�
   const docs = walk(ROOT)
   assert.ok(docs.length > 50, `扫到的文档过少（实测 ${docs.length}）——扫描退化会让本断言恒真`)
 
+  // v18.62.6：**扫描面仍是全树**（不在此处额外排除任何目录）——豁免的单一真源是
+  //   `scripts/_lib/lib-line-refs.mjs` 的 `HISTORICAL_DOC_PATTERNS`，仓库门
+  //   （`repo-hygiene-check.mjs` 规则⑪）读的是同一个函数。此前两侧各自过滤 → 同一事实两处口径。
   const currentHits = []
   let historicalWithRefs = 0
   for (const p of docs) {

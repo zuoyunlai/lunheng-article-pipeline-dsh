@@ -10,6 +10,7 @@
 //   截断；修复后 3 参 `(assembly, context, next)`，`await next()` 拿到装配结果再向 sections 追加论衡段。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 
@@ -104,6 +105,37 @@ test('H4 system-prompt 钩子：await next() 后向 sections 追加论衡段，�
   assert.ok(result.sections[1].text.includes('lunheng-article-pipeline'), '追加段应包含论衡技能提示')
   // 下游写入的其它字段（如 variables 里的模型选择）必须保留
   assert.deepEqual(result.variables, assembly.variables, '下游写入的 variables（模型选择）必须原样保留')
+})
+
+test('H4 版本自证：尾注里出现的版本号必须**只有**当前包版本（不得留任何字面量）', async () => {
+  // 为什么需要（v18.62.6）：这段尾注**每个会话都进模型上下文**，是「装错了要看得见」的唯一载体。
+  //   历史两次踩到：① v18.61.0 时整串硬编码 `v18.61.0` 而包已到 v18.62.x（v18.62.4 修）；
+  //   ② **v18.62.4 那次只改了一半**——正文换成 `${pkgVersion}`，标题 `## 论衡·按需追加（v18.62.5）`
+  //   仍是字面量，于是 v18.62.5 bump 时标题照旧漂移，且 `lib/**` 不在任何版本门扫描面内 → 无人发现。
+  // 断言口径：**只看运行时渲染出的字符串**（注释/历史注记天然不参与），因此零假阳性。
+  const { ctx, listeners } = makeCordaxLikeCtx()
+  const mod = await import(pathToFileURL(INDEX_MOD).href)
+  mod.apply(ctx, {})
+  await new Promise((r) => setTimeout(r, 50))
+
+  const pkgVersion = JSON.parse(readFileSync(join(PACKAGE_ROOT, 'package.json'), 'utf8')).version
+
+  const handlers = listeners['system-prompt/assemble'] || []
+  const assembly = { sections: [], contexts: [], tools: [], variables: {} }
+  const result = await handlers[0](assembly, { agent: {} }, async () => assembly)
+
+  const text = result.sections.map((s) => s.text).join('\n')
+  assert.ok(text.includes(`v${pkgVersion}`), `尾注应带当前包版本 v${pkgVersion}`)
+
+  // 尾注里**所有** `vX.Y.Z` 形态都必须等于当前版本——派生一旦被改回字面量，这条立刻红。
+  const found = [...new Set([...text.matchAll(/v(\d{1,3}\.\d{1,3}\.\d{1,3})/g)].map((m) => m[1]))]
+  const stale = found.filter((v) => v !== pkgVersion)
+  assert.deepEqual(
+    stale,
+    [],
+    `尾注含非当前版本号 ${stale.join(', ')}（当前 = ${pkgVersion}）——` +
+      '该串每会话进模型上下文，旧版本号会直接抵消版本自证行；真源 = lib/index.js 的 LUNHENG_PROMPT_TAIL（应全部走 ${pkgVersion} 派生）',
+  )
 })
 
 test('H4 system-prompt 钩子：next() 返回无 sections 的对象也安全追加', async () => {

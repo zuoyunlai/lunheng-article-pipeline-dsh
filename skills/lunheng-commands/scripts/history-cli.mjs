@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // history-cli.mjs — 读 run/<id>/history.jsonl + 输出 --diff
-// 版本：v1.0.3（论衡 v18.62.4）
+// 版本：v1.0.3（论衡 v18.62.5）｜v18.62.5 P2-6 引入 run-path-fence 三层收口
 
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { resolveProjectDir } from '../../../lib/run-path-fence.mjs';
 
 /**
  * run/ 目录路径解析
@@ -45,7 +46,12 @@ export function listProjects() {
  */
 export function readHistory(projectId) {
   if (!projectId) return { error: '缺 projectId 参数。示例：-lunheng -history read <projectId>' };
-  const historyPath = join(RUN_DIR, projectId, 'history.jsonl');
+  // v18.62.5 P2-6：三层围栏（词法 → 结构 → 物理 realpath）——与 lib/commands.js 的 pickProject 同源
+  const projectDir = resolveProjectDir(RUN_DIR, projectId)
+  if (!projectDir) {
+    return { error: `非法的 projectId「${projectId}」：必须是 run/ 下的直接子目录名（不允许 ../ / 绝对路径 / 多级路径）。` };
+  }
+  const historyPath = join(projectDir, 'history.jsonl');
   if (!existsSync(historyPath)) {
     return { error: `history.jsonl 不存在：${historyPath}。该项目可能未启用 history.jsonl 写入（v18.7.0 落地后由论衡主控在状态变更时自动写入）。` };
   }
@@ -70,10 +76,12 @@ export function readHistory(projectId) {
  */
 export function diffProjects(id1, id2) {
   if (!id1 || !id2) return { error: '需两个项目 ID。示例：-lunheng -history diff <id1> <id2>' };
-  const dir1 = join(RUN_DIR, id1);
-  const dir2 = join(RUN_DIR, id2);
-  if (!existsSync(dir1) || !existsSync(dir2)) {
-    return { error: `项目目录不存在：${!existsSync(dir1) ? dir1 : dir2}` };
+  // v18.62.5 P2-6：三层围栏同源
+  const dir1 = resolveProjectDir(RUN_DIR, id1);
+  const dir2 = resolveProjectDir(RUN_DIR, id2);
+  if (!dir1 || !dir2) {
+    const bad = !dir1 ? id1 : id2
+    return { error: `非法的 projectId「${bad}」：必须是 run/ 下的直接子目录名（不允许 ../ / 绝对路径 / 多级路径）。` };
   }
   // 简化实现：列出每个项目的关键文件大小
   const files1 = ['01-任务简报.md', 'status.md', 'final/定稿.md'];
