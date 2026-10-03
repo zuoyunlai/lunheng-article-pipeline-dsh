@@ -217,10 +217,10 @@ v4 把 v3 留待 review 的 7 项里能落地的 3 项 + 1 项 H6 实证落地�
 
 ## 派发话术与审计必查项（按需加载）
 
-**派发话术**：T1/T2/T3/T4/T5/T6/T7/T9 + G14 完整派发模板见 [`references/pipeline-readme.md#派发话术`](references/pipeline-readme.md)（T8 终检由主控亲执行、不 spawn）；**主控 spawn 前必读**，勿凭记忆复制。
+**派发话术**：**开工卡优先**——主控 spawn 前按 [`references/dispatch-cards.md`](references/dispatch-cards.md) 对应角色卡（≤12 行最小模板，含「读」清单与格式样例指针）发起；卡覆盖不到的长话术见 [`references/pipeline-readme.md#派发话术`](references/pipeline-readme.md)（T8 终检主控亲执行、不 spawn）。**卡优先、话术兜底**。
 **审计必查项**：G0-G14（**15 主项 + 3 子项 = G0.5 / G2.5 / G4-2**，与 `m-gate-check.mjs` 的 M-Exist-9 同口径）+ M 门 + 实战子项见 [`references/_shared/audit-checklist-quickref.md`](references/_shared/audit-checklist-quickref.md)；审计卡主体见 [`references/agents/07-审计-auditor.md`](references/agents/07-审计-auditor.md)（SKILL 不重复维护）。
 
-**派发话术锚点速查**（读 pipeline-readme.md 后定位）：T1 →「### 文献检索员（并行①，T1）」；T2 →「### 数据检索员（并行②，T2）」；T3 →「### 案例检索员（并行③，T3…）」；T4 →「### 分析员（T4…）」；T5 →「### 写手（T5…）」；T6 →「### 批判伙伴（T6…）」；T7 →「### 审计员（T7…）」；T9 →「### 同行评审（T9…）」；G14 →「### G14 中文 AI 痕迹检测器」。
+**派发话术锚点速查**（读 pipeline-readme.md 后定位）：T1 →「### 文献检索员（并行①，T1）」；T2 →「### 数据检索员（并行②，T2）」；T3 →「### 案例检索员（并行③，T3…）」；**T3.5 →「### 文献补标注检索员（T3.5…）」（可选，仅简报勾选时派发，开工卡见 dispatch-cards.md）**；T4 →「### 分析员（T4…）」；T5 →「### 写手（T5…）」；T6 →「### 批判伙伴（T6…）」；T7 →「### 审计员（T7…）」；T9 →「### 同行评审（T9…）」；G14 →「### G14 中文 AI 痕迹检测器」。
 
 **审计锚点速查**：G0-G14 速查表 → `references/_shared/audit-checklist-quickref.md`｜G6/G7/G13 → `references/agents/07-审计-auditor.md`｜G11/G12 → `references/_shared/M-Gate-Algorithm.md`｜G14 → `references/gates/14-中文AI痕迹-gate.md`｜M-Form/M-Exist/M-Integrity → `references/_shared/M-Gate-Algorithm.md`。
 

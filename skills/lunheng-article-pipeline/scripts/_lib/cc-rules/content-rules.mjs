@@ -382,6 +382,27 @@ for (const f of active) {
     } else if (new Set(present).size > 1) {
       errors.push(`[P1 子技能版本漂移] lunheng-commands 三件套版本不一致：SKILL.md=${sv} / README.md=${rv} / package.json=${pv}`);
     }
+    // ㉖ 扩面（v18.67.0 全量审计-v18.66.0 批 2 P1 修复）：**引擎版本锚定**对账。
+    //   盲区：上面三项只对账子技能自己的 1.0.x，**它引用的引擎（论衡主包）版本无人管**——
+    //   实测 v18.66.0 时子技能仍写「论衡 v18.62.5 **内嵌子技能**」（漂 4 个 minor），且同一文件
+    //   另一行又写「引擎版本引用由 v18.62.0 更正为 v18.62.4」→ **文件内自相矛盾**。
+    //   判据（刻意收窄到指令性锚点，避免误伤历史留痕）：SKILL.md 描述里的
+    //   `论衡 vX.Y.Z **内嵌子技能**` 这一**声明式锚点**必须等于主包 package.json 的 version。
+    //   历史沿革句（如「v1.0.3 当时锚定 v18.62.4」）不受本判据约束。
+    try {
+      const mainVer = JSON.parse(readFileSync(join(REPO_ROOT, 'package.json'), 'utf8')).version;
+      const sub = readFileSync(join(cmdDir, 'SKILL.md'), 'utf8');
+      const anchor = /论衡 v(\d+\.\d+\.\d+) \*\*内嵌子技能\*\*/.exec(sub);
+      if (!anchor) {
+        errors.push(`[P1 子技能引擎锚点缺失] skills/lunheng-commands/SKILL.md 的 description 必须含声明式锚点「论衡 v${mainVer} **内嵌子技能**」——缺失即无从对账`);
+      } else if (anchor[1] !== mainVer) {
+        errors.push(`[P1 子技能引擎锚点漂移] 子技能 SKILL.md 锚定引擎 v${anchor[1]}，而主包版本为 v${mainVer}——引擎版本引用须与主包同批同步（v18.67.0 起纳入规则 ㉖）`);
+      }
+      const anchorLine = /引擎版本引用当前锚定 \*\*v(\d+\.\d+\.\d+)\*\*/.exec(sub);
+      if (anchorLine && anchorLine[1] !== mainVer) {
+        errors.push(`[P1 子技能引擎锚点漂移] 子技能 SKILL.md 的「引擎版本引用当前锚定」写 v${anchorLine[1]}，主包为 v${mainVer}`);
+      }
+    } catch { /* package.json 不可读时由规则① 报错，此处不重复 */ }
   }
 }
 

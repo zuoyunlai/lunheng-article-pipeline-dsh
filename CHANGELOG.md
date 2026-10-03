@@ -14,6 +14,17 @@
 - **P1 修复（m-gate-check.mjs）**：`--adjudicate` 的 `true_p0/true_p1` 增加非负整数校验。旧版 `Number("2条")=NaN` 使 adjExit 静默按 0 计，机械值恰为 0 时绕过证伪四件套，NaN 落盘变 null。现 exit 30 拒绝。
 - **测试**：新增 `tests/batch18-audit-v18-66-fixes.test.mjs`（B18-①②③）+ `tests/cite-format.test.mjs` ⑨⑩ 两钉；全量 719/719 全绿。
 
+### 批 2（声明 = 实现收口，同版）
+
+- **`dispatch-cards.md` T5 卡**：删掉写死的「3500-4500 字」，改为「按任务简报篇幅档 + 大纲 §11 预算执行」（档值单一真源 = SKILL.md 四档分层）。旧值与四档分层冲突，≥5000 字项目照卡派发会拿到错误字数预期（审计 P1-1）。
+- **子技能引擎版本锚定纳入机检**：规则 ㉖ 扩面——`skills/lunheng-commands/SKILL.md` 的声明式锚点「论衡 vX.Y.Z **内嵌子技能**」必须等于主包 `package.json` 版本；同文件「引擎版本引用当前锚定」行亦对账。实测该规则**能抓到**漂移（变异验证：改回 v18.62.5 即报 P1）。同步修正 SKILL.md description/版本头（v18.62.5 → v18.67.0）、README、`command-routing.md`、`route-command.mjs`/`stats-cli.mjs`/`history-cli.mjs` 头注释。
+- **路径围栏真源化**：新增 `lib/run-path-fence.mjs#isPathInsideRunDir`（三层：词法 → 结构 → 物理 realpath，两侧同入 realpath 空间），`lib/commands.js` 与 `skills/lunheng-commands/scripts/pending-cli.mjs` 均改调它——pending-cli 原先「realpath 不在本脚本做」的手写两层归一 + 死导入 `isSafeProjectArg` 一并清除（审计 S-2/S-3）。
+- **`isDirectChildOf` 误杀修复**：`rel.startsWith('..')` → `rel === '..' || rel.startsWith('..' + sep)`，字面名以 `..` 开头的合法直接子目录（`run/..backup`）不再被误拒。
+- **SKILL.md 接入开工卡层**：派发话术改为「**开工卡优先**（dispatch-cards.md，≤12 行最小模板）→ pipeline-readme 长话术兜底」（审计 P2-3：主控按 SKILL 原先会走长话术路径）。
+- **T3.5 补开工卡**：`dispatch-cards.md` 新增 T3.5 卡（可选角色此前有派发话术却无卡，启用后主控找不到入口）+ SKILL.md 派发锚点速查补 T3.5；`dispatch-cards.md` 版本头「dsh.10+」收敛为 v18.67.0（审计 P2-6、P2-1）。
+- **`外部检索源接入面.md` 同文件新旧口径统一**：§2.1 AI4Scholar 表「默认层/备用层」→ **B 档叠加**（须先过 §0 工具面存在性）；§2.2 firecrawl/tavily/exa「默认层」→ **A 档内首选引擎**（A 档不可用降 D 档）；§2.3 consensus 行「`web_search` 引擎位」→ **`advanced_search` 引擎位**（与 §2.2 v18.62.7 更正自洽，审计 P2-4/P2-5）。
+- **测试**：`tests/commands.test.mjs` 新增两条（junction 越界必须被物理层拒绝；`..backup` 不得误杀）；全量 **721/721 全绿**。
+
 ## 18.66.0 — 2026-10-03
 
 > **性质**：**新能力**——参考文献格式的**正向生成**（GB/T 7714-2015 ⇄ APA 7th）。主人 2026-10-03 指令：『C2/D1 之后，问「能否支持 APA/GB-T/IEEE 自动转换」→ 选「A 档但先只做 GB/T ↔ APA，IEEE 暂缓」』。

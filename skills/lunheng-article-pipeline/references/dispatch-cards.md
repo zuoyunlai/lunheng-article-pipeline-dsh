@@ -2,7 +2,7 @@
 
 > **历史叙事已外移**：正文只留现行规则；历史成因 / 逐版明细 / 教训编号见 CHANGELOG.md 对应版本段与 `memory/lessons.md`。
 
-> 用途：主控 spawn 子代理时的**最小 prompt 模板**（配合读取纪律，禁长篇复制）。每卡 ≤12 行；角色卡全文按需 `read` 指定小节。版本：dsh.10+。
+> 用途：主控 spawn 子代理时的**最小 prompt 模板**（配合读取纪律，禁长篇复制）。每卡 ≤12 行；角色卡全文按需 `read` 指定小节。版本：v18.67.0。
 >
 > **派发前置**：Phase 2 / 3.6 / 4 / 4.5 / 5 各闸门派发前，主控先跑 `node scripts/build-evidence-bundle.mjs <项目> --summary`（源自动取 `final/定稿.md` → `drafts/` 最高版本正文；要锁定某轮稿用 `--source <路径>`）生成/刷新 `audits/审计视图-v0.md`，再按各卡「读」清单把它列入派发话术。**视图缺失时该优化不成立**——不要声称「已用视图省 token」。
 >
@@ -35,6 +35,12 @@
 - 回报 ≤10 行 + 六要素（收报侧 handoff-check 机检）。
 - 格式样例：`references/templates/案例卡-template-lite.md`（实战用；字段详解用 `-template.md`）。
 
+## T3.5 文献补标注检索员（可选，默认关）
+- **仅在任务简报勾选「启用 T3.5 auto_cite 预标注 = ✓」时派发**（Phase 0 主人显式开启）；未勾选**不派卡**。
+- 读：任务简报 + `analysis/分析大纲.md`；输出 `literature/auto_cite-补充.md`；格式样例 `references/templates/auto_cite-补充-template.md`。
+- 完整派发话术见 [`pipeline-readme.md#文献补标注检索员t35`](pipeline-readme.md)（本卡只给入口，不复述话术——v18.67.0 审计 P2-6：此前该角色有派发话术却无开工卡，启用后主控按 SKILL 锚点速查找不到入口）。
+- 口径与集成细节见 [`_shared/auto_cite-integration.md`](_shared/auto_cite-integration.md)；回报 ≤10 行 + 六要素（收报侧 handoff-check 机检）。
+
 ## T4 分析员
 - 读：审计视图（`audits/审计视图-v0.md`，素材阶段视图：卡数+信任分布+报告存在性）+ 任务简报 + 三卡索引段（按论点定位条目）；输出 `analysis/分析大纲.md`（11 节，末附 §11 写手精简段 ≈60 行）。
 - 铁律：论据只来自真实编号；缺角降级为观点并标 Permanent Gap/Phase1.5；承重墙 top1 不超载；反方 5a/5b/5c 齐备；数据信任分级进映射。
@@ -43,7 +49,7 @@
 
 ## T5 写手
 - 只读：任务简报 + `analysis/分析大纲.md` 的 **§11 精简段**（同一文件 §11 节，位于 F3 检查 / 缺口表之前，非独立文件；§4 行号按需回读）；**修订轮（v2+）先读审计视图**（上一轮草稿快照，定位缺陷段）；输出 `drafts/初稿-v1.md`（及修订轮 vN 走段级 diff）**＋ `analysis/素材加载清单.md`**（覆盖写「## 已加载」= 本轮实际读过的编号；正文引用须 ⊆ 它，机检 M-Form-11）。
-- 要求：3500-4500 字按预算；引用标 [Lxx]/[Dxx]/[Cxx] 闭环；数值纪律（🟡厂方/二手只写口径、推算标「本文推算」）；反方落正文；文末五节 + AI 声明占位；AI 去味自检。
+- 要求：字数**按任务简报篇幅档 + 大纲 §11 预算执行**（档值单一真源 = `SKILL.md` §何时使用的四档分层，本卡**不写死数值**——旧版写死「3500-4500」与四档冲突，v18.67.0 审计 P1-1 修正）；引用标 [Lxx]/[Dxx]/[Cxx] 闭环；数值纪律（🟡厂方/二手只写口径、推算标「本文推算」）；反方落正文；文末五节 + AI 声明占位；AI 去味自检。
 - 回报 ≤10 行 + 六要素（收报侧 handoff-check 机检）。
 - 格式样例：`references/templates/素材加载清单-template.md`（「## 已加载」结构）+ 修订说明用 `references/templates/修订说明-template-full.md`；文末声明用 `references/templates/AI-使用声明-template.md`。
 

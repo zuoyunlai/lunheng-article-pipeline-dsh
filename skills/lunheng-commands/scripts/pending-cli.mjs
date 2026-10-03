@@ -24,7 +24,7 @@
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, resolve, isAbsolute } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { isSafeProjectArg } from '../../../lib/run-path-fence.mjs';
+import { isPathInsideRunDir } from '../../../lib/run-path-fence.mjs';
 
 /** 四门固定文件名（真源 = templates/主人确认-template.md 的「命名真源」） */
 export const GATES = ['Phase0', 'Phase2.5', 'Phase3.5', 'Phase5'];
@@ -179,12 +179,14 @@ function main(argv) {
       console.error(`--run-dir 不接受绝对路径（防止越界读 / 之外的文件）：${raw}——请用相对 <工作目录> 的路径`);
       process.exit(10);
     }
-    // 解析到 `<cwd>/run` 之下（与 stats-cli 的 `inside` 同一口径）
+    // v18.67.0（全量审计 P1 修复）：**真复用真源函数** `isPathInsideRunDir`（lib/run-path-fence.mjs）——
+    //   旧版注释自认「realpath 不在本脚本做」，只做手写字符串归一（`/`→`\\` + toLowerCase）：
+    //   ① 与 SKILL.md 宣称的「三层围栏共用实现」不符（声明 > 实现）；② 手写归一在 POSIX 下靠巧合成立、
+    //   大小写敏感文件系统上会把 `Run/` 与 `run/` 混同；③ 缺物理层 → junction 可指向工作区外。
+    //   现三层（词法 → 结构 → 物理 realpath）与 lib/commands.js、history-cli 完全同源。
     const cand = resolve(cwd, raw);
     const baseRun = resolve(cwd, 'run');
-    const norm = (p) => resolve(p).replace(/[\\/]+$/, '').replace(/\//g, '\\').toLowerCase();
-    const a = norm(baseRun), b = norm(cand);
-    if (b !== a && !b.startsWith(a + '\\')) {
+    if (!isPathInsideRunDir(baseRun, cand)) {
       console.error(`--run-dir 超出 <工作区>/run 范围：${raw}（防止把脚本的读面指向任意目录）`);
       process.exit(10);
     }

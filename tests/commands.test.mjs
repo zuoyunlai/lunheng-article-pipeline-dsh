@@ -139,3 +139,47 @@ test('F-4 /lunheng-status：run/ 不存在时返回可读提示（含「目录�
   assert.match(r.text, /run\/ 目录为空或不存在|现有项目/)
   rmSync(d, { recursive: true, force: true })
 })
+
+// ── v18.67.0（全量审计-v18.66.0 批 2）：路径围栏真源化后的行为钉 ──────────────────────────────
+test('v18.67.0 P1：`--run-dir` 内的 junction 指向工作区外 → 物理层必须拒绝（字符串包含判定会放行）', async (t) => {
+  const { isPathInsideRunDir } = await import(pathToFileURL(join(PACKAGE_ROOT, 'lib', 'run-path-fence.mjs')).href)
+  const d = mkdtempSync(join(tmpdir(), 'lh-cmd-junc-'))
+  try {
+    mkdirSync(join(d, 'run'), { recursive: true })
+    const outside = mkdtempSync(join(tmpdir(), 'lh-outside-'))
+    // Windows junction 无需管理员权限；非 Windows 平台用符号链接（可能需权限 → 失败则跳过）
+    const link = join(d, 'run', 'escape')
+    let made = false
+    try {
+      const { spawnSync } = await import('node:child_process')
+      const r = process.platform === 'win32'
+        ? spawnSync('cmd', ['/c', 'mklink', '/J', link, outside], { stdio: 'ignore' })
+        : spawnSync('ln', ['-s', outside, link], { stdio: 'ignore' })
+      made = r.status === 0
+    } catch { made = false }
+    if (!made) { t.skip('本环境不允许创建 junction/符号链接'); return }
+    assert.equal(isPathInsideRunDir(join(d, 'run'), link), false,
+      'junction 指向工作区外必须被物理层拒绝（旧字符串包含判定会放行 → 越界读）')
+    // 对照：run/ 自身与真实子目录仍放行（不得引入假拒绝）
+    assert.equal(isPathInsideRunDir(join(d, 'run'), join(d, 'run')), true)
+    const real = join(d, 'run', '真项目'); mkdirSync(real, { recursive: true })
+    assert.equal(isPathInsideRunDir(join(d, 'run'), real), true)
+  } finally {
+    rmSync(d, { recursive: true, force: true })
+  }
+})
+
+test('v18.67.0 P2：字面名以 `..` 开头的合法直接子目录不得被误杀（`..backup`）', async () => {
+  const { isDirectChildOf } = await import(pathToFileURL(join(PACKAGE_ROOT, 'lib', 'run-path-fence.mjs')).href)
+  const d = mkdtempSync(join(tmpdir(), 'lh-cmd-dotdot-'))
+  try {
+    const runDir = join(d, 'run')
+    const weird = join(runDir, '..backup')
+    mkdirSync(weird, { recursive: true })
+    assert.equal(isDirectChildOf(runDir, weird), true,
+      '`..backup` 是**字面名**直接子目录，旧 `rel.startsWith("..")` 会误杀')
+    assert.equal(isDirectChildOf(runDir, join(d, 'other')), false, '真正的越界仍须拒绝')
+  } finally {
+    rmSync(d, { recursive: true, force: true })
+  }
+})
