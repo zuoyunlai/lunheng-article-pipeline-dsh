@@ -16,10 +16,12 @@ import {
   versionTuple,
   parseChangelogSections,
   reconcileChangelogStructure,
+  readChangelogAll,
 } from '../scripts/_lib/changelog-structure.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
-const REAL = readFileSync(join(ROOT, 'CHANGELOG.md'), 'utf8')
+// v18.68.0 拆档：真实树 = 主档 + changelog/archive/ 联合（不变量覆盖全量历史，见 readChangelogAll 注释）
+const REAL = readChangelogAll(ROOT)
 const PKG = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version
 
 test('cnToNumber：中文序号（含「十」的三种位置）与阿拉伯数字', () => {

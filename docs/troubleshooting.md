@@ -118,7 +118,7 @@ node --test "tests/**/*.test.mjs"                                    # 随包脚
 ## 9. CI 绿灯但内容有问题
 
 先确认四道门都跑了：`ci.yml` 的 `drift-check` / `plugin-surface` / `hygiene` / `pack-smoke` / `script-tests`（后者含 **windows / macos** 矩阵）。
-若某类漂移仍漏检，请按 `consistency-check.mjs` 的既有规则样式补规则 + **对抗测试**（注入假漂移确认能抓到，再还原），见 `tests/scripts.test.mjs`。
+若某类漂移仍漏检，请按 `consistency-check.mjs` 的既有规则样式补规则 + **对抗测试**（注入假漂移确认能抓到，再还原），见 `tests/scripts/.mjs`。
 
 > **「安装→启动→卸载」这一段曾经没有门**（v18.0.5 补，第三方审计 P1-7）：CI 从来没有 `verify` job，本机 `dsh-plugin-dev verify` 又被 DSH Desktop 的 `dsh` shim（硬编码 `DSH_HOME`，见 §7）与 pnpm 原生依赖策略挡住。现由 **`pack-smoke` job + 源码仓库的 `scripts/pack-smoke.mjs`** 覆盖「发布物可装载」：`npm pack` → 解包 → 断言自注册行恰一行 / patch 行依赖已声明 / 真跑解包入口的 `apply`（注册名、正文非空、frontmatter 已剥离、`resourceBase` 指向解包目录）/ `tests` 不随包。**它仍不等于官方 verify**（不起真实 profile）——那一段在本机不可达，如实标注。
 

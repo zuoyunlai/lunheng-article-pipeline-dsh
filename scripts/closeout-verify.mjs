@@ -36,6 +36,7 @@
 
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, resolve, relative } from 'node:path';
+import { readChangelogAll } from './_lib/changelog-structure.mjs';
 
 const argv = process.argv.slice(2);
 const opt = (name, def) => {
@@ -89,9 +90,9 @@ if (!recFiles.length) {
 // __CLOSEOUT_MAIN_WRAPPED__（v18.62.4 §8.1 #5）：主体包一层 fail-closed —— 内部异常一律 exit 70，
 //   不再让 Node 的默认码（在本仓语境里 = 1 = 「有发现」）冒充判定结果。
 try {
-  const chgPath = join(repoRoot, 'CHANGELOG.md');
   const records = recFiles.map((r) => ({ ...r, text: readFileSync(r.path, 'utf8') }));
-  const changelogText = existsSync(chgPath) ? readFileSync(chgPath, 'utf8') : '';
+  // v18.68.0 拆档：差集证据源 = 主档 + changelog/archive/ 联合（旧版本段的 ID 提及仍算数，防假 P1 差集）
+  const changelogText = readChangelogAll(repoRoot);
   const readmeText = existsSync(join(recordsDir, 'README.md')) ? readFileSync(join(recordsDir, 'README.md'), 'utf8') : '';
   const allRecordText = [...records.map((r) => r.text), changelogText, readmeText].join('\n');
 

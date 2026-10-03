@@ -44,6 +44,8 @@ export function findLibLineRefs(text) {
  *    v18.62.6 之前两侧各自实现 `walk()`/`scanSet()` 过滤，导致同一事实两处口径（本批实测踩到）。 */
 export const HISTORICAL_DOC_PATTERNS = [
   /^CHANGELOG\.md$/,
+  // v18.68.0 拆档：CHANGELOG 的历史归档（内容从主档逐字移入，同为「当时状态」留痕）
+  /^changelog\/archive\//,
   /^audits\//,
   /^docs\/审计与修订记录\//,
   /^\.workbuddy\//,

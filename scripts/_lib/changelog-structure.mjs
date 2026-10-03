@@ -29,6 +29,9 @@
 //   故这里把「退化」作为**返回值**交给规则，由规则同时报出违例与退化（实测：本设计由用例
 //   「真问题③/④」暴露——它们此前被吞成「没有任何编号小节」）。
 
+import { readFileSync, readdirSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
+
 /** 中文数字 → 序号（只覆盖 CHANGELOG 实际用到的 一…二十五）。 */
 const CN_DIGITS = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 }
 
@@ -161,4 +164,30 @@ export function reconcileChangelogStructure(sections, pkgVersion) {
   // 注意：这里**不抛错**（理由见文件头「防空转」段）——`withSubs === 0` 表示「子序不变量空跑」，
   //   由调用方作为独立失败项报出，这样它与上面已算出的 violations 能一起呈现，不互相吞掉。
   return { checked: sections.length, withSubs, violations }
+}
+
+/**
+ * 读取「主档 + 归档」的联合文本（v18.68.0 拆档新增）。
+ *
+ * 为什么需要：CHANGELOG.md 自 v18.68.0 起只保留 v18.61.0+ 的版本段，更早的移入
+ *   `changelog/archive/`（主档巨石瘦身，批 5 结构性拆分）。但结构不变量（段内编号递增 /
+ *   版本降序 / 无重复键）必须覆盖**全量历史**——只查主档会让「归档里两段合并/键重复」
+ *   这类失真永久失去门。故本函数把主档与归档按「主档（新）→ 归档文件名升序（旧）」
+ *   连接成一份文本：全局降序保持、首段仍是当前版本。规则 ⑬、changelog-structure
+ *   测试、closeout-verify 差集三处消费方统一走它（单一实现，防三处各读一份漂移）。
+ * @param {string} root - 仓库根（CHANGELOG.md 所在目录）
+ * @returns {string} 联合文本
+ */
+export function readChangelogAll(root) {
+  // 缺主档 → 返回空串（保留 closeout-verify 旧语义：夹具仓无 CHANGELOG 时按「无证据」处理，
+  // 不 ENOENT；真实仓缺主档时，下游 parseChangelogSections 对空文本照旧响亮抛「解析出 0 段」）。
+  const main = join(root, 'CHANGELOG.md')
+  let text = existsSync(main) ? readFileSync(main, 'utf8') : ''
+  const archDir = join(root, 'changelog', 'archive')
+  if (existsSync(archDir)) {
+    for (const f of readdirSync(archDir).filter((x) => x.endsWith('.md')).sort()) {
+      text += '\n' + readFileSync(join(archDir, f), 'utf8')
+    }
+  }
+  return text
 }

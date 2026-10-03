@@ -129,7 +129,7 @@ const evDir = positional[1];
 //   不足或超出都会在那里以 `UsageError` → exit 10 收场。留着它读起来像一道「活的保险」，
 //   实则是**永不执行的死代码**（本仓对「写了却不生效的门」有明确态度：删掉或让它真生效）。
 //   故删除。**若将来把 `minPositionals` 放松**，必须同批把这条守卫恢复回来——已在
-//   `tests/scripts.test.mjs` 的「m-gate-check 缺参 → exit 10」用例里间接钉住该行为。
+//   `tests/scripts/m-gate-check.test.mjs` 的「m-gate-check 缺参 → exit 10」用例（v18.68.0 拆分归位）里间接钉住该行为。
 if (!existsSync(draftPath)) {
   console.error(`定稿不存在: ${draftPath} —— 请先产出 final/定稿.md 再跑 M 门预检`);
   process.exit(10);   // v18.0.2 修：路径错误一律 10（旧版 1 与「P1 内容失败」撞码 → final-check 会误渲染成「存在 P1 残留，可触发 T5 修订」）
@@ -503,7 +503,7 @@ const transientInfo = (() => {
 //   成不成功，而「m-gate 非零」**既有可能是没写盘（拒绝覆盖），也有可能是写了盘但机械值非零**
 //   （同稿复跑就是后者：进程码 = 本次机械值 1，报告照写且保留裁定）——两者**不能靠退出码区分**。
 //   判据：**让工具自己说**（一个字段比两处推断可靠）。实测教训：本判据第一版按「那一步非零」推断，
-//   当场被 `tests/scripts.test.mjs` 的 A5 用例（机械 1 / 裁定 0 的同稿复跑）红掉。
+//   当场被 `tests/scripts/cross-script.test.mjs` 的 A5 用例（机械 1 / 裁定 0 的同稿复跑）红掉（v18.68.0 拆分归位）。
 const refuseOverwrite = !!(reportPath && !adjudicatePath && !overwriteAdjudicated
   && transientInfo?.prevHadVerdict && transientInfo.prevSha && transientInfo.prevSha !== draftSha256);
 // v18.67.0（全量审计-v18.66.0 P1 修复）：「报告不存在但同目录留有带裁定的 .bak 回滚点」的判据

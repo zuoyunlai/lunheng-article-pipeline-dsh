@@ -57,7 +57,7 @@ if (declaredCountRaw === undefined) {
 //     读成计数断言——`eff4-probe2.mjs` 里的 `2.mjs` 被判「写 2 个 ≠ 磁盘 24 个」（实测：v18.22.3 修订记录
 //     因引用该临时脚本名而红）。修法 = 给数字加**标识符左边界否定断言**：数字紧跟在字母/数字/`_`/`-`/`.` 之后
 //     即属名字的一部分，不算计数；真断言（`12 个` / `**12** \`.mjs\` / `（12.mjs`）的前导字符是空白、星号、
-//     反引号或标点 → 照旧命中。**覆盖面未削弱**：回归网（`tests/scripts.test.mjs` ⑩b 用例）两侧同时锁——
+//     反引号或标点 → 照旧命中。**覆盖面未削弱**：回归网（`tests/scripts/consistency-check.test.mjs` ⑩b 用例，v18.68.0 拆分归位）两侧同时锁——
 //     假阳性不报 + 真计数漂移仍报。
 const SCRIPT_COUNT_RE = /(\d+)\s*个|(?<![\w.-])(\d+)\s*(?:zero-dependency|零依赖)?\s*\.mjs/gi;
 // 「N 个」之后**定向**判是不是脚本计数（v18.2.6：靠「附近有脚本字样」判必然误伤——
@@ -70,6 +70,8 @@ const seenClaim = new Set();   // 去重：`active` 与 `walk(REPO_ROOT)` 会重
 const claimTargets = [...active, ...(existsSync(REPO_ROOT) ? walk(REPO_ROOT) : [])];
 for (const f of claimTargets) {
   if (f.endsWith('CHANGELOG.md')) continue;
+  // v18.68.0 拆档：CHANGELOG 的历史归档（内容逐字移入，同为「当时事实」留痕，不追溯改写）
+  if (f.replaceAll('\\', '/').includes('changelog/archive/')) continue;
   if (seenClaim.has(f)) continue;
   seenClaim.add(f);
   const rel = relative(REPO_ROOT, f).replaceAll('\\', '/');
@@ -148,7 +150,7 @@ const tierTruth = new Map();
 if (tierTruth.size === 3) {
   const scanned = new Set();
   for (const f of [...active, ...(existsSync(REPO_ROOT) ? walkAny(REPO_ROOT) : [])]) {
-    if (scanned.has(f) || f.includes('CHANGELOG')) continue;
+    if (scanned.has(f) || f.includes('CHANGELOG') || f.replaceAll('\\', '/').includes('changelog/archive/')) continue;
     scanned.add(f);
     const rel = relative(REPO_ROOT, f).replaceAll('\\', '/');
     const isYaml = /\.(ya?ml|json)$/.test(f);

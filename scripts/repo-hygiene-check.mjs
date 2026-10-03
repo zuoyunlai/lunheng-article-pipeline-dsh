@@ -52,7 +52,7 @@ import { parseExitContract, parseNamespaceQuota, parseExitTable, reconcile, reco
 import { deriveScriptSurface, parseSecuritySurface, reconcileSurface } from './_lib/script-surface.mjs' // C-7：随包脚本执行面/写盘面 ∈ SECURITY.md
 import { findLibLineRefs, isHistoricalDoc } from './_lib/lib-line-refs.mjs' // C-9：当前文档不得有裸 `lib/**:LINE` 引用
 import { resolveExitCodes, parseGuardConsts } from './_lib/exit-resolution.mjs' // A-7③：退出码静态解析（含一层变量内联，可单测）
-import { parseChangelogSections, reconcileChangelogStructure } from './_lib/changelog-structure.mjs' // ⑬：CHANGELOG 版本段结构自洽（v18.18.13）
+import { parseChangelogSections, reconcileChangelogStructure, readChangelogAll } from './_lib/changelog-structure.mjs' // ⑬：CHANGELOG 版本段结构自洽（v18.18.13）
 import {
   deriveJournalCounts,
   declaredJournalCounts,
@@ -417,7 +417,7 @@ notes.push(
 //      ⑥ **「已 import guard」改为真 import 匹配**（旧版 `text.includes(GUARD)` 对**注释里提到文件名**也判真——
 //         而本仓每个脚本头注释都提到它 ⇒ 该检查恒真，恰恰漏掉「注释还在、import 被删」这一最该抓的形态）。
 //    边界（如实）：本规则能拦「静态可解析的撞码」与「兜底缺失」，**不能**拦动态计算出的错误码——
-//      那由 `tests/scripts.test.mjs` 的异常路径用例（传目录/传文件/PATH 置空）覆盖。
+//      那由 `tests/scripts/` 各分脚本文件的异常路径用例（传目录/传文件/PATH 置空）覆盖（v18.68.0 拆分后按脚本归位）。
 const GUARD = '_lib/exit-guard.mjs'
 const EXIT_CONTRACT = {
   'm-gate-check.mjs': [0, 1, 2, 3, 10, 30, 70],   // v18.12.0（L-05）：30 = `--adjudicate` 裁定被拒（红线命中 / 四件套不全 / 缺 true_p0-p1）
@@ -1010,7 +1010,8 @@ notes.push(
 //     ③ 版本键不重复 ④ 版本键降序
 //   解析器在 `_lib/changelog-structure.mjs`（可单测）；形状变了会**抛错**而不是静默通过。
 try {
-  const clText = readFileSync(join(ROOT, 'CHANGELOG.md'), 'utf8')
+  // v18.68.0 拆档：主档 + changelog/archive/ 联合校验（不变量覆盖全量历史，见 readChangelogAll 注释）
+  const clText = readChangelogAll(ROOT)
   const pkgVer = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version
   const { sections } = parseChangelogSections(clText)
   const { checked, withSubs, violations } = reconcileChangelogStructure(sections, pkgVer)

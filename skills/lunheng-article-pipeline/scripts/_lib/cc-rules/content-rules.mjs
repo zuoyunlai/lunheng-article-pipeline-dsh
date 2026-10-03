@@ -85,7 +85,7 @@ if (existsSync(pipelinePath) && readFileSync(pipelinePath, 'utf8').includes('审
 }
 
 // ⑰ 定量节省断言必须有出处（v2.5.2-dsh.15 新增，**v18.22.0 保留**）：
-//    旧规则只匹配「省 X%」——保留**默认开启**（保护既有契约；tests/scripts.test.mjs:583 注入「省 77%」反向自证依赖这条）。
+//    旧规则只匹配「省 X%」——保留**默认开启**（保护既有契约；tests/scripts/consistency-check.test.mjs 注入「省 77%」（v18.68.0 拆分归位）反向自证依赖这条）。
 //    同行或邻行给出算式（=）、对照（vs）、实测/对比/基线 才放行；否则请补算式或改定性表述。
 for (const f of active) {
   const rel = relative(ROOT, f).replaceAll('\\', '/');

@@ -226,7 +226,7 @@ if (exitCode === 0 && notes.length > 0) exitCode = 3;
 //   同时进程码是 3（拒绝写盘）。**只读 `summary.mGate` 的消费方会把「拒绝」读成「已裁定放行」**——
 //   与 F-BF①「产物说 A、退出码说 B」同型，只是这次错在**摘要块**而非退出码。
 //   判据：**不做推断，读工具自己说的那个字段**——m-gate 在 stdout JSON 上给了 `write_refused`
-//   （v18.64.2）。⚠️ 第一版按「那一步非零」推断，当场被 `tests/scripts.test.mjs` 的 A5 用例红掉：
+//   （v18.64.2）。⚠️ 第一版按「那一步非零」推断，当场被 `tests/scripts/cross-script.test.mjs` 的 A5 用例红掉（v18.68.0 拆分归位）：
 //   同稿复跑的**进程码也是非零**（= 本次机械值），但报告照写、裁定照留。
 const mGateStep = summary.find((s) => s.step === 'm-gate-check.mjs');
 const mGateRefusedWrite = !!(parsedOutputs['m-gate'] && parsedOutputs['m-gate'].write_refused);

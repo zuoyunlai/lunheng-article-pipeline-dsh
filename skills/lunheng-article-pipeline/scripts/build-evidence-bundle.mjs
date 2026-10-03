@@ -27,7 +27,7 @@
 //      用户以为「只出了摘要」实际拿到全量、以为指定了正文源实际用了默认源。实现与 apply-diff 共用
 //      `_lib/cli-args.mjs`（唯一实现；守卫写在调用处一定会漂）。
 //
-//   ⚠️ 与既有回归用例的冲突（如实声明）：`tests/scripts.test.mjs` 有 3 个用例用「只有 drafts/ 或只有 final/定稿.md
+//   ⚠️ 与既有回归用例的冲突（如实声明）：`tests/scripts/build-evidence-bundle.test.mjs` 有 3 个用例（v18.68.0 拆分归位）用「只有 drafts/ 或只有 final/定稿.md
 //   的骨架目录」调用本脚本并断言 exit 0（第 290/310/529 行附近）；按上述 ② 这类骨架必然 exit 10。夹具属测试所有者，
 //   本批未改（授权范围外），需同步给骨架补一个源文件（如 01-任务简报.md 或 final/证据包/数据卡.md）。
 import { readdirSync, copyFileSync, existsSync, mkdirSync, statSync, readFileSync, writeFileSync, rmdirSync } from 'node:fs';

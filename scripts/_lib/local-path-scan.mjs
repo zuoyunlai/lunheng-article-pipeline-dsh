@@ -72,7 +72,9 @@ export function scanLocalPaths(text) {
  * 修掉一条后请顺手把对应数字改小（只允许改小）。
  */
 export const LOCAL_PATH_BASELINE = {
-  'CHANGELOG.md': 21,
+  // v18.68.0 拆档：原 CHANGELOG.md 的 21 处历史路径**逐字移入**归档（主档现 0 处，条目随之迁移；
+  //   性质不变——历史版本段记录当时事实，改掉 = 改写历史记录）
+  'changelog/archive/18.60-and-earlier.md': 21,
   'audits/反哺报告-v18.10.0-论文质量提升12项战略改进.md': 4,
   'audits/反哺报告-v18.8.x-实战（数字社交-关系重构）.md': 13,
   'audits/反哺报告-v18.9.0-实战（数字社交-关系重构-第二轮）.md': 4,
