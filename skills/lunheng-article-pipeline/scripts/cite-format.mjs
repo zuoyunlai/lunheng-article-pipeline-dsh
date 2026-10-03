@@ -26,7 +26,8 @@
 //   3  = 文献卡不存在或 0 条目（适用却缺输入 → 人工确认；**绝不把「没卡」读成「无需格式」**）
 //   10 = 参数或路径错误 / 70 = 内部错误（EX_SOFTWARE，脚本缺陷）
 import { readFileSync, existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { installExitGuard, requireExistingDir, EXIT_USAGE } from './_lib/exit-guard.mjs'
 import { parseArgs, USAGE_CODE } from './_lib/cli-args.mjs'
 import { writeReport } from './_lib/destructive-write.mjs'
@@ -34,6 +35,7 @@ import { packageVersionTag } from './_lib/pkg-version.mjs'
 
 installExitGuard()
 const EXIT_INTERNAL = 70
+const scriptDir = dirname(fileURLToPath(import.meta.url))
 
 const USAGE = '用法: node scripts/cite-format.mjs <项目目录> [--style gbt|apa] [--json] [--report <path>] [--card <相对路径>]'
 
@@ -297,6 +299,23 @@ else {
   console.log(out.orderNote)
 }
 if (opts['--report']) {
-  writeReport(join(project, reportRel), JSON.stringify(out, null, 2), { protect: [join(project, 'final', '定稿.md')] })
+  // v18.67.0（批 4）：`--report` 改为 **CWD 相对**，与全族（m-gate-check / final-check / g-audit-check /
+  //   cite-coverage-check / apply-diff / quality-score）同口径。旧版 `join(project, reportRel)` 是本族
+  //   唯一的「项目相对」异类——同一旗标两套语义，调用方按 M 门族习惯传参时会解析到非预期位置。
+  //   （本旗标只在**显式传入**时才落盘；cli-args 的 `values` 只是示例值，不构成默认路径。）
+  //   同时镜像 final-check 的两道显式化（主人裁定方案 (C)，v18.62.4 §8.1 #4）：① 打印解析后绝对路径；
+  //   ② 若落在仓库/包根内 → 响亮警告（防误传相对路径静默造目录/覆盖文件）。
+  const absReportPath = resolve(reportRel)
+  const pkgRootProbe = [join(scriptDir, '..', '..'), join(scriptDir, '..'), join(scriptDir, '..', '..', '..')]
+    .find((p) => existsSync(join(p, 'package.json')))
+  if (pkgRootProbe) {
+    const key = (p) => resolve(p).toLowerCase()
+    if (key(absReportPath).startsWith(key(pkgRootProbe))) {
+      console.error(`\n⚠ --report 目标落在**仓库/包根**内：${absReportPath}`)
+      console.error('  `--report` 的相对路径以**当前工作目录（CWD）**为基准——若非本意，请改用绝对路径或 <项目>/ 下的路径。\n')
+    }
+  }
+  writeReport(absReportPath, JSON.stringify(out, null, 2), { protect: [join(project, 'final', '定稿.md')] })
+  console.error(`📄 引用格式报告已落盘: ${absReportPath}`)
 }
 process.exit(exitCode)

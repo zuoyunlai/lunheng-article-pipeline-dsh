@@ -106,7 +106,7 @@ test('⑥ 缺输入 exit 3（「没卡」不得读成「无需格式」）；`--
   } finally { rmSync(d2, { recursive: true, force: true }) }
 })
 
-test('⑦ 边界钉：默认**不写项目任何文件**；只有 `--report` 才落报告，且报告路径可指定', () => {
+test('⑦ 边界钉：默认**不写项目任何文件**；`--report` 才落报告，且为 **CWD 相对**（全族同口径，v18.67.0）', () => {
   const d = mk(J('L01'))
   try {
     const before = readFileSync(join(d, 'literature', '文献卡.md'), 'utf8')
@@ -114,9 +114,11 @@ test('⑦ 边界钉：默认**不写项目任何文件**；只有 `--report` 才
     assert.equal(r.code, 0)
     assert.ok(!existsSync(join(d, 'final', '引用格式报告.json')), '不带 --report 时不得写任何文件')
     assert.equal(readFileSync(join(d, 'literature', '文献卡.md'), 'utf8'), before, '文献卡必须逐字节不变')
-    const r2 = run([S(), d, '--report', 'literature/格式报告.json'])
+    // v18.67.0：--report 为 CWD 相对（与 m-gate/final-check 全族同口径）——绝对路径形态不受基准影响
+    const r2 = run([S(), d, '--report', join(d, 'literature', '格式报告.json')])
     assert.equal(r2.code, 0)
-    assert.ok(existsSync(join(d, 'literature', '格式报告.json')), '--report 才落盘')
+    assert.ok(existsSync(join(d, 'literature', '格式报告.json')), '--report 才落盘（绝对路径原样解析）')
+    assert.ok(!existsSync(join(d, 'final', '引用格式报告.json')), '显式 --report 不得再按「项目相对」另写一份（旧版异类口径）')
     const j = JSON.parse(readFileSync(join(d, 'literature', '格式报告.json'), 'utf8'))
     assert.equal(j.style, 'gbt')
     assert.match(j.boundary, /只出\*\*草稿\*\*/)

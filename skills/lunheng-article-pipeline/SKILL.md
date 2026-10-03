@@ -122,23 +122,14 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 - **激活时序**：M-Exist-4/5/6/9 的前提是「报告已落盘」——**相关报告落盘后必须重跑 M 门再取闸门口径**（脚本已对这四项加 `[报告后激活]` 标记）；主控预跑的 JSON 不得直接当闸门输入
 - 详细：pipeline-readme.md（派发话术/模型）／ glossary.md（概念单一真源）
 
-## ⚡ v18.60.1 反哺 v3 DSH 新能力接缝（主人显式授权落地，详见 `audits/机制文件修订记录-2026-09-30-反哺v3全批.md`）
+## ⚡ DSH 原生能力接缝（H1-H7）
 
-论衡本版接 v18.60.0 / v18.60.1 自加能力，新增 DSH-native 能力（H1 工具声明 + H2 监听器；仅看名称就够，按需读 §五 `DSH-集成方案.md`）：
+> 落地状态表、参数签名、边界论证与接线记录**单一真源 = [`references/_shared/DSH-集成方案.md`](_shared/DSH-集成方案.md) §C 组**（v18.60.1 反哺 v3 / v18.61.0 反哺 v4 的实现史已外移至此 + `audits/机制文件修订记录-2026-09-30-反哺v3/v4全批.md`，CTX-1）。
 
-- **H1 `executionMode: 'parallel'`（声明位 = `lib/tools.js` 的 4 个 `defineTool`）**：4 个只读工具全部声明 `executionMode: 'parallel'`——DSH `tools.mode` 让 driver 用有界滚动池调度，子代理可并发调多工具而不再被主控串行限定。**未声明 `exclusive` 的工具**——论衡四件全是只读，无写面冲突，并发安全。
-- **H2 `tools/post-execute` 自动伦理脱敏（声明位 = `lib/index.js`；`ctx.on('tools/post-execute', listener)`，**3 参 `(exec, result, next)`**——v18.62.1 全量审计 P0-1 修正了旧的 4 参错位）**：监听器对所有**材料类工具**（`read` / `web_*` / `subagent*`）的 result 自动调 `lunheng_ethics_sanitize`（basic 模式），把 `reviewFlags` 与 `ethicsSanitized` 计数注入 result。**边界**：① 不写盘（守住 v18.60.0 ethics_sanitize「只读」承诺）；② 脱敏失败不动 result（不让监听器阻断下游）；③ **诚实边界已转述**（v18.60.0 工具描述原话：降低泄露面，不构成合规保证）。
-> **v3 落地后状态**：H1/H2 已落地，H4/H6/H7 在 v18.61 反哺 v4 已落地（见下方「⚡ v18.61.0 反哺 v4」段）。v3 时的"未做"已清空。
->
-> **未做（v18.61 反哺 v4 后仍 Backlog）**：**H8** `session-log` SessionEvent 投影（依赖 v2.5.2-dsh.5 双文件分工定案，主人 review 后再做）；**H9** `session-query-sqlite`（依赖 H8）；**H10** `web_profile`（价值小）；**H11** `workflow` / `goals` / `jobs`（AGENTS.md 显式禁接）。
-
-## ⚡ v18.61.0 反哺 v4 DSH 新能力接缝（主人授权落地，详见 `audits/机制文件修订记录-2026-09-30-反哺v4全批.md`）
-
-v4 把 v3 留待 review 的 7 项里能落地的 3 项 + 1 项 H6 实证落地，**新增 2 个监听器（H4/H7）+ 1 个 preset 目录（H6）**：
-
-- **H4 `system-prompt/assemble` 钩子**（声明位 = `lib/index.js`；**3 参 `(assembly, context, next)`，`await next()` 后向 sections 追加——v18.62.1 全量审计 P1-2 修正了旧的 2 参截断下游缺陷**）：监听 prompt 装配 → **只追加不覆盖** dsh 默认内容（附加「论衡技能加载中」提示段，**严格遵守主人未审阅「动态覆盖静态」语义前的最保守模式**）。**边界**：① 严格**只追加**、**不修改 dsh 默认 prompt**，且调 `next()` 驱动下游链（**不截断**模型选择等下游监听器）；② 追加失败只降级为「返回下游结果原样」；③ phase 推断用「论衡技能加载中」通用段（不按 phase 分），主人裁定后下次落地可细化。
-- **H6 agent preset 化 + `modelSelectionSettings:true`**（**新增**：`examples/preset/agent-tiered/cordis.yml`）：按 DSH-集成方案 §八 第 2 步配方写新 preset 目录；论衡三档 subagent（retrieval / strong / audit）开 `modelSelectionSettings:true` → 该 preset 内可用 `list_subagent_models` 工具 + per-call `provider`/`model`/`reasoning_effort`。**真源 roles**：retrieval = T1/T2/T3、strong = T4/T5、audit = T6/T7/T9/G14。**边界（DSH-集成方案 §八.3 不确定点 4）**：预设**只在会话空白期可切**——长跑中途换不了。
-- **H7 `agent/request` waterfall 模型路由**（声明位 = `lib/index.js`）：监听 `agent/request` 事件 → 论衡三档 subagent 请求时按 `LUNHENG_*_PROVIDER` / `LUNHENG_*_MODEL` env 覆盖 → **改 env 不重启 dsh 即可切模型**。**依赖 H6**：preset 内与 bundle 全局**双保险**。**边界**：① `agent/request` 是 dsh 0.1.7-rc.2 实验事件，本机无法实测（缺 API key），注册失败只 warn；② listener 只读 env + 写返回值——无 spawn / 无 IO / 无改仓库。
+- **H1 工具并发**：4 个只读工具声明 `executionMode: 'parallel'`——子代理可并发调用（无写面冲突）。
+- **H2 材料自动脱敏**：材料类工具（`read` / `web_*` / `subagent*`）的 result 自动过 `lunheng_ethics_sanitize`（basic），`reviewFlags` / `ethicsSanitized` 计数注入 result（降低泄露面，不构成合规保证）。
+- **H4 prompt 追加**：system-prompt 装配时**只追加**论衡提示段——不改 dsh 默认内容、不截断下游监听器。
+- **H6 / H7 三档模型路由**：`examples/preset/agent-tiered/` preset + `agent/request` waterfall——改 `LUNHENG_*_PROVIDER` / `LUNHENG_*_MODEL` env **不必重启 dsh 即切模型**（preset 切换需会话空白期）。Backlog：H8-H11（session-log 投影 / session-query-sqlite / web_profile / workflow 族，见集成方案）。
 
 ## 何时使用 + 字数分层
 
