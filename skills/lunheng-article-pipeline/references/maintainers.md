@@ -40,10 +40,11 @@
 - npm 包不含 `.github/`、`tests/`、`scripts/`（仓库级）、`CHANGELOG.md`、`CONTRIBUTING.md`——由 `package.json` files 白名单 + `repo-hygiene-check` 规则⑥ 负清单 + `pack-smoke` mustNotShip **双重机械保证**（非自觉）。
 - npm 强制包含根目录 `README*` 与 `LICENSE`（从 files 删掉、加 .npmignore 均无效，已实测）——五语 README 一定在包内，不是缺陷。
 - 发布 = 推 tag，由 `.github/workflows/publish.yml`（OIDC Trusted Publishing + `--provenance`）完成。
-- **`latest` dist-tag 自 v18.62.8 起由 CI 自动前移**（**OIDC**，无需任何长期凭据）——前提是 npm 侧已为该包勾选 **Allow npm dist-tag**（见 SECURITY.md「NPM_TOKEN 的用途与治理」的 2026-10-02 更新）。发版后**先看该次 publish 运行的 dist-tag 步日志**：
+- ✅ **`latest` dist-tag 由 CI 自动前移**（**OIDC**，无需任何长期凭据；前提：npm 侧 `Allow npm dist-tag` 已开启）——**2026-10-02 dispatch run `37091479899` 实证闭环**（dist-tag 步打 `✓ latest 已前移 → 18.62.9（OIDC）`，npm 回幂等成功）。
+- 发版后**先看该次 publish 运行的 dist-tag 步日志**：
   - 打 `✓ latest 已前移 → <ver>（OIDC…）` = 已自动完成，**无须任何手工动作**；
-  - 打 warning = npm 侧权限未勾选（或 CLI 过旧）→ 按 SECURITY.md 补齐后 `gh workflow run publish.yml` 重跑（幂等，不会重发 npm）；
-  - 只有上面两条都不可用时，才用**兜底**人工命令：`npm dist-tag add lunheng-article-pipeline@<新版本> latest --registry=https://registry.npmjs.org`（`dsh` 由 publish 工作流维护，永远无须手工动）。
+  - 打 warning（**仅当 npm 侧权限被关回、或 npm CLI 过旧、或未来 OIDC 临时不可用**）→ 按 SECURITY.md 补齐后 `gh workflow run publish.yml` 重跑（幂等，不会重发 npm）；
+  - **历史背景**：上述兜底人工命令（`npm dist-tag add <pkg>@<ver> latest --registry=https://registry.npmjs.org`）自 v18.62.10 起**永久退役**——`latest` 改由 OIDC 维护。
   ⚠️ **`--registry` 不能省**（**人工兜底路径**）：本机 `~/.npmrc` 的默认 `registry` 指向**只读镜像** `registry.npmmirror.com`，
   而 `_authToken` 是给 `registry.npmjs.org` 的 → 不带该参数会把 dist-tag 请求打到镜像，
   报 `E401 Unauthorized … Login first`（**v18.62.4 发版实测踩到**）。（CI 内无此问题：publish 作业已设 `registry-url`。）
