@@ -9,13 +9,13 @@ importers:
   .:
     dependencies:
       '@deepseek-ai/dsh':
-        specifier: '>=0.1.2-rc.1 <0.3.0'
+        specifier: '>=0.1.2-rc.1 <0.2.0'
         version: 0.1.2-rc.1(012040b8d95a0b37446c54bc6938fd3b)
       '@deepseek-ai/dsh-tool-subagent':
-        specifier: '>=0.1.2-rc.1 <0.3.0'
+        specifier: '>=0.1.2-rc.1 <0.2.0'
         version: 0.1.2-rc.1(9e64b1cab8e9a7136581e8aba6fd4935)
       '@deepseek-ai/dsh-tools':
-        specifier: '>=0.1.2-rc.1 <0.3.0'
+        specifier: '>=0.1.2-rc.1 <0.2.0'
         version: 0.1.2-rc.1(d0fa177dedc98c68de99600c4e2ac332)
 
 packages:
@@ -3498,7 +3498,7 @@ snapshots:
       '@aws-sdk/types': 3.974.6
       '@smithy/core': 3.35.1
       '@smithy/fetch-http-handler': 5.8.0
-      '@smithy/node-http-handler': 4.7.3
+      '@smithy/node-http-handler': 4.12.1
       '@smithy/types': 4.19.0
       tslib: 2.8.1
 

@@ -65,39 +65,6 @@ test('count-chars：--full 不应带 degraded 标记', () => {
   rmSync(d, { recursive: true, force: true })
 })
 
-test('m-gate-check M-Exist-7：§6 成本指标必须含 `~NN[MKB]` 或「实测不可得」（v18.6.3 反哺：原只看「字段有内容」漏报，看板 17/21 token 列空）', () => {
-  const { d, proj, fin, ev } = mkProject()
-  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
-  const DD = join(fin, '交付说明.md')
-  const item = (txt) => {
-    writeFileSync(DD, '# 交付说明\n\n' + txt + '\n')
-    const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])
-    return parseJson(r).results.find((x) => x.gate.startsWith('M-Exist-7'))
-  }
-  let it = item(buildDeliveryNoteWithSec6('- token（实测）：~5M cacheRead\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '标准 `~NN[MKB]` 应通过：' + it.detail)
-
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：5M tokens\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '绝对值 `NN[MKB] tokens` 应通过：' + it.detail)
-
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：已耗 ~5M\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '中文前缀「已耗 ~NN[MKB]」应通过：' + it.detail)
-
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：实测不可得：无会话缓存（console pool 限子进程）\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '「实测不可得：<原因>」应通过：' + it.detail)
-
-  // 失败：仅定性描述，无 `~NN[MKB]` 也无「实测不可得」（最常见误写）
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：已耗：12 次 spawn + 4 轮机械编辑\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, false, '纯定性描述必须报（v18.6.3 反馈：原写法导致看板 token 列空）')
-  assert.match(it.detail, /成本指标缺实测值/)
-
-  // 失败：仅 1.2M 无 ~ 也没实测不可得
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：1.2M\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, false, '无 ~ 也无「实测不可得」必须报')
-  assert.match(it.detail, /成本指标缺实测值/)
-  rmSync(d, { recursive: true, force: true })
-})
-
 // v18.2.3（主人授权修订；依据 2026-09-12 全量测试后主人反问「字数限定仅指正文吗」的取证）：
 //   `--summary` 曾用**含「摘要/关键词」的列表**求 body 终点 → 命中 `## 关键词` 即截断
 //   → `body.hanChars` 只剩摘要正文（实测 243 vs 默认口径 5112，**差 21 倍**），
@@ -128,39 +95,6 @@ test('count-chars：--summary 的 body.hanChars 必须等于默认口径（v18.2
   const kwByHeading = sum.sectionsByHeading.find((s) => s.title === '关键词')
   assert.equal(sum.endnotes['关键词'], kwByHeading.hanChars,
     'sections{} 与 sectionsByHeading 的口径必须一致（均不含标题）')
-  rmSync(d, { recursive: true, force: true })
-})
-
-test('m-gate-check M-Exist-7：§6 成本指标必须含 `~NN[MKB]` 或「实测不可得」（v18.6.3 反哺：原只看「字段有内容」漏报，看板 17/21 token 列空）', () => {
-  const { d, proj, fin, ev } = mkProject()
-  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
-  const DD = join(fin, '交付说明.md')
-  const item = (txt) => {
-    writeFileSync(DD, '# 交付说明\n\n' + txt + '\n')
-    const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])
-    return parseJson(r).results.find((x) => x.gate.startsWith('M-Exist-7'))
-  }
-  let it = item(buildDeliveryNoteWithSec6('- token（实测）：~5M cacheRead\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '标准 `~NN[MKB]` 应通过：' + it.detail)
-
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：5M tokens\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '绝对值 `NN[MKB] tokens` 应通过：' + it.detail)
-
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：已耗 ~5M\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '中文前缀「已耗 ~NN[MKB]」应通过：' + it.detail)
-
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：实测不可得：无会话缓存（console pool 限子进程）\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '「实测不可得：<原因>」应通过：' + it.detail)
-
-  // 失败：仅定性描述，无 `~NN[MKB]` 也无「实测不可得」（最常见误写）
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：已耗：12 次 spawn + 4 轮机械编辑\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, false, '纯定性描述必须报（v18.6.3 反馈：原写法导致看板 token 列空）')
-  assert.match(it.detail, /成本指标缺实测值/)
-
-  // 失败：仅 1.2M 无 ~ 也没实测不可得
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：1.2M\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, false, '无 ~ 也无「实测不可得」必须报')
-  assert.match(it.detail, /成本指标缺实测值/)
   rmSync(d, { recursive: true, force: true })
 })
 
@@ -220,39 +154,6 @@ test('consistency-check ⑩b：脚本名尾随数字（如 `eff4-probe2.mjs`）*
     /脚本计数漂移\][^\n]*__tmp-10b\.md/,
     '真计数漂移必须仍然被报（假阳性修复不得顺带放行真漂移）：' + tpOut.slice(-400),
   )
-  rmSync(d, { recursive: true, force: true })
-})
-
-test('m-gate-check M-Exist-7：§6 成本指标必须含 `~NN[MKB]` 或「实测不可得」（v18.6.3 反哺：原只看「字段有内容」漏报，看板 17/21 token 列空）', () => {
-  const { d, proj, fin, ev } = mkProject()
-  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
-  const DD = join(fin, '交付说明.md')
-  const item = (txt) => {
-    writeFileSync(DD, '# 交付说明\n\n' + txt + '\n')
-    const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])
-    return parseJson(r).results.find((x) => x.gate.startsWith('M-Exist-7'))
-  }
-  let it = item(buildDeliveryNoteWithSec6('- token（实测）：~5M cacheRead\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '标准 `~NN[MKB]` 应通过：' + it.detail)
-
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：5M tokens\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '绝对值 `NN[MKB] tokens` 应通过：' + it.detail)
-
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：已耗 ~5M\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '中文前缀「已耗 ~NN[MKB]」应通过：' + it.detail)
-
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：实测不可得：无会话缓存（console pool 限子进程）\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '「实测不可得：<原因>」应通过：' + it.detail)
-
-  // 失败：仅定性描述，无 `~NN[MKB]` 也无「实测不可得」（最常见误写）
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：已耗：12 次 spawn + 4 轮机械编辑\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, false, '纯定性描述必须报（v18.6.3 反馈：原写法导致看板 token 列空）')
-  assert.match(it.detail, /成本指标缺实测值/)
-
-  // 失败：仅 1.2M 无 ~ 也没实测不可得
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：1.2M\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, false, '无 ~ 也无「实测不可得」必须报')
-  assert.match(it.detail, /成本指标缺实测值/)
   rmSync(d, { recursive: true, force: true })
 })
 
@@ -743,39 +644,6 @@ test('consistency-check ㉙：G 项数与 G 清单对账（含两处防误报回
   rmSync(d, { recursive: true, force: true })
 })
 
-test('m-gate-check M-Exist-7：§6 成本指标必须含 `~NN[MKB]` 或「实测不可得」（v18.6.3 反哺：原只看「字段有内容」漏报，看板 17/21 token 列空）', () => {
-  const { d, proj, fin, ev } = mkProject()
-  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
-  const DD = join(fin, '交付说明.md')
-  const item = (txt) => {
-    writeFileSync(DD, '# 交付说明\n\n' + txt + '\n')
-    const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])
-    return parseJson(r).results.find((x) => x.gate.startsWith('M-Exist-7'))
-  }
-  let it = item(buildDeliveryNoteWithSec6('- token（实测）：~5M cacheRead\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '标准 `~NN[MKB]` 应通过：' + it.detail)
-
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：5M tokens\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '绝对值 `NN[MKB] tokens` 应通过：' + it.detail)
-
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：已耗 ~5M\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '中文前缀「已耗 ~NN[MKB]」应通过：' + it.detail)
-
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：实测不可得：无会话缓存（console pool 限子进程）\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '「实测不可得：<原因>」应通过：' + it.detail)
-
-  // 失败：仅定性描述，无 `~NN[MKB]` 也无「实测不可得」（最常见误写）
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：已耗：12 次 spawn + 4 轮机械编辑\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, false, '纯定性描述必须报（v18.6.3 反馈：原写法导致看板 token 列空）')
-  assert.match(it.detail, /成本指标缺实测值/)
-
-  // 失败：仅 1.2M 无 ~ 也没实测不可得
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：1.2M\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, false, '无 ~ 也无「实测不可得」必须报')
-  assert.match(it.detail, /成本指标缺实测值/)
-  rmSync(d, { recursive: true, force: true })
-})
-
 // ===== v2.5.2-dsh.16：SVG 图件链路 =====
 // MD / mkSvg / DRAFT_WITH_ENDNOTES / CARD 已移入 `tests/_fixtures.mjs`（v18.0.5 去重，与 e2e 用例共用同一份）
 const mkProj = (d) => {
@@ -931,39 +799,6 @@ test('consistency-check ⑱：图件路径口径与「宣称的图件门」必�
   }
   assert.match(r.out, /图件路径口径漂移/, '⑱ 必须捕获旧图件路径')
   assert.match(r.out, /口径残留 M 门总项数/, '⑥b 必须捕获 M 门计数漂移')
-  rmSync(d, { recursive: true, force: true })
-})
-
-test('m-gate-check M-Exist-7：§6 成本指标必须含 `~NN[MKB]` 或「实测不可得」（v18.6.3 反哺：原只看「字段有内容」漏报，看板 17/21 token 列空）', () => {
-  const { d, proj, fin, ev } = mkProject()
-  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
-  const DD = join(fin, '交付说明.md')
-  const item = (txt) => {
-    writeFileSync(DD, '# 交付说明\n\n' + txt + '\n')
-    const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])
-    return parseJson(r).results.find((x) => x.gate.startsWith('M-Exist-7'))
-  }
-  let it = item(buildDeliveryNoteWithSec6('- token（实测）：~5M cacheRead\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '标准 `~NN[MKB]` 应通过：' + it.detail)
-
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：5M tokens\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '绝对值 `NN[MKB] tokens` 应通过：' + it.detail)
-
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：已耗 ~5M\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '中文前缀「已耗 ~NN[MKB]」应通过：' + it.detail)
-
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：实测不可得：无会话缓存（console pool 限子进程）\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '「实测不可得：<原因>」应通过：' + it.detail)
-
-  // 失败：仅定性描述，无 `~NN[MKB]` 也无「实测不可得」（最常见误写）
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：已耗：12 次 spawn + 4 轮机械编辑\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, false, '纯定性描述必须报（v18.6.3 反馈：原写法导致看板 token 列空）')
-  assert.match(it.detail, /成本指标缺实测值/)
-
-  // 失败：仅 1.2M 无 ~ 也没实测不可得
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：1.2M\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, false, '无 ~ 也无「实测不可得」必须报')
-  assert.match(it.detail, /成本指标缺实测值/)
   rmSync(d, { recursive: true, force: true })
 })
 
@@ -1276,39 +1111,6 @@ test('m-gate-check M-Form-11：素材按需加载闭环（引了没读 / 幽灵�
   it = item()
   assert.equal(it.pass, false, '缺「## 已加载」段必须报')
   assert.match(it.detail, /已加载.*段标题|缺「## 已加载」/)
-  rmSync(d, { recursive: true, force: true })
-})
-
-test('m-gate-check M-Exist-7：§6 成本指标必须含 `~NN[MKB]` 或「实测不可得」（v18.6.3 反哺：原只看「字段有内容」漏报，看板 17/21 token 列空）', () => {
-  const { d, proj, fin, ev } = mkProject()
-  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
-  const DD = join(fin, '交付说明.md')
-  const item = (txt) => {
-    writeFileSync(DD, '# 交付说明\n\n' + txt + '\n')
-    const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])
-    return parseJson(r).results.find((x) => x.gate.startsWith('M-Exist-7'))
-  }
-  let it = item(buildDeliveryNoteWithSec6('- token（实测）：~5M cacheRead\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '标准 `~NN[MKB]` 应通过：' + it.detail)
-
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：5M tokens\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '绝对值 `NN[MKB] tokens` 应通过：' + it.detail)
-
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：已耗 ~5M\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '中文前缀「已耗 ~NN[MKB]」应通过：' + it.detail)
-
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：实测不可得：无会话缓存（console pool 限子进程）\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '「实测不可得：<原因>」应通过：' + it.detail)
-
-  // 失败：仅定性描述，无 `~NN[MKB]` 也无「实测不可得」（最常见误写）
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：已耗：12 次 spawn + 4 轮机械编辑\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, false, '纯定性描述必须报（v18.6.3 反馈：原写法导致看板 token 列空）')
-  assert.match(it.detail, /成本指标缺实测值/)
-
-  // 失败：仅 1.2M 无 ~ 也没实测不可得
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：1.2M\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, false, '无 ~ 也无「实测不可得」必须报')
-  assert.match(it.detail, /成本指标缺实测值/)
   rmSync(d, { recursive: true, force: true })
 })
 
@@ -2667,39 +2469,6 @@ test('v18.2.9 方案：apply-diff causal 守恒——强档替换中档且无新
   rmSync(d, { recursive: true, force: true })
 })
 
-test('m-gate-check M-Exist-7：§6 成本指标必须含 `~NN[MKB]` 或「实测不可得」（v18.6.3 反哺：原只看「字段有内容」漏报，看板 17/21 token 列空）', () => {
-  const { d, proj, fin, ev } = mkProject()
-  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
-  const DD = join(fin, '交付说明.md')
-  const item = (txt) => {
-    writeFileSync(DD, '# 交付说明\n\n' + txt + '\n')
-    const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])
-    return parseJson(r).results.find((x) => x.gate.startsWith('M-Exist-7'))
-  }
-  let it = item(buildDeliveryNoteWithSec6('- token（实测）：~5M cacheRead\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '标准 `~NN[MKB]` 应通过：' + it.detail)
-
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：5M tokens\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '绝对值 `NN[MKB] tokens` 应通过：' + it.detail)
-
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：已耗 ~5M\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '中文前缀「已耗 ~NN[MKB]」应通过：' + it.detail)
-
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：实测不可得：无会话缓存（console pool 限子进程）\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '「实测不可得：<原因>」应通过：' + it.detail)
-
-  // 失败：仅定性描述，无 `~NN[MKB]` 也无「实测不可得」（最常见误写）
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：已耗：12 次 spawn + 4 轮机械编辑\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, false, '纯定性描述必须报（v18.6.3 反馈：原写法导致看板 token 列空）')
-  assert.match(it.detail, /成本指标缺实测值/)
-
-  // 失败：仅 1.2M 无 ~ 也没实测不可得
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：1.2M\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, false, '无 ~ 也无「实测不可得」必须报')
-  assert.match(it.detail, /成本指标缺实测值/)
-  rmSync(d, { recursive: true, force: true })
-})
-
 // v18.7.2 P0-1 回归：公共前缀 > CTX 时 tail 切片索引错——旧实现把 oldPart 尾部+前缀字符重复注入修订稿且报 ok:true。
 // 参数化 prefixLen ∈ {12, 20, 36, 68}，分别落进 CTX=8/16/32/64 的「前缀超过 CTX」区间。
 for (const prefixLen of [12, 20, 36, 68]) {
@@ -2792,39 +2561,6 @@ test('v18.3.0 阶段 3：m-gate M-Form-8 句长异常——超长句 → P2 提�
   const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])
   const it = parseJson(r).results.find((x) => x.gate.startsWith('M-Form-8'))
   assert.match(it.detail, /异常长句/, '超长句应报句长异常 P2 提示：' + it.detail)
-  rmSync(d, { recursive: true, force: true })
-})
-
-test('m-gate-check M-Exist-7：§6 成本指标必须含 `~NN[MKB]` 或「实测不可得」（v18.6.3 反哺：原只看「字段有内容」漏报，看板 17/21 token 列空）', () => {
-  const { d, proj, fin, ev } = mkProject()
-  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
-  const DD = join(fin, '交付说明.md')
-  const item = (txt) => {
-    writeFileSync(DD, '# 交付说明\n\n' + txt + '\n')
-    const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])
-    return parseJson(r).results.find((x) => x.gate.startsWith('M-Exist-7'))
-  }
-  let it = item(buildDeliveryNoteWithSec6('- token（实测）：~5M cacheRead\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '标准 `~NN[MKB]` 应通过：' + it.detail)
-
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：5M tokens\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '绝对值 `NN[MKB] tokens` 应通过：' + it.detail)
-
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：已耗 ~5M\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '中文前缀「已耗 ~NN[MKB]」应通过：' + it.detail)
-
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：实测不可得：无会话缓存（console pool 限子进程）\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, true, '「实测不可得：<原因>」应通过：' + it.detail)
-
-  // 失败：仅定性描述，无 `~NN[MKB]` 也无「实测不可得」（最常见误写）
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：已耗：12 次 spawn + 4 轮机械编辑\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, false, '纯定性描述必须报（v18.6.3 反馈：原写法导致看板 token 列空）')
-  assert.match(it.detail, /成本指标缺实测值/)
-
-  // 失败：仅 1.2M 无 ~ 也没实测不可得
-  it = item(buildDeliveryNoteWithSec6('- token（实测）：1.2M\n\n- 时长：3h\n\n- 最贵角色：T5'))
-  assert.equal(it.pass, false, '无 ~ 也无「实测不可得」必须报')
-  assert.match(it.detail, /成本指标缺实测值/)
   rmSync(d, { recursive: true, force: true })
 })
 
@@ -3152,7 +2888,9 @@ test('lunheng-stats：聚合 run/ 各项目（机器/LLM兜底/无证据 三桶 
   const c = join(runDir, 'proj-c')
   mkdirSync(join(c, 'final'), { recursive: true })
   writeFileSync(join(c, 'final', '定稿.md'), '# 标题\n\n正文。\n')
-  const r = run([join(SCRIPTS, 'lunheng-stats.mjs'), '--run-dir', runDir, '--json'])
+  // v18.67.0（批 3 围栏落地后）：--run-dir 须落在 <cwd>/run 之内（与 pending-cli 同口径）。
+  //   故本用例以 tmp 为 cwd、相对路径调用——聚合逻辑的测试意图不变，只是调用形态过围栏。
+  const r = run([join(SCRIPTS, 'lunheng-stats.mjs'), '--run-dir', 'run', '--json'], { cwd: d })
   assert.equal(r.code, 0, r.out.slice(0, 300))
   const j = parseJson(r)
   assert.equal(j.projects.length, 3)
@@ -3177,7 +2915,8 @@ test('lunheng-stats：聚合 run/ 各项目（机器/LLM兜底/无证据 三桶 
 test('lunheng-stats：未知参数 / run 目录不存在 → exit 10（与 0=成功区分）', () => {
   const d = tmp()
   assert.equal(run([join(SCRIPTS, 'lunheng-stats.mjs'), '--nope']).code, 10, '未知参数应 exit 10')
-  assert.equal(run([join(SCRIPTS, 'lunheng-stats.mjs'), '--run-dir', join(d, 'no-such')]).code, 10, 'run 目录不存在应 exit 10')
+  // v18.67.0：cwd 锚定在 d、指向 run/ 内不存在的子路径 → 命中「目录不存在」分支（越界分支由 cli-e2e 钉）
+  assert.equal(run([join(SCRIPTS, 'lunheng-stats.mjs'), '--run-dir', 'run/no-such'], { cwd: d }).code, 10, 'run 目录不存在应 exit 10')
   rmSync(d, { recursive: true, force: true })
 })
 

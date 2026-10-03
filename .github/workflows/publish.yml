@@ -37,7 +37,7 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '24'   # 门 2 需要 Node 24：Node 22.19 自带的 npm 10.9.3 无法安装本检查所用的 dsh-plugin-guide
-          package-manager-cache: false # v5 把默认值反转为 true；本仓库无 lockfile 且不 pnpm install（v18.2.4 审计 F.1 维持不缓存）
+          package-manager-cache: false # v5 把默认值反转为 true；本仓**刻意不开缓存**（缓存面=供应链面）；lockfile 一致性由 ci.yml 的 lockfile-frozen job 校验（lockfile 自 v18.66.0 起入库，v18.67.0 审计批 3 更正旧注释）
 
       # ── 四道门（fail-closed：任一不过即中止，绝不发布未校验内容）──────────────────
       - name: 门 1/4 一致性自检（版本/白名单/口径/工具名/CHANGELOG 段落）
@@ -74,7 +74,7 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '24'   # Trusted Publishing 要求 npm ≥11.5.1；Node 24 自带 npm 已满足（不再 `npm i -g npm@latest`，避免发布环境不可复现）
-          package-manager-cache: false # v5 把默认值反转为 true；本仓库无 lockfile 且不 pnpm install（v18.2.4 审计 F.1 维持不缓存）
+          package-manager-cache: false # v5 把默认值反转为 true；本仓**刻意不开缓存**（缓存面=供应链面）；lockfile 一致性由 ci.yml 的 lockfile-frozen job 校验（lockfile 自 v18.66.0 起入库，v18.67.0 审计批 3 更正旧注释）
           registry-url: 'https://registry.npmjs.org'
 
       # 防误发：git tag 名必须与 package.json version 一致（仅 tag 触发时校验）
@@ -234,7 +234,7 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '24'
-          package-manager-cache: false # v5 默认反转为 true；本仓无 lockfile 且不 install（同 publish 作业口径）
+          package-manager-cache: false # v5 默认反转为 true；本仓刻意不开缓存（lockfile 一致性由 ci lockfile-frozen 校验）
       # 资产 = `npm pack` 产出的 tgz（与既往手工 release 的附件同名同源）
       - name: 创建 GitHub Release（附 tgz 资产）
         env:

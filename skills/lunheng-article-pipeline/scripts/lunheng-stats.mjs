@@ -12,8 +12,8 @@
 //     ② llm-legacy（v2.5.2-dsh.x 的 LLM 兜底，形态多样：`M-Form_形式合规门` 嵌套 / `m_checks` 键值 /
 //       `exit_code`+`M-Form` 对象——共同点：无 `results[]` 数组）；③ 无报告。
 //   本脚本只对 machine 格式做机械聚合；llm-legacy 与「无报告」单独计数，作为「闸门证据覆盖率」如实呈现。
-import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { readFileSync, readdirSync, existsSync, statSync, realpathSync } from 'node:fs';
+import { join, resolve, sep } from 'node:path';
 import { countHan } from './_lib/han.mjs';   // 汉字口径真源（与 count-chars 同源）
 import { installExitGuard } from './_lib/exit-guard.mjs';   // 退出码硬化（v18.7.3 P1-5：旧版未装，run/ 下目录 readFileSync 抛错会以默认 exit 1 收场，与「1 = 内容失败」撞义）
 import { parseArgs, USAGE_CODE } from './_lib/cli-args.mjs'; // 参数解析唯一实现（v18.7.3 P1-5）
@@ -36,6 +36,24 @@ if (stFlags.has('-h') || stFlags.has('--help')) {
   process.exit(0);
 }
 const root = resolve(stOpts['--run-dir'] || join(process.cwd(), 'run'));
+// v18.67.0（批 3 E2E 实测新发现）：--run-dir 此前**只查存在性、无包含关系判定**——任何已存在
+//   目录（`--run-dir ..` 或绝对路径）都会被扫描聚合。本脚本虽是纯只读聚合，「读面」也不得指向
+//   <cwd>/run 之外（与 lib/run-path-fence.mjs「三层缺一不可」教义同旨；run-path-fence 头注释宣称
+//   的「白名单 + 包含关系」此前是声明＞实现）。
+//   为什么内联而不 import lib/run-path-fence.mjs：本脚本须在**镜像部署**（只复制 skills/ 目录、
+//   无 lib/）下自足运行（scripts/_lib 自足原则，同 exit-guard / cli-args）；故此处内联同口径判定——
+//   两侧同入 realpath 空间后判包含（防 junction 逃逸；realpath 失败降级字符串规范化，不劣于旧版）。
+const runBase = join(process.cwd(), 'run');
+const rpNorm = (p) => {
+  let q = p;
+  try { q = realpathSync.native(p); } catch { /* 不存在/不可达 → 用原路径（存在性另查） */ }
+  return resolve(q).replace(/[\\/]+$/, '').replace(/\//g, sep).toLowerCase();
+};
+const aBase = rpNorm(runBase), aRoot = rpNorm(root);
+if (aRoot !== aBase && !aRoot.startsWith(aBase + sep)) {
+  console.error(`--run-dir 超出 <工作区>/run 范围：${root}（防止把只读扫描面指向任意目录）`);
+  process.exit(10);
+}
 if (!existsSync(root)) { console.error(`run 目录不存在: ${root}`); process.exit(10); }
 
 // === 定位 M-Gate 报告（三位置回退）===

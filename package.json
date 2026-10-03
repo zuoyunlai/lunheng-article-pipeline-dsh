@@ -67,9 +67,9 @@
     "test:no-isolation": "node --test --test-isolation=none --test-timeout=180000 \"tests/**/*.test.mjs\" \"skills/*/tests/**/*.test.mjs\""
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh": ">=0.1.2-rc.1 <0.3.0",
-    "@deepseek-ai/dsh-tool-subagent": ">=0.1.2-rc.1 <0.3.0",
-    "@deepseek-ai/dsh-tools": ">=0.1.2-rc.1 <0.3.0"
+    "@deepseek-ai/dsh": ">=0.1.2-rc.1 <0.2.0",
+    "@deepseek-ai/dsh-tool-subagent": ">=0.1.2-rc.1 <0.2.0",
+    "@deepseek-ai/dsh-tools": ">=0.1.2-rc.1 <0.2.0"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh": {

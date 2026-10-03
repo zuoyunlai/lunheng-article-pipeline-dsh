@@ -24,9 +24,27 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '22.19'
-          package-manager-cache: false # v5 把默认值反转为 true；本仓库无 lockfile 且不 pnpm install（v18.2.4 审计 F.1 维持不缓存）
+          package-manager-cache: false # v5 默认反转为 true；本仓**刻意不开缓存**（缓存面=供应链面）。依赖一致性改由 lockfile-frozen job 的 --frozen-lockfile 保证（v18.67.0 审计批 3：旧注释称「本仓库无 lockfile」已失效——lockfile 自 v18.66.0 起入库）
       - name: 论衡一致性自检（版本点位/白名单/口径/工具名/CHANGELOG 段落）
         run: node skills/lunheng-article-pipeline/scripts/consistency-check.mjs
+
+  # lockfile 一致性门（v18.67.0 审计批 3 新增）：lockfile 自 v18.66.0 起入库，但 CI 此前**无任何**
+  #   `--frozen-lockfile` 校验；而旧注释又断言「本仓库不含 lockfile」→ 前提与实现对不上，
+  #   lockfile 可与 package.json 静默漂移（改依赖忘了提交 lockfile、或 resolve 结果变了没人发现）。
+  #   `--frozen-lockfile` 的语义：lockfile 与 package.json 不一致时**直接失败**（不解析、不改写），
+  #   正是「漂移即红」的正面判据。构建脚本审批（pnpm-workspace.yaml 的 allowBuilds）也已显式裁决，
+  #   故本 job 不需要交互式 approve-builds（若将来出现未裁决条目，本 job 会红，须同批裁决）。
+  lockfile-frozen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '22.19'
+          package-manager-cache: false # v5 默认反转为 true；本仓刻意不开缓存
+      - name: lockfile 与 package.json 一致性（--frozen-lockfile，漂移即红）
+        run: pnpm install --frozen-lockfile
 
   # 打包面检查：cordis.patch.yml 合法性 / 行 id 唯一 / dsh.bundle.patch 指向 /
   # package.json 元数据 / 工程红线（与 drift-check 互补，互不重叠）
@@ -34,13 +52,14 @@ jobs:
   # dsh-plugin-guide（该包声明 optional peerDependency，npm 10 的 arborist 崩）——
   # 运行时下限仍由 drift-check（22.19）覆盖；脚本自身另走 pnpm dlx 优先的多策略。
   #
-  # ⚠️ **为什么不加 `cache: 'pnpm'`（v18.2.4 审计 F.1 否决，勿再"顺手补上"）**：
-  #   ① 本仓库**不含任何 lockfile**（无 pnpm-lock.yaml / package-lock.json）——`actions/setup-node`
-  #      的 `cache: pnpm` 在缺锁文件时**直接失败**（`Dependencies lock file is not found ...
-  #      Supported file patterns: pnpm-lock.yaml`），即照字面实施会**把 CI 弄红**；
-  #   ② 即便补上锁文件，缓存键只能哈希锁文件，而本 job 并不 `pnpm install`（只用 `pnpm dlx` 取
-  #      一次性 CLI）——为省几十秒引入一个可变 key 的缓存面，收益 < 供应链与陈旧缓存风险。
-  #   结论：**维持不缓存**；若将来本仓库引入 lockfile 并固定依赖，可连同 pin 一起重新评估。
+  # ⚠️ **为什么不加 `cache: 'pnpm'`（v18.2.4 审计 F.1 的结论保留，前提已更新）**：
+  #   ① **前提更新（v18.67.0 审计批 3）**：本仓**自 v18.66.0 起已入库 lockfile**
+  #      （`pnpm-lock.yaml` + `pnpm-workspace.yaml`）——旧注释「本仓库不含任何 lockfile」已失效，
+  #      当时否决缓存的第一条理由（缺锁文件会让 `cache: pnpm` 直接失败）随之失效。
+  #   ② 但**结论维持不缓存**：本 job 只用 `pnpm dlx` 取一次性 CLI，并不 `pnpm install`；
+  #      为省几十秒引入一个可变 key 的缓存面，收益 < 供应链与陈旧缓存风险。
+  #      **依赖一致性不再靠「没有 lockfile」兜底，而由 `lockfile-frozen` job 的
+  #      `pnpm install --frozen-lockfile` 正面校验**（v18.67.0 新增，勿删——它替掉了旧前提）。
   #   ⚠️ **v5 陷阱（v18.2.5 实测踩到）**：`actions/setup-node@v5` 把 `package-manager-cache` 的默认值
   #      从 false **反转为 true** —— 等于替我们「顺手补上了缓存」，且失败形态与 ① 预判的**不同**：
   #      实测 CI 全 5 job 红，报 `Unable to locate executable file: pnpm`（runner 上无 pnpm 二进制，
@@ -55,7 +74,7 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '24'
-          package-manager-cache: false # v5 把默认值反转为 true；本仓库无 lockfile 且不 pnpm install（v18.2.4 审计 F.1 维持不缓存）
+          package-manager-cache: false # v5 默认反转为 true；本仓**刻意不开缓存**（缓存面=供应链面）。依赖一致性改由 lockfile-frozen job 的 --frozen-lockfile 保证（v18.67.0 审计批 3：旧注释称「本仓库无 lockfile」已失效——lockfile 自 v18.66.0 起入库）
       - name: 打包面检查（dsh-plugin-dev check，v18.0.0 起无豁免）
         run: node scripts/plugin-surface-check.mjs
 
@@ -69,7 +88,7 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '22.19'
-          package-manager-cache: false # v5 把默认值反转为 true；本仓库无 lockfile 且不 pnpm install（v18.2.4 审计 F.1 维持不缓存）
+          package-manager-cache: false # v5 默认反转为 true；本仓**刻意不开缓存**（缓存面=供应链面）。依赖一致性改由 lockfile-frozen job 的 --frozen-lockfile 保证（v18.67.0 审计批 3：旧注释称「本仓库无 lockfile」已失效——lockfile 自 v18.66.0 起入库）
       - name: 仓库机械卫生门
         run: node scripts/repo-hygiene-check.mjs
 
@@ -94,7 +113,7 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '24'
-          package-manager-cache: false # v5 把默认值反转为 true；本仓库无 lockfile 且不 pnpm install（v18.2.4 审计 F.1 维持不缓存）
+          package-manager-cache: false # v5 默认反转为 true；本仓**刻意不开缓存**（缓存面=供应链面）。依赖一致性改由 lockfile-frozen job 的 --frozen-lockfile 保证（v18.67.0 审计批 3：旧注释称「本仓库无 lockfile」已失效——lockfile 自 v18.66.0 起入库）
       - name: 打包产物冒烟（npm pack → 解包 → 入口 apply）
         run: node scripts/pack-smoke.mjs
 
@@ -116,7 +135,7 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '24'
-          package-manager-cache: false # v5 默认反转为 true；本仓无 lockfile 且不 pnpm install
+          package-manager-cache: false # v5 默认反转为 true；本仓**刻意不开缓存**（缓存面=供应链面）；依赖一致性由 lockfile-frozen job 保证
       - name: 装 dsh（verify 的 --dsh 默认从 PATH 找）
         # v18.12.1（收口补丁）：0.1.5-rc.2 → **0.1.7-rc.2**。原因（用 `npm pack` 逐版核对过 app-boot）：
         #   0.1.5-rc.2 与 rc.3 的 `dsh-app-boot` 仍在 `patchReload === "live"` 时调 `watchUserPatches()`，
@@ -161,7 +180,7 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: ${{ matrix.node }}
-          package-manager-cache: false # v5 把默认值反转为 true；本仓库无 lockfile 且不 pnpm install（v18.2.4 审计 F.1 维持不缓存）
+          package-manager-cache: false # v5 默认反转为 true；本仓**刻意不开缓存**（缓存面=供应链面）。依赖一致性改由 lockfile-frozen job 的 --frozen-lockfile 保证（v18.67.0 审计批 3：旧注释称「本仓库无 lockfile」已失效——lockfile 自 v18.66.0 起入库）
       - name: 随包脚本回归测试（node --test）
         # 用引号保护的 glob：让 Node 自己展开（bash 与 pwsh 都能原样传递）
         # CI 用**标准隔离模式**（受限 DSH 会话里的 `--test-isolation=none` 降级跑法只用于本地，见 CONTRIBUTING）

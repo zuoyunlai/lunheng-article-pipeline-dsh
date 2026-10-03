@@ -1,6 +1,19 @@
+# pnpm 构建脚本审批（v18.67.0 全量审计批 3 裁决）
+#
+# 背景：本文件在 v18.66.0 随 lockfile 一同首次入库时，五项值仍是 pnpm 自动生成的**字面占位符**
+#   （`set this to true or false`）——pnpm 视其为未裁决 → 任何新克隆的 `pnpm install` / `pnpm test`
+#   都以 `ERR_PNPM_IGNORED_BUILDS` 失败（审计实测复现，exit 1）。
+#
+# 裁决判据（最小构建面原则，与 SECURITY.md 信任边界一致）：
+#   本仓的门（`node --test` 721 项 / consistency / surface / hygiene / no-write / pack-smoke）
+#   与随包脚本全部跑在**纯 Node** 上，**不加载任何原生扩展**；这五项都是 `@deepseek-ai/dsh`
+#   开发依赖的传递依赖，本仓既不直接 import，也不依赖其 postinstall 产物。
+#   运行第三方 build script 等于把任意代码执行权交给依赖树——**不需要就不开**。
+#   故五项一律 `false`（显式裁决：不运行其构建脚本）。若将来某个门确实需要原生扩展，
+#   应在此处单独改为 `true` 并**在 CONTRIBUTING.md 记录理由与验证方式**，不得整批放开。
 allowBuilds:
-  '@deepseek-ai/dsh-subprocess-local': set this to true or false
-  '@google/genai': set this to true or false
-  koffi: set this to true or false
-  node-pty: set this to true or false
-  protobufjs: set this to true or false
+  '@deepseek-ai/dsh-subprocess-local': false
+  '@google/genai': false
+  koffi: false
+  node-pty: false
+  protobufjs: false

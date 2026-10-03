@@ -25,6 +25,17 @@
 - **`外部检索源接入面.md` 同文件新旧口径统一**：§2.1 AI4Scholar 表「默认层/备用层」→ **B 档叠加**（须先过 §0 工具面存在性）；§2.2 firecrawl/tavily/exa「默认层」→ **A 档内首选引擎**（A 档不可用降 D 档）；§2.3 consensus 行「`web_search` 引擎位」→ **`advanced_search` 引擎位**（与 §2.2 v18.62.7 更正自洽，审计 P2-4/P2-5）。
 - **测试**：`tests/commands.test.mjs` 新增两条（junction 越界必须被物理层拒绝；`..backup` 不得误杀）；全量 **721/721 全绿**。
 
+### 批 3（工程债，同版）
+
+- **pnpm 构建脚本审批裁决**：`pnpm-workspace.yaml` 的 `allowBuilds` 五项（`@deepseek-ai/dsh-subprocess-local` / `@google/genai` / `koffi` / `node-pty` / `protobufjs`）由**字面占位符**改为显式 `false`——本仓的门与随包脚本全部跑在纯 Node 上，不加载原生扩展，运行第三方 build script 属白增供应链面（最小构建面原则）。实测修复前 `pnpm install` / `pnpm test` 在新克隆上必被 `ERR_PNPM_IGNORED_BUILDS` 阻塞（exit 1），修复后 `pnpm test` 全量可跑。
+- **CI lockfile 前提重审**：`ci.yml` 8 处 + `publish.yml` 3 处「本仓库不含任何 lockfile」陈旧断言全部更正（lockfile 自 v18.66.0 起入库）；新增 **`lockfile-frozen` job**：`pnpm install --frozen-lockfile` 正面校验 lockfile ↔ package.json 一致性（此前无任何门，可静默漂移）。`package-manager-cache: false` 结论保留但理由更新（缓存面=供应链面）。
+- **peerDeps 区间收窄**：`>=0.1.2-rc.1 <0.3.0` → **`>=0.1.2-rc.1 <0.2.0`**。实测（`dsh-plugin-guide verify --dsh <0.2.0-rc.2>`）0.2.x 下 headless profile 安装被拒：`@deepseek-ai/dsh-headless@0.1.5-rc.1` peerDependencies 钉死 0.1.x 系——旧上界是**未验证的声明**。收窄到两端均已验证的区间（0.1.2-rc.1 = lockfile+全量测试；0.1.7-rc.2 = CI loader-smoke）。待宿主生态出 0.2 兼容线后先加 CI 矩阵再放宽。
+- **CONTRIBUTING 新增「本地开发环境准备」节**：install/lockfile/allowBuilds/Node 版本/宿主兼容区间全流程（此前对 pnpm install 零提及）。
+- **删 8 份重复测试**：`tests/scripts.test.mjs` 中同名「M-Exist-7：§6 成本指标」测试逐字节相同地重复 9 份（批量追加未查重），删 8 保 1——文件 123 → 115 test，约 -264 行虚增用例。
+- **三个 CLI 补 E2E**（`skills/lunheng-commands/tests/cli-e2e.test.mjs`，10 用例全真 spawn）：history-cli（list/read/围栏拒绝/未知子命令）、stats-cli（合法路径/越界拒绝）、pending-cli（JSON 契约/不存在 exit 10/词法层/junction 物理层）+ 三 CLI 入口判定的源码级回归钉（剥注释后断言 pathToFileURL 形态）。CLI 入口此前零测试，恰是历史缺陷高发区。
+- **新发现并修复（E2E 首跑即抓到）**：`lunheng-stats.mjs` 的 `--run-dir` **只查存在性、无包含关系判定**——任何已存在目录（`..` / 绝对路径）都会被扫描聚合；`run-path-fence.mjs` 头注释宣称的「白名单 + 包含关系」属声明＞实现。现内联同口径围栏（两侧同入 realpath 空间判包含；不 import lib 以保镜像部署自足，同 exit-guard/cli-args 的 `_lib` 自足原则）。配套：`lib/commands.js` 的 spawn 钉死 `cwd: base`（会话工作区）——否则上下游围栏基座错位、合法路径被误拒（实测两用例红后修正）。
+- **测试**：全量 **723/723 全绿**（+2 junction/`..backup` 回归、+10 CLI E2E、−8 重复）。
+
 ## 18.66.0 — 2026-10-03
 
 > **性质**：**新能力**——参考文献格式的**正向生成**（GB/T 7714-2015 ⇄ APA 7th）。主人 2026-10-03 指令：『C2/D1 之后，问「能否支持 APA/GB-T/IEEE 自动转换」→ 选「A 档但先只做 GB/T ↔ APA，IEEE 暂缓」』。

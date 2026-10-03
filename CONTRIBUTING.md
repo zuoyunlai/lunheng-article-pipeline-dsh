@@ -56,6 +56,19 @@
      - **`publish`**（持 `id-token: write`，`needs: gates`）：**只有 gates 全绿才可能开始**；本 job 自己只做 tag/版本一致校验 → **幂等守卫**（该版本已发布则跳过）→ OIDC `npm publish --provenance --tag dsh` → dist-tag 核对 → **发布后审计**（`npm view <pkg>@<ver> gitHead` 必须等于本次提交）。
      > **为什么拆**（第三方审计「CLI 门的外部依赖被排除在供应链考虑之外」）：门 2 会**从 registry 现场下载并执行**第三方 CLI（`dsh-plugin-guide`）——把它放在**持有发布身份**的作业里，等于让一个下载来的二进制在 `id-token: write` 与 `NPM_TOKEN` 面前执行。拆开后，发布身份所在的作业**不再执行任何第三方 CLI**。
 
+## 本地开发环境准备（v18.67.0 新增，全量审计批 3）
+
+```bash
+pnpm install --frozen-lockfile   # 必须带 --frozen-lockfile：CI 同款，lockfile 与 package.json 不得漂移
+pnpm test                        # = node --test "tests/**/*.test.mjs" "skills/*/tests/**/*.test.mjs"
+```
+
+- **lockfile 是受版本管理的**：`pnpm-lock.yaml` / `pnpm-workspace.yaml` 自 v18.66.0 起入库。**改依赖必须同批提交 lockfile**（`pnpm install` 后一并 `git add`），CI 的 `lockfile-frozen` 步会以 `--frozen-lockfile` 校验，漂移即红。
+- **构建脚本审批（`pnpm-workspace.yaml` 的 `allowBuilds`）**：五项（`@deepseek-ai/dsh-subprocess-local` / `@google/genai` / `koffi` / `node-pty` / `protobufjs`）**显式裁决为 `false`**——本仓的门与随包脚本全部跑在纯 Node 上，不加载原生扩展，**不需要**它们的 postinstall 产物；运行第三方 build script 等于把任意代码执行权交给依赖树。**若某个门确实需要原生扩展**：单独改该项为 `true`，并在本文件记录理由与验证方式，**不得整批放开**。
+- **若 pnpm 提示 `ERR_PNPM_IGNORED_BUILDS`**：说明 `allowBuilds` 又有新条目未裁决。裁决后重跑 `pnpm install --frozen-lockfile`——**不要**用 `pnpm approve-builds` 交互式整批放行。
+- **Node 版本**：`engines` 要求 `^22.19.0 || >=24.0.0`。
+- **宿主（dsh）兼容区间 = `>=0.1.2-rc.1 <0.2.0`（v18.67.0 审计批 3 收窄）**：旧区间上界 `<0.3.0` 是**未验证的声明**——实测（`dsh-plugin-guide verify --dsh <0.2.0-rc.2>`）0.2.x 下 headless profile 安装被拒：`@deepseek-ai/dsh-headless@0.1.5-rc.1` 的 peerDependencies 钉死 0.1.x 系，**宿主生态尚无 0.2 兼容线**。收窄到已验证区间（下限 0.1.2-rc.1 = lockfile 解析值 + 全量测试；上限内 0.1.7-rc.2 = CI loader-smoke 实测）。**待 dsh-headless 发布 0.2 兼容版后**：先在 CI loader-smoke 加 0.2.x 矩阵项实测，再同步放宽本区间——**不得先放宽后验证**。
+
 ## 开发位置：改动一律落在真源仓库，再同步部署副本（v18.0.0 新增，教训 #153）
 
 本包在开发机上**同时存在两份技能本体**，二者职责不同：
