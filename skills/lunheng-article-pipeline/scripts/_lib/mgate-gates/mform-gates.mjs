@@ -78,11 +78,22 @@ results.push({
 }
 
 // === M-Form-1 引用标注完整性（v2.5.2-dsh.5 修订：阈值提升 L≥3）===
+// v18.72.0（反哺「文类档案」批 2）：文类感知的文献下限。**受控取值**（与 `references/_shared/文类档案.md`
+//   的「文献下限」列一致；新增文类须同批同步两处 + 下方一致性测试）——缺省（未传 `--genre`）= 3，向后兼容。
+//   为什么放这里而非 `THRESHOLDS`：`m-gate-check.mjs` 的 `--dump-thresholds` 只认数值形态，加对象会被
+//   自解析正则静默少生成一行、牵动 `repo-surface-rules.mjs` 与跨文档一致性门 ㉓ 三条自动链（方案 P4）。
+export const GENRE_MIN_L = Object.freeze({
+  'academic-cn': 3, 'academic-hum': 3, 'academic-case': 3,
+  'course': 3, 'lit-review': 3,
+  'book-review': 2, 'policy': 2, 'industry': 2,
+  'report-3rd': 1, 'biz-review': 1, 'wechat': 1,
+});
 export function mForm1(ctx) {
   const { bodyProse, refRe, THRESHOLDS, results } = ctx;
 const bodyRefs = bodyProse.match(refRe) || [];
 const L_count = refsOf(bodyProse, 'L').length;
-const min_L = THRESHOLDS.mform1MinL;
+const min_L = (ctx.genre && GENRE_MIN_L[ctx.genre]) ?? THRESHOLDS.mform1MinL;
+const genreNote = ctx.genre ? `（文类 ${ctx.genre}，阈值 ${min_L}）` : '';
 let mform1Pass, mform1Detail, mform1Severity;
 if (bodyRefs.length === 0) {
   mform1Pass = false;
@@ -90,15 +101,15 @@ if (bodyRefs.length === 0) {
   mform1Severity = 'P0';
 } else if (L_count === 0) {
   mform1Pass = false;
-  mform1Detail = `学术深度论文文献 [Lxx] = 0（实测 ${bodyRefs.length} 引用全无 L，旧算法阈值过低放过——v2.3.7 §四 P4 L=0 漏检根因）`;
+  mform1Detail = `文献 [Lxx] = 0${genreNote}（实测 ${bodyRefs.length} 引用全无 L，旧算法阈值过低放过——v2.3.7 §四 P4 L=0 漏检根因）`;
   mform1Severity = 'P0';
 } else if (L_count < min_L) {
   mform1Pass = false;
-  mform1Detail = `学术深度论文文献 [Lxx] < ${min_L}（实测 L=${L_count}），需补检索加固`;
+  mform1Detail = `文献 [Lxx] < ${min_L}${genreNote}（实测 L=${L_count}），需补检索加固`;
   mform1Severity = 'P0';
 } else {
   mform1Pass = true;
-  mform1Detail = `正文引用 ${bodyRefs.length} 处（L ${L_count}，阈值 ≥${min_L}）`;
+  mform1Detail = `正文引用 ${bodyRefs.length} 处（L ${L_count}，阈值 ≥${min_L}${genreNote}）`;
   mform1Severity = '通过';
 }
 results.push({ gate: 'M-Form-1 引用标注完整性', pass: mform1Pass, detail: mform1Detail, severity: mform1Severity });

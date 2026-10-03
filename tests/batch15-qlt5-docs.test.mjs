@@ -199,9 +199,10 @@ test('行引用守卫：本批引用的 `文件:行号` 逐条指向所声称内
   const mf = lines('scripts', '_lib', 'mgate-gates', 'mform-gates.mjs')
   // v18.62.4（全量审计-v18.62.3 P1-3）：文件头新增 4 行 ERROR 归类注记 → 以下常量整体下移 5 行
   //   （254 → 259 / 244 → 249 / 274 → 279 / 277 → 282）。判据同上：引错行号即红。
-  assert.match(mf[265 - 1], /ENDNOTE_SCAN_EXEMPT = \['AI 使用声明'\]/, 'mform-gates.mjs:265 须是整节豁免白名单（v18.62.4：ERROR 注记插入后由 260 下移至 265）')
+  // v18.72.0（文类档案批 2）：mForm1 前新增 GENRE_MIN_L 受控映射（+11 行）→ 265→276 / 255→266 / 285→296 / 288→299。
+  assert.match(mf[276 - 1], /ENDNOTE_SCAN_EXEMPT = \['AI 使用声明'\]/, 'mform-gates.mjs:276 须是整节豁免白名单（v18.62.4：260→265；v18.72.0：265→276）')
   // v18.62.4：同上整体下移。
-  assert.match(mf[255 - 1], /案例卡\|数据卡\|文献卡/, 'mform-gates.mjs:255 须含文末禁止词（数据卡/案例卡）（v18.62.4：由 250 下移至 255）')
-  assert.match(mf[285 - 1], /const endnoteNonBiblio/, 'mform-gates.mjs:285-288 须是「仅豁免数字编号书目行」那段（v18.62.4：由 280 下移至 285）')
-  assert.match(mf[288 - 1], /join\('\\n'\)/, '同上：:288 为止（v18.62.4：由 283 下移至 288）')
+  assert.match(mf[266 - 1], /案例卡\|数据卡\|文献卡/, 'mform-gates.mjs:266 须含文末禁止词（数据卡/案例卡）（v18.62.4：250→255；v18.72.0：255→266）')
+  assert.match(mf[296 - 1], /const endnoteNonBiblio/, 'mform-gates.mjs:296-299 须是「仅豁免数字编号书目行」那段（v18.62.4：280→285；v18.72.0：285→296）')
+  assert.match(mf[299 - 1], /join\('\\n'\)/, '同上：:299 为止（v18.62.4：283→288；v18.72.0：288→299）')
 })

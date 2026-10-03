@@ -1420,3 +1420,39 @@ test('A6：M-Exist-4 复核义务——「修订尚未发生」判软（首轮�
   assert.equal(it.pass, false, '无法判定审的是哪一版时应保守判硬：' + it.detail)
   rmSync(d, { recursive: true, force: true })
 })
+
+// ── v18.72.0 反哺「文类档案」批 2：--genre 文类感知 ────────────────────────────
+const GENRE_DRAFT = '# 标题\n\n## 摘要\n\n正文仅 1 条文献 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n'
+
+test('v18.72.0 --genre：wechat 文献下限 1 → 1 个 [Lxx] 即过；缺省 3 则 P0', () => {
+  const { d, proj, fin, ev } = mkProject()
+  writeFileSync(join(fin, '定稿.md'), GENRE_DRAFT)
+  const gateOfM1 = (r) => parseJson(r).results.find((x) => x.gate === 'M-Form-1 引用标注完整性')
+  // 缺省：min_L=3，1 条 L < 3 → P0
+  const base = gateOfM1(run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev]))
+  assert.equal(base.severity, 'P0', '缺省 3 时 1 条 [Lxx] 应判 P0：' + base.detail)
+  // --genre wechat：min_L=1，1 条 L ≥ 1 → 通过
+  const gen = gateOfM1(run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev, '--genre', 'wechat']))
+  assert.equal(gen.pass, true, '--genre wechat 下限 1 时 1 条 [Lxx] 应通过：' + gen.detail)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('v18.72.0 --genre：非法 code → exit 10（受控取值，不静默回落 3）', () => {
+  const { d, proj, fin, ev } = mkProject()
+  writeFileSync(join(fin, '定稿.md'), GENRE_DRAFT)
+  const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev, '--genre', 'bogus-genre'])
+  assert.equal(r.code, 10, '非法 --genre 应 exit 10：' + (r.err || r.out))
+  assert.match(r.err || r.out || '', /--genre 非法值/)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('v18.72.0 一致性钉：文类档案.md「文献下限」列 == GENRE_MIN_L（防两处漂移）', async () => {
+  const { GENRE_MIN_L } = await import(pathToFileURL(join(ROOT, 'skills', 'lunheng-article-pipeline', 'scripts', '_lib', 'mgate-gates', 'mform-gates.mjs')).href)
+  const doc = readFileSync(join(ROOT, 'skills', 'lunheng-article-pipeline', 'references', '_shared', '文类档案.md'), 'utf8')
+  const docMap = {}
+  for (const line of doc.split('\n')) {
+    const m = line.match(/^\|\s*`([a-z0-9-]+)`\s*\|.*\|\s*(\d+)\s*\|$/)
+    if (m) docMap[m[1]] = Number(m[2])
+  }
+  assert.deepEqual(docMap, { ...GENRE_MIN_L }, '文类档案.md 的文献下限列必须与脚本 GENRE_MIN_L 逐项一致')
+})

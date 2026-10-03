@@ -45,7 +45,7 @@ import { escapeRegExp, latestReport, PROTECT_CH, tableCells, isSeparatorRow, sec
 import { mExist1, mExist2, mExist3, mExist4, mExist5, mExist6, mExist7, mExist8, mExist9, mExist10, mExist11 } from './_lib/mgate-gates/mexist-gates.mjs';  // M-Exist 门族（v18.3.1 审计 B2 阶段 1）
 import { mIntegrity1 } from './_lib/mgate-gates/mintegrity-gate.mjs';
 import { mFact1 } from './_lib/mgate-gates/mfact-gate.mjs';   // v18.25.0 QLT-2：M-Fact 族（跨节事实一致性）
-import { mForm1, mForm2, mForm3, mForm4, mForm5, mForm6, mForm7, mForm8, mForm9, mForm10, mForm11 } from './_lib/mgate-gates/mform-gates.mjs';  // M-Form 门族（v18.3.1 审计 B2 阶段 2）  // M-Integrity-1（v18.3.1 审计 B2 阶段 1）   // 定位与解析纯函数（v18.2.9，审计 B2 抽离）
+import { mForm1, mForm2, mForm3, mForm4, mForm5, mForm6, mForm7, mForm8, mForm9, mForm10, mForm11, GENRE_MIN_L } from './_lib/mgate-gates/mform-gates.mjs';  // M-Form 门族（v18.3.1 审计 B2 阶段 2）  // M-Integrity-1（v18.3.1 审计 B2 阶段 1）   // 定位与解析纯函数（v18.2.9，审计 B2 抽离）
 installExitGuard();   // 必须在任何 readFileSync 之前：fs 类异常 → 10，其余内部错误 → 70（避免与「1 = P1 内容失败」撞义）
 
 // 本脚本自身所在目录（用于读取技能包内的真源，如闸门记录模板 / 期刊数据库；v2.5.2-dsh.17）
@@ -103,11 +103,11 @@ const MGATE_USAGE = '用法: node m-gate-check.mjs <定稿.md> <证据包目录>
 //   但 T8 自己的**换稿重裁**是正当的，且它与越界覆盖在工具层**无法凭身份区分**（身份只能自报，
 //   自报不可信）→ 故判据不挂在「你是谁」，而挂在「**是否显式声明**」：要跨越阶段边界，必须显式带旗标。
 //   判据一句话：**防的是静默越界，不是禁止越界**（同 `对照表` 的「不设防同改清单，防的是静默」）。
-let wantSummary, figDirArg, reportPath, adjudicatePath, overwriteAdjudicated, positional;
+let wantSummary, figDirArg, reportPath, adjudicatePath, overwriteAdjudicated, genre, positional;
 try {
   const parsed = parseCliArgs(args, {
     flags: ['--summary', '--overwrite-adjudicated'],
-    values: { '--fig-dir': 'final/图件', '--report': 'final/M-Gate-Report.json', '--adjudicate': 'audits/t8-conclusion.json' },
+    values: { '--fig-dir': 'final/图件', '--report': 'final/M-Gate-Report.json', '--adjudicate': 'audits/t8-conclusion.json', '--genre': 'academic-cn' },
     minPositionals: 2,
     maxPositionals: 2,
     positionalHint: '<定稿.md> <证据包目录>',
@@ -117,10 +117,17 @@ try {
   reportPath = parsed.opts['--report'];
   adjudicatePath = parsed.opts['--adjudicate'];
   overwriteAdjudicated = parsed.flags.has('--overwrite-adjudicated');
+  genre = parsed.opts['--genre'];
   positional = parsed.positionals;
 } catch (e) {
   if (e && e.code === CLI_USAGE_CODE) { console.error(e.message); console.error(MGATE_USAGE); process.exit(10); }
   throw e;
+}
+// v18.72.0（反哺「文类档案」批 2）：`--genre` 受控取值（GENRE_MIN_L 的 11 个 code）——非法值**响亮失败**，
+//   不静默回落 3（防「拼错 code 却按学术阈值判」的静默降级，同本仓对 unknown flag 的态度）。
+if (genre != null && !Object.hasOwn(GENRE_MIN_L, genre)) {
+  console.error(`--genre 非法值: ${genre}（受控取值 = ${Object.keys(GENRE_MIN_L).join('/')}，见 references/_shared/文类档案.md）`);
+  process.exit(10);
 }
 const draftPath = positional[0];
 const evDir = positional[1];
@@ -334,6 +341,7 @@ const ctx = {
   h2s, firstIdx, firstEnd, refRe, norm,
   figDirArg, findCard, auditsDirOf, findBriefUpward, layoutAnomaly,
   dataCard: '', dataCardReadError: null,
+  genre,   // v18.72.0：文类 code（null = 未传 → M-Form-1 用 THRESHOLDS.mform1MinL 缺省 3）
 };
 mForm2(ctx);
 mForm7(ctx);
