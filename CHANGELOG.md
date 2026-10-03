@@ -2,6 +2,41 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.69.0 — 2026-10-03
+
+> **性质**：**P2 清理批**（全量审计-v18.66.0 的 P2 清单收尾）——lib 十项、脚本两项、子技能两项、文档一项落地，四项纯维护项登记不修。全量 **728/728 全绿** + 五门全过。
+
+### 批 6-A · lib P2（9 修 + 1 推翻 + 1 注释）
+
+- **validateConfig 限流归零**：`Math.floor` 后再判 `>=1`，0<v<1（如 0.5）不再被静默归零成「无超时/无上限」，非法即拒。
+- **三监听器 disposer + alive 竞态**：H2/H7/H4 统一接 `disposers` 数组 + `!alive` 回收（此前 guard/commands 有、三个监听器漏接），注册前检查 alive、保存 disposer。
+- **H2 聚合四修**：①删死变量 `changed`；②dict-missing 等降级 reviewFlags 按 kind+detail 去重（旧版多块重复 N 份）；③注入条件放宽为「扫过任意 text 块」并新增 `scannedBlocks` 字段——opt-in 方能区分「0 命中」vs「钩子没跑」；④`distinctPersonBlocks` 加注释澄清语义（块数非人数，字段名保留以兼容消费方）。
+- **guard 镜像补子技能**：`mirrorRoots` 收数组，主技能 + `lunheng-commands` 的 rank 100/200/400/500 落点都纳入保护根（旧版只镜像主技能，子技能项目级副本无保护）。
+- **guard JSON 字符串参数**：`arguments` 为 `{`/`[` 开头的字符串时先 JSON.parse 再走 writtenPaths（旧版整串成唯一候选、不设防且不告警）。
+- **pickProject 无参过围栏**：无参按 mtime 挑项目时补 `isDirectChildOf` 物理层（junction 不再被自动选中）。
+- **stats spawnSync 采集上限**：显式 `maxBuffer: 8MB`（Node 默认 1MB 已有界，此改显式化 + 留足余量防误触 ENOBUFS）。
+- **ethics_sanitize 体积上限**：读文件前 stat 判 16MB 上限，超限抛可操作错误（切分/走 H2 钩子分页），不给宿主装死。
+- **SIGTERM→SIGKILL 兜底**：`onAbort` 在 TERM 后 5s 未退出补 SIGKILL（unref），回收不响应 TERM 的孤孙子进程。
+- **PUA 哨兵吞字**：原文自带 `\uE000<n>\uE000` 序列时不再 `?? ''` 吞字——保留原串 + 记 `sentinel-collision` reviewFlag；**词表 mtime 指纹缓存**（工具侧不再每调用重读 3 个词表）。
+- **推翻 1 项**：`tools.js parseJson`「前置告警即 throw」——复现证明现有 `slice(indexOf('{')) + try/catch` 已容忍前置行且返回 null 不抛错，审计描述与实现不符，不改。
+- **测试**：新增 `tests/batch19-lib-p2.test.mjs` 5 钉（validateConfig/哨兵/词表缓存/guard JSON 参数/guard 镜像子技能）。
+
+### 批 6-B · 脚本 P2（2 修 + 1 工具改进）
+
+- **g-audit FP_RE 误伤**：`在…工作` 分支加负向前瞻排除「工作流程/方式/方法/中/上/效率/机制/模式/安排/任务/计划/进展/规范/标准/职责」——「我们在此基础上改进了工作流程」不再误判为「具体经历」P1。
+- **cite-format 假 ISBN**：ISBN 改为**只从显式 `ISBN:` 标签抽**（旧 `(?:97[89])?[\d-]{9,17}[\dXx]` 命中 DOI 数字尾段 → [M] 条带假 ISBN）。
+- **bump-version 补 4 条引擎锚点规则**：子技能 SKILL.md 声明式锚点 / 当前锚定行 / stats-cli·history-cli 头注释 / dispatch-cards 版本行——v18.68.0 时规则㉖ 抓到的四处漂移今后随 bump 自动同步（本次 bump 已实测生效）。
+
+### 批 6-C · 文档 + 子技能
+
+- **history-cli exit 码**：1 → **10**（非判定脚本，1 一律撞码；旧版与 M 门「1=P1」撞义）。
+- **S-4 宣传 vs 实现**：SKILL.md 的 `cp -r` 独立安装宣传改为如实标注——history-cli/pending-cli 依赖 `../../../lib/run-path-fence.mjs`，单独复制技能目录即断，请走自动嵌入或连 lib/ 一并部署。
+- **pipeline-readme 双纪元标题**：删「（v2.2.14）」旧纪元残留。
+
+### 登记不修（纯维护、零行为收益、风险>收益，留后续）
+
+- UTF-8 BOM 剥离口径五脚本不一（实际影响仅首行 h1，门均用 `##`/`###`）；g-audit-check 手写 CLI 解析（违「唯一实现」但行为正确）；CARD_SPECS 双份；mkdirSync 绕过 writeReport 收敛令；SKILL.md/AGENTS.md 常驻成本（SKILL 已减 2.8KB，AGENTS 19.7KB 属运行期必读手册，外移收益有限）。
+
 ## 18.68.0 — 2026-10-03
 
 > **性质**：**结构性拆分批**（全量审计-v18.66.0 批 5「三大拆分」落地）——三项纯结构搬运，**零行为变化**：每项均以「输出逐字不变 + 723/723 + 五门全绿」验收。

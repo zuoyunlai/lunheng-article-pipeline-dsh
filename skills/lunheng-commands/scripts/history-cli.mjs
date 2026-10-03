@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // history-cli.mjs — 读 run/<id>/history.jsonl + 输出 --diff
-// 版本：v1.0.3（论衡 v18.68.0；v18.67.0 全量审计批 2 起「引擎版本锚定」纳入规则 ㉖ 机检）｜v18.62.5 P2-6 引入 run-path-fence 三层收口
+// 版本：v1.0.3（论衡 v18.69.0；v18.67.0 全量审计批 2 起「引擎版本锚定」纳入规则 ㉖ 机检）｜v18.62.5 P2-6 引入 run-path-fence 三层收口
 
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { resolve, join } from 'node:path';
@@ -102,26 +102,29 @@ export function diffProjects(id1, id2) {
 }
 
 // CLI 调用入口（v18.62.0 F6：可移植判定——`file://${argv[1]}` 在 Windows 下永不相等，入口静默不执行）
+// v18.69.0（批 6-C · P2 修复）：本脚本是**非判定脚本**（读 history / 列项目，不判稿件内容质量），
+//   按本仓判据「非判定脚本的 1 一律撞码」，所有 usage/路径错统一 exit 10（旧版 exit 1 会与
+//   M 门族的「1 = P1 内容失败」撞义，调用方按 M 门习惯解读会误触发修订轮）。70 留给内部错（缺，故未用）。
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   const subCmd = process.argv[2];
   if (subCmd === 'list' || !subCmd) {
     const result = listProjects();
-    if (result.error) { console.error(result.error); process.exit(1); }
+    if (result.error) { console.error(result.error); process.exit(10); }
     console.log('run/* 项目列表：');
     for (const p of result) {
       console.log(`  ${p.name.padEnd(40)} ${p.lastModified.toISOString()}${p.hasHistory ? ' [有 history]' : ''}`);
     }
   } else if (subCmd === 'read') {
     const result = readHistory(process.argv[3]);
-    if (result.error) { console.error(result.error); process.exit(1); }
+    if (result.error) { console.error(result.error); process.exit(10); }
     console.log(JSON.stringify(result, null, 2));
   } else if (subCmd === 'diff') {
     const result = diffProjects(process.argv[3], process.argv[4]);
-    if (result.error) { console.error(result.error); process.exit(1); }
+    if (result.error) { console.error(result.error); process.exit(10); }
     console.log(JSON.stringify(result, null, 2));
   } else {
     console.error(`未知子命令：${subCmd}。可用：list / read <id> / diff <id1> <id2>`);
-    process.exit(1);
+    process.exit(10);
   }
 }

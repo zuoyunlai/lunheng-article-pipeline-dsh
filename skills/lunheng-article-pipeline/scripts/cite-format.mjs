@@ -250,7 +250,10 @@ for (let i = 0; i < heads.length; i++) {
     title: ti.title, titleDerived: ti.derived,
     src: source(f.出处),
     doi: doiOf(f.DOIURL), url: urlOf(f.DOIURL),
-    isbn: firstOf(/((?:97[89])?[\d-]{9,17}[\dXx])/, f.DOIURL || ''),
+    // v18.69.0（批 6-B · P2 修复）：ISBN 只从**显式标签**抽——旧正则 `(?:97[89])?[\d-]{9,17}[\dXx]`
+    //   会命中 DOI/URL 里的长数字段（如 `10.1213/01.ane.0000…` 尾段）→ [M] 条带假 `ISBN:`。
+    //   现要求 `ISBN` 字样在场才抽（DOI 数字串不再误判）。
+    isbn: firstOf(/ISBN[：: ]*((?:97[89])?[\d-]{9,17}[\dXx])/i, f.DOIURL || ''),
     accessDate: f.访问日期 ? firstYear(f.访问日期) : null, pubDate: f.发布日期 ? firstYear(f.发布日期) : null,
   }
   const text = build(e)

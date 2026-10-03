@@ -67,6 +67,12 @@ const RULES = [
   [`tag v${OLD}`, `tag v${NEW}`],                                // 发布示例
   [`push origin v${OLD}`, `push origin v${NEW}`],
   [`快速开始指南（v${OLD}）`, `快速开始指南（v${NEW}）`],          // QUICKSTART 标题
+  // v18.69.0（批 6-B）：子技能引擎锚点四种形态——v18.68.0 bump 时规则㉖ 机检抓到这几处漂移
+  //   （bump-version 白名单没覆盖，靠人工同步）。纳入后发版不再漏。
+  [`论衡 v${OLD} **内嵌子技能**`, `论衡 v${NEW} **内嵌子技能**`],     // lunheng-commands/SKILL.md description 声明式锚点
+  [`引擎版本引用当前锚定 **v${OLD}**`, `引擎版本引用当前锚定 **v${NEW}**`], // 同上「当前锚定」行
+  [`（论衡 v${OLD}；`, `（论衡 v${NEW}；`],                        // stats-cli / history-cli 头注释「（论衡 vX；…）」
+  [`版本：v${OLD}。`, `版本：v${NEW}。`],                          // dispatch-cards.md 行尾「版本：vX。」
 ]
 
 let patched = 0
