@@ -2,6 +2,16 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.68.0 — 2026-10-03
+
+> **性质**：**结构性拆分批**（全量审计-v18.66.0 批 5「三大拆分」落地）——三项纯结构搬运，**零行为变化**：每项均以「输出逐字不变 + 723/723 + 五门全绿」验收。
+
+- **CHANGELOG 自身切档**：主档 5959 行 → **489 行**（v18.61.0+），v18.60.1 及更早 5471 行逐字移入 `changelog/archive/18.60-and-earlier.md`。新增 `_lib/changelog-structure.mjs#readChangelogAll(root)`（主档+归档联合读取，全局降序/首段==pkg/无重复键等结构不变量**覆盖全量历史**）；规则 ⑬、changelog-structure 测试、closeout-verify 差集三消费方统一切换。配套：localpath 棘轮基线条目随内容迁移（CHANGELOG.md:21 → 归档:21，主档归零）、consistency 脚本计数/裸行号两门的 CHANGELOG 豁免扩至归档目录、`字数判定表.md` 断链指针改指 `tests/scripts/count-chars.test.mjs`。
+- **`tests/scripts.test.mjs` 巨石拆分**：115 静态 + 4 循环生成用例 → **19 个 per-script 文件**（`tests/scripts/`，m-gate-check 51 / consistency-check 15 / build-evidence-bundle 10 / cross-script 8 / …）+ 共享夹具 `tests/_scripts-shared.mjs`（7 个顶层夹具抽出）。**零用例丢失**（循环生成的 4 个 apply-diff 前缀用例一度被切分器漏掉，从备份找回补回后 723/723 复核）。约 20 处现行文档/机制注释的散文指针同步迁移（`tests/scripts.test.mjs` → 各分文件），历史留痕（audits/、CHANGELOG 历史段）不动。
+- **`scripts/repo-hygiene-check.mjs` 巨石拆分**：186961 B / 1088 行 → **99363 B 主文件（-47%）+ `scripts/_lib/hygiene/` 20 个模块**（15 条规则各一 `run(ctx)` + `_shared.mjs` 共享工具）。EXIT_CONTRACT / DOC_BUDGET 等配置表留在主文件（adr-anchors 源码钉锚定）。**输出与拆分前逐字一致**（基线 Compare-Object 空集，独立复验），scanSet 计数 +20 为新模块在盘的真实增量。
+- **边界登记（docs/audits 物理归档——评估后暂不动）**：closeout-verify 差集对 `audits/` 为**非递归** readdirSync——平铺布局是被依赖的契约；物理归档需先递归化改造 + 核对 bump-version HIST_ARCHIVE_RE 与 link-check 引用，收益（目录浏览性）< 成本，维持登记。
+- **测试**：全量 **723/723 全绿**，五门（consistent/surface/hygiene/no-write/closeout）全过。
+
 ## 18.67.0 — 2026-10-03
 
 > **性质**：**止血批**——《全量审计报告-v18.66.0》（`audits/全量审计报告-v18.66.0.md`）批 1：P0×1 + P1×6，每条先独立复现再修，全部带回归钉（`tests/batch18-audit-v18-66-fixes.test.mjs` + `tests/cite-format.test.mjs` ⑨⑩）。

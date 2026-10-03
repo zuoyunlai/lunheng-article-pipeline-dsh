@@ -2,6 +2,29 @@
 /**
  * repo-hygiene-check.mjs —— 仓库机械卫生门（CI 专用，零依赖，不随包分发）
  *
+ * 批5-3 重构：每条规则抽到 `scripts/_lib/hygiene/rNN-*.mjs`，导出 `run(ctx)`；
+ *   共享工具在 `_shared.mjs`；本文件只剩 ctx 构造 + 顺序调用 + 末尾汇总。
+ *   规则清单与指针（**ADR-0003 源码钉：以下标题原文必须留在本文件**——tests/adr-anchors.test.mjs:105 钉）：
+ *     ① syntax → r01-syntax.mjs
+ *     ② json   → r02-json.mjs
+ *     ③ yaml   → r03-yaml.mjs
+ *     ④ eol    → r04-eol.mjs
+ *     ⑤ utf8   → r05-utf8.mjs
+ *     ⑥+⑥b    → r06-pack.mjs（含发布面与扫描集覆盖两段）
+ *     ⑦       → r07-credentials.mjs
+ *     ⑦b      → r07b-local-path.mjs
+ *     ⑧       → r08-exit-codes.mjs
+ *     ⑧b 退出码命名空间 → r08b-namespace.mjs
+ *     ⑧c      → r08c-surface.mjs
+ *     ⑧d 脚本自述退出码 → r08d-headers.mjs
+ *     ⑨       → r09-doc-budget.mjs
+ *     ⑩       → r10-ann-density.mjs
+ *     ⑪       → r11-lib-line-refs.mjs
+ *     ⑫       → r12-e-family.mjs
+ *     ⑬       → r13-changelog.mjs
+ *     ⑭       → r14-cli-pin.mjs
+ *     ⑮       → r15-host-contract.mjs
+ *
  * 为什么存在（v2.5.2-dsh.13 新增，回应第三方审计「CI 覆盖度」）：
  *   `consistency-check.mjs` 管文档漂移、`plugin-surface-check.mjs` 管打包面契约，
  *   但**语法/编码/行尾/发布内容**这些「零成本就能机械判定」的东西此前无人守：
@@ -11,55 +34,36 @@
  *   - `examples/preset/preset.yml` 从未被任何解析器校验；
  *   - 35 个文件工作区 CRLF、`.gitignore` 是 GBK——而 npm 打包读工作区。
  *
- * 检查项：
- *   ① git 跟踪文件：*.mjs / *.js 逐个 `node --check`（语法；v18.1.0 起含 lib/*.js）
- *   ② *.json 逐个 JSON.parse
- *   ③ *.yml/*.yaml 结构健全（禁制表符缩进 + 关键文件必须含预期键）
- *   ④ 行尾：git ls-files --eol 不得出现 w/crlf 或 w/mixed（配 .gitattributes）
- *   ⑤ 编码：文本文件必须为合法 UTF-8（拒绝替换字符/非法序列）
- *   ⑥ 发布面：npm pack --dry-run --json 必须含关键路径（运行期最小集）+ 脚本数 == SKILL.md 白名单数
- *      **且不得含仓库向文件**（v18.2.0：CHANGELOG/CONTRIBUTING 与 tests/、仓库 scripts/、.github/ 一律不随包）
- *   ⑦ 凭据扫描（零依赖，10 类模式）
- *   ⑦b 本机绝对路径（D-2·修法② · v18.18.4）：发布物硬零 + 非随包树棘轮
- *   ⑧ 退出码契约表（静态解析 process.exit + exit-guard 兜底检查）
- *   ⑧b 退出码命名空间双向对账（EXIT_CONTRACT ↔ troubleshooting §8 · C-11 · v18.18.5）
- *   ⑧c 随包脚本执行面/写盘面派生对账（↔ SECURITY.md · C-7 · v18.18.8）
- *   ⑧d 脚本**自述**退出码 ⊆ 自身契约行（F-5 · v18.18.12）
- *   ⑨ 文档词预算门（v18.1.0：逐文件棘轮上限 + ≥12 KB 全覆盖 + 常驻集合计上限）
- *   ⑩ 注解密度门（v18.8.0：references/** 版本注解行占比上限，只降不抬）
- *   ⑪ `lib/**:LINE` 裸行号引用（C-9 · v18.18.9）
- *   ⑫ E 族「单源不变量」（E-14 期刊规模派生自洽 + E-8/E-14 锚点在场 · v18.18.10）
- *   ⑥b 扫描集覆盖不变量（随包**文本文件** ⊆ ④/⑤/⑦ 扫描集 · 二次复审 M-1 · v18.20.4）
- *   ⑬ CHANGELOG 版本段结构自洽（段内小节编号递增 / 首段 == package.json / 无重复键 / 降序 · v18.18.13）
- *   ⑭ 外部 CLI pin 单点（运行面只允许一处 `dsh-plugin-guide@<semver>` · 三次复审 N-3 · v18.21.0）
- *   ⑮ 宿主契约门（lib/index.js 的 `ctx.on` 监听器签名 + 事件名 vs 宿主 waterfall 契约 · 全量审计 P2-2 · v18.62.1）
- *
  *   ⚠️ 本清单**必须与实现同步**：v18.18.13 补 ⑩–⑬ 与 ⑦b/⑧b–d 时，本清单此前只列到 ⑨，
  *   即「门自己的头落后于门的实现」——与它守的「清单落后于代码」是同一病，故一并补齐。
  *
  * 退出码：0 = 全通过；1 = 有失败（fail-closed，CI 红灯）
  * 失败同时输出 GitHub annotation（::error::），无需下载日志即可定位。
  */
-import { readFileSync, existsSync, statSync, mkdtempSync, copyFileSync, rmSync, readdirSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { tmpdir } from 'node:os'
-import { join, dirname, relative, sep } from 'node:path'
+import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { scanShipped } from './_lib/pack-negative.mjs' // D-1②：与 pack-smoke 共用同形负清单（结构上同形，不靠两份代码同步）
-import { scanLocalPaths, LOCAL_PATH_BASELINE } from './_lib/local-path-scan.mjs' // D-2②：本机绝对路径（发布物硬零 + 非随包树棘轮）
-import { parsePackManifest } from './_lib/pack-manifest.mjs' // 二次复审 M-2/O-3：npm pack --json 单点解析（数组 ≤npm11 / 对象 npm12+）
-import { parseExitContract, parseNamespaceQuota, parseExitTable, reconcile, reconcileScriptHeaders } from './_lib/exit-namespace.mjs' // C-11：§8 配额 ↔ EXIT_CONTRACT 双向对账；v18.18.12 加 ⑧d 脚本自述码对账
-import { deriveScriptSurface, parseSecuritySurface, reconcileSurface } from './_lib/script-surface.mjs' // C-7：随包脚本执行面/写盘面 ∈ SECURITY.md
-import { findLibLineRefs, isHistoricalDoc } from './_lib/lib-line-refs.mjs' // C-9：当前文档不得有裸 `lib/**:LINE` 引用
-import { resolveExitCodes, parseGuardConsts } from './_lib/exit-resolution.mjs' // A-7③：退出码静态解析（含一层变量内联，可单测）
-import { parseChangelogSections, reconcileChangelogStructure, readChangelogAll } from './_lib/changelog-structure.mjs' // ⑬：CHANGELOG 版本段结构自洽（v18.18.13）
-import {
-  deriveJournalCounts,
-  declaredJournalCounts,
-  MC_LABEL_ANCHORS,
-  JOURNAL_POINTER_ANCHORS,
-} from './_lib/e-family-invariants.mjs' // E 族：可派生的单源不变量（见模块头，为什么不做字面禁令）
-import { reconcileHostContract } from './_lib/host-contract.mjs' // ⑮：lib/index.js 监听器签名 + 事件名 vs 宿主 waterfall 契约
+import { isText } from './_lib/hygiene/_shared.mjs'
+
+import * as r01 from './_lib/hygiene/r01-syntax.mjs'
+import * as r02 from './_lib/hygiene/r02-json.mjs'
+import * as r03 from './_lib/hygiene/r03-yaml.mjs'
+import * as r04 from './_lib/hygiene/r04-eol.mjs'
+import * as r05 from './_lib/hygiene/r05-utf8.mjs'
+import * as r06 from './_lib/hygiene/r06-pack.mjs'
+import * as r07 from './_lib/hygiene/r07-credentials.mjs'
+import * as r07b from './_lib/hygiene/r07b-local-path.mjs'
+import * as r08 from './_lib/hygiene/r08-exit-codes.mjs'
+import * as r08b from './_lib/hygiene/r08b-namespace.mjs'
+import * as r08c from './_lib/hygiene/r08c-surface.mjs'
+import * as r08d from './_lib/hygiene/r08d-headers.mjs'
+import * as r09 from './_lib/hygiene/r09-doc-budget.mjs'
+import * as r10 from './_lib/hygiene/r10-ann-density.mjs'
+import * as r11 from './_lib/hygiene/r11-lib-line-refs.mjs'
+import * as r12 from './_lib/hygiene/r12-e-family.mjs'
+import * as r13 from './_lib/hygiene/r13-changelog.mjs'
+import * as r14 from './_lib/hygiene/r14-cli-pin.mjs'
+import * as r15 from './_lib/hygiene/r15-host-contract.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const isCI = Boolean(process.env.GITHUB_ACTIONS)
@@ -68,357 +72,22 @@ const annotate = (level, msg) => { if (isCI) console.log(`::${level}::${String(m
 const fails = []
 const notes = []
 const fail = (id, msg) => { fails.push(`[${id}] ${msg}`); annotate('error', `[${id}] ${msg}`) }
+const note = (msg) => { notes.push(msg) }
 
 const git = (args) => spawnSync('git', args, { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
 const lsOut = git(['ls-files', '-z'])
 if (lsOut.status !== 0) { console.error('git ls-files 失败：' + (lsOut.stderr || '')); process.exit(1) }
 const tracked = lsOut.stdout.split('\0').filter(Boolean)
 
-const isText = (p) => !/\.(png|jpe?g|gif|webp|pdf|tgz|zip|ico|woff2?|ttf|eot|mp4|mp3)$/i.test(p)
-
-// ① 语法：node --check（v18.1.0 起含 .js）
-//   v18.1.0 扩面的动机（自查发现的缺口）：入口与 C 组新增的 `lib/*.js` 此前**不被任何静态门做语法检查**
-//   （规则①只扫 .mjs），它们唯一的下场是「被测试 import」——而裸仓库/CI 里 `lib/index.js` 由
-//   `tests/entry.test.mjs` 覆盖、`lib/tools.js` 等**只在有宿主包时才被装载**，语法错会静默潜伏。
-//   兼容性：文件是 ESM（包内 `"type":"module"`），Node ≥12 会按最近的 package.json 解析模块类型；
-//   万一某版本 `--check` 仍按 CJS 解析（报 "Cannot use import statement outside a module"），
-//   退化为「复制成临时 .mjs 再 check」——不引入版本假设。
-//   v18.1.0 加一条：扫描集 = git 跟踪文件 **∪ 未跟踪但未被 ignore 的文件**。理由（真实不对称）：
-//   `npm pack` 按 package.json 的 `files` 白名单取盘上文件，**包含尚未 git add 的新文件**——
-//   即「新写的脚本能被打进发布物、却逃过规则①的语法检查」。
 const lsUntracked = git(['ls-files', '-z', '--others', '--exclude-standard'])
 const untracked = lsUntracked.status === 0 ? lsUntracked.stdout.split('\0').filter(Boolean) : []
 const scanSet = [...new Set([...tracked, ...untracked])]
-let checked = 0
-let mjs = 0
-for (const p of scanSet.filter((f) => f.endsWith('.mjs') || f.endsWith('.js'))) {
-  if (!existsSync(join(ROOT, p))) continue
-  checked++
-  if (p.endsWith('.mjs')) mjs++
-  const r = spawnSync(process.execPath, ['--check', join(ROOT, p)], { encoding: 'utf8' })
-  if (r.status === 0) continue
-  const err = r.stderr || ''
-  const esmAsCjs = /import statement outside a module|Unexpected token 'export'|Cannot use import statement/.test(err)
-  if (p.endsWith('.js') && esmAsCjs) {
-    const d = mkdtempSync(join(tmpdir(), 'lh-syntax-'))
-    try {
-      const tmp = join(d, 'probe.mjs')
-      copyFileSync(join(ROOT, p), tmp)
-      const r2 = spawnSync(process.execPath, ['--check', tmp], { encoding: 'utf8' })
-      if (r2.status === 0) continue
-      fail('syntax', `${p}: ${(r2.stderr || '').split('\n').slice(0, 2).join(' / ')}`)
-      continue
-    } finally { rmSync(d, { recursive: true, force: true }) }
-  }
-  fail('syntax', `${p}: ${err.split('\n').slice(0, 2).join(' / ')}`)
-}
-notes.push(`① 语法：检查 ${checked} 个脚本（.mjs ${mjs} + .js ${checked - mjs}${untracked.length ? `；含未跟踪 ${untracked.length} 个（npm pack 会打包它们）` : ''}）`)
 
-// ② JSON
-let jsons = 0
-for (const p of tracked.filter((f) => f.endsWith('.json'))) {
-  const abs = join(ROOT, p)
-  if (!existsSync(abs)) continue
-  jsons++
-  try { JSON.parse(readFileSync(abs, 'utf8')) } catch (e) { fail('json', `${p}: ${e.message}`) }
-}
-notes.push(`② JSON：解析 ${jsons} 个 .json`)
-
-// ③ YAML 结构健全（**不引入解析器依赖**：禁制表符缩进 + 关键文件预期键 + 流量式括号配平）
-// ⚠️ **为什么不上解析器（v18.62.4 · 全量审计-v18.62.3 §8.2 #29，主人裁定）**：
-//   引入 `yaml` 会让**发布物首次带上运行时依赖**（本包当前零 `dependencies`），属包形态/信任面变更；
-//   而「关键结构」已由下方 needKeys 与 `tests/` 的结构断言覆盖。故走**零依赖加固**——
-//   **只收窄「不是解析器」的范围，不假装是解析器**。
-// ⚠️ **加固过程中我实测否决了一个判据（如实留痕）**：我原本还加了「**重复键**」检测
-//   （YAML 后者覆盖前者、静默丢值），但按「缩进 + 键名」构建父路径时**连续产生大量假报**：
-//   · 只用一层缩进 → `drift-check`（:18）与 `hygiene`（:64）两个 job 的 `runs-on`/`steps` 被当成重复（6 条假报）；
-//   · 改成完整父路径后 → **序列项**（`steps:` 下的 `- run:` / `- id:`）仍被当成重复（40+ 条假报），
-//     因为 `run:` 在不同**列表项**里合法重复，而「同一个列表项内」这个粒度**行级做不到**。
-//   **判据：会产生假警的门比没有这条检查更糟——它劝人去改对的东西。** 故**删掉该判据**，
-//   把「重复键 / 缩进块归属 / 锚点别名」如实列为**零依赖做不到、需解析器或人工 review** 的范围。
-const yamls = tracked.filter((f) => /\.(ya?ml)$/.test(f))
-const yamlFails = []
-for (const p of yamls) {
-  const abs = join(ROOT, p)
-  if (!existsSync(abs)) continue
-  const text = readFileSync(abs, 'utf8')
-  text.split('\n').forEach((l, i) => {
-    if (/^\t/.test(l)) fail('yaml', `${p}:${i + 1} 缩进使用制表符（YAML 禁止）`)
-    // 流量式 `[` / `{` 未闭合——**明确可靠**：YAML 里方括号必须成对（GHA 的 `branches: [main, dev]` 等）。
-    //   这类错会让 GitHub **静默不跑该 workflow**，正是审计点名的场景。
-    const openB = (l.match(/\[/g) || []).length, closeB = (l.match(/\]/g) || []).length
-    const openC = (l.match(/\{/g) || []).length, closeC = (l.match(/\}/g) || []).length
-    if (openB !== closeB) yamlFails.push(`${p}:${i + 1} 方括号不配平（[ ${openB} / ] ${closeB}）——流量式序列写法有误，GitHub 会静默不跑该 workflow`)
-    if (openC !== closeC) yamlFails.push(`${p}:${i + 1} 花括号不配平（{ ${openC} / } ${closeC}）——流量式映射写法有误`)
-  })
-}
-for (const d of yamlFails.slice(0, 8)) fail('yaml', d)
-if (yamlFails.length > 8) fail('yaml', `另有 ${yamlFails.length - 8} 处未逐条列出`)
-const needKeys = {
-  'cordis.patch.yml': ['insert:', 'dsh'],
-  'examples/preset/preset.yml': ['name:', 'description:'],
-  '.github/workflows/ci.yml': ['jobs:', 'runs-on:'],
-  '.github/workflows/publish.yml': ['jobs:', 'runs-on:'],
-}
-for (const [rel, keys] of Object.entries(needKeys)) {
-  const abs = join(ROOT, rel)
-  if (!existsSync(abs)) { fail('yaml', `关键 YAML 缺失：${rel}`); continue }
-  const text = readFileSync(abs, 'utf8')
-  for (const k of keys) if (!text.includes(k)) fail('yaml', `${rel}: 缺预期键「${k}」`)
-}
-notes.push(`③ YAML：结构检查 ${yamls.length} 个（含 4 个关键文件的预期键）`)
-
-// ④ 行尾
-const eolOut = git(['ls-files', '--eol'])
-let eolBad = 0
-const eolSeen = new Set()
-for (const line of (eolOut.stdout || '').split('\n')) {
-  const m = line.match(/w\/(crlf|mixed)/)
-  if (m) { eolBad++; if (eolBad <= 5) fail('eol', `工作区行尾 ${m[1]}：${line.split('\t').pop()}`) }
-  const rel = line.split('\t').pop()
-  if (rel) eolSeen.add(rel)
-}
-// ④ 补扫（二次复审 M-1）：`git ls-files --eol` **只见已跟踪文件**——未跟踪 / 被 ignore 的文件
-//   （它们可能按 `files` 白名单**随包发布**）不在其中。故对 scanSet 里未被上表覆盖的文本文件直接读盘检测。
-for (const p of scanSet.filter(isText)) {
-  if (eolSeen.has(p)) continue
-  const abs = join(ROOT, p)
-  if (!existsSync(abs)) continue
-  const buf = readFileSync(abs)
-  if (buf.includes(0)) continue // 含 NUL = 二进制，跳过
-  if (buf.toString('utf8').includes('\r\n')) {
-    eolBad++
-    if (eolBad <= 5) fail('eol', `工作区行尾 crlf/mixed（未跟踪）：${p}`)
-  }
-}
-if (eolBad === 0) notes.push('④ 行尾：无 w/crlf / w/mixed')
-
-// ⑤ UTF-8
-let utf8Checked = 0
-let replacementHits = 0
-const dec = new TextDecoder('utf-8', { fatal: true })
-for (const p of scanSet.filter(isText)) {
-  const abs = join(ROOT, p)
-  if (!existsSync(abs)) continue
-  utf8Checked++
-  try { dec.decode(readFileSync(abs)) } catch { fail('utf8', `${p}: 非法 UTF-8（可能是 GBK 等本地编码）`) }
-  // v18.0.5 新增（教训：本轮修订中我用 PowerShell `Get-Content|Set-Content` 往返改 preset.yml，
-  //   把文件写成了本地编码 → 规则⑤（fatal 解码）**确实抓到了**；但**同一类事故的更隐蔽形态**是
-  //   「已经是合法 UTF-8、却含 U+FFFD 替换字符」——那是不可逆的字符丢失，解码不会报错，
-  //   scan 起来像正常文本。故加这一条：任何文本文件不得含 U+FFFD（`\uFFFD`）。
-  const text = readFileSync(abs, 'utf8')
-  const n = (text.match(/\uFFFD/g) || []).length
-  if (n > 0) {
-    replacementHits += n
-    const line = text.split('\n').findIndex((l) => l.includes('\uFFFD')) + 1
-    fail('utf8-replacement', `${p}:${line}: 含 ${n} 个 U+FFFD 替换字符（字符已丢失，通常是编码往返转换造成——请从 git blob 或备份恢复该文件，不要手改）`)
-  }
-}
-notes.push(`⑤ 编码：UTF-8 校验 ${utf8Checked} 个文本文件${replacementHits === 0 ? '（无 U+FFFD 替换字符）' : `（❗ 命中 U+FFFD ${replacementHits} 处）`}`)
-
-// ⑥ 发布面（npm pack --dry-run）
-// 用单命令串 + shell（Windows 上 npm 是 .cmd）：避免 Node 对「shell:true + args 数组」的 DEP0190 告警
-const pack = spawnSync('npm pack --dry-run --json', { cwd: ROOT, encoding: 'utf8', shell: true, maxBuffer: 32 * 1024 * 1024 })
-/** 发布物清单（供 ⑥ 发布面 与 ⑦b 本机绝对路径 共用；v18.18.4 从 ⑥ 的 try 里提到外层）。 */
-let packFiles = null   // 三态（O-2，二次复审 M-2）：string[] = PASS / **null = UNKNOWN**（pack 没跑成或输出形态不认识）
-let packUnpackedSize = 0
-if (pack.status !== 0) {
-  fail('pack', `npm pack --dry-run 失败：${(pack.stderr || pack.stdout || '').split('\n').slice(-3).join(' / ')}`)
-} else {
-  try {
-    const { files, unpackedSize } = parsePackManifest(pack.stdout)   // M-2：单点解析（数组 ≤npm11 / 对象 npm12+）
-    packFiles = files
-    packUnpackedSize = unpackedSize
-    if (files.length === 0) fail('pack', 'npm pack 报告无文件（--json 解析异常？）')
-    const must = [
-      'package.json',
-      'cordis.patch.yml',
-      'LICENSE',
-      'README.md',
-      // 运行期最小集：入口 + C 组模块 + 技能体 + 随包脚本
-      'lib/index.js',
-      'lib/tools.js',
-      'lib/guard.js',
-      'lib/commands.js',
-      'skills/lunheng-article-pipeline/SKILL.md',
-      'skills/lunheng-article-pipeline/AGENTS.md',
-      'skills/lunheng-article-pipeline/scripts/m-gate-check.mjs',
-      'skills/lunheng-article-pipeline/scripts/_lib/exit-guard.mjs',
-    ]
-    for (const m of must) if (!files.includes(m)) fail('pack', `发布包缺关键路径：${m}`)
-
-    // v18.2.0 发布面裁剪（主人指示「最终用户拿到的是功能正常的纯插件，不含无用的冗余文件」）：
-    //   **仓库向文件一律不得随包**——它们对装包用户没有用途，只会让发布物变胖、让用户跑不存在的命令。
-    //   本清单是**机械防线**：谁把 `CHANGELOG.md` 加回 `files` 白名单，这里立刻报（不是靠自觉）。
-    //   边界（如实）：npm **强制包含** 根目录 `README*` 与 `LICENSE`（实测 `files` 删掉、`.npmignore`
-    //   排除均无效）——故五语 README 保留在包内，这是 npm 的规则而非本仓疏漏。
-    //
-    //   v18.18.3（审计 D-1②）：负清单由「仓库根前缀匹配」改为**路径分量匹配**，与 `pack-smoke.mjs`
-    //   共用 `_lib/pack-negative.mjs`。旧口径 `f.startsWith('tests/')` 只看根，导致
-    //   `skills/lunheng-commands/tests/`（22 用例）与嵌套 `package.json` 随包时**本门照打印零污染**。
-    //   多数条目收敛进共用清单后，原先在此逐条硬写的 `scripts/*.mjs` 由 `scripts`（root 作用域）覆盖。
-    const negViolations = scanShipped(files)
-    for (const v of negViolations) {
-      if (v.hits.length) {
-        fail('pack', `发布面污染：${v.name}（${v.kind === 'dir' ? '目录' : '文件'}·${v.scope} 作用域）下有 ${v.hits.length} 个随包（如 ${v.hits[0]}）——${v.why}`)
-      }
-    }
-    // 只数**顶层**随包脚本（`scripts/_lib/` 是共享库，不算入口；v2.5.2-dsh.13）
-    const scripts = files.filter((f) => /^skills\/lunheng-article-pipeline\/scripts\/[^/]+\.mjs$/.test(f))
-    // v2.5.2-dsh.17：脚本数**从 SKILL.md 白名单派生**，不再写死数字（写死会在加脚本时变成噪音红灯；
-    // 白名单本身的正确性由 consistency-check 规则 ⑩ 双向核验：磁盘 ↔ SKILL.md）
-    const wl = readFileSync(join(ROOT, 'skills', 'lunheng-article-pipeline', 'SKILL.md'), 'utf8')
-      .split('\n').find((l) => l.includes('随包脚本白名单')) || ''
-    const declared = (wl.split('=')[1] || '').split('+')[0].split('/').map((s) => s.trim()).filter((s) => /^[a-z0-9][a-z0-9-]*$/.test(s))
-    if (declared.length === 0) fail('pack', 'SKILL.md 未声明随包脚本白名单（规则 ⑩ 同源）')
-    else if (scripts.length !== declared.length) fail('pack', `发布包内随包脚本数 ${scripts.length} ≠ SKILL.md 白名单 ${declared.length}（白名单不一致）`)
-    const unpacked = packUnpackedSize
-    const negClean = negViolations.filter((v) => v.hits.length === 0).length
-    notes.push(
-      `⑥ 发布面：${files.length} 个文件 / 随包脚本 ${scripts.length} 个（与 SKILL.md 白名单一致）/ 关键路径齐备` +
-        ` / 仓库向零污染（负清单 ${negClean}/${negViolations.length} 条无命中；口径 = 路径分量匹配，非根前缀）` +
-        (unpacked ? `｜解包 ${(unpacked / 1024).toFixed(0)} KB` : ''),
-    )
-  } catch (e) {
-    // 三态（O-2）：解析失败 → packFiles 保持 null = UNKNOWN；⑦b 据此**不得**打印合格字样。
-    fail('pack', `npm pack --json 解析失败（输出形态不认识 → 发布物清单 UNKNOWN）：${e.message}`)
-  }
-}
-
-// ⑥b「扫描集 ⊇ 打包集」差集门（二次复审 M-1②，2026-09-26）：
-//   把「④/⑤/⑦ 的扫描集必须覆盖发布物」从**靠人记得**变成**机械不变量**。
-//   为什么需要（M-1 实测复现）：`npm pack` 按 `files` 白名单取**盘上**文件，**不受 `.gitignore` 约束**；
-//   而扫描集 `scanSet = tracked ∪ 未跟踪且未被 ignore`。两者之差 = 「被 ignore 但落在白名单目录内」的文件
-//   （如 `skills/**/*.bak`）——它**会随包发布**却对 ④/⑤/⑦ 全部隐形。实测：含 `sk-…` 形态的
-//   `skills/lunheng-article-pipeline/tmp-creds-probe.bak` 未被 ⑦ 命中、却被 `npm pack` 收录。
-//   判据：`pack 清单` 里的每个**文本文件**都必须在 `scanSet` 内；差集非空即报。
-if (packFiles !== null) {
-  const scanSetHas = new Set(scanSet)
-  const uncovered = packFiles.filter((f) => isText(f) && !scanSetHas.has(f))
-  if (uncovered.length) {
-    fail('pack-coverage', `${uncovered.length} 个**随包文件**不在 ④/⑤/⑦ 扫描集内（会被发布出去却逃过全部规则）：${uncovered.slice(0, 5).join(' / ')}——多半是被 .gitignore 排除、却落在 files 白名单目录内的文件（如 *.bak）；请在 package.json 的 files 加负向项排除它，或把它纳入扫描集`)
-  } else {
-    notes.push(`⑥b 扫描集覆盖：随包 ${packFiles.filter(isText).length} 个文本文件全部在 ④/⑤/⑦ 扫描集内`)
-  }
-} else {
-  notes.push('⑥b 扫描集覆盖：**UNKNOWN**（⑥ 的 pack 清单未取得——**不得**读作「已覆盖」）')
-}
-
-// ⑦ 凭据扫描（v2.5.2-dsh.13 新增）：零依赖实现，取代引入第三方扫描 action——
-//    与仓库「零运行时依赖」哲学一致，且不扩大 CI 的供应链面（本项目 action 已全部 pin SHA）。
-//    注意：本文件自身含模式字面量，扫描时跳过自身。
 const SELF = 'scripts/repo-hygiene-check.mjs'
-const SECRET_PATTERNS = [
-  ['npm token', /npm_[A-Za-z0-9]{30,}/],
-  ['GitHub PAT（classic）', /ghp_[A-Za-z0-9]{30,}/],
-  ['GitHub PAT（fine-grained）', /github_pat_[A-Za-z0-9_]{30,}/],
-  ['OpenAI 风格 key', /sk-[A-Za-z0-9]{20,}/],
-  ['AWS Access Key ID', /AKIA[0-9A-Z]{16}/],
-  ['Slack token', /xox[baprs]-[A-Za-z0-9-]{10,}/],
-  ['GitLab PAT', /glpat-[A-Za-z0-9_-]{15,}/],
-  ['HuggingFace token', /hf_[A-Za-z0-9]{30,}/],
-  ['私钥块', /-----BEGIN [A-Z ]*PRIVATE KEY-----/],
-  ['npmrc _authToken', /_authToken\s*=\s*\S{20,}/],
-]
-const scanned = scanSet.filter(isText).filter((p) => p !== SELF)
-let secretHits = 0
-for (const p of scanned) {
-  const abs = join(ROOT, p)
-  if (!existsSync(abs)) continue
-  readFileSync(abs, 'utf8').split('\n').forEach((l, i) => {
-    for (const [label, re] of SECRET_PATTERNS) {
-      const m = l.match(re)
-      if (m) {
-        secretHits++
-        // 只输出掩码前缀——绝不把疑似凭据原文写进 CI 日志/annotation（日志本身就是泄漏面）
-        fail('secret', `${p}:${i + 1} 疑似凭据（${label}）：${m[0].slice(0, 6)}…（已掩码）——请轮换该凭据并改用环境变量 / GitHub Secrets`)
-      }
-    }
-  })
-}
-notes.push(`⑦ 凭据扫描：${scanned.length} 个文本文件 × ${SECRET_PATTERNS.length} 类模式${secretHits ? '（命中 ' + secretHits + '）' : '，无命中'}`)
 
-// ⑦b 本机绝对路径（D-2·修法② · v18.18.4）
-//   动机：规则⑦ 只扫**凭据形态**，对「路径」这类可避免的信息泄露完全无感——审计 D-2 实测
-//   发布物里写着 `E:\<本机根>\…`（其中一处还带内部项目目录名与内部审计报告名），而⑦ 照打印
-//   「无命中」。那三处内容已在早前批次改为占位符；本规则补的是**防复发的那一半**。
-//
-//   两档强度（这是刻意的，理由见 `_lib/local-path-scan.mjs` 头注释）：
-//     · **发布物**——硬零。它是要发出去的制品，一条都不许有。
-//     · **非随包树**——**棘轮**。那 22 个文件是历史修订记录，备份路径是安全流程的过程证据；
-//       设成硬零会让门**永久红**，而永久红的门等于没有门。棘轮 = 新增即红、缩减即绿。
-//
-//   ⚠️ **两个由 CI 抓出来的实现缺陷**（v18.18.4，本地跑是绿的、推上去才红）：
-//     ① **扫 tracked 会漏掉未 `git add` 的新文件**——`git ls-files` 只列已跟踪的。我本地跑门时
-//        新模块还没 add，于是「零命中」；提交后被 CI 扫到才暴露。**改为扫 `scanSet`（含未跟踪，
-//        与规则① 同源）**，本地与 CI 才同口径。
-//     ② **扫描器自身的定义与测试必然含示例机器路径**——`_lib/local-path-scan.mjs` 要写出模式、
-//        `tests/local-path-scan.test.mjs` 要写正/负例夹具，那不是泄露。故显式豁免（同 `SELF` 的思路）。
-//        边界（如实）：这三个文件里若真藏了一条与模式无关的真实路径，本规则会漏；缓解是它们
-//        **都不随包**（发布物硬零仍生效）、体积小、用途单一。
-const LOCAL_PATH_EXEMPT = new Set([SELF, 'scripts/_lib/local-path-scan.mjs', 'tests/local-path-scan.test.mjs'])
-const packKnown = packFiles !== null   // 三态（O-2）：null = UNKNOWN，**不得**当作「发布物 0 处合格」
-const packedSet = new Set(packFiles ?? [])
-let shippedPathHits = 0
-let ratchetBreaches = 0
-const baselineSeen = new Set()
-for (const p of scanSet.filter(isText)) {
-  if (LOCAL_PATH_EXEMPT.has(p)) continue
-  const abs = join(ROOT, p)
-  if (!existsSync(abs)) continue
-  const hits = scanLocalPaths(readFileSync(abs, 'utf8'))
-  if (!hits.length) continue
-  if (packedSet.has(p)) {
-    shippedPathHits++
-    // 路径本身不是凭据，可以照原样打印（打印才可修）；但仍只给首例，避免刷屏
-    if (shippedPathHits <= 5) fail('localpath', `**发布物**含本机绝对路径：${p} → \`${hits[0].text}\`（${hits[0].why}）——发布物一条都不许有，请改占位符（如 \`<项目根>/…\`）`)
-  } else {
-    const cap = LOCAL_PATH_BASELINE[p]
-    if (cap === undefined) {
-      ratchetBreaches++
-      if (ratchetBreaches <= 5) fail('localpath', `非随包文件含本机绝对路径但**未登记**：${p}（${hits.length} 处，首例 \`${hits[0].text}\`）——若确属历史记录，请在 \`_lib/local-path-scan.mjs\` 的 LOCAL_PATH_BASELINE 登记并写明理由`)
-    } else {
-      baselineSeen.add(p)
-      if (hits.length > cap) {
-        ratchetBreaches++
-        if (ratchetBreaches <= 5) fail('localpath', `${p} 本机绝对路径 ${hits.length} 处 > 棘轮上限 ${cap}（首例 \`${hits[0].text}\`）——新增泄露当即拦下；确属必要请在同一次提交抬升上限并写明理由`)
-      }
-    }
-  }
-}
-if (shippedPathHits > 5) fail('localpath', `发布物本机绝对路径另有 ${shippedPathHits - 5} 处未逐条列出`)
-const staleBaseline = Object.keys(LOCAL_PATH_BASELINE).filter((p) => !baselineSeen.has(p))
-notes.push(
-  (packKnown
-    ? `⑦b 本机绝对路径：发布物 ${shippedPathHits} 处（须为 0）`
-    : `⑦b 本机绝对路径：**发布物档 UNKNOWN**（⑥ 的 npm pack 清单未取得——**不得**读作「0 处合格」）`) +
-    `／非随包树棘轮 ${baselineSeen.size}/${Object.keys(LOCAL_PATH_BASELINE).length} 个已登记文件在基线内` +
-    `${staleBaseline.length ? `；⚠️ 基线内 ${staleBaseline.length} 个文件已无命中，可把上限改小（${staleBaseline.slice(0, 3).join(' / ')}…）` : ''}`,
-)
+const scriptDir = join(ROOT, 'skills', 'lunheng-article-pipeline', 'scripts')
 
-// ⑧ 退出码契约表（v18.0.2 新增；v18.0.5 大修——第三方审计 P1-5 指出旧版「声称与能力不符」）
-//    动机：退出码是**被别的组件消费的输出契约**（`final-check` 的推荐语、主控的闸门判定），
-//    实测出现过两类撞码且**此前无门可拦**：
-//      · `m-gate-check` 把「定稿/证据包不存在」判 exit 1 → 伪装成「P1 内容失败」，主控据此去改正文；
-//      · `model-routing` 用 exit 3 表示「需人工决定」→ 与 M 门 3（仅 P2，**可放行**）撞码。
-//    旧版只做两件事：`process.exit(字面量)` ∈ 声明集、以及「表内数字在文件里出现过」（近乎恒真）
-//      → **运行时真实退出码（异常路径一律 1）完全不可见**，且规则自身形同虚设。
-//    v18.0.5 起改为真核验：
-//      ① 解析 `process.exit(<arg>)`：字面量直接用；**标识符**按「本文件 const」→「`_lib/exit-guard.mjs` 导出」
-//         两级解析（这样 `process.exit(EXIT_USAGE)` 也能被看见）；
-//      ② 解析结果必须是声明集的子集（**这是本规则的主要锋芒**：新加一个 `process.exit(1)` 当路径错会被抓）；
-//      ③ 声明集里每个码要么被解析出来、要么在文件里以字面量出现过——**动态 exit 的计算结果无法静态判定**
-//         （如 `process.exit(p0 > 0 ? 2 : …)`），此时退化为「字面量出现即认」并在输出里如实标注该脚本是动态的；
-//         码 `0` 一律豁免（正常返回不写 `process.exit(0)`）；
-//      ④ 异常路径：每个读盘脚本**必须** import `exit-guard`（未 import = 兜底缺失 = 判失败），
-//         且 `_lib/exit-guard.mjs` 必须真在盘并导出契约里的两个常量。
-//    v18.2.6 两处收紧（第三方审计指出旧版的两个盲区，均已实测确认）：
-//      ⑤ **`process.exitCode = N` 赋值形态**纳入解析（Node 里它与 `process.exit(N)` 同样生效）；
-//      ⑥ **「已 import guard」改为真 import 匹配**（旧版 `text.includes(GUARD)` 对**注释里提到文件名**也判真——
-//         而本仓每个脚本头注释都提到它 ⇒ 该检查恒真，恰恰漏掉「注释还在、import 被删」这一最该抓的形态）。
-//    边界（如实）：本规则能拦「静态可解析的撞码」与「兜底缺失」，**不能**拦动态计算出的错误码——
-//      那由 `tests/scripts/` 各分脚本文件的异常路径用例（传目录/传文件/PATH 置空）覆盖（v18.68.0 拆分后按脚本归位）。
-const GUARD = '_lib/exit-guard.mjs'
+// ───── ⑧ 的契约表（机器面；与 troubleshooting.md §8 双向对账：⑧b 守）───
 const EXIT_CONTRACT = {
   'm-gate-check.mjs': [0, 1, 2, 3, 10, 30, 70],   // v18.12.0（L-05）：30 = `--adjudicate` 裁定被拒（红线命中 / 四件套不全 / 缺 true_p0-p1）
   'final-check.mjs': [0, 1, 2, 3, 10, 70],
@@ -511,189 +180,8 @@ const EXIT_CONTRACT = {
 //   「凡是真 import `_lib/exit-guard.mjs` 的随包脚本，必须在 EXIT_CONTRACT 里有一行」。
 //   豁免留一扇门（必须是**显式登记的理由**，不是静默跳过）：当前为空——v18.22.2 起 **24/24** 全覆盖。
 const EXIT_GUARDED_EXEMPT = {}
-const scriptDir = join(ROOT, 'skills', 'lunheng-article-pipeline', 'scripts')
-const dynamicScripts = []
-let indirectHits = 0 // A-7③：一层变量内联累计命中数（跨脚本统计，故声明在循环外）
-const guardPath = join(scriptDir, GUARD)
-if (!existsSync(guardPath)) {
-  fail('exit-code', `缺少 ${GUARD}——退出码硬化的实现不在盘（契约里 10/70 的语义无处可查）`)
-} else {
-  const gt = readFileSync(guardPath, 'utf8')
-  for (const [name, val] of [['EXIT_USAGE', 10], ['EXIT_INTERNAL', 70]]) {
-    if (!new RegExp(`export const ${name} = ${val}\\b`).test(gt)) {
-      fail('exit-code', `${GUARD} 未按契约导出 ${name} = ${val}（契约表与 troubleshooting §8 都引它）`)
-    }
-  }
-}
-for (const [name, allowed] of Object.entries(EXIT_CONTRACT)) {
-  const p = join(scriptDir, name)
-  if (!existsSync(p)) { fail('exit-code', `退出码表登记的脚本不存在：${name}`); continue }
-  const text = readFileSync(p, 'utf8')
-  // ①-③（A-7③ v18.18.11）：静态解析交给 `_lib/exit-resolution.mjs`（含「一层变量内联」，可单测）。
-  //   该模块头注释记了本次一口气修掉的三个坑（只取初值 / 赋值为另一变量 / 复合实参误追标识符）。
-  const guardConsts = existsSync(guardPath) ? parseGuardConsts(readFileSync(guardPath, 'utf8')) : new Map()
-  const { resolved, dynamic: dynamicExit, indirectHits: hits } = resolveExitCodes(text, guardConsts)
-  indirectHits += hits
-  // 真 import 检查（v18.2.6 收紧）：旧实现是 `text.includes(GUARD)`——**注释里提到也算「已 import」**，
-  //   于是「头注释写了 `_lib/exit-guard.mjs`、代码里却删了 import」这种**最该抓的形态**恰好被判通过
-  //   （本仓每个脚本的头注释都提到该文件名，等于这条检查对它们恒真）。现改为匹配真正的 import：
-  //   静态 `import … from '<…>/_lib/exit-guard.mjs'` 或动态 `import('<…>/_lib/exit-guard.mjs')`。
-  const guardEsc = GUARD.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const importRe = new RegExp(`(?:^|\\n)\\s*import[^\\n]*?from\\s*['"][^'"]*${guardEsc}['"]|import\\(\\s*['"][^'"]*${guardEsc}['"]\\s*\\)`)
-  const usesGuard = importRe.test(text)
-  if (usesGuard) { resolved.add(10); resolved.add(70) }   // 异常路径由 guard 统一映射（fs → 10；其余 → 70）
-  const unexpected = [...resolved].filter((c) => !allowed.includes(c))
-  if (unexpected.length) {
-    fail('exit-code', `${name}: 使用了表外退出码 ${unexpected.join(', ')}（已声明 ${allowed.join('/')}）——若是有意新增，请同步 repo-hygiene 的 EXIT_CONTRACT 与 docs/troubleshooting.md §8`)
-  }
-  // 动态 exit：静态不可判定 → 退化为「文件里出现过即认」，并在 note 里如实标注（不假装核验过）
-  const phantom = allowed.filter((c) => c !== 0 && !resolved.has(c) && !(dynamicExit && new RegExp(`\\b${c}\\b`).test(text)))
-  if (phantom.length) {
-    fail('exit-code', `${name}: 契约表声明了 ${phantom.join(', ')}，但脚本里既解析不出、也无字面量——表格已过期，请核对`)
-  }
-  if (!usesGuard) {
-    fail('exit-code', `${name}: 未真正 import ${GUARD}（注释里提到不算）——异常路径会退回 Node 默认的 exit 1，与「1 = P1 内容失败」撞义（v18.0.5 起每个读盘脚本都必须装 guard；v18.2.6 起本检查改为匹配真实 import 语句）`)
-  }
-  if (dynamicExit) dynamicScripts.push(name)
-}
-// v18.12.0（L-68）：「装了 guard 必登记」的**覆盖面断言**（旧表靠人工维护，漏登记无门发现）。
-//   为什么把它放在逐脚本循环之后而不是并进去：它判的是**表本身完不完整**（集合关系），
-//   而不是某个脚本的内容——混进循环会让「新增脚本忘登记」看起来像那个脚本的错。
-// v18.62.4（全量审计-v18.62.3 §8.1 #13）：**两处 guard 探测必须同源**。
-//   病灶：本循环旧版用**自己另写的一条正则**（只认静态 `import … from`），而上方逐脚本检查
-//   （`:506` 的 `importRe`）**已认静态 + 动态 `import(…)` 两种形态**。于是用
-//   `await import('…/_lib/exit-guard.mjs')` 的脚本：**先通过**「真 import 检查」，
-//   却在本覆盖面断言里**不被算作装了 guard** → 只要它没登记进 EXIT_CONTRACT，就**静默逃逸**
-//   （正是本规则要拦的那个后门）。**同一事实两处实现，谁也不知道谁先漂** —— 本仓最反感的形态。
-//   修法：直接复用上方那条 `importRe`（单一真源），删掉本处另写的正则。
-const guardedButUnregistered = []
-for (const f of readdirSync(scriptDir).filter((x) => x.endsWith('.mjs'))) {
-  if (EXIT_CONTRACT[f] || EXIT_GUARDED_EXEMPT[f]) continue
-  const t = readFileSync(join(scriptDir, f), 'utf8')
-  if (importRe.test(t)) guardedButUnregistered.push(f)
-}
-if (guardedButUnregistered.length) {
-  fail('exit-code', `${guardedButUnregistered.join(', ')}：装了 ${GUARD} 却未登记进 EXIT_CONTRACT——` +
-    '装了 guard 的脚本其异常路径会产出 10/70，而它自己新加的表外退出码将没有任何门能拦（这正是本规则的锋芒）。' +
-    '请在 EXIT_CONTRACT 补一行；若确需豁免，必须在 EXIT_GUARDED_EXEMPT 写明理由（不得静默跳过）')
-}
-notes.push(
-  `⑧ 退出码表：${Object.keys(EXIT_CONTRACT).length} 个随包脚本的退出码契约已核（静态解析 process.exit/exitCode 两种写法 + **一层变量内联**（A-7③）+ guard **真 import** 兜底检查）` +
-    `；覆盖面：凡 import ${GUARD} 的脚本 100% 已登记（豁免 ${Object.keys(EXIT_GUARDED_EXEMPT).length} 个）` +
-    `；一层内联命中 ${indirectHits} 处字面量` +
-    (dynamicScripts.length ? `；**仍未静态可判定**（仅对契约码核「文件里出现过」，如实标注不假装核过）：${dynamicScripts.join(', ')}` : '；全部脚本均可静态判定'),
-)
 
-// ⑧b 退出码命名空间对账（C-11 机械化 · v18.18.5）
-//   动机：纪律要求两处登记——`EXIT_CONTRACT`（机器面）与 `docs/troubleshooting.md` §8
-//   「命名空间配额」（人读面）——但两处一直**只靠人工同步**。加了新码而 §8 忘写（或反之）
-//   没有任何门会发现。审计 C-11 要的是「§8 与 EXIT_CONTRACT 一致（新增断言）」。
-//   审计设想 §8 是逐行表，实测它是**配额散文**，故实现其等价不变量：
-//   「代码实际用到的码集合」== 「§8 声明的码集合」，**双向**查（漏登记 / 已无人用 都报）。
-//   解析器放在 `_lib/exit-namespace.mjs`（可单测）；形状变了会**抛错**而不是静默通过。
-try {
-  const contract = parseExitContract(readFileSync(join(ROOT, 'scripts', 'repo-hygiene-check.mjs'), 'utf8'))
-  const docText = readFileSync(join(ROOT, 'docs', 'troubleshooting.md'), 'utf8')
-  const quota = parseNamespaceQuota(docText)
-  const { onlyInCode, onlyInDoc } = reconcile(contract.codes, quota.codes)
-  if (onlyInCode.length) {
-    fail('exit-code', `退出码 ${onlyInCode.join(', ')} 已写进 EXIT_CONTRACT 但**未登记**于 docs/troubleshooting.md §8 命名空间配额（:${quota.line}）——两处必须同一次提交一起改`)
-  }
-  if (onlyInDoc.length) {
-    fail('exit-code', `§8 命名空间配额（:${quota.line}）声明了 ${onlyInDoc.join(', ')}，但 EXIT_CONTRACT 里**已无人使用**——要么补用，要么从 §8 删掉（免得下一个人以为这些码被占了）`)
-  }
-  // M-4（二次复审）：§8 的「声明」还有**第二种载体——表格**（主控最常读的入口）。旧版只钉了配额散文，
-  //   实测把表里 `| 2 |` 改成 `| 12 |` 时**全套门绿**。故对表行做同一套双向对账。
-  const table = parseExitTable(docText)
-  const tbl = reconcile(contract.codes, table.codes)
-  if (tbl.onlyInCode.length) {
-    fail('exit-code', `退出码 ${tbl.onlyInCode.join(', ')} 在 EXIT_CONTRACT 里，但 §8 的**表格**（:${table.line} 起）**缺该行**——表是主控的阅读入口，缺行会让读表的人以为该码不存在`)
-  }
-  if (tbl.onlyInDoc.length) {
-    fail('exit-code', `§8 的**表格**（:${table.line} 起）列了 ${tbl.onlyInDoc.join(', ')}，但 EXIT_CONTRACT 里**已无人使用**——要么补用，要么从表里删掉`)
-  }
-  notes.push(`⑧b 退出码命名空间：代码侧 ${contract.codes.length} 个码 ↔ §8 配额 ${quota.codes.length} 个 ↔ §8 表格 ${table.codes.length} 个，三方一致（${contract.codes.join('/')}）`)
-} catch (e) {
-  fail('exit-code', `⑧b 退出码命名空间对账无法执行：${e.message}`)
-}
-
-// ⑧c 随包脚本「执行面/写盘面」派生对账（C-7 机械化 · v18.18.8）
-//   动机：`SECURITY.md` 是操作者安装前的**信任边界依据**，其中一段手写维护「哪些随包脚本会写盘 /
-//   会派生子进程」。这类**手写代码事实清单**正是本仓反复出错的形态（C-1 工具数 / D-1 发布面负清单 /
-//   C-11 退出码表 / C-7 本次，同族）——代码一改、清单不跟，而失真方向几乎总是**低报执行面**
-//   （把会写盘的脚本说成只读）。审计 C-7 的实测即如此：`apply-compression-cycle.mjs` 被列为只读，
-//   而它 spawnSync 转调的 `build-evidence-bundle.mjs` 有 10 处写盘。
-//   现改为**从源码派生 + 双向对账**。三档口径（写内容 / 仅建目录 / 子进程）见 `_lib/script-surface.mjs`。
-try {
-  const surface = deriveScriptSurface(join(ROOT, 'skills', 'lunheng-article-pipeline', 'scripts'))
-  const declared = parseSecuritySurface(readFileSync(join(ROOT, 'SECURITY.md'), 'utf8'))
-  const diff = reconcileSurface(surface, declared)
-  const label = { spawn: '子进程面', writeContent: '写内容面', mkdirOnly: '仅建目录' }
-  let drifted = false // v18.29.1：本行末尾旧写死「与 SECURITY.md 双向一致」——**有漂移时它也照说**，
-  //   反向自证时抓到的假陈述（门报红、同一行却宣称一致）。判据：文案必须由本次比较结果决定，不得写死。
-  for (const [key, d] of Object.entries(diff)) {
-    if (d.onlyDerived.length) {
-      drifted = true
-      fail('surface', `${label[key]}：源码派生出的 ${d.onlyDerived.join(', ')} **未写进** SECURITY.md 的随包脚本行——清单落后于代码（低报执行面）`)
-    }
-    if (d.onlyDoc.length) {
-      drifted = true
-      fail('surface', `${label[key]}：SECURITY.md 列了 ${d.onlyDoc.join(', ')} 但**源码里已无该能力**——清单陈旧，请删或改`)
-    }
-  }
-  notes.push(
-    `⑧c 随包脚本执行面：子进程 ${surface.spawn.length} / 写内容 ${surface.writeContent.length} / 仅建目录 ${surface.mkdirOnly.length} / 只读 ${surface.readOnly.length}` +
-      `（共 ${surface.all.length}）——与 SECURITY.md ${drifted ? '**不一致（差异见上）**' : '双向一致'}`,
-  )
-} catch (e) {
-  fail('surface', `⑧c 随包脚本执行面对账无法执行：${e.message}`)
-}
-
-// ⑧d 脚本**自述**退出码 ↔ 自身契约行（F-5 机械化 · v18.18.12）
-//   动机：随包脚本头部会自述返回码（`// 返回码：0 = …；4 = …`），这是退出码的**第三处**登记
-//   ——`EXIT_CONTRACT`（机器面，⑧ 管）与 `troubleshooting.md §8`（人读面，⑧b 管）之外的
-//   **脚本自带面**，此前没有任何门看它。实测教训（本次审计 F-5 执行中发现）：
-//   `model-routing.mjs:20` 自述「`1 = 读不到配置`」，而该脚本 `process.exit(1)` 个数为 **0**、
-//   契约行是 `[0,4,10,70]`——那个 `1` 是 v18.12.0 收口前的遗留声明。调用方按自述去接 `1`
-//   永远等不到；维护者按自述去改会以为 `1` 还被占着。此即 F-5 一类「文案与行为脱节」的形态，
-//   故机械化成门（而不是再补一条只看字面的文本断言——那样连这次这个错都抓不到）。
-//   不变量（**单向**）：脚本自述的码 ⊆ 自身契约行。反方向**刻意不报**（`0`/`70` 对每个装了
-//   guard 的脚本都可用、自述常只写语义码而省略它们，实测 apply-diff / apply-revision-cycle
-//   两处属此情形）——详见 `_lib/exit-namespace.mjs` 的偏差说明。
-try {
-  const entries = []
-  for (const name of Object.keys(EXIT_CONTRACT)) {
-    const p = join(scriptDir, name)
-    if (existsSync(p)) entries.push({ name, allowed: EXIT_CONTRACT[name], text: readFileSync(p, 'utf8') })
-  }
-  const { checked, violations } = reconcileScriptHeaders(entries)
-  for (const v of violations) {
-    fail('exit-code', `${v.name}:${v.line} 头部自述的退出码 ${v.extra.join(', ')} **不在**自身契约行（${v.allowed.join('/')}）内——脚本承诺了它产不出的码，请改注释或改契约（两处必须同一次提交一起改）`)
-  }
-  // 只有**零违例**时才打这条「一致」的 note：本门自己犯过「一边 fail 一边打 ✓ 一致」的毛病
-  //   （v18.18.12 反向自证时现场抓到），那会让读报告的人以为该项通过了。
-  if (!violations.length) {
-    notes.push(`⑧d 脚本自述退出码：${checked} 个脚本的头部「退出码/返回码」段 ↔ EXIT_CONTRACT **单向**一致（自述码均 ⊆ 自身契约行）`)
-  }
-} catch (e) {
-  fail('exit-code', `⑧d 脚本自述退出码对账无法执行：${e.message}`)
-}
-
-// ⑨ 文档词预算门（v18.1.0 新增，第三方审计改进方案 C-6）
-//    为什么需要：本包的成本结构里，**唯一随每次会话恒定的开销就是被载入上下文的文档**（技能体 SKILL.md
-//      由入口注册 → 每次技能激活都在上下文里；AGENTS.md 在工作目录下自动生效）。审计实测「较瘦身底 +69%」，
-//      且历史趋势是**只增不减**（每轮修订都往 SKILL.md 加一行注解）。此前的门全都只看「有没有错」，
-//      **没有一条门看「涨没涨」**——于是膨胀是唯一无人反对的方向。
-//    官方先例：`references/official-docs/AGENTS.md` 的 `verify-doc-budgets`（doc budget manifest + 机检）。
-//    设计（三条，缺一不可）：
-//      ① **逐文件上限**：技能目录内所有 ≥ `DOC_BUDGET_MIN` 的 .md 必须有登记（新增胖文档不能悄悄逃过测量）；
-//      ② **上限即棘轮**：上限取「当前字节数向上取整到整 KB」——留 ≤1 KB 余量，任何增长都必须**在同一个 diff 里
-//         显式抬升上限**（抬升动作可见、可 review、可被主人否决），而不是无声膨胀；
-//      ③ **常驻集合计上限**：SKILL.md + AGENTS.md 的**合计**另有上限——防止「瘦 SKILL、肥 AGENTS」把固定开销换个口袋。
-//    边界（如实）：本规则管的是**字节量**（代理指标，≠ 真实 token 数，不区分中英）；`target`（长期目标）只作
-//      报告用，**不判失败**——本版是棘轮，不是瘦身令（瘦身需要主人拍板口径，见 CHANGELOG `## 18.1.0`）。
-const DOC_BUDGET_MIN = 12 * 1024
-const kb = (n) => `${(n / 1024).toFixed(1)} KB`
+// ───── ⑨ 词预算表 ─────
 const DOC_BUDGET = {
   // 相对仓库根的路径 → [上限字节, 长期目标字节, 说明]
   // ── v18.53.0（QLT-5 批次 5 · 尺与语义批）**抬升 3 个**（F-S ② + QLT-6 落地） ───────────────────
@@ -735,29 +223,28 @@ const DOC_BUDGET = {
   // v18.66.0（引用格式批）：白名单行 +1 脚本条目（cite-format）与一条 `cite-format.mjs` 边界说明（**不猜类型 / 不重排 /
   //   不把「待核」当值**，都是让 T5/T8 敢直接粘的判据）→ 实测 49,518 → 50,543 B，越过上限 → 按定案 ① 公式抬到 **53,248 B**。
   //   ⚠️ 常驻集（SKILL.md + AGENTS.md）余量已薄（68.6/69.0 KB）→ 下一批若再动 SKILL.md，应先瘦身或同批抬 ALWAYS_LIMIT。
-  'skills/lunheng-article-pipeline/SKILL.md': [53248, 20480, '**2026-09-29 显式抬升 40→41 KB（主人授权修订 · 外部借鉴 context-mode，按定案 ① 同一公式）**：两处口径收口——① §结构性要点 4 的证据包 sha256 一律取 `manifest.json` 实值（**EXEC-1**）；② 工具表「命令/脚本」行的「主流程**默认零 exec**」改为与 `glossary.md` §shell 使用 同口径的「**受限 shell（非零 exec）**」（**EXEC-2**，此前同一事实两处相反）。**实测 39,606 B**；旧上限只剩 1,354 B（< 定案 ① 的 1.5 KB），按公式抬到 **41,984 B（余量 2,378 B）**。 **v18.41.0 显式抬升 39→40 KB（按定案 ① 同一公式）**：`g-audit-check.mjs` 条目同步为 6 项（新增 G15 卷期页码，须 `--qlt`）+ 四条边界：候选级、**模式开关只能由调用方显式声明**（实测有简报写「☐ 卷期页码完整性：默认关闭」，按标签放行会产生成组假阳性）、`N/A ≠ SKIP`、判断力项不下沉。**实测 38,383 → 38,959 B（+576）**；旧上限只剩 977 B（< 定案 ① 的 1.5 KB），按公式抬到 **40,960 B（余量 2,001 B）**。 **v18.30.0 EFF-6 显式抬升 38→39 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：§⚡ 启动速查表 的「图件链路」行改为**模板化口径**——主控不再手写 SVG，而是复制 `templates/图表-SVG-template.md` 的对应图型（5 类 copy-ready 完整 SVG）填空，并写明「用 `ref-get.mjs` 只取一节、别整文件读」（模板文件 19 KB，整读会抵消 EFF-6 想省的 token）。**实测 38,253 → 38,383 B（+130）**；旧上限 38,912 B 只剩 **529 B**（< 定案 ① 的 1.5 KB 余量，属「距上限仅数百 B ≈ 等效禁止再写」的失效态前兆），故按公式抬到 **39,936 B（余量 1,553 B）**。**瘦身待办不变**（长期目标 20 KB）。 **v18.23.0 EFF-1 显式抬升 36→38 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：① §执行能力边界 白名单行 24→25 并新增 `g-audit-check.mjs` 条目（用法 + 5 项机检 + exit 语义 + 三条边界）；② 该脚本是 T7 的机检门，属**运行期承重内容**（主控按需调用、T7 引用其 JSON 作实据）。**实测 35,070 → 36,265 B（+1,195）**；上限按公式 = 「实测 + 1.5 KB 向上取整到整 KB」= **38,912 B（余量 2,647 B）**。**为什么必须增长而不是瘦身**：白名单行是脚本清单与数量的**唯一真源**（规则⑩/⑩b 都指向它），新脚本不登记就没人能调用；新增条目本身是主控与 T7 的操作入口。**瘦身待办不变**（长期目标 20 KB）：包形态段与增量摘要仍可再外移。 **v18.22.2 CTX-3 显式抬升 35→36 KB（按定案 ① 的同一公式：实测 + 1.5 KB 向上取整到整 KB）**：本版新增**运行期承重内容**——① §执行能力边界 新增 `ref-get.mjs`（按需读抽取器）条目（用法 + 两条硬边界：锚点未命中 exit 10 绝不返回空节 / 锚点解析与规则 ㉗ 共用 `_lib/anchor-slug.mjs`）+ 白名单行由 23 补为 24；② §启动清单 第 6 项（G 体系）加「97 KB 文档改用 `ref-get` 只取该节」的操作指引；③ §分层加载 把「按需查节」从**模型自觉**落成**机制动作**（`node scripts/ref-get.mjs <文件> <#锚点>`）。实测 33,330 → 34,479 B（+1,149）；上限 35,840 → 36,864（余量 2,385 B）。**v18.22.1 CTX-1 显式下调 38→35 KB（主人定案 ①：瘦身后同步下调到「实测 + 1.5 KB」）**：把「版本增量 / 历史成因」整体迁出——① 两段巨型增量摘要（v18.12.1 全文 + v18.12.0/18.11.0/18.10.0/18.8.0/18.7.x 五段压成的一行）合并为一行指针（明细本就在 `CHANGELOG.md` 同名版本段）；② 删「本版增量明细外移」注（已被 ① 覆盖）；③ 逐处清历史叙事句（「旧版完整韧化协议已移出仓库」/「1.5 与 4.2 为什么曾经不存在」的 704 B 成因注 / 「旧版没有连带条款」/ 「v18.0.3 去重…已删」/ 「v18.18.0 前此行写…自相矛盾」/ 「锚点修正…此前指向…并不存在」/ 「曾被本文档误声明」/ 「实测曾漏检」）。**实测 36420 → 33330 B（−3090 B）**；按定案 ① 上限由 38912 下调到「实测 + 1.5 KB 向上取整到整 KB」= **35840 B（余量 2510 B）**。新增一致性规则 **㉘** 守此形（SKILL.md 正文禁历史叙事词）。长期目标 20 KB 不变。技能体：入口注册的正文，每次技能激活都进上下文（最贵的文件）——**v18.12.3 显式抬升 37→38 KB（审计 L-07 落地）**：唯一的实质增长是 §⚡ 启动速查表的 `- Phase：` 序列行补入 `1.5 补检索` 与 `4.2 修订回环`（+约 30 B）+ 该行为什么曾经缺二者的成因注（依「注解聚合」约定：成因与判据留在原处，细节归 CHANGELOG §18.12.3）。为什么必须增长而不是瘦身：该行是**主控排 `todo_write` 的唯一 Phase 真源**，缺 `4.2` 时主控的计划里整整一轮修订回环不存在（L-07 的实测后果：真实项目临时造「Phase 4 修订」命名）——这条不是元信息、是运行期承重内容；而 `Phase 1.5` 会真 spawn 一个 T1 子代理。抬升后留 ~500 B 余量。**v18.12.0 显式抬升 36→37 KB（全量审计收口批）**：本版新增一行 v18.12.0 版本增量摘要（依「注解聚合」约定：一句话 + 指针，细节归 CHANGELOG §18.12.0），并**同批先做两轮瘦身**——① 把 v18.11.0/18.10.0/18.8.0/18.7.1–18.7.3 五段摘要逐条压成「一句话 + 指针」（细节全在 CHANGELOG 同名版本段，删掉的是**重复叙述**而非机制事实）；② 补一行「本版增量明细外移」说明，防后来者把 CHANGELOG 里的细节再抄回来。瘦身后实测 **36777 B**，距 36864 B 仅 87 B —— 按「不许把棘轮停在距上限数十 B（等效禁止再写）」的既有原则（v18.2.7 / v18.11.0 先例）抬到 37 KB，留 ~1.1 KB 余量。**瘦身待办**：把运行期不读的维护者向元信息继续外移（rank 表 / guard 边界 / 模板计数已迁 `references/maintainers.md`），长期目标 20 KB。**v18.11.0 显式抬升 34→36 KB**：本版反哺落地按「注解聚合」约定新增一行版本增量摘要（单行 + 指针，细节归 CHANGELOG §18.11.0）；抬升后留 ~1.4 KB 余量。**v18.11.0 补登记 33→34 KB（主人授权「依次全部都做」）**：v18.10.0 落地 12 项战略改进时本文件增长但**未同提交抬棘轮**（违反 v18.1.0「文档增长须同提交抬升」），发布后 `repo-hygiene-check` 即为红；本次补登记实测值。v18.6.0 后曾显式抬升 32→33 KB（整体审查收尾）：启动速查表补「收报验收」行（交接门 handoff-check 收报动作，规格 §8 #7 补齐）'],
+  'skills/lunheng-article-pipeline/SKILL.md': [53248, 20480, '**2026-09-29 显式抬升 40→41 KB（主人授权修订 · 外部借鉴 context-mode，按定案 ① 同一公式）**：两处口径收口——① §结构性要点 4 的证据包 sha256 一律取 `manifest.json` 实值（**EXEC-1**）；② 工具表「命令/脚本」行的「主流程**默认零 exec**」改为与 `glossary.md` §shell 使用 同口径的「**受限 shell（非零 exec）**」（**EXEC-2**，此前同一事实两处相反）。**实测 39,606 B**；旧上限只剩 1,354 B（< 定案 ① 的 1.5 KB），按公式抬到 **41,984 B（余量 2,378 B）**。 **v18.41.0 显式抬升 39→40 KB（按定案 ① 同一公式）**：`g-audit-check.mjs` 条目同步为 6 项（新增 G15 卷期页码，须 `--qlt`）+ 四条边界：候选级、**模式开关只能由调用方显式声明**（实测有简报写「☐ 卷期页码完整性：默认关闭」，按标签放行会产生成组假阳性）、`N/A ≠ SKIP`、判断力项不下沉。**实测 38,383 → 38,959 B（+576）**；旧上限只剩 977 B（< 定案 ① 的 1.5 KB），按公式抬到 **40,960 B（余量 2,001 B）**。 **v18.30.0 EFF-6 显式抬升 38→39 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：§⚡ 启动速查表 的「图件链路」行改为**模板化口径**——主控不再手写 SVG，而是复制 `templates/图表-SVG-template.md` 的对应图型（5 类 copy-ready 完整 SVG）填空，并写明「用 `ref-get.mjs` 只取一节、别整文件读」（模板文件 19 KB，整读会抵消 EFF-6 想省的 token）。**实测 38,253 → 38,383 B（+130）**；旧上限 38,912 B 只剩 **529 B**（< 定案 ① 的 1.5 KB 余量，属「距上限仅数百 B ≈ 等效禁止再写」的失效态前兆），故按公式抬到 **39,936 B（余量 1,553 B）**。**瘦身待办不变**（长期目标 20 KB）。 **v18.23.0 EFF-1 显式抬升 36→38 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：① §执行能力边界 白名单行 24→25 并新增 `g-audit-check.mjs` 条目（用法 + 5 项机检 + exit 语义 + 三条边界）；② 该脚本是 T7 的机检门，属**运行期承重内容**（主控按需调用、T7 引用其 JSON 作实据）。**实测 35,070 → 36,265 B（+1,195）**；上限按公式 = 「实测 + 1.5 KB 向上取整到整 KB」= **38,912 B（余量 2,647 B）**。**为什么必须增长而不是瘦身**：白名单行是脚本清单与数量的**唯一真源**（规则⑩/⑩b 都指向它），新脚本不登记就没人能调用；新增条目本身是主控与 T7 的操作入口。**瘦身待办不变**（长期目标 20 KB）：包形态段与增量摘要仍可再外移。 **v18.22.2 CTX-3 显式抬升 35→36 KB（按定案 ① 的同一公式：实测 + 1.5 KB 向上取整到整 KB）**：本版新增**运行期承重内容**——① §执行能力边界 新增 `ref-get.mjs`（按需读抽取器）条目（用法 + 两条硬边界：锚点未命中 exit 10 绝不返回空节 / 锚点解析与规则 ㉗ 共用 `_lib/anchor-slug.mjs`）+ 白名单行由 23 补为 24；② §启动清单 第 6 项（G 体系）加「97 KB 文档改用 `ref-get` 只取该节」的操作指引；③ §分层加载 把「按需查节」从**模型自觉**落成**机制动作**（`node scripts/ref-get.mjs <文件> <#锚点>`）。实测 33,330 → 34,479 B（+1,149）；上限 35,840 → 36,864（余量 2,385 B）。**v18.22.1 CTX-1 显式下调 38→35 KB（主人定案 ①：瘦身后同步下调到「实测 + 1.5 KB」）**：把「版本增量 / 历史成因」整体迁出——① 两段巨型增量摘要（v18.12.1 全文 + v18.12.0/18.11.0/18.10.0/18...'],
   'skills/lunheng-article-pipeline/AGENTS.md': [21504, 16384, '**v18.45.0 显式抬升 20→21 KB（按定案 ① 同一公式）**：§文件修改操作约束 的验证步新增一行「**发版前必跑「工具链不得改写仓库」**（`node scripts/no-write-check.mjs`）」——与既有的「收口批必跑差集 + 反向核验」并列（两者都是**仓库级固定动作**，故登记在同一处）。**实测 19,338 B**；旧上限只剩 1,142 B（< 定案 ① 的 1.5 KB），按公式抬到 **21,504 B（余量 2,166 B）**。 **v18.22.1 CTX-2 显式下调 21→20 KB（主人定案 ①：瘦身后同步下调到「实测 + 1.5 KB」）+ §开发参考资料整体外移**：该节（官方资料入口表 8 行 + 机械层 3 条 + 冲突裁决顺序 + 何时必须查官方资料 + 刻意偏离指针 + 仓库级打包面检查清单）是**维护者决策时才查**的参考，而本文件是**技能目录内自动生效的指令**（每次加载都进上下文）——按「维护者向 → `maintainers.md`」这一条判据整体迁入 `references/maintainers.md` §八，此处只留 3 行指针；同批把已迁出的「仓库级打包面检查」重复段改成指针、两处「清单见 §开发参考资料」改指 `maintainers.md` §八。**实测 20552 → 18522 B（−2030 B）**；上限由 21504 下调到「实测 + 1.5 KB 向上取整到整 KB」= **20480 B（余量 1958 B）**。操作手册：技能目录内自动生效的指令——**v18.20.3 首次显式瘦身 21463→20552 B（余量 41→952 B；上限维持 21 KB）**：按「一事实两处 / 注解聚合」聚合 6 处——① 收口批「差集+反向核验」的完整过程与两次自证**已在 `references/maintainers.md` §七**（1005→约 250 B，改结论 + 指针）；② 「仓库级打包面检查」清单与 §开发参考资料重复（670→约 260 B）；③ 闸门退出码的 v18.12.0 L-67 历史细节收敛为「判据一句话」（判据保留）；④ 子代理失败三段式的版本注解（教训留 git log）；⑤ status/agents-log 历史括注；⑥ `dsh-plugin-dev check` 清单与 §开发参考资料重复 → 改指针。**长期目标 16 KB 不变**（v18.22.1 实测 18.1 KB——维护者向内容已按 CTX-2 外移完毕，余下待瘦身项：包形态段与文件修改操作约束的仓库级细节）。'],
   // v18.65.0（D1 角色最小权限批）：§主人侧三件套 **之前**新增「§角色 × 工具面：负向清单」（14 行）——
   //   该清单是**判读角色的运行期读物**（T7/T8/T9 用它与自己卡片上的最小权限节对齐；主控派发时重申），
   //   且它必须与三张卡同址声明「不是机制强制」，外移到仓库级文档 = 运行期读不到（判据同 v18.62.7 §A19）。
   //   实测 118,784 → 120,257 B（改前余量 2,002 B 仅剩 1,473 B，属「等效禁止再写」态）→
   //   按定案 ① 公式 = 实测 + 1.5 KB 向上取整到整 KB = **122,880 B**。
-  'skills/lunheng-article-pipeline/references/pipeline-readme.md': [122880, 61440, '**v18.63.1 显式抬升 115→116 KB（按定案 ① 同一公式：实测 116,782 B + 1.5 KB 向上取整到整 KB）**：§主人侧三件套 的「主人投喂清单」行下新增**二进制原件摄取口径的指针**（四档阶梯 + `materials/` 落点 + 「转录稿≠证据、不进证据包」），真源外移到 `_shared/材料摄取.md`（本处只留落点，不复述四档）。**实测 116,330 → 116,782 B（+452）**；改前余量 1,430 B（< 定案 ① 的 1.5 KB），本批既动了该文件即按公式归位到 **118,784 B（余量 2,002 B）**。 **v18.62.7（反哺-主控实测批）显式抬升 112→115 KB（按定案 ① 同一公式）**：§派发话术新增「通用派发前置条款（二）」——agents-log 追加（实测 20 个角色一个都没被要求）/ 报告编号命名契约（审计族跟审计轮次、审稿与 G14 跟正文轮次）/ 按需读 + 步数软预算 / 修订轮净增字数预算；四条都有实测代价（§A7/A12/B1/D1），且**必须落在派发话术里**（写进模板但不在话术里 = 实测无人执行）。**实测 115,218 B**；按公式抬到 **117,760 B（余量 2,542 B）**。 **2026-09-29 显式抬升 107→108 KB（字数判级口径统一批，按定案 ① 同一公式）**：§字数上限铁律 的「硬上限：G5 阻塞线——**超出即 P0**」改为「**>5% 即 P1，触发 T5 v3 精简**」（主人 2026-09-29 裁定统一口径；≤5% 记 P2、不强制修订）。**实测 108,228 B**；旧上限只剩 1,340 B（< 定案 ① 的 1.5 KB），按公式抬到 **110,592 B（余量 2,364 B）**。 **2026-09-29 显式抬升 106→107 KB（跨文档对账批，按定案 ① 同一公式）**：三处口径修复——① 终检清单第 14 项「sha256 指纹回填（人类可选；交付说明占位符可保留）」→ **实值**（EXEC-1 残余站点，本批补修）；② T7 前置的「跳过 T6 档位」由「轻量档 / 3000-5000 档」改为**按 `SKILL.md` 真源分列**（轻量档一律跳过 / 3000-5000 可选）；③ §三档装载状态补**第二条装载路径**（设任一 `LUNHENG_*_PROVIDER/_MODEL` 即自动装载）。**实测 107,986 B**；旧上限只剩 558 B（< 定案 ① 的 1.5 KB），按公式抬到 **109,568 B（余量 1,582 B）**。 **v18.43.0 显式抬升 103→105 KB（按定案 ① 同一公式）**：§T7 派发话术的「G 项机检预跑」那条由「5 项」更正为 **6 项**并补上 `[--qlt]`，另加一段「**`--qlt` 怎么传**」（唯一依据 = 简报 `QLT=` 标记；不按散文标签判断；标了 `on` 而没传旗标则判 `N/A` 并**点名不一致**）。这正是 v18.41.0 扩项时**漏传**的那一处——当时全库 grep 用 `-Path references\**\*.md`，而 pwsh 的 `**` **只匹配一层中间目录**，`references/` 下**直属**的 .md 没被扫到；本批已把这类「N 项机检」数字改为机械断言。**实测 104,999 B**；按公式抬到 **107,520 B（余量 2,521 B）**。 **v18.30.0 EFF-6 显式抬升 101→103 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：§Phase 4.5 配图行与 §六 能力表把配图口径从「主控 `write` 手写 SVG」改为「复制 `图表-SVG-template.md` 图型填空 + `ref-get.mjs` 只取一节」。**实测 103,170 → 103,241 B（+71）**；旧上限 103,424 B 只剩 **183 B**（< 定案 ① 的 1.5 KB 余量，即本文件注释自己点名的「距上限仅数百 B ≈ 等效禁止再写」失效态），按公式抬到 **105,472 B（余量 2,231 B）**。**瘦身待办升级**：本文件 103 KB vs 长期目标 60 KB（全库最落后，1.7×），EFF/CTX 族的下一批应把它列为头号候选。 **v18.23.0 EFF-1/EFF-2 显式抬升 99→101 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：§T7 派发话术新增两条——第 9 条下的「G 项机检预跑」块（含 exit 3 的两种含义）与第 10 条「审计分片并行」（三条硬边界 + 不适用面 + 汇总裁定红线）。派发层是 T0 启动必读、无处可挪。**实测 99,509 → 101,043 B（+1,534）**；上限按公式 = **103,424 B（余量 2,381 B）**。 **v18.22.3 EFF-3 显式抬升 98→99 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：§6 修订回环双轨制补「复核轮装备与留痕」块——与 `07-审计-auditor.md` §修订复核 的 A8 硬约束同源（派发层与卡层两处同址陈述）。**实测 98,260 → 99,509 B（+1,249）**；上限按定案 ① = 「实测 + 1.5 KB 向上取整到整 KB」= **101,376 B（余量 1,867 B）**。**v18.22.2 CTX-3 显式抬升 96→98 KB（余量 1,123 → 实测仅 44 B，触「不许把棘轮停在距上限数十 B」原则）**：§共享读取纪律 新增「**按需读的机制动作 = `ref-get`**」一条（派发前先跑 `node scripts/ref-get.mjs <文件.md> <#锚点>` 取该节真字节数写进派发话术；锚点未命中 exit 10 并列出可用锚点，**绝不返回空节**，不得把空结果当「已读过」）——与 v18.22.2 新增的 `ref-get.mjs` 同批，属运行期承重内容（T0 启动必读段）。上限按定案 ① 的同一公式抬到「实测 + 1.5 KB 向上取整到整 KB」= 100,352 B（余量 2,092 B）。**外部机制借鉴批 2（2026-09-26）显式抬升 95→96 KB（主人指令「启动批2」；抬升理由是余量只剩 98 B——按本文件既有的「不许把棘轮停在距上限数十 B（等效禁止再写）」原则抬升，留约 1.1 KB）**：§T9 段「何时用」下补一行**可选对抗视角**（T9-v / T9-i：参谋性质 + 三条硬边界的最小集），使派发层与 09 卡同源。流水线全景 + 派发话术（T0 启动必读）——**v18.12.2 显式抬升 92→94 KB（2026-09-25 L-06「产物 N 跟审计轮次」+ L-08「四门必须」）**：本版在派发层新增两条**交付契约级**规则，无处可挪——① §T7 派发话术产出行补「N = 审计轮次 + 头部须写 `被审正文:` 声明」（旧口径「报告版本 == 初稿版本」仍是默认读法，不写清 T7 会照旧命名）；② §主人侧三件套表下补「四门『必须』」段（不设可省任一门 + `--require-gates` 的机械落点与退出码）。**同批已先瘦身**（四门段 750→560 B，删去与主控卡重复的字段清单复述改指针）。**v18.12.0 显式抬升 91→92 KB（2026-09-25 全量审计第七梯队）**：派发层新增两处**会让流水线卡死或漏检**的口径补正，均无处可挪（T0 启动必读、按需加载无从谈起）——① §T7 派发话术前置条件补「跳过 T6 的档位」分支（L-26：轻量档/3000-5000 档允许跳过 T6，而旧前置条件写「T6 批判报告 + T5 v3 完成」→ 该条件**永假**，照做会让流水线断在「不派 T7」）；② 两道闸门段落补「v18.12.0 三处口径补正」块（L-37 T2.5 判定前须先刷证据包，否则报数据卡不存在类假 P0；L-33 三个战略门脚本尚无门核验真跑过，约定 T7.5 备注栏留 exit 一览并已登记为待补门；L-24 全库锚点由一致性规则 ㉗ 强制）。**同批已先做两处瘦身**：B 轨「为什么」段 400 B（删 2026-09-20 完整轨迹，保留根因结论——轨迹留在 git log 与 `_shared/` 反哺报告）、L-33 段 200 B（脚本体与 exit 一览示例指针化）。净增 2.1 KB。**v18.11.0 显式抬升 82→91 KB（主人授权「根据反哺依次全部修订」）**：落地反哺报告 v2 的三条派发侧规则——F-4 通用派发前置条款「产出铁律」（治 T9/G14 子代理读盘后静默零产物）+ F-4\' T2 数据卡模板版本核验（治旧模板产出 → 31 条缺信任级别独立段 → M-Form-6 P0）+ F-5\' T5 字数上限铁律（治写手自设目标 → T7 判超任务简报目标 18.2%）；同步 M 门速查第 4 条（「承重」自本版起不再计入文末禁止词）。**v18.2.2 显式抬升 60→64 KB：补「段级 diff 字数回测硬约束」与「T5/T6/T9 派发用 M 门速查」；v18.2.5 显式抬升 64→65 KB：补「段级 diff 字数口径硬约束（纯汉字 = count-chars 同源）」与「审计视图刷新落盘留痕（status.md 可核对项）」；**v18.2.7 显式抬升 65→74 KB（主人授权修订）**：依 2026-09-20 全流程实战反哺，一处补 6 条硬约束——① 派发最小集补第 7 条「文末五节条目标签用论衡编号」（真源 `机检硬格式.md` §五 v18.2.2 已有该条，但最小集一直漏同步，实战第三次踩到：T5 四版全写 `[1]`-`[11]`，T7 三轮未抓出，直到 T8 才爆 P0）；② 段级 diff 加「预算闸门前置」（清单预估 16,987 → 实测 18,071，超限 1,271 字 → 被迫削 3 轮）；③ 加「素材加载清单刷新责任在段级 diff 模式下归主控」（与「T5 每轮覆盖写」机制直接冲突）；④ 加「清单须机器可读、优先用 apply-diff.mjs」（实战主控为此做约 52 处手工 edit）；⑤ T7 修订任务书加「验收方式」列（解「字面验收 vs 字数约束」死结）；⑥ T7 预检从 5 项扩为**全量 22 项 M 门** + 缺陷冻结机制（3 个零判断力 P0 漏到 T8、A 轨 2 轮用满仅 29% 完全关闭）；**v18.2.8 显式抬升 74→75 KB（主人授权「G14 早闸去掉」）**：流水线全景的 G14 行与派发话术段改为「三层防御、仅一次 spawn」。**已先做两轮瘦身**（删除依据移至 `gates/14` 单点持有），瘦身后仍超 150 B；剩余为 Phase 序列与派发话术本身，属 T0 启动必读的承重内容；**v18.5.1 显式抬升 75→78 KB（ai-content-farm-retractions 反哺：派发前 preflight 反注 + T6/T9 意见强制机械证据硬约束）**；**v18.7.1 显式抬升 78→79 KB（共锁反哺：T1 派发前自检 handoff-check）**；**v18.7.1 显式抬升 79→82 KB（借鉴 Ai4Scholar 落地 4 份反哺报告整合）**：§快速开始后加 §进阶用法 /lunheng 段（11 命令 + 借鉴说明）；§写手派发话术后加 v18.7.1 铁律（每条 [Lxx]/[Dxx] 必须含 vol.X, no.Y, pp.Z-Z 完整字段）+ §T3.5 派发话术段（auto_cite 预标注阶段）。属 T0 启动必读的承重内容，依据 v18.1.0「词预算预冲」原则显式抬升上限；目标（长期）维持 60 KB（已两轮瘦身）。**v18.18.0 显式抬升 94→95 KB（C 批审计 E-1/E-6/E-10/E-13）**：①E-1 §T6 派发话术的批判维度名由「五维（论点级/证据级/逻辑级/立场级/时效级）」改为 **06 卡七维原名 + 真源指针**——旧写法与 06 卡**不同名不符**，而 M-Exist-8 要求七节齐备（缺 >2 节 = P0）→ **照抄派发话术即 P0**；②E-6 L-33 由「尚未机械化」改为「已由 M-Exist-5 机械化（v18.12.0 补门）」；③E-10「简化直写档（<2000 字）」改「2000-3000 字」（与 SKILL.md 字数分层真源对齐）；④E-13 终检必查项由 11 条补为 **15 条**并把 §4.5 死指针改为 08 卡真源（原文声称「详见 §4.5」而本文件无该章节）。四项均为派发层/闸门层契约修正，T0 启动必读、无处可挪。'],
+  'skills/lunheng-article-pipeline/references/pipeline-readme.md': [122880, 61440, '**v18.63.1 显式抬升 115→116 KB（按定案 ① 同一公式：实测 116,782 B + 1.5 KB 向上取整到整 KB）**：§主人侧三件套 的「主人投喂清单」行下新增**二进制原件摄取口径的指针**（四档阶梯 + `materials/` 落点 + 「转录稿≠证据、不进证据包」），真源外移到 `_shared/材料摄取.md`（本处只留落点，不复述四档）。**实测 116,330 → 116,782 B（+452）**；改前余量 1,430 B（< 定案 ① 的 1.5 KB），本批既动了该文件即按公式归位到 **118,784 B（余量 2,002 B）**。 **v18.62.7（反哺-主控实测批）显式抬升 112→115 KB（按定案 ① 同一公式）**：§派发话术新增「通用派发前置条款（二）」——agents-log 追加（实测 20 个角色一个都没被要求）/ 报告编号命名契约（审计族跟审计轮次、审稿与 G14 跟正文轮次）/ 按需读 + 步数软预算 / 修订轮净增字数预算；四条都有实测代价（§A7/A12/B1/D1），且**必须落在派发话术里**（写进模板但不在话术里 = 实测无人执行）。**实测 115,218 B**；按公式抬到 **117,760 B（余量 2,542 B）**。 **2026-09-29 显式抬升 107→108 KB（字数判级口径统一批，按定案 ① 同一公式）**：§字数上限铁律 的「硬上限：G5 阻塞线——**超出即 P0**」改为「**>5% 即 P1，触发 T5 v3 精简**」（主人 2026-09-29 裁定统一口径；≤5% 记 P2、不强制修订）。**实测 108,228 B**；旧上限只剩 1,340 B（< 定案 ① 的 1.5 KB），按公式抬到 **110,592 B（余量 2,364 B）**。 **2026-09-29 显式抬升 106→107 KB（跨文档对账批，按定案 ① 同一公式）**：三处口径修复——① 终检清单第 14 项「sha256 指纹回填（人类可选；交付说明占位符可保留）」→ **实值**（EXEC-1 残余站点，本批补修）；② T7 前置的「跳过 T6 档位」由「轻量档 / 3000-5000 档」改为**按 `SKILL.md` 真源分列**（轻量档一律跳过 / 3000-5000 可选）；③ §三档装载状态补**第二条装载路径**（设任一 `LUNHENG_*_PROVIDER/_MODEL` 即自动装载）。**实测 107,986 B**；旧上限只剩 558 B（< 定案 ① 的 1.5 KB），按公式抬到 **109,568 B（余量 1,582 B）**。 **v18.43.0 显式抬升 103→105 KB（按定案 ① 同一公式）**：§T7 派发话术的「G 项机检预跑」那条由「5 项」更正为 **6 项**并补上 `[--qlt]`，另加一段「**`--qlt` 怎么传**」（唯一依据 = 简报 `QLT=` 标记；不按散文标签判断；标了 `on` 而没传旗标则判 `N/A` 并**点名不一致**）。这正是 v18.41.0 扩项时**漏传**的那一处——当时全库 grep 用 `-Path references\**\*.md`，而 pwsh 的 `**` **只匹配一层中间目录**，`references/` 下**直属**的 .md 没被扫到；本批已把这类「N 项机检」数字改为机械断言。**实测 104,999 B**；按公式抬到 **107,520 B（余量 2,521 B）**。 **v18.30.0 EFF-6 显式抬升 101→103 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：§Phase 4.5 配图行与 §六 能力表把配图口径从「主控 `write` 手写 SVG」改为「复制 `图表-SVG-template.md` 图型填空 + `ref-get.mjs` 只取一节」。**实测 103,170 → 103,241 B（+71）**；旧上限 103,424 B 只剩 **183 B**（< 定案 ① 的 1.5 KB 余量，即本文件注释自己点名的「距上限仅数百 B ≈ 等效禁止再写」失效态），按公式抬到 **105,472 B（余量 2,231 B）**。**瘦身待办升级**：本文件 103 KB vs 长期目标 60 KB（全库最落后，1.7×），EFF/CTX 族的下一批应把它列为头号候选...'],
   // v18.12.0（L-67）：本文件因「1.3 退出码」段补两条同族收口说明而越过 12 KB 登记线 → 首次登记。
   'skills/lunheng-article-pipeline/references/_shared/M-Gate-Algorithm-appendix.md': [14336, 12288, '**v18.31.0 MEA-2 显式抬升 13→14 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：M 门 exit 双字段那句的「实测约 45%」**恢复口径三要素并改成可复算分数**「10 项 / 22 项」——该处本是 `M-Gate-Algorithm.md` §执行模型那句的副本，抄写时把口径与样本丢了、只剩裸百分比（⑰\' 收口时四处的唯一「有真值」者）。**实测 12,294 → 12,471 B（+177）**，按公式抬到 **14,336 B（余量 1,865 B）**。 M 门阈值与附录真源（仅 T7/T8 读）——**v18.12.0 首次登记（13 KB）**：本文件此前 11.5 KB（未达 12 KB 登记线），L-67 收口时在 §1.3 补两句「非闸门工具退出码」说明（`model-routing` / `token-budget` / `token-cost` 的用法错由 1 改 10）后越过登记线。补的这两句是**退出码撞码**的口径真源（读者按本表读码会误判内容失败），属承重内容、不挪他处。'],
-  'skills/lunheng-article-pipeline/references/_shared/M-Gate-Algorithm.md': [114688, 79872, '**v18.62.7（反哺-主控实测批）显式抬升 107→112 KB（按定案 ① 同一公式）**：① M-Form-8 新增「证据类别字母表纳入 `[先NN]`」与「`ACCEPTED-GAPS` 机读声明」两条口径（§A2/§A3，都是「合规稿拿不到 exit 0」族）；② M-Exist-5 / M-Exist-7 各加「🔧 修法助手」交叉引用（`refresh-gates.mjs` / `fix-gates.mjs`——实测主控按角色卡与模板作业，**必然漏用**这两个工具）。三条均为 T7/T8 的判定口径，无处可挪。**实测 111,952 B**；按公式抬到 **114,688 B（余量 2,736 B）**。 **2026-09-29 显式抬升 104→105 KB（跨文档对账批，按定案 ① 同一公式）**：① M-Exist-2 §档位收口的 **P5 术语澄清**（P5 = 旧严重度档位，与「Phase 5 / P5 终稿」无关——原写法「P5 档位自此不再使用」会被读成 Phase 5 废止）；② **v2.2.11 能力边界段加取代声明**（sha256 不再由主人手动回填 / 「人类补填项」已废止——EXEC-1 残余站点）；③ M-Exist-6 的「卷期页码完整率 ≥95% → P1」改为**只呈现不判级**（与已登记的「阈值已删除」对齐）。**实测 105,942 B**；旧上限只剩 554 B（< 定案 ① 的 1.5 KB），按公式抬到 **107,520 B（余量 1,578 B）**。 **v18.41.0 显式抬升（按定案 ① 同一公式）**：§M-Form-2 的 v18.8.0 扩展段——作废门号的留档指向由 §三 改为 §二 末行，并补一段「要件与实装已定」：真门 = `g-audit-check.mjs` 的 `G15-VolIssue`（模式相关、候选级、不设阈值），要件真源 = 01 卡；**明写协议层那句「4 项中至少 3 项…卷期页码或 DOI/URL」更宽、与 01 卡不等价、冲突时以 01 卡为准**。**实测 103,775 → 104,310 B（+535）**；旧上限只剩 1,162 B（< 定案 ① 的 1.5 KB），按公式抬到 **106,496 B（余量 2,186 B）**。 **v18.27.0 QLT-4 显式抬升（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：新增 ### M-Exist-11 节（反方论证闭合：伪代码 + 两条刻意边界 + 校准记录）+ M-Exist 节头 10→11。**实测 103044 B**；上限 = **105472 B**。 **v18.25.0 QLT-2 显式抬升 96→99 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：新增 **M-Fact 族**（`## M-Fact 事实一致性门（1 项…）` + `### M-Fact-1: 跨节事实一致性`：抽取/判定伪代码 6 条 + 校准记录 + 注入用例），并重建阈值总表生成块（新增 `mfact1Tolerance` / `mfact1MinKeyHan` / `mfact1AliasMinHits` 三键，由 `m-gate-check --dump-thresholds` 单向生成）。该节是 M 门定义真源（规则⑳/㉓ 的核对对象），删了就成了「脚本有门、文档没有」。**实测 97,590 → 100,681 B（+3,091）**；上限按公式 = **102,400 B（余量 1,719 B）**。**瘦身待办**：§M-Form-4/8 的伪代码注释与 `机检硬格式.md` 有重复段，可改指针。M 门伪代码（仅 T7/T8 读）——**v18.11.0 显式抬升 89→91 KB（主人授权「根据反哺依次全部修订」）**：落地反哺报告 v2 的 F-1「硬 P0 红线」段（4 类结构性缺陷不允许 T8 的 `_t8_llm_review` 兜底覆盖：文末节缺失 / 顺序错 / 漏引 >0 / 数据不完整；含量化判据 + 可兜底项白名单 + 反面教训），并同步阈值总表 `exist1ClosureP0` 条目（F-7 建议上调被回归测试驳回，实测值维持 10）。**v18.2.2 显式抬升 78→84 KB：补 6 处 v18.2.2 判定语义修订注记（M-Form-4/8/11 + M-Exist-2/10 + M-Integrity-1）；**v18.3.1 显式抬升 84→86 KB（第三方审计 B3）**：新增「阈值总表」生成块（24 个阈值键，由 m-gate-check.mjs `THRESHOLDS` 单向生成 + consistency-check ㉓ 逐键核对，消灭阈值数字与正文伪代码的双维护）；**v18.7.1 显式抬升 86→87 KB（共锁反哺：M-Exist-10 定位口径登记）**；**v18.7.1 显式抬升 87→89 KB（借鉴 Ai4Scholar 落地 4 份反哺报告整合）**：§M-Form-2 加 v18.7.1 卷期页码扩展段（4 项中至少 3 项必填 + 卷期页码正则 + DOI/URL fallback + 触发条件）；§M-Form-10 加 v18.7.1 T3.5 扩展段（auto_cite-补充.md 索引段核验）；§M-Exist-6 加 v18.7.1 G15 扩展段（任务简报 §引用数量与质量控制 → 审稿报告 6 维表格核验）。依据 v18.1.0「词预算预冲」原则显式抬升上限；目标（长期）维持 78 KB。**v18.12.0 显式抬升 91→95 KB（2026-09-25 全量审计第二梯队 L-44 + L-02/L-03/L-22）**：① §硬 P0 红线段补「实装状态」——该红线此前**只有规格没有实现**（`m-gate-check.mjs` 的注释宣称强制重审而代码里一行都没有），现落到三处（`hard_red_line_hits` 收集 / 落盘拒绝采纳 T8 裁定 / M-Exist-5 放行前置），规格必须与实装同址陈述；② §M-Exist-5 伪代码补「逐行绑定」四项（M 门 `exit N` 对账 / 有效裁定值必须为 0 / handoff exit 必写 / 路径存在性）与「修复前五条空洞」的完整记录（同一处门、互不重叠，是本次审计的核心发现）。**v18.12.0 显式抬升 95→96 KB（2026-09-25 全量审计 L-05 落地）**：§`_t8_*` 留痕要求新增第 4 条「写入方式」——两段必须经 `m-gate-check.mjs --adjudicate <json>` 正式通道写入（含裁定文件 schema、三条拒绝路径 exit 30、以及「进程退出码 = 裁定值」），并说明为什么必须走通道（此前无正式入口，实战项目自建脚本直接改 `rj.exit` → 产出 `exit=0` + `verdict_stale=true` 的自相矛盾交付物）。'],
+  'skills/lunheng-article-pipeline/references/_shared/M-Gate-Algorithm.md': [114688, 79872, '**v18.62.7（反哺-主控实测批）显式抬升 107→112 KB（按定案 ① 同一公式）**：① M-Form-8 新增「证据类别字母表纳入 `[先NN]`」与「`ACCEPTED-GAPS` 机读声明」两条口径（§A2/§A3，都是「合规稿拿不到 exit 0」族）；② M-Exist-5 / M-Exist-7 各加「🔧 修法助手」交叉引用（`refresh-gates.mjs` / `fix-gates.mjs`——实测主控按角色卡与模板作业，**必然漏用**这两个工具）。三条均为 T7/T8 的判定口径，无处可挪。**实测 111,952 B**；按公式抬到 **114,688 B（余量 2,736 B）**。 **2026-09-29 显式抬升 104→105 KB（跨文档对账批，按定案 ① 同一公式）**：① M-Exist-2 §档位收口的 **P5 术语澄清**（P5 = 旧严重度档位，与「Phase 5 / P5 终稿」无关——原写法「P5 档位自此不再使用」会被读成 Phase 5 废止）；② **v2.2.11 能力边界段加取代声明**（sha256 不再由主人手动回填 / 「人类补填项」已废止——EXEC-1 残余站点）；③ M-Exist-6 的「卷期页码完整率 ≥95% → P1」改为**只呈现不判级**（与已登记的「阈值已删除」对齐）。**实测 105,942 B**；旧上限只剩 554 B（< 定案 ① 的 1.5 KB），按公式抬到 **107,520 B（余量 1,578 B）**。 **v18.41.0 显式抬升（按定案 ① 同一公式）**：§M-Form-2 的 v18.8.0 扩展段——作废门号的留档指向由 §三 改为 §二 末行，并补一段「要件与实装已定」：真门 = `g-audit-check.mjs` 的 `G15-VolIssue`（模式相关、候选级、不设阈值），要件真源 = 01 卡；**明写协议层那句「4 项中至少 3 项…卷期页码或 DOI/URL」更宽、与 01 卡不等价、冲突时以 01 卡为准**。**实测 103,775 → 104,310 B（+535）**；旧上限只剩 1,162 B（< 定案 ① 的 1.5 KB），按公式抬到 **106,496 B（余量 2,186 B）**。 **v18.27.0 QLT-4 显式抬升（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：新增 ### M-Exist-11 节（反方论证闭合：伪代码 + 两条刻意边界 + 校准记录）+ M-Exist 节头 10→11。**实测 103044 B**；上限 = **105472 B**。 **v18.25.0 QLT-2 显式抬升 96→99 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：新增 **M-Fact 族**（`## M-Fact 事实一致性门（1 项…）` + `### M-Fact-1: 跨节事实一致性`：抽取/判定伪代码 6 条 + 校准记录 + 注入用例），并重建阈值总表生成块（新增 `mfact1Tolerance` / `mfact1MinKeyHan` / `mfact1AliasMinHits` 三键，由 `m-gate-check --dump-thresholds` 单向生成）。该节是 M 门定义真源（规则⑳/㉓ 的核对对象），删了就成了「脚本有门、文档没有」。**实测 97,590 → 100,681 B（+3,091）**；上限按公式 = **102,400 B（余量 1,719 B）**。**瘦身待办**：§M-Form-4/8 的伪代码注释与 `机检硬格式.md` 有重复段，可改指针。M 门伪代码（仅 T7/T8 读）——**v18.11.0 显式抬升 89→91 KB（主人授权「根据反哺依次全部修订」）**：落地反哺报告 v2 的 F-1「硬 P0 红线」段（4 类结构性缺陷不允许 T8 的 `_t8_llm_review` 兜底覆盖：文末节缺失 / 顺序错 / 漏引 >0 / 数据不完整；含量化判据 + 可兜底项白名单 + 反面教训），并同步阈值总表 `exist1ClosureP0` 条目（F-7 建议上调被回归测试驳回，实测值维持 10）。**v18.2.2 显式抬升 78→84 KB：补 6 处 v18.2.2 判定语义修订注记（M-Form-4/8/11 + M-Exist-2/10 ...'],
   'skills/lunheng-article-pipeline/references/agents/00-主控-扩展职责.md': [65536, 50176, 'T0 实操手册（全库第二，闸门公共动作在此）——v18.2.2 显式抬升 49→52 KB：补「修订回环提前 Ack 判据」四类归因决策表；v18.2.9 显式抬升 52→53 KB（第三方审计 A12）：补「T8 人工裁定双签」（M-Form-8 / M-Integrity-2 亲裁定须独立复核，守住独立角色互为镜像）；**v18.6.0 后显式抬升 53→54 KB（整体审查收尾）**：补「收报验收」闸门公共动作（交接门 handoff-check，规格 §8 #3 补齐）；**v18.12.0 显式抬升 54→55 KB（2026-09-25 全量审计第三梯队 L-01）**：删除本卡内与全库定案冲突的「轮」的定义（旧文本把 B 轨 T6 算作第 1 轮，与 glossary 双轨制直接冲突；实测两个真实项目均按双轨制记账），改为指向 glossary 的**指针 + 删除理由**——指针化不会净减字节（旧定义一行换新说明数行），但消除了一处会误导轮次计数的独立定义**v18.18.0 显式抬升 55→56 KB（C 批审计 E-7）**：删除「T8 人工裁定双签」段（v18.2.9 A12）并写明取消理由——该机制要求 T8 初裁后**再派 subagent 独立复核**，而 T8 执行者就是主控本人（主控 = T0 调度 + T8 执行双身份），**等于让新上下文复核本人的判断**，与「T8 不 spawn 子代理」的既有定案直接冲突；其产物 `audits/T8裁定复核-vN.md` 在 08 卡终检 15 项中**本就不存在**，属孤儿机制。删除段为**指针化替换**（旧 1 段换新说明 1 段）故非净减。**v18.62.0 反哺 F1/F2/F3 显式抬升 61→64 KB（按定案 ① 同一公式）**：§二十一 人在环四节点触发清单新增三条运行期承重内容——① **主人离场预案**（三条件预授权 + 与「工具失败 ≠ 同意」的分界 + §6 留痕形态 + 为何不动 A7）；② **本门增量显式化**（确认单 §0 + 微确认单判据）；③ **数值型约束上桌**（确认单 §8 + 变更留痕效力）。这三条都必须在主控**每次过门时**可读，不能外移；实测 63,930 B（超旧上限 1,466 B），按公式抬到 **65,536 B（余量 1,606 B）**'],
   'skills/lunheng-article-pipeline/references/glossary.md': [40960, 32768, '**v18.40.0 显式抬升 39→40 KB（按定案 ① 同一公式）**：§G 清单 的 G15 行删除「机检联动 = `M-Form-2 v2`（卷期页码）」这处**幻影门**，改为「卷期页码那一半无门 + 由 T7 人工核」，并保留 `M-Exist-6` 这一处真实联动。**实测 38,223 → 38,405 B（+182）**；旧上限只剩 1,531 B（< 定案 ① 的 1.5 KB），按公式抬到 **40,960 B（余量 2,555 B）**。 **v18.27.0 QLT-4 显式抬升（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：M 门口径同步。**实测 37100 B**；上限 = **38912 B**。 术语表（含 §十二 刻意偏离，改机制前必读）——v18.5.1 显式抬升 32→34 KB（ai-content-farm-retractions 反哺：§12.1 正文字数单一真源 + §12.3 五节 vs 国标仲裁）；**v18.7.1 显式抬升 34→35 KB（借鉴 Ai4Scholar 落地）**：§核心角色新增 T3.5 文献补标注角色卡（可选阶段，auto_cite 预扫描）；§十一 关键术语新增「引用匹配度」（与 G15 审计项 + M-Exist-6 联动）。依据 v18.1.0「词预算预冲」原则显式抬升上限；目标（长期）维持 32 KB。**v18.12.0 显式抬升 35→36 KB（2026-09-25 全量审计第三梯队 L-21 + L-39）**：① §修订回环的 B 轨口径由「不限额」改为「**至多 +1 深化轮**」（全库统一，旧写法与 `pipeline-readme.md:785` 直接冲突）+ 口径统一说明；② §十二「一事实一处」行更正 mechanical coverage 数字（旧写「21 类」，脚本自述为 23 类 + 5 子规则）并如实补「本门只能抓集合/计数/版本点位/字符串四类漂移，**抓不到语义级事实**」这一已知边界**v18.18.0 显式抬升 36→37 KB（C 批审计 E-11/E-12/E-15）**：①E-15「一事实一处」行的规则数由「23 类」校正为「**①-㉕ 共 24 类主规则 + 5 子规则**」，并把「全库规则编号止于 ⑳」这一**已为假**的断言改为**指向脚本头清单**（㉔/㉕ 实装后失准）；②E-11 G 清单由「G0-G14（15 项）」改为「**G0-G14 主项（14 项硬门）+ G15 模式相关项**」；③E-12 空卡标识统一为 `[C-空]`（旧文写「[空卡]」，机检只认 `[C-空]`）。三处均为口径收口，改完本文件是全库该类事实的单一真源。'],
-  'skills/lunheng-article-pipeline/references/agents/05-写作-writer.md': [66560, 36864, '**2026-09-29 显式抬升 61→62 KB（跨文档对账批，按定案 ① 同一公式）**：§F 自检第 4 条「G14 **四层**一致性…→ T7 复核」改为**三层防御一致性**——G14 的三层是闸门定义（`gates/14-中文AI痕迹-gate.md` §触发阶段【第 1/2/3 层】），T7 不在其中，本卡 `:88`/`:445` 亦写「三层防御第 1+2 层」，原写法同文件内自相矛盾。**实测 60,993 B**；旧上限只剩 1,471 B（< 定案 ① 的 1.5 KB），按公式抬到 **63,488 B（余量 2,495 B）**。 **v18.31.0 MEA-2 显式抬升 57→58 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：时效标注示例里那个具体百分比（「占比 10.6%」）改为占位符 `<X%>`——它是一句**示例**，写具体数字既像真数据、又给不出样本（⑰\' 口径三要素扩面收口；同段 §实战背景 里的 10.6% 是历史事件记述，保留）。**实测 57,730 → 57,846 B（+116）**；旧上限只剩 **522 B**，按公式抬到 **59,392 B（余量 1,546 B）**。 **外部机制借鉴批 2（2026-09-26）显式抬升 56→57 KB（主人指令「启动批2」= AGENTS.md 例外条款授权）**：§视角与精度铁律 新增第 4 条「因果主张的强度纪律」——案例研究型须 ≥1 处显式反事实推理 + ≥1 条可证伪预测；强档因果词只在能指回识别策略时使用（与 `apply-diff.mjs` 的 `causal_upgrades` 三档**守恒**分工：机械只守恒、语义判定归本条）。T5 写手卡——**v18.11.0 补登记 52→55 KB（主人授权「依次全部都做」）**：v18.10.0 落地 12 项战略改进时本卡增长但未同提交抬棘轮（违反 v18.1.0），发布后 `repo-hygiene-check` 即为红；本次补登记实测值。**瘦身待办**：§「🚫 元数据泄露词表」28 行与 M-Form-4/5 黑名单同源，可改为指针 + 真源（`机检硬格式.md`）持有。v18.2.5 显式抬升 36→38 KB：补「段级 diff 字数口径与 count-chars 同源（两侧汉字计数）」+「图位编号 = 正文出现顺序，禁照抄大纲编号」两条硬约束；**v18.2.8 显式抬升 38→39 KB（主人授权「G14 早闸去掉」）**：F 自检 7 项 → 7+1 项，新增「G14 v1 自检」（早闸删除后由写手在写作阶段承担第 1 层检测）；**v18.3.0 显式抬升 39→40 KB（G 体系机械下沉）**：写作规范新增「删优于改（Prefer CUT over REWRITE）」一条（借鉴 Writing Guard）；**v18.7.1 显式抬升 40→45 KB（共锁反哺：G14 实测铁律 / 图位编号 / 幽灵引用 / 双口径字数 / 元数据红线 / 修订说明等量覆盖 四组补丁）**；**v18.9.0 显式抬升 45→52 KB（数字社交-关系重构项目实战反哺 v18.8.x + v18.9.0 两轮承重）**：①字数估算 +20% buffer 段（治 LLM 估算 1.44x 偏差，v18.8.x 反哺）——含边界 / 实战教训 3 轮 / 机检留痕 3 项；②「🚫 元数据泄露词表」段（v18.9.0 反哺，与 M-Form-4/5 黑名单同源）——含词表 28 行 / 判定 3 类 / 文末五节白名单 1 类 / AI 使用声明 1 处豁免。两条均为实战反哺的承重内容（不挪 references/），按「同一次提交显式抬升」原则同步抬上限；目标（长期）维持 36 KB（v18.9.1 起考虑瘦身）。**v18.12.0 显式抬升 55→56 KB（2026-09-25 全量审计响应 L-17 + L-20）**：① §铁律 9「文末节顺序」改写为「必需五节 + 可选四学术声明」两层，并补机检真源指针（`_lib/sections.mjs` 的 `ENDNOTE_ORDER`）——旧文本只列五节，而 v18.10.0 起本节已要求写四声明，两处口径互斥（照规范写必被 M-Form-7 判 P0）；② §四声明自检三连更正两处错标：「M-Form-7 文末五节顺序扩面到七节」（既非五节也非七节）与「机检 M-Form-12 子门」（M 门编号体系内不存在该门，属假绿）。'],
+  'skills/lunheng-article-pipeline/references/agents/05-写作-writer.md': [66560, 36864, '**2026-09-29 显式抬升 61→62 KB（跨文档对账批，按定案 ① 同一公式）**：§F 自检第 4 条「G14 **四层**一致性…→ T7 复核」改为**三层防御一致性**——G14 的三层是闸门定义（`gates/14-中文AI痕迹-gate.md` §触发阶段【第 1/2/3 层】），T7 不在其中，本卡 `:88`/`:445` 亦写「三层防御第 1+2 层」，原写法同文件内自相矛盾。**实测 60,993 B**；旧上限只剩 1,471 B（< 定案 ① 的 1.5 KB），按公式抬到 **63,488 B（余量 2,495 B）**。 **v18.31.0 MEA-2 显式抬升 57→58 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：时效标注示例里那个具体百分比（「占比 10.6%」）改为占位符 `<X%>`——它是一句**示例**，写具体数字既像真数据、又给不出样本（⑰\' 口径三要素扩面收口；同段 §实战背景 里的 10.6% 是历史事件记述，保留）。**实测 57,730 → 57,846 B（+116）**；旧上限只剩 **522 B**，按公式抬到 **59,392 B（余量 1,546 B）**。 **外部机制借鉴批 2（2026-09-26）显式抬升 56→57 KB（主人指令「启动批2」= AGENTS.md 例外条款授权）**：§视角与精度铁律 新增第 4 条「因果主张的强度纪律」——案例研究型须 ≥1 处显式反事实推理 + ≥1 条可证伪预测；强档因果词只在能指回识别策略时使用（与 `apply-diff.mjs` 的 `causal_upgrades` 三档**守恒**分工：机械只守恒、语义判定归本条）。T5 写手卡——**v18.11.0 补登记 52→55 KB（主人授权「依次全部都做」）**：v18.10.0 落地 12 项战略改进时本卡增长但未同提交抬棘轮（违反 v18.1.0），发布后 `repo-hygiene-check` 即为红；本次补登记实测值。**瘦身待办**：§「🚫 元数据泄露词表」28 行与 M-Form-4/5 黑名单同源，可改为指针 + 真源（`机检硬格式.md`）持有。v18.2.5 显式抬升 36→38 KB：补「段级 diff 字数口径与 count-chars 同源（两侧汉字计数）」+「图位编号 = 正文出现顺序，禁照抄大纲编号」两条硬约束；**v18.2.8 显式抬升 38→39 KB（主人授权「G14 早闸去掉」）**：F 自检 7 项 → 7+1 项，新增「G14 v1 自检」（早闸删除后由写手在写作阶段承担第 1 层检测）；**v18.3.0 显式抬升 39→40 KB（G 体系机械下沉）**：写作规范新增「删优于改（Prefer CUT over REWRITE）」一条（借鉴 Writing Guard）；**v18.7.1 显式抬升 40→45 KB（共锁反哺：G14 实测铁律 / 图位编号 / 幽灵引用 / 双口径字数 / 元数据红线 / 修订说明等量覆盖 四组补丁）**；**v18.9.0 显式抬升 45→52 KB（数字社交-关系重构项目实战反哺 v18.8.x + v18.9.0 两轮承重）**：①字数估算 +20% buffer 段（治 LLM 估算 1.44x 偏差，v18.8.x 反哺）——含边界 / 实战教训 3 轮 / 机检留痕 3 项；②「🚫 元数据泄露词表」段（v18.9.0 反哺，与 M-Form-4/5 黑名单同源）——含词表 28 行 / 判定 3 类 / 文末五节白名单 1 类 / AI 使用声明 1 处豁免。两条均为实战反哺的承重内容（不挪 references/），按「同一次提交显式抬升」原则同步抬上限；目标（长期）维持 36 KB（v18.9.1 起考虑瘦身）。**v18.12.0 显式抬升 55→56 KB（2026-09-25 全量审计响应 L-17 + L-20）**：① §铁律 9「文末节顺序」改写为「必需五节 + 可选四学术声明」两层，并补机检真源指针（`_lib/sections.mjs` 的 `ENDNOTE_ORDER`）——旧文本只列五节，而 v18.10.0 起本节已要求写四声明，两处口径互斥（照规范写必被 M-Form-7 判 P0）；② §四声明自检三连更正两处错标：「M-Form-7 文末五节顺序扩面到七节」（既非五节也非七节）与「机检 M-Form-12 子门」...'],
   'skills/lunheng-article-pipeline/references/_shared/DSH-集成方案.md': [36864, 25600, 'DSH 能力面集成：§七 落地状态 + §八 preset 配方 + §九 运行环境限制（v18.1.0 扩容，新进预算表）——v18.2.2 显式抬升 25→28 KB：新增 §九「Windows sandbox --emp 前置目录缺失」现象 + 四条替代路径 + 主控操作纪律；**v18.6.3 显式抬升 28→29 KB**：DSH 集成方案同步（v18.6.3 落地时回填具体子项）；**v18.60.1 反哺 v3（主人授权落地）显式抬升 29→33 KB**：§当前状态段新增 H3/H4/H6/H7-H11「未做」登记 + §七"落地状态"标题表加 3 行（C-7 executionMode / C-8 post-execute 监听器 / C-9 HMR 联动）+ §当前状态段同次写明 C 组落地状态从「四项」改「七项」。**实测 31,325 B**（超出旧上限 1,629 B）；按定案 ① 公式（实测 + 1.5 KB 向上取整到整 KB）抬到 **33,792 B（余量 2,467 B）**'],
-  'skills/lunheng-article-pipeline/references/_shared/外部检索源接入面.md': [30720, 12288, '**v18.62.7 二修（通用性回归）显式抬升 28→30 KB（按定案 ① 同一公式）**：§0 新增 **D 档保底**（只有 DSH 自带的 `web_search` + `web_fetch`，**任何宿主都有**）+ 通用性底线（**论衡不要求宿主安装任何第三方检索插件**；缺插件只降档、不降可行性；不得中止/不得当缺口/不得编造工具名）+ 落地禁则；§2.4 补「无 `multi_search` 时以如实声明替代」；§4.3 补「档位降级：A → B → D，D 是终点」。**为什么必须修**：首版把「A 档（装了 `dsh-free-search`）」写成默认主线却未定义「连它也没有」的那一档 → 只装 DSH base 的宿主在**文档层没有可执行的默认层**（把 §A19 的病往上抬了一级）。**实测 29,508 B**；按公式抬到 **30,720 B（余量 1,212 B）**。**瘦身待办（升级）**：长期目标 12,288 B（现 2.4×）——§3.5 引擎可用性表 + §四 调用策略 + §2 详表可合并压缩。 **v18.62.7（反哺 §A19/A21/A23）显式抬升 22→28 KB（按定案 ① 同一公式）**：新增 §0「工具面存在性优先」（三档口径 + 判据）、§2.4「交叉印证层」（`multi_search` 立为承重条目的指定工具 + `seenIn ≥2` 口径）、§5.4「溯源字段与跨档不可比」；并把 §2.2 的引擎位归属更正到 `advanced_search`、引擎集与降序改为**运行时实测快照**。**为什么涨在本文档**：T1/T2/T3 的源面单一真源就是它（三卡按本节执行），这次实测的病灶「卡里点名的工具本机没装」正是本文档要回答的问题——外移=检索角色读不到=该发现不成立。**实测 26,966 B**；按公式抬到 **28,672 B（余量 1,706 B）**。**瘦身待办（升级）**：长期目标 12,288 B（现 2.2×），下一轮的 §3.5 引擎可用性表与 §四 调用策略可合并压缩。 **2026-09-29 显式抬升 21→22 KB（主人授权修订 · 外部借鉴 context-mode B3，按定案 ① 同一公式）**：§4.5 成本控制 新增「**检索式批量纪律**」——同一轮多查询应批量提交、禁 N 次近似重复的单查询；并明写「**饱和停判据针对「新增」而非「次数」**」（两者混同会同时导致过早停与空转）。**实测 20,091 B**；旧上限只剩 1,413 B（< 定案 ① 的 1.5 KB），按公式抬到 **22,528 B（余量 2,437 B）**。 **v18.35.0 显式抬升（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：§4.5 成本控制 新增一条「**T2 重试预算的成本口径**」——自 02 卡迁入（含「旧版引用的单个 18.9M 数字已无法复验」这条**自我更正**，迁移动机就是不让它随卡片瘦身一起消失）。**实测 18,528 → 19,155 B（+627）**，按公式抬到 **21,504 B（余量 2,349 B）**。 ',
- '**v18.21.3 显式抬升 16→19 KB（v18.21.2 实测发现 Bing 中文流量偏置，主人 2026-09-26 授权三层防护 A+B+C 落地）**：§3.5 新增「Bing 偏置 + 通用性兜底」段（实测表格 + 通用性兜底说明 + 三层防护职责边界 + 反向自证 + 边界声明）——v18.21.2 主会话实测 `free_search_test` 9 引擎 7 OK / 同一查询 Bing vs tavily 质量对照；这是接入面扩展**唯一文档级反哺**（B 是卡级强约束、C 是宿主配置）。**v18.21.2 新增（6 源接入面扩展）**：6 源真源文档——firecrawl / tavily / exa / consensus / AI4Scholar（`search_papers` / `search_arxiv` / `search_semantic` / `search_google_scholar` / `search_biorxiv` / `search_medrxiv`）—的 DSH 工具映射 / 计费语义 / Key 边界 / 何时调。范本：`auto_cite-integration.md`（v18.8.0 接入面文档范本）+ `DSH-集成方案.md` §二-§六。T1/T2/T3 卡 + 任务简报模板 §启用扩展检索源 全部引用本文件。属于机制文件（references/_shared/ 下），默认禁写；改进动议只写 `audits/反哺报告-vN.md`。目标（长期）12 KB。'],
+  'skills/lunheng-article-pipeline/references/_shared/外部检索源接入面.md': [30720, 12288, '**v18.62.7 二修（通用性回归）显式抬升 28→30 KB（按定案 ① 同一公式）**：§0 新增 **D 档保底**（只有 DSH 自带的 `web_search` + `web_fetch`，**任何宿主都有**）+ 通用性底线（**论衡不要求宿主安装任何第三方检索插件**；缺插件只降档、不降可行性；不得中止/不得当缺口/不得编造工具名）+ 落地禁则；§2.4 补「无 `multi_search` 时以如实声明替代」；§4.3 补「档位降级：A → B → D，D 是终点」。**为什么必须修**：首版把「A 档（装了 `dsh-free-search`）」写成默认主线却未定义「连它也没有」的那一档 → 只装 DSH base 的宿主在**文档层没有可执行的默认层**（把 §A19 的病往上抬了一级）。**实测 29,508 B**；按公式抬到 **30,720 B（余量 1,212 B）**。**瘦身待办（升级）**：长期目标 12,288 B（现 2.4×）——§3.5 引擎可用性表 + §四 调用策略 + §2 详表可合并压缩。 **v18.62.7（反哺 §A19/A21/A23）显式抬升 22→28 KB（按定案 ① 同一公式）**：新增 §0「工具面存在性优先」（三档口径 + 判据）、§2.4「交叉印证层」（`multi_search` 立为承重条目的指定工具 + `seenIn ≥2` 口径）、§5.4「溯源字段与跨档不可比」；并把 §2.2 的引擎位归属更正到 `advanced_search`、引擎集与降序改为**运行时实测快照**。**为什么涨在本文档**：T1/T2/T3 的源面单一真源就是它（三卡按本节执行），这次实测的病灶「卡里点名的工具本机没装」正是本文档要回答的问题——外移=检索角色读不到=该发现不成立。**实测 26,966 B**；按公式抬到 **28,672 B（余量 1,706 B）**。**瘦身待办（升级）**：长期目标 12,288 B（现 2.2×），下一轮的 §3.5 引擎可用性表与 §四 调用策略可合并压缩。 **2026-09-29 显式抬升 21→22 KB（主人授权修订 · 外部借鉴 context-mode B3，按定案 ① 同一公式）**：§4.5 成本控制 新增「**检索式批量纪律**」——同一轮多查询应批量提交、禁 N 次近似重复的单查询；并明写「**饱和停判据针对「新增」而非「次数」**」（两者混同会同时导致过早停与空转）。**实测 20,091 B**；旧上限只剩 1,413 B（< 定案 ① 的 1.5 KB），按公式抬到 **22,528 B（余量 2,437 B）**。 **v18.35.0 显式抬升（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：§4.5 成本控制 新增一条「**T2 重试预算的成本口径**」——自 02 卡迁入（含「旧版引用的单个 18.9M 数字已无法复验」这条**自我更正**，迁移动机就是不让它随卡片瘦身一起消失）。**实测 18,528 → 19,155 B（+627）**，按公式抬到 **21,504 B（余量 2,349 B）**。 '],
   'skills/lunheng-article-pipeline/references/agents/08-终检-finalizer.md': [17408, 13312, '**v18.52.0（QLT-5 批次 4）显式抬升 14→15 KB**：F-BB 的**消费侧纪律**新增 1 行（换稿重裁时两处都更新完再跑、`transient: true` 的机械值不构成权威、交付件只引用稳定态），并**修正批次 3 引入的铁律编号重复**（我插入的新第 2 条把原第 2 条挤成同号 → 现已按 1–8 重排；该重复是我造成的，如实登记）。实测 12,214 → 13,038 B（+824）；旧上限只剩 1,298 B（< 定案 ① 的 1.5 KB），按公式抬到 **15,360 B（余量 2,322 B）**。 **v18.51.0（QLT-5 批次 3）首登**：F-AP「亲修必须回写『正文真源』」新增 4 行（铁律 #2 + 实测代价 + 当场自问判据 + 替代方案），实测 10,977 → 12,214 B（+1,237）——距 `DOC_BUDGET_MIN`（12,288 B）**仅 74 B**，任何后续增补都会越线；按定案 ① 同一公式（实测 + 1.5 KB 向上取整到整 KB）首登为 **14,336 B（余量 2,122 B）**。该卡是 T8 终检 15 项与交付说明格式的运行期真源，属承重内容（不挪 references/）。'],
-  'skills/lunheng-article-pipeline/references/agents/07-审计-auditor.md': [49152, 22528, '**v18.41.0 显式抬升 44→46 KB（按定案 ① 同一公式）**：§🧮 G 项机检段——机检项 5 → 6（新增 `G15-VolIssue` 行）、命令加 `[--qlt]`、新增「G15 三条口径」段（要件真源 = 01 卡；与协议层措辞不等价；**刻意不设完整率阈值**；类型判不出不判罚），并把 exit 3 的说明扩为「`N/A`（模式不适用，不改退出码）≠ `SKIP`（适用但缺输入 → exit 3）」。**实测 42,949 → 44,554 B（+1,605）**；旧上限只剩 502 B，按公式抬到 **47,104 B（余量 2,550 B）**。 **v18.40.0 显式抬升 43→44 KB（按定案 ① 同一公式）**：§G 项实据 的「协作」引用由**不存在的行名**（`M-Exist-9 G 项实据`）改为门 ID 锚（§一 行 `M-Exist-9`），并注明旧写法错在哪（悬空引用是本表 v18.40.0 实测的三处之一）。**实测 42,823 → 42,949 B（+126）**；旧上限只剩 1,083 B（< 定案 ① 的 1.5 KB），按公式抬到 **45,056 B（余量 2,107 B）**。 **v18.32.0（主人定案 ③）显式抬升 42→43 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：§🔀 审计分片并行 新增「**粒度：仅按 G 组切**」一段（两条理由 + 明写旧口径「两种二选一」已删）+ 第 ③ 条硬边界补「该片实读了哪些节区」。**实测 41,650 B**；旧上限只剩 **1,358 B**（< 定案 ① 的 1.5 KB），按公式抬到 **44,032 B（余量 2,382 B）**。 **v18.24.0 QLT-1 显式抬升 41→42 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：C-Redundancy 规格行由「同段 ≥4 篇 → P1」改为「同**句**同时引 ≥4 篇 → **P2 候选**」并附**实测依据**（段尺度 18/21 项目命中、句尺度 11/21，命中面含综述/摘要/结语＝正常写法；是否属同质堆砌是语义问题）。这条规格收窄是 QLT-1 的前置——评分脚本要把 cite-coverage 计入分数，而其判级必须先是可机械裁定的。**实测 40,080 → 41,102 B（+1,022）**；上限按公式 = **43,008 B（余量 1,906 B）**。**v18.23.0 EFF-1/EFF-2 显式抬升 37→41 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：新增两段——§🧮 G 项机检段（5 项机检的判级口径表 + exit 3 的两种含义 + 刻意不下沉的判断力项 + 「字数项为何只到候选」的实测理由）与 §🔀 审计分片并行（三条硬边界 + 机检前置 + 不适用面 + 汇总裁定红线）。两段都是 T7 的**执行契约**（步数收敛与其代价如实声明），删了 T7 就退回「逐条人工推导」。**实测 36,179 → 40,080 B（+3,901）**；上限按公式 = **41,984 B（余量 1,904 B）**。**瘦身待办**：G 项实据形态清单与 `audit-checklist-quickref.md` 有重复段，可改指针。 **v18.22.3 EFF-3 显式抬升 35→37 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：§修订复核段补「复核轮只读范围」硬约束块——复核只读 ① `drafts/修订说明-vN.md` ② 段级 diff 清单 / `apply-diff.mjs` 记录 ③ 改动段；首节必须写「已读范围」，**没读的不算已核**；机检落点 = `handoff-check` 检查 A8。依据是本机实测的反向证据：复核类会话 cacheRead 达 4.8M / 7.5M / 7.7M / 10.5M（逐轮全文重读），而复核只需覆盖「改动集」——属运行期承重内容（判定边界，不挪 references/）。**实测 34,970 → 36,179 B（+1,209）**；上限按定案 ① = **37,888 B（余量 1,709 B）**。**瘦身待办**：G 项实据口径与 `audit-checklist-quickref.md` 有重复段，可改指针。T7 审计卡——**v18.12.0 显式抬升 33→34 KB（2026-09-25 全量审计第七梯队 L-27）**：§「M 门预检」的清单由 **5 项**（M-Form-3/4/5/7/8）改写为**全量 22 项 + M-Form-4 人工补扫**。旧清单按「判断力要求低」选，却恰好漏掉三个**零判断力、后果最重**的项（M-Form-9 图件闭环 / M-Exist-1 引用双向闭环 / M-Form-11 素材清单）——2026-09-20 实战中这三项**一路漏到 T8** 才被脚本抓出，此时 A 轨已封盘，只能进 `final/局限性.md`。本卡优先级高于派发话术（`pipeline-readme.md:351`），故漏项必须在卡内修正而非只改话术。**同批已先瘦身**：删去卡内与 `pipeline-readme.md` 重复的「为什么扩全量」完整论述（保留一行结论 + 指针），并删去与 `_shared/M-Gate-Algorithm-appendix.md` 重复的 5 项阈值速查表（改为指针）。**v18.11.0 补登记 28→33 KB（主人授权「依次全部都做」）**：v18.10.0 落地 12 项战略改进时本卡增长但未同提交抬棘轮（违反 v18.1.0），发布后即为红；本次补登记实测值，并叠加本次反哺落地（新增「提议写法：稿件侧优先」元规则段——4 条被回归测试驳回的实测教训 + 判据）。**瘦身待办**：§「G 项实据最小样板」的 5 类形态 + 模板可下沉到 `_shared/` 按需加载。v18.5.1 显式抬升 22→23 KB：修订任务书新增「违反规范」列 + 「怎么改」列处置动作动词前缀（补/删/改/降级），借鉴 writing-guard rule/action 分离（反哺报告-writing-guard借鉴-v1 动议一）；**v18.7.1 显式抬升 23→24 KB（共锁反哺：铁律加 T6 交叉验证）**；**v18.9.0 显式抬升 24→28 KB（数字社交-关系重构项目实战反哺）**：①「与 T6 批判的职责边界」段（v18.9.0 反哺 P1-1，治 T6/T7 重叠攻击同一论点）——含 12 行职责分工表 + 判定边界 + 重叠项终判口径；②「G 项实据最小样板」段（v18.9.0 反哺 P0-3，治 M-Exist-9 = P2 软提示「9/15 项 G 项结论无实据」）——含实据形态清单 5 类（路径 / 素材编号 / §+行号 / 带量词数字 / M-Gate-Report exit code）+ 判定 3 类 + 写作模板 1 个。两条均为实战反哺的承重内容（M 门契约源头 / 不挪 references/），按「同一次提交显式抬升」原则同步抬上限；目标（长期）维持 22 KB（v18.9.1 起考虑瘦身）。**v18.18.0 显式抬升 34→35 KB（C 批审计 E-5/E-8）**：①E-5 承重墙超载阈值由「4 论点以上 = P0」改为「**≥3 = 超载 P1 / ≥4 = P0**」+ 真源指针（原写法与 `M-Gate-Algorithm.md` 的「同一证据被 ≥3 论点标承重 = 超载」逐字冲突，卡面比机检更宽 → 人工复核会放过机检该报的超载）；②E-8「M 门契约」段补**命名空间澄清**（本脚本三检属 `methodology-check.mjs` 自有命名空间、加 `MC-` 前缀，不是 M 门体系编号——M 门总 23 项内无 M-Form-12）。'],
+  'skills/lunheng-article-pipeline/references/agents/07-审计-auditor.md': [49152, 22528, '**v18.41.0 显式抬升 44→46 KB（按定案 ① 同一公式）**：§🧮 G 项机检段——机检项 5 → 6（新增 `G15-VolIssue` 行）、命令加 `[--qlt]`、新增「G15 三条口径」段（要件真源 = 01 卡；与协议层措辞不等价；**刻意不设完整率阈值**；类型判不出不判罚），并把 exit 3 的说明扩为「`N/A`（模式不适用，不改退出码）≠ `SKIP`（适用但缺输入 → exit 3）」。**实测 42,949 → 44,554 B（+1,605）**；旧上限只剩 502 B，按公式抬到 **47,104 B（余量 2,550 B）**。 **v18.40.0 显式抬升 43→44 KB（按定案 ① 同一公式）**：§G 项实据 的「协作」引用由**不存在的行名**（`M-Exist-9 G 项实据`）改为门 ID 锚（§一 行 `M-Exist-9`），并注明旧写法错在哪（悬空引用是本表 v18.40.0 实测的三处之一）。**实测 42,823 → 42,949 B（+126）**；旧上限只剩 1,083 B（< 定案 ① 的 1.5 KB），按公式抬到 **45,056 B（余量 2,107 B）**。 **v18.32.0（主人定案 ③）显式抬升 42→43 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：§🔀 审计分片并行 新增「**粒度：仅按 G 组切**」一段（两条理由 + 明写旧口径「两种二选一」已删）+ 第 ③ 条硬边界补「该片实读了哪些节区」。**实测 41,650 B**；旧上限只剩 **1,358 B**（< 定案 ① 的 1.5 KB），按公式抬到 **44,032 B（余量 2,382 B）**。 **v18.24.0 QLT-1 显式抬升 41→42 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：C-Redundancy 规格行由「同段 ≥4 篇 → P1」改为「同**句**同时引 ≥4 篇 → **P2 候选**」并附**实测依据**（段尺度 18/21 项目命中、句尺度 11/21，命中面含综述/摘要/结语＝正常写法；是否属同质堆砌是语义问题）。这条规格收窄是 QLT-1 的前置——评分脚本要把 cite-coverage 计入分数，而其判级必须先是可机械裁定的。**实测 40,080 → 41,102 B（+1,022）**；上限按公式 = **43,008 B（余量 1,906 B）**。**v18.23.0 EFF-1/EFF-2 显式抬升 37→41 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：新增两段——§🧮 G 项机检段（5 项机检的判级口径表 + exit 3 的两种含义 + 刻意不下沉的判断力项 + 「字数项为何只到候选」的实测理由）与 §🔀 审计分片并行（三条硬边界 + 机检前置 + 不适用面 + 汇总裁定红线）。两段都是 T7 的**执行契约**（步数收敛与其代价如实声明），删了 T7 就退回「逐条人工推导」。**实测 36,179 → 40,080 B（+3,901）**；上限按公式 = **41,984 B（余量 1,904 B）**。**瘦身待办**：G 项实据形态清单与 `audit-checklist-quickref.md` 有重复段，可改指针。 **v18.22.3 EFF-3 显式抬升 35→37 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：§修订复核段补「复核轮只读范围」硬约束块——复核只读 ① `drafts/修订说明-vN.md` ② 段级 diff 清单 / `apply-diff.mjs` 记录 ③ 改动段；首节必须写「已读范围」，**没读的不算已核**；机检落点 = `handoff-check` 检查 A8。依据是本机实测的反向证据：复核类会话 cacheRead 达 4.8M / 7.5M / 7.7M / 10.5M（逐轮全文重读），而复核只需覆盖「改动集」——属运行期承重内容（判定边界，不挪 references/）。**实测 34,970 → 36,179 B（+1,209）**；上限按定案 ① = **37,888 B（余量 1,709 B）**。**瘦身待办**：G 项实据口径与 `audit-checklist-quickref.md` 有重复段，可改指针。T7 审计卡——**v18...'],
   'skills/lunheng-article-pipeline/references/memory/lessons.md': [19456, 19456, '教训库（只增，需定期合并同类项）'],
   'skills/lunheng-article-pipeline/references/_shared/字数判定表.md': [15360, 10240, '**2026-09-29 首次登记（触 ≥12 KB 线，按定案 ① 同一公式）**：主人同日就字数口径连下两案，本表是**两案的共同实现真源**，故两次增长都落在它身上——① 超限侧判级统一（`≤5% P2` / `>5% P1`）；② **补齐不足侧档位**（`不足 >10% → P0，须扩写`，主人明示保留）＋**例外通道**（`BUF=on` 三条件 + 默认关闭）＋**命名更正**（字数归属 = **G8**，`G5` = 学术规范；旧称「G5 阻塞线」为误称）。**这三块都不是元信息**：判级表被 T7/T8 直接当判定依据读，档位缺一半就会出现「真源只覆盖一个方向、另一个方向由脚本替你决定」的失配。**实测 13,737 B**——已越 12 KB 线，按公式（实测 + 1.5 KB 向上取整到整 KB）登记为 **15,360 B（余量 1,623 B）**。**瘦身待办**：§二 的三块留痕（口径统一 / 例外通道 / 命名更正）在稳定后可各自压成一句话 + 指针（长期目标 10 KB）。'],
   'skills/lunheng-article-pipeline/references/_shared/audit-checklist-quickref.md': [19456, 10240, '**2026-09-29 显式抬升 18→19 KB（字数判级口径统一批，按定案 ① 同一公式）**：§G8 字数判定的 v18.11.0 渐进式警告表按主人 2026-09-29 裁定重写——原「`11,550–12,000` 警告 +5% buffer 容忍、需精简但不 P0、**建议**精简」与「`>12,000` **P0 阻塞**」两档，现统一为「**>11,550（>+5%）→ P1，触发 T5 v3**」（「建议」与裁定的「触发」不能并存）；并如实登记「若主人要为 +20% buffer 协调保留例外档请另行明示」。**实测 17,431 B**；旧上限只剩 1,001 B（< 定案 ① 的 1.5 KB），按公式抬到 **19,456 B（余量 2,025 B）**。 **v18.40.0 显式抬升 17→18 KB（按定案 ① 同一公式）**：§G15 的「卷期页码完整率」行原写「联动 `M-Form-2 v2` 分支」，而该门**从未实装**（本批实测，登记在 `规范-机械门对照表.md` §三 首行）——改为「无脚本联动 + T7 读文献卡人工核」，避免审计员据此以为有机检兜底。**实测 15,761 → 15,888 B（+127）**；旧上限只剩 1,520 B（< 定案 ① 的 1.5 KB），按公式抬到 **18,432 B（余量 2,544 B）**。 **v18.23.0 EFF-1 显式抬升 14→17 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：必查项首段新增「5 项已有**机检**」表（机检项 ↔ G 子项 ↔ 判定口径 ↔ **为什么只到这一层**），使 T7 读 quickref 时就知道哪些子项不必从头推导、哪些判断仍归自己——这是「同源不重复计入」与「机检只到候选」两条口径的**读者入口**。**实测 13,653 → 15,200 B（+1,547）**；上限按公式 = **17,408 B（余量 2,208 B）**。 审计必查项快速参考——**v18.11.0 显式抬升 12.5→14 KB（主人授权「根据反哺依次全部修订」）**：F-3 在 §G8 字数偏差核验下新增「字数判定渐进式警告」（`<11,000` 完美 / `11,000-11,550` 通过 / `11,550-12,000` 警告 / `>12,000` 阻塞），协调 v18.10.0「+20% buffer」与原 G5 单点阻塞线的口径冲突。**v18.7.1 首次登记（借鉴 Ai4Scholar v2.9.4 落地）：§必查项尾部新增 G15 引用匹配度（任务简报 §引用数量与质量控制 字段核验：引用数区间 / 优先同刊比例 / IF 门槛 / 卷期页码完整率 / auto_cite 替换率 + 修订任务书条目联动）。依据 v18.1.0「词预算预冲」原则显式登记上限；目标（长期）维持 10 KB。'],
-  'skills/lunheng-article-pipeline/references/templates/任务简报-template.md': [35840, 19456, '**v18.63.1 显式抬升 33→35 KB（按定案 ① 同一公式：实测 33,426 B + 1.5 KB 向上取整到整 KB）**：§基本信息 在 `检索工具面:` 之后新增**平行的 `摄取工具面:` + `本轮摄取档位:` 两行**（Phase 0 由主控填；只列探测确认存在的摄取能力，探不到即降 C 档）。**为什么涨在模板里**：与 v18.62.7 §A19 同一条判据——它是主控与主人唯一的接口文档，外移=Phase 0 没有落点=该发现在运行期不存在。**实测 32,327 → 33,426 B（+1,099）**；改前余量 1,465 B（< 定案 ① 的 1.5 KB），本批既动了该文件即按公式归位到 **35,840 B（余量 2,414 B）**。 **v18.62.7（反哺 §A19/A20）显式抬升 30→33 KB（按定案 ① 同一公式）**：基本信息段新增 **`检索工具面:` + `本轮档位:` 两行**（Phase 0 由主控填；T1/T2/T3 卡点名的工具必须在该行之内，档位写定即锁定、跨轮换档须逐条标注 `tool`/`engine`/`query`），并更正「启用扩展检索源」段里 AI4Scholar「默认推荐」的旧口径（实测本机未装该插件）。**为什么涨在模板里**：它是主控与主人唯一的接口文档——外移=Phase 0 没有落点=该发现在运行期不存在。**实测 32,080 B**；按公式抬到 **33,792 B（余量 1,712 B）**。 **v18.43.0 显式抬升 29→30 KB（按定案 ① 同一公式）**：§引用数量与质量控制 新增**启用标记**行（`QLT=on` / `QLT=off`，机器可读，是 `g-audit-check --qlt` 的唯一依据）+ 「卷期页码完整性」那条由「**此条无脚本核**」更正为**有门**（`G15-VolIssue`，模式相关、候选 P2、不设阈值）——这是 v18.41.0 实装该门后**漏改**的陈旧断言（改的是「盯住的那几处」，简报模板不在其中）。**实测 28,267 B**；按公式抬到 **30,720 B（余量 2,453 B）**。 **v18.40.0 显式抬升 28→29 KB（按定案 ① 同一公式）**：§引用格式 的「卷期页码完整性」括注原写「`M-Form-2 v2` 分支核验」，而该门**不存在**——改为「此条无脚本核 + 由 T1 落卡自检 / T7 G1·G15 人工核」，免得主人在任务简报里看到一句不存在的机检承诺。**实测 27,312 → 27,375 B（+63）**；旧上限只剩 1,297 B（< 定案 ① 的 1.5 KB），按公式抬到 **29,696 B（余量 2,321 B）**。 **v18.21.2 显式抬升 26→28 KB（接入面扩展）**：§v2.5.0 可选项**新增**「启用扩展检索源」段——主人**逐项勾选**已部署且开通可用的源（AI4Scholar 学术套件 / Google Scholar / Tavily / Exa / Firecrawl / Consensus），未勾选 = 不调；详见 [`../_shared/外部检索源接入面.md`](../_shared/外部检索源接入面.md)。**外部机制借鉴批 2（2026-09-26）显式抬升 25→26 KB（主人指令「启动批2」= AGENTS.md 例外条款授权）**：Phase 0 可选项增两条——「**案例研究型 / 质性论文**」（触发识别策略 + 反事实条件 + 可证伪预测必填，未声明 → T9-m M3 判 P1）与「**启用对抗视角 T9-v / T9-i**」（写明参谋性质：不产 P0/P1、不进判定词、不得触发 T5 修订轮）。任务简报模板（full 版）——v18.2.2 显式抬升 19→21 KB：① 补「字数判定层级强制显式勾选 + 与 G5 硬阈的关系澄清」；② 补「GB/T 7714 只约束著录格式、不约束标签形态」正误形态对照（第二处抬升，20480→21504）——**v18.5.1 显式抬升 21→22 KB（ai-content-farm-retractions 反哺：「需找数据点 vs 需找案例」标签口径说明）**；**v18.7.1 显式抬升 22→24 KB（借鉴 Ai4Scholar 落地 4 份反哺报告整合）**：§引用格式段后追加 §引用数量与质量控制 字段（目标引用数 / 目标期刊 / IF 门槛 / JCR 分区 / 优先同刊 / auto_cite 替换预算）+ §卷期页码完整性 段；§v2.5.0 可选项追加 3 个新勾选项（APA 优先输出 + T3.5 + /lunheng）。依据 v18.1.0「词预算预冲」原则显式抬升上限；目标（长期）维持 19 KB。**v18.18.10 显式抬升 24→25 KB（E 族 E-14）**：§启用期刊匹配 勾选说明里的「（25 中文 CSSCI + 12 英文 SSCI 数据库，…）」改为「（中文 CSSCI + 英文 SSCI 期刊库，**规模真源 = `期刊数据库.md` 表行数**，本模板不写死数字；…）」——原文写死 25 而真源表实为 28，属 E-14「四处写死规模」的其中一处。改指针比删数字略长（+约 40 B），且改后余量仅 254 B——按本文件既有的「不许把棘轮停在距上限数十 B」原则抬到 25 KB（余量约 1.2 KB）。'],
+  'skills/lunheng-article-pipeline/references/templates/任务简报-template.md': [35840, 19456, '**v18.63.1 显式抬升 33→35 KB（按定案 ① 同一公式：实测 33,426 B + 1.5 KB 向上取整到整 KB）**：§基本信息 在 `检索工具面:` 之后新增**平行的 `摄取工具面:` + `本轮摄取档位:` 两行**（Phase 0 由主控填；只列探测确认存在的摄取能力，探不到即降 C 档）。**为什么涨在模板里**：与 v18.62.7 §A19 同一条判据——它是主控与主人唯一的接口文档，外移=Phase 0 没有落点=该发现在运行期不存在。**实测 32,327 → 33,426 B（+1,099）**；改前余量 1,465 B（< 定案 ① 的 1.5 KB），本批既动了该文件即按公式归位到 **35,840 B（余量 2,414 B）**。 **v18.62.7（反哺 §A19/A20）显式抬升 30→33 KB（按定案 ① 同一公式）**：基本信息段新增 **`检索工具面:` + `本轮档位:` 两行**（Phase 0 由主控填；T1/T2/T3 卡点名的工具必须在该行之内，档位写定即锁定、跨轮换档须逐条标注 `tool`/`engine`/`query`），并更正「启用扩展检索源」段里 AI4Scholar「默认推荐」的旧口径（实测本机未装该插件）。**为什么涨在模板里**：它是主控与主人唯一的接口文档——外移=Phase 0 没有落点=该发现在运行期不存在。**实测 32,080 B**；按公式抬到 **33,792 B（余量 1,712 B）**。 **v18.43.0 显式抬升 29→30 KB（按定案 ① 同一公式）**：§引用数量与质量控制 新增**启用标记**行（`QLT=on` / `QLT=off`，机器可读，是 `g-audit-check --qlt` 的唯一依据）+ 「卷期页码完整性」那条由「**此条无脚本核**」更正为**有门**（`G15-VolIssue`，模式相关、候选 P2、不设阈值）——这是 v18.41.0 实装该门后**漏改**的陈旧断言（改的是「盯住的那几处」，简报模板不在其中）。**实测 28,267 B**；按公式抬到 **30,720 B（余量 2,453 B）**。 **v18.40.0 显式抬升 28→29 KB（按定案 ① 同一公式）**：§引用格式 的「卷期页码完整性」括注原写「`M-Form-2 v2` 分支核验」，而该门**不存在**——改为「此条无脚本核 + 由 T1 落卡自检 / T7 G1·G15 人工核」，免得主人在任务简报里看到一句不存在的机检承诺。**实测 27,312 → 27,375 B（+63）**；旧上限只剩 1,297 B（< 定案 ① 的 1.5 KB），按公式抬到 **29,696 B（余量 2,321 B）**。 **v18.21.2 显式抬升 26→28 KB（接入面扩展）**：§v2.5.0 可选项**新增**「启用扩展检索源」段——主人**逐项勾选**已部署且开通可用的源（AI4Scholar 学术套件 / Google Scholar / Tavily / Exa / Firecrawl / Consensus），未勾选 = 不调；详见 [`../_shared/外部检索源接入面.md`](../_shared/外部检索源接入面.md)。**外部机制借鉴批 2（2026-09-26）显式抬升 25→26 KB（主人指令「启动批2」= AGENTS.md 例外条款授权）**：Phase 0 可选项增两条——「**案例研究型 / 质性论文**」（触发识别策略 + 反事实条件 + 可证伪预测必填，未声明 → T9-m M3 判 P1）与「**启用对抗视角 T9-v / T9-i**」（写明参谋性质：不产 P0/P1、不进判定词、不得触发 T5 修订轮）。任务简报模板（full 版）——v18.2.2 显式抬升 19→21 KB：① 补「字数判定层级强制显式勾选 + 与 G5 硬阈的关系澄清」；② 补「GB/T 7714 只约束著录格式、不约束标签形态」正误形态对照（第二处抬升，20480→21504）——**v18.5.1 显式抬升 21→22 KB（ai-content-farm-retractions 反哺：「需找数据点 vs 需找案例」标签口径说明）**；**v18.7.1 显式抬升 22→24 KB（借鉴 Ai4Scholar 落地 4 份反哺报告整合）**：§引用格式段后追加 §引用数量与质量控制 字段（目标...'],
   'skills/lunheng-article-pipeline/references/agents/06-批判-critical-companion.md': [27648, 17408, '**2026-09-29 显式抬升 25→27 KB（跨文档对账批，按定案 ① 同一公式）**：§exclusions 的「轻量档（**≤3000 字**）特例」改为「轻量档（**2000-3000 字**）」——与 `SKILL.md` §字数分层的档位边界对齐（`:127` 轻量档 2000-3000 / `:128` <2000 简化直写档本无 T6）。**实测 25,202 B**；旧上限只剩 398 B（< 定案 ① 的 1.5 KB），按公式抬到 **27,648 B（余量 2,446 B）**。 **v18.27.0 QLT-4 显式抬升（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：新增 §反方锚点契约（T6 补齐/校正职责 + 两条契约 + 「论证质量仍归 T6」的边界）。**实测 23114 B**；上限 = **25600 B**。 T6 批判卡——**v18.6.3 显式抬升 17→18 KB**：补 T7 互不搬运清单 / 校对协议深化（v18.6.3 落地时回填具体子项）；**v18.9.0 显式抬升 18→24 KB（数字社交-关系重构项目实战反哺 v18.8.x + v18.9.0 两轮承重）**：①「豁免规则：任务简报 Phase 1.5 trigger=false 项不主动攻击」段（v18.8.x 反哺，治 T6 攻击 trigger=false Permanent Gap → T5 v2/v3 写防御性文字字数膨胀 1.4x）——含触发条件 / 豁免范围 / T6 行为 3 项 / 3 类例外触发 / 机检判别 / 实战教训（数字社交-关系重构 4 项 Permanent Gap 完整链）；②「与 T7 审计的职责边界」段（v18.9.0 反哺 P1-1，治重叠审）——含 12 行职责分工表 + 重叠项处理。两条均为实战反哺的承重内容（教训细节不可丢，不挪 references/），按「同一次提交显式抬升」原则同步抬上限；目标（长期）维持 17 KB（v18.9.1 起考虑瘦身）。'],
   'skills/lunheng-article-pipeline/references/deliverables.md': [24576, 16384, '**2026-09-29 显式抬升 23→24 KB（主人授权修订 EXEC-1，按定案 ① 同一公式）**：第 9 字段「证据包指纹」由「sha256 占位符（人类可选回填；agent 不执行 sha256）」改为「sha256 **实值**（权威 = `final/证据包/manifest.json`；**主人不参与回填**）」。**实测 22,303 B**；上限 23,552 B 只剩 1,249 B（< 定案 ① 的 1.5 KB）——**属既有欠账**（改前 22,262 B / 余量 1,290 B 即已在线下），本批一并按公式抬到 **24,576 B（余量 2,273 B）**。 **v18.27.0 QLT-4 显式抬升（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：M 门口径同步。**实测 21801 B**；上限 = **23552 B**。 交付边界 + F1-F9 + 闸门（按需加载）——v18.2.1 显式抬升 16→17 KB：补「文末编号必须沿用素材卡真编号」硬要求；**v18.12.2 显式抬升 18→21 KB（2026-09-25 L-06 定案）**：新增 §「产物 `-vN` 的 N 跟谁走」——七类版本化产物的 N 语义表 + 「审的是哪一版」的两载体（报告头 `被审正文:` 声明 / M 门 `verdict_scope`）+ 三条机械校验（A4b/A4c）+ 实测依据（22 项目账本）。该节是**七类产物 N 语义的唯一真源**，删不得。**v18.12.0 显式抬升 17→18 KB（2026-09-25 全量审计响应 L-17）**：「定稿文末白名单」由“只允许 5 节”改写为「必需 5 节（M-Form-2 存在性）+ 可选 4 学术声明（仅 M-Form-7 成员/顺序）」两层表 + 机检真源指针——旧表述与 v18.10.0 起写手卡要求的「文末九节」互斥，学术稿照规范写必被 M-Form-7 判 P0 且该门不可兜底（实测 exit=2）**v18.18.0 显式抬升 21→22 KB（C 批审计 E-4）**：§修订回环的「轮」定义由**独立定义**改为**指向 glossary 双轨真源**（A 轨 = 审计打回轮 ≤2 轮 / B 轨 = 主控触发轮至多 +1 深化），v2.3.1 旧口径（把 T6 批判与审计打回混在同一计数轴）降级为**历史注记 + 已作废声明**——原写法与 glossary 直接冲突，两个真实项目均按双轨记账。**同批已先瘦身**：历史注记由「原文 4 条 + 背景段」压成 1 行（约 -400 B）。'],
   'skills/lunheng-article-pipeline/README.md': [16384, 15360, '技能目录 README（人类入口）——**v18.6.3 显式抬升 15→16 KB**：v18.6.3 同步（v18.6.3 落地时回填具体子项）'],
@@ -767,7 +254,7 @@ const DOC_BUDGET = {
   'skills/lunheng-article-pipeline/references/agents/01-文献检索-literature-scout.md': [21504, 12288, '**v18.40.0 显式抬升 20→21 KB（按定案 ① 同一公式）**：§卷期页码双写契约 的「机检判别」段原本是一处**假绿**（宣称 `M-Form-2 v2 分支` 机检，实际该门不存在）——本批改判为「只有闭环那一半有门（`M-Exist-1` + `cite-coverage-check.mjs`），字段齐备那一半无脚本在核」+ 写明人工责任点。**实测 18,498 → 18,970 B（+472）**；旧上限只剩 1,510 B（< 定案 ① 的 1.5 KB），按公式抬到 **21,504 B（余量 2,534 B）**。 **v18.37.0 显式下调 22→20 KB（同族瘦身批，按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：与 02 卡（v18.35.0）同款收敛——① 源面（6 源工具清单 / 引擎降级链 / Bing 偏置实证）→ 指针 `_shared/外部检索源接入面.md` §2/§3.5；② 熔断 / 降级 / 饱和阈值 → 指针同文档 §4.1–4.5（**T1 专属的 ≤30 步 Phase 1.5 铁律与 web_fetch 二次熔断原地保留**）；③ §核心概念与 §执行韧化协议两段样板 → 一行指针。**实测 20,929 → 18,498 B（−2,431 = −11.6%）**；上限按公式下调到 **20,480 B（余量 1,982 B）**。**T1 的可执行规则一条未删**（用哪些源 / 熔断就停该源 / 全部失败走预填 URL / 饱和即停 / 两条步数纪律 / 交接报告必报一行，均保留）。 **v18.31.0 MEA-2 显式抬升 21→22 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：「节省」条由「**省 60%**」改写为「口径 + 2/5」——那是一个**由上面两个预算数算出来的**比、无任何实测样本（⑰\' 口径三要素扩面收口）。**实测 20,664 → 20,929 B（+265）**；旧上限只剩 **575 B**，按公式抬到 **22,528 B（余量 1,599 B）**。 **v18.21.2 显式抬升 18→21 KB（主人 2026-09-26 提问「firecrawl/tavily/exa/consensus/Google Scholar 这 6 源能否自动调用」后授权方案 1 落地）**：§职责段从「`web_search + web_fetch`」扩到「默认 3 源 + 备用 3 源」+ 显式指针 [`../_shared/外部检索源接入面.md`](../_shared/外部检索源接入面.md)；§「检索边际饱和判据」段加「默认 3 源 + 备用 3 源」硬约束 + 「已用源」字段；§「最新进展补扫（T1b）」从「主人显式要求」升级为「默认即跑」（学术模式自动启用；非学术可在任务简报 §启用扩展检索源 取消勾选）。**外部机制借鉴批 1（2026-09-26）显式抬升 17→18 KB（主人指令「立即执行」= AGENTS.md 例外条款授权）**：新增 §「最新进展补扫（T1b 增量）」段（近 6 个月新进展 → `[L-pre]` 可选索引 + 未做须在交接报告声明 + T7 判 P2 的判别口径）——属**按需加载的可选增量**，长期目标维持 12 KB。T1 文献检索卡（**v18.11.0 补登记 16→17 KB（主人授权「依次全部都做）」**：v18.10.0 增长未同提交抬棘轮，本次补登记。）——**v18.9.0 首次登记（数字社交-关系重构项目实战反哺 P0-1）**：原 11.5 KB（未达 12 KB 登记线），v18.9.0 反哺 P0-1「卷期页码双写契约」段使其增 1.6 KB → 越过 12 KB 登记线。含契约（期刊 [J] / 专著 [M] / 电子资源 [EB/OL] 三类必填字段）+ 强制双写（专著 ISBN + DOI 双字段）+ 机检判别（M-Form-2 v2 分支报 P1）+ 协作（M-Gate-Algorithm.md）。属实战反哺的承重内容（M 门契约源头 / 不挪 references/），按「同一次提交显式登记」原则新增 + 抬上限；目标（长期）维持 12 KB（v18.9.1 起考虑瘦身）。'],
   'skills/lunheng-article-pipeline/references/agents/02-数据检索-data-scout.md': [16384, 13312, '**v18.35.0 显式下调 15→14 KB（瘦身批，按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：本卡长期贴墙（改前实测 15,199 B，**余量仅 161 B**）——本批把三块**与共享真源逐字重复**的内容收敛成指针（① 数据卡三种形态的字段树 → `templates/数据卡-template.md`；② 6 源工具清单与失败熔断/饱和阈值 → `_shared/外部检索源接入面.md` §2/§3.5/§4；③ §核心概念与 §执行韧化协议两段样板），并把「三检索员互不干涉五条实现」**迁到 `glossary.md`**（此前只有本卡写了这五条，T1/T3 卡看不到）。**实测 15,199 → 12,213 B（−2,986 = −19.6%）**；上限按公式下调到 **14,336 B（余量 2,123 B）**。**T2 的可执行规则一条未删**（用哪些源 / 熔断就停该源 / 全部失败走预填 URL / 饱和即停 / 交接报告必报一行，均保留）。 **v18.21.2 显式抬升 13→15 KB（接入面扩展）**：§职责段从「`web_search + web_fetch`」扩到「默认 3 源 + 备用 3 源」（T2 偏**时效源**：`tavily` + `firecrawl`；学术源仅文献计量方向才调）+ 指针 [`../_shared/外部检索源接入面.md`](../_shared/外部检索源接入面.md)；§「失败熔断」段从「`web_search`」扩到「**源级独立**」（`web_search` / `tavily` / `firecrawl` / `search_papers` 各自一份「已失败源清单」）；§「检索边际饱和」段加「默认 3 源 + 备用 3 源」硬约束 + 「已用源」字段。T2 数据检索卡'],
   'skills/lunheng-article-pipeline/references/agents/03-案例检索-case-scout.md': [15360, 13312, '**v18.37.0 同族瘦身（上限不变：公式值恰等于现行 15 KB）**：与 01/02 卡同款收敛——① 源面（6 源工具清单 / 引擎降级链）→ 指针 `_shared/外部检索源接入面.md` §2/§3.5；② 熔断 / 饱和阈值 → 指针 §4.1–4.4；③ 案例卡字段树 → 指针 `templates/案例卡-template.md`（此前逐字重复）；④ 「与 T2 互不干涉」里跨线通用的四条 → 指针 `glossary.md` §三检索员并行独立运行（**本卡只留 T2↔T3 独有的「检索内容」交界 + 三条硬约束**）；⑤ §执行韧化协议样板 → 一行指针。**实测 14,438 → 13,103 B（−1,335 = −9.2%）**；按公式算出的上限恰为 15,360（余量 2,257 B），故**只登记理由不改数值**。 **v18.21.2 显式抬升 13→15 KB（接入面扩展）**：§职责段新增「**默认事件层 + 抓取层 + 学术背书层**」（T3 事件/案例结构是核心）：`web_search` 用 `include_domains` 限定 + `web_fetch` + `firecrawl`（如 key 配，反爬强场景）+ `search_papers`（学术背书用）+ 指针 [`../_shared/外部检索源接入面.md`](../_shared/外部检索源接入面.md)；§「检索边际饱和」段加「默认 3 源 + 备用 3 源」硬约束 + 「已用源」字段。T3 案例检索卡'],
-  'skills/lunheng-article-pipeline/references/agents/09-审稿-peer-reviewer.md': [40960, 13312, '**v18.31.0 MEA-2 显式抬升 37→38 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：反例里的假数字「匹配度约 85%」改为 `约 X%`（那是「**不要这么写**」的示范，写具体数字反而像真结论）。**本次净 −1 B**；抬升的理由是**旧上限本就只剩 1,003 B**（< 定案 ① 的 1.5 KB 余量）——本批既然动了这个文件就一并按公式归位到 **38,912 B（余量 2,027 B）**。 **外部机制借鉴批 2（2026-09-26）显式抬升 32→37 KB（主人指令「启动批2」= AGENTS.md 例外条款授权）**：两处新增——① §T9-m 的 M3「因果推断合法性」加**质性路径**（识别策略声明 + 证据链可追溯 + 替代解释逐条排除 + 反事实 + 可证伪预测），并补「**刻意不加机检**」的理由（正则会因「本文用案例研究法」一句判合规 = 假绿）；② 新增 §「🎭 可选对抗视角（T9-v 立场 / T9-i 国际）」——**参谋性质**：不产 P0/P1、不进 accept/minor/major/reject、**不触发 T5 修订轮**，三条硬边界写在段首。T9 审稿卡——**v18.11.0 补登记 24→31 KB（主人授权「依次全部都做」）**：v18.10.0 落地 12 项战略改进时本卡新增 §「🎯 三视角审稿模式」等约 100 行（P0-2 改进：T9-d 领域专家 / T9-m 方法学家 / T9-s 统计学家 三视角并行 + 整合员协议 + 派发契约 + 与 6 维评分框架的关系），但**未同提交抬棘轮**（违反 v18.1.0），发布后即为红；本次补登记实测值。**瘦身待办**：三视角的三份结构化清单（T9-d/m/s 各 6-8 项，约 55 行）是**按需加载**的典型候选——可下沉到 `references/checkers/` 新文件，本卡只留判据与指针；但该动作会连带派发话术与 T9 读取路径，宜独立提交。v18.2.1 显式抬升 13→14 KB：补 M-Exist-6 六维机检契约警示（防派发时改写维度名）；**v18.2.7 显式抬升 14→18 KB（主人授权修订）**：依 2026-09-20 全流程实战反哺，补三处——① **修本卡内部矛盾**：§when 写「T9 只能在 T7 审计后」而 §exclusions 写「❌ T7 审计后（已晚）」，同一张卡两处直接冲突（v2.4.0 引入 G14 时点漂移时的遗留），现删除错误项并注明正确时点；② 新増铁律「我是参谋层，不是交付闸门」——判定词 accept/minor/major/reject 借自真实同行评审、天然带程序效力暗示，若机制不写明「T9 不阻塞交付」，主控在 A 轨用满时读到「major revision」可能被迫多跑一轮；③ 格式骨架补「综合匹配度」**表的字面样例**（此前只有文字说明 → T9 按卡产出自然语言段落 → M-Exist-6 判 P1）；**v18.5.1 显式抬升 18→19 KB（writing-guard 借鉴反哺 v1，动议二+动议一）**：扩写清单扩为「字数+文体偏差」双维度 + 建议段 rule/action 分离（违反规范 + 处置动作）；**v18.6.3 显式抬升 19→20 KB**：补 M-Exist-6 批处理契约 / 拒吞项源头（v18.6.3 落地时回填具体子项）；**v18.9.0 显式抬升 20→24 KB（数字社交-关系重构项目实战反哺 P1-3）**：补「LLM 补充行契约」段——含背景（3 条 LLM 补充期刊漏标注风险）/ 强制契约（含「LLM」「补充」「不在数据库」「人工核验」四关键词）+ M-Exist-6.5 子门判定 + 正面/反面示例。属实战反哺的承重内容（M-Exist-6.5 契约源头 / 不挪 references/），按「同一次提交显式抬升」原则同步抬上限；目标（长期）维持 13 KB（v18.9.1 起考虑瘦身）。**v18.18.0 显式抬升 31→32 KB（C 批审计 E-8）**：四处审稿检查项（D5/M4/S1/S3）引用的机检名由 `M-Form-12`/`M-Exist-11`/`M-Exist-12` 改为 **`MC-Form-12`/`MC-Exist-11`/`MC-Exist-12`** 并注明「自带命名空间前缀，与 M 门体系编号不共用」——旧名与 M 门机械项**数字撞号**，T9 按卡引用会让读者以为存在这些 M 门项（实际 M 门总 23 项内没有），属跨卡命名空间污染。'],
+  'skills/lunheng-article-pipeline/references/agents/09-审稿-peer-reviewer.md': [40960, 13312, '**v18.31.0 MEA-2 显式抬升 37→38 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：反例里的假数字「匹配度约 85%」改为 `约 X%`（那是「**不要这么写**」的示范，写具体数字反而像真结论）。**本次净 −1 B**；抬升的理由是**旧上限本就只剩 1,003 B**（< 定案 ① 的 1.5 KB 余量）——本批既然动了这个文件就一并按公式归位到 **38,912 B（余量 2,027 B）**。 **外部机制借鉴批 2（2026-09-26）显式抬升 32→37 KB（主人指令「启动批2」= AGENTS.md 例外条款授权）**：两处新增——① §T9-m 的 M3「因果推断合法性」加**质性路径**（识别策略声明 + 证据链可追溯 + 替代解释逐条排除 + 反事实 + 可证伪预测），并补「**刻意不加机检**」的理由（正则会因「本文用案例研究法」一句判合规 = 假绿）；② 新增 §「🎭 可选对抗视角（T9-v 立场 / T9-i 国际）」——**参谋性质**：不产 P0/P1、不进 accept/minor/major/reject、**不触发 T5 修订轮**，三条硬边界写在段首。T9 审稿卡——**v18.11.0 补登记 24→31 KB（主人授权「依次全部都做」）**：v18.10.0 落地 12 项战略改进时本卡新增 §「🎯 三视角审稿模式」等约 100 行（P0-2 改进：T9-d 领域专家 / T9-m 方法学家 / T9-s 统计学家 三视角并行 + 整合员协议 + 派发契约 + 与 6 维评分框架的关系），但**未同提交抬棘轮**（违反 v18.1.0），发布后即为红；本次补登记实测值。**瘦身待办**：三视角的三份结构化清单（T9-d/m/s 各 6-8 项，约 55 行）是**按需加载**的典型候选——可下沉到 `references/checkers/` 新文件，本卡只留判据与指针；但该动作会连带派发话术与 T9 读取路径，宜独立提交。v18.2.1 显式抬升 13→14 KB：补 M-Exist-6 六维机检契约警示（防派发时改写维度名）；**v18.2.7 显式抬升 14→18 KB（主人授权修订）**：依 2026-09-20 全流程实战反哺，补三处——① **修本卡内部矛盾**：§when 写「T9 只能在 T7 审计后」而 §exclusions 写「❌ T7 审计后（已晚）」，同一张卡两处直接冲突（v2.4.0 引入 G14 时点漂移时的遗留），现删除错误项并注明正确时点；② 新増铁律「我是参谋层，不是交付闸门」——判定词 accept/minor/major/reject 借自真实同行评审、天然带程序效力暗示，若机制不写明「T9 不阻塞交付」，主控在 A 轨用满时读到「major revision」可能被迫多跑一轮；③ 格式骨架补「综合匹配度」**表的字面样例**（此前只有文字说明 → T9 按卡产出自然语言段落 → M-Exist-6 判 P1）；**v18.5.1 显式抬升 18→19 KB（writing-guard 借鉴反哺 v1，动议二+动议一）**：扩写清单扩为「字数+文体偏差」双维度 + 建议段 rule/action 分离（违反规范 + 处置动作）；**v18.6.3 显式抬升 19→20 KB**：补 M-Exist-6 批处理契约 / 拒吞项源头（v18.6.3 落地时回填具体子项）；**v18.9.0 显式抬升 20→24 KB（数字社交-关系重构项目实战反哺 P1-3）**：补「LLM 补充行契约」段——含背景（3 条 LLM 补充期刊漏标注风险）/ 强制契约（含「LLM」「补充」「不在数据库」「人工核验」四关键词）+ M-Exist-6.5 子门判定 + 正面/反面示例。属实战反哺的承重内容（M-Exist-6.5 契约源头 / 不挪 references/），按「同一次提交显式抬升」原则同步抬上限；目标（长期）维持 13 KB（v18.9.1 起考虑瘦身）。**v18.18.0 显式抬升 31→32 KB（C 批审计 E-8）**：四处审稿检查项（D5/M4/S1/S3）引用的机检名由 `M-Form-12`/`M-Exist-11`/`M-Exist-12` 改为 **`MC-Form-12`/`MC-Exist-11`/`MC-Exist-12`** 并注明「自带命名空间前缀，与 M 门体系编号不共用」——...'],
   'skills/lunheng-article-pipeline/references/checkers/中文AI痕迹-checker.md': [17408, 12288, '**2026-09-29 显式抬升 15→17 KB（跨文档对账批，按定案 ① 同一公式）**：§输入 新增**检测范围排除**段——「文末五节与『AI 使用声明』节不参与检测」，并明写各类判据里的「全文」一律指排除后的正文区。依据 = `templates/G14检测报告-template.md:138`「豁免：作者声明段使用 <N> 次（学术规范允许）」+ `dispatch-cards.md` G14 卡已如此写；**此前本卡与闸门定义均无此排除语**，按「全文」计数会系统性命中 A/C/H 类、把 Pass 顶成 Warning/Fail、白吃一轮 B 轨修订。**实测 15,003 B**；旧上限只剩 357 B（< 定案 ① 的 1.5 KB），按公式抬到 **17,408 B（余量 2,405 B）**。 G14 检测器契约（checker 侧）——**v18.2.6 新增登记**：本轮修订把 G14 触发时点统一为「早闸 Phase 3.6 与 T6 同批 / 终闸 Phase 4.5 与 T9 并行」（旧文写「早闸 Phase 3.1」「终闸与 T6 并行」，后者在时序上不可能），文件由 11.5 KB → 12.0 KB **越过 12 KB 登记线**，故按规则⑨ ① 补登记；**v18.2.8 显式抬升 13→14 KB（主人授权「G14 早闸去掉」）**：§when 重写为「三层防御、仅一次 spawn」，并新增 §exclusions「Phase 4.5 之前的任何时点不得 spawn」。**已先做两轮瘦身**（把删除依据的三条理由移出、只留指向 `gates/14` §触发阶段注的指针），瘦身后仍超 400 B；剩余内容为规则性定义（三层各自的执行者与产出），无法再压缩而不损可执行性；**v18.6.3 显式抬升 14→15 KB**：G14 检测器边例扩充（v18.6.3 落地时回填具体子项）'],
   // v18.64.1 首登：一手材料摄取的**契约真源**（四档阶梯 / 命令模板 / 时点与提醒 / 逐档话术 / 禁令）
   //   为什么它必须留在 `references/_shared/`：主控在 Phase 0 与每次追加投喂时**都要读它**才能定档与提示主人，
@@ -778,7 +265,7 @@ const DOC_BUDGET = {
   // v18.65.0（D1 本批改动）：§三 再增 1 行「**角色最小权限（负向清单）**」（如实写「刻意不做成门——无脚本能核子代理动过哪个文件」），
   //   §一 QLT-6 行补 C2 的明细口径（逐维/逐域、只定位不计分）。实测 41,984 → 42,699 B（余量仅剩 821 B）→
   //   按定案 ① 公式 = 实测 + 1.5 KB 向上取整到整 KB = **45,056 B**。
-  'skills/lunheng-article-pipeline/references/_shared/规范-机械门对照表.md': [45056, 16384, '**v18.64.0 显式抬升 39→41 KB（按定案 ① 同一公式：实测 39,822 B + 1.5 KB 向上取整到整 KB）**：§一 新增 2 行——登记「**阶段产物写入权：带 T8 裁定的报告不得被静默覆盖**」（`m-gate-check` 拒绝覆盖分支 + 成对断言）与「**负知识账本**」（校验型、刻意不挂 M 门的理由）。**实测 38,300 → 39,822 B（+1,522）**；改前余量 1,636 B，本批两行吃掉后仅剩 114 B（属「等效禁止再写」态），故同批按公式归位。 **v18.63.1 显式抬升 37→39 KB（按定案 ① 同一公式：实测 38,300 B + 1.5 KB 向上取整到整 KB）**：§三 新增 1 行——登记「**一手材料摄取（二进制 → 文本）**」这条**刻意不加门**的规范（`_shared/材料摄取.md`：探测式四档 / 转录稿≠证据 / `materials/` 不进证据包），并把人工责任点逐项写明。**实测 37,518 → 38,300 B（+782）**；改前距旧上限仅 370 B（属「等效禁止再写」态），本批既动了该文件即按公式归位。 **v18.47.0 显式抬升 35→36 KB（按定案 ① 同一公式）**：⑰ 那行补齐**扫描面**（技能根 + repo 级 `docs/**`，排除 `docs/审计与修订记录/**` 历史留痕）与**扩面依据**（实测 docs/** 仅 4 处命中、全带 n=，可负担），并写明**放宽触发已实测否决**（覆盖「占…的 N%」会在技能根新增 14 处、全是阈值声明）与该覆盖缺口的如实保留。**实测 34,267 → 34,768 B（+501）**；旧上限只剩 1,072 B（< 定案 ① 的 1.5 KB），按公式抬到 **36,864 B（余量 2,096 B）**。 **v18.43.0 显式抬升 32→35 KB（按定案 ① 同一公式）**：§一 新增 7 行登记 handoff 判据码（`A0`/`A3`/`A4`/`A5`/`B2`/`B3`/`B4`——v18.43.0 扩面实测出的漏登面）+ 更正同一行的陈旧断言（旧文写「strict = 全量 A1-A6 + B1-B5」，而**本脚本没有 B5**、`A7` 也不由 level 触发而是 `--require-gates`）+ §四.6 与表头注记补上「handoff 码族全覆盖」与覆盖面边界（脚本门族/规则号族刻意不设断言的理由）。**实测 31,035 → 34,157 B（+3,122）**（**改前已超旧上限 1,389 B**，属补登记）；按公式抬到 **35,840 B（余量 1,683 B）**。 **v18.42.0 显式抬升 31→32 KB（按定案 ① 同一公式）**：§三 新增 1 行——登记「闸门记录须写交接门 exit」这条**只到「可见」**的门（M-Exist-5 的 `noteBits`，主人 2026-09-27 裁定「B」保持软档），并写明本批实测出的结构性限制：模板检查项表刻意不含该行，而 M-Exist-5 按「模板为真源，逐项都要有行」对账 → **给表加行 = 静默收紧**（实测 9/10 新增缺行硬问题 + 1 跨档）。**实测 29,859 → 31,035 B（+1,176）**；旧上限只剩 709 B（< 定案 ① 的 1.5 KB），按公式抬到 **32,768 B（余量 1,733 B）**。 **v18.41.0 显式抬升 30→31 KB（按定案 ① 同一公式）**：§一 两行改判（卷期页码契约的「字段齐备那一半」由「无门」改成真门 `G15-VolIssue`；G 项机检 5 项 → 6 项并写明 `N/A`/`SKIP` 分清）+ §二 新增 2 行（真门要件与三条口径 / 作废号 `M-Form-2 v2` 的案卷从 §三 移入留档）+ §三 删掉那处幻影门行。**实测 28,844 → 29,859 B（+1,015）**；旧上限只剩 861 B（< 定案 ① 的 1.5 KB），按公式抬到 **31,744 B（余量 1,885 B）**。 **v18.40.0 显式下调 48→30 KB（表体收敛批）**：本表从 16 KB 涨到 48 KB（3×）且每批还在加行，而每行带的逐轮沿革在 `CHANGELOG.md` 与 `audits/机制文件修订记录-*` 里本就有一份（违反「注解聚合」）。本批把沿革移出表体、只留现行口径，并顺带修三处**悬空行引用**（01/07/09 卡）+ 一处**幻影门**（`M-Form-2 v2`，5 处活引用 + 协议层自指悬空指针）+ 补登漏登的 `M-Fact-1`。**实测 47,158 → 28,844 B（−18,314 = −38.8%）**；上限按定案 ① 同一公式下调到 **30,720 B（余量 1,876 B）**。新增 §四.6/§四.7 两条维护规则 + `tests/docs-facts.test.mjs` 两条守卫（M 门项 ID 全覆盖 / 行引用可解析 + 作废号不复活）+ 4 个变异反向自证，防「收敛丢映射」。 **v18.38.0 显式抬升（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：§二 追加 1 行（**SVG 良构判定的作用域**：门在但看错对象——三项判定此前是全文级，而四处文档一直写「根」，即代码落后于自己的契约）。**实测 47,121 B（改前已超旧上限 17 B）**，按公式抬到 **49,152 B（余量 2,031 B）**。**⚠️ 瘦身待办升级为「本表最该瘦的一项」**：它已从 16→48 KB（**3×**），而**每批加一行**的动作还在继续——§一 的逐条说明与 M 门伪代码大面积重复，可改「判据真源指针」形态；建议下一轮专门做一次表体收敛，而不是继续抬棘轮。 **v18.34.0 显式抬升（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：§二 追加 1 行（**G 项主清单口径**：⑧ 的盲区、四处漂移、新规则 ㉙ 与 ⑥b 的分工）+ §一 的 A4c 行补入软档现状与触发条件。**实测 45,446 B**，按公式抬到 **47,104 B（余量 1,658 B）**。 **v18.32.0 显式抬升（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：两处新增——① §二 的「审计分片并行」行补入**定案 ③（仅按 G 组）**与其断链回归；② §三 **补登「可读性剖面（QLT-3）」一行**（v18.26.0 落地时漏登，按「新增任何规范/门都要在本表加行」的规则补上），并写入主人 2026-09-27 **定案 ② 的追认**（阈值来源 = golden 标定）。**实测 43,016 B（改前已超旧上限 8 B）**，按公式抬到 **45,056 B（余量 2,040 B）**。 **v18.31.0 MEA-2 显式抬升（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：§二 追加 1 行勾稽——「定量断言的口径三要素」原状是**门在但默认关着**（⑰\' 只认 `STRICT_PCT=1`），本批改掉四处历史断言后**删开关、默认开启**。**实测 41,277 B**；旧上限只剩 **707 B**，按公式抬到 **43,008 B（余量 1,731 B）**。**瘦身待办不变**（本表距长期目标 2.6×）。 **v18.27.0 QLT-4 显式抬升（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：§一 新增 M-Exist-11 勾稽行（三种形态判级 + 「机械只保证行内闭合」）。**实测 39535 B**；上限 = **41984 B**。 **v18.24.0 QLT-1 显式抬升 39→40 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：§三 新增「质量回归基线」行（QLT-1 的 `quality-score.mjs` 是**度量不是闸门**，如实登记在「仍无机械门」节并写明**为何刻意不挂闸门**：挂上会立刻产生「为过门而刷分」的压力，而各分量都允许 N/A——分数一旦决定放行，N/A 就成了最省事的刷分路径）。**实测 38,164 → 38,857 B（+693）**；上限按公式 = **40,960 B（余量 2,103 B）**。**瘦身待办不变**（距长期目标 2.5×）。**v18.23.0 EFF-1/EFF-2 显式抬升 38→39 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：§一 新增 2 行勾稽——① G 项 5 项机检（门 = 新脚本 `g-audit-check.mjs`，写明「P1 只留可确证形态、候选类一律 P2」与「判断力项刻意不下沉」）；② 审计分片并行（**如实标「无门，刻意不加」并写明理由**：可检部分已由 M-Exist-9 覆盖，清单完整性是语义判断、正则会造假绿；并声明分片是**成本优化不是质量门**）。**实测 36,898 → 38,164 B（+1,266）**；上限按公式 = **39,936 B（余量 1,772 B）**。**瘦身待办（本表距长期目标 2.4×，全库最落后）**：§一 逐条说明与 M 门伪代码重复，可改指针。 **v18.22.3 EFF-3 显式抬升 36→38 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：§一 新增 1 行勾稽——**复核轮只读范围留痕**（规范 = `07-审计-auditor.md` §修订复核 + `pipeline-readme.md` §6 修订回环双轨制；门 = `handoff-check` 检查 **A8**，仅 strict + T7）。该行如实写明「存量复核报告无该声明 → 按 A4c 先例先做可见性、形态稳定后转硬」，属「规范侧有了、执行侧先软后硬」的状态变更登记——本表的存在意义即这一步。**实测 36,395 → 36,898 B（+503）**；上限按定案 ① = 「实测 + 1.5 KB 向上取整到整 KB」= **38,912 B（余量 2,014 B）**。**瘦身待办（本表余量倒数、距长期目标 2.3×）**：§一 逐条机械项说明与 M 门伪代码重复，可改指针。**独立全量审计（2026-09-26）显式抬升 35→36 KB（主人指令「依次全部修订」= AGENTS.md 例外条款授权）**：§一 新增 2 行勾稽——① /lunheng 命令枚举完整性（规则 ㉕ 扩展：核数字→核清单）；② lunheng-commands 子技能版本一致性（规则 ㉖：三件套 1.0.x 交叉核对）。两行都是「断链→补门」的状态变更登记，本表的存在意义即这一步。**外部机制借鉴批 2（2026-09-26）显式抬升 34→35 KB（主人指令「启动批2」= AGENTS.md 例外条款授权）**：§三 再增 2 行（识别策略与反事实 / 可选对抗视角 T9-v·T9-i），均如实标注「无门 + **刻意不加门的理由**」；对抗视角一行并写明「机检既不核它跑没跑、也不核结论质量 → **绝不能被当作交付质量的证据**」。**外部机制借鉴批 1（2026-09-26）显式抬升 31→34 KB（主人指令「立即执行」= AGENTS.md 例外条款授权）**：§三 新增 5 行勾稽（理论贡献三层声明 / 学科对话点 / 最新进展补扫 `[L-pre]` / G14 按章命中定位表 / 人类决策链汇总），其中 3 行如实标注「无门或部分覆盖 + **刻意不加门的理由**」——本表的存在意义就是这一步（防「条文无落地路径」，教训 #139），故按「同一次提交显式抬升」原则抬高。规范条文 ↔ 机械门 ID 对照表（改机制前须同步的一览）——**v18.12.3 显式抬升 30→31 KB（审计 L-07 / L-09 / L-11 三项落地）**：新增三行勾稽——① **Phase 序列两处维护必须自洽**（✅ 已机械化：`consistency-check` 规则 **㉔**，流水线全景 Phase ⊆ 速查表序列）；② **`M-Gate-Report` 文件名形状**（✅ 已机械化：规则 **②c** 形状白名单，旧 ②b 只认两个字面量、实测 5 种变体全部绕过）；③ **M 门 `exit=3` 逐条明细**（⚠️ 形式已定、**机械门刻意未加**并写明理由：真判据是语义比对）。三行都是「规范侧有了、执行侧补上/不补并说明」的状态变更登记——本表的存在意义就是这一步，按 v18.1.0「同一次提交显式抬升」原则抬高；抬升后留 ~250 B 余量。**v18.12.2 显式抬升 28→30 KB（2026-09-25 L-06/L-08/L-25 三案）**：新增三行勾稽——产物 `-vN` 的 N 语义门、人在环四门「必须」门、运行期读物不得指向 `docs/`·`examples/`（末者如实标「部分机械化」）。本表的存在意义就是这一步。**v18.12.0 显式抬升 26→28 KB（2026-09-25 全量审计收口批）**：新增两行勾稽——① **T7 必跑的三个战略门脚本**（`structure-check` / `methodology-check` / `cite-coverage`）由「❌ 无门·待补」改为「✅ 已补门」（M-Exist-5 判 T7.5 记录的留痕档位：零留痕 P1 / 部分 P2 / 无 exit P2）；② **证据包清单**（`manifest.json` 逐文件 sha256 + 被审正文指纹）由「内容全公开、改了没人知道」改为「M-Exist-2 复算，篡改/空降 → P0」。两行都是**断链→补门**的状态变更登记，本表的存在意义就是这一步，故按「同一次提交显式抬升」原则抬高；抬升后留 ~750 B 余量。v18.2.2 新增登记；v18.2.4 显式抬升 16→17 KB：补 3 行断链；v18.2.5 显式抬升 17→22 KB：补 7 行（门补面与同步本表是同一件事的两半）；v18.3.0 显式抬升 22→23 KB（G 体系机械下沉）：补「因果强度守恒（apply-diff causal_upgrades）+ 裸断言段（M-Form-8 子项）」两行勾稽；**v18.7.1 显式抬升 23→24 KB（共锁反哺：§11 标题唯一性 + 闸门记录裸竖线 两行假阳性登记）**；**v18.12.0 显式抬升 24→26 KB（2026-09-25 全量审计响应 L-17 + L-20）**：新增三行勾稽——① 文末九节白名单（「先有规范、无门」→ 本次补齐 M-Form-7 九节断言）；② 四声明档位勾选（**无门**，原「T7 跑 M-Form-12 子门」系假绿，已改判「T7 人工核验」）；③ `methodology-check.mjs` 的 M-Form-12 / M-Exist-11 / M-Exist-12 命名空间撞号登记（`M-Exist-11` 在本表指「局限性门」、在该脚本指「统计-数据匹配」）。'],
+  'skills/lunheng-article-pipeline/references/_shared/规范-机械门对照表.md': [45056, 16384, '**v18.64.0 显式抬升 39→41 KB（按定案 ① 同一公式：实测 39,822 B + 1.5 KB 向上取整到整 KB）**：§一 新增 2 行——登记「**阶段产物写入权：带 T8 裁定的报告不得被静默覆盖**」（`m-gate-check` 拒绝覆盖分支 + 成对断言）与「**负知识账本**」（校验型、刻意不挂 M 门的理由）。**实测 38,300 → 39,822 B（+1,522）**；改前余量 1,636 B，本批两行吃掉后仅剩 114 B（属「等效禁止再写」态），故同批按公式归位。 **v18.63.1 显式抬升 37→39 KB（按定案 ① 同一公式：实测 38,300 B + 1.5 KB 向上取整到整 KB）**：§三 新增 1 行——登记「**一手材料摄取（二进制 → 文本）**」这条**刻意不加门**的规范（`_shared/材料摄取.md`：探测式四档 / 转录稿≠证据 / `materials/` 不进证据包），并把人工责任点逐项写明。**实测 37,518 → 38,300 B（+782）**；改前距旧上限仅 370 B（属「等效禁止再写」态），本批既动了该文件即按公式归位。 **v18.47.0 显式抬升 35→36 KB（按定案 ① 同一公式）**：⑰ 那行补齐**扫描面**（技能根 + repo 级 `docs/**`，排除 `docs/审计与修订记录/**` 历史留痕）与**扩面依据**（实测 docs/** 仅 4 处命中、全带 n=，可负担），并写明**放宽触发已实测否决**（覆盖「占…的 N%」会在技能根新增 14 处、全是阈值声明）与该覆盖缺口的如实保留。**实测 34,267 → 34,768 B（+501）**；旧上限只剩 1,072 B（< 定案 ① 的 1.5 KB），按公式抬到 **36,864 B（余量 2,096 B）**。 **v18.43.0 显式抬升 32→35 KB（按定案 ① 同一公式）**：§一 新增 7 行登记 handoff 判据码（`A0`/`A3`/`A4`/`A5`/`B2`/`B3`/`B4`——v18.43.0 扩面实测出的漏登面）+ 更正同一行的陈旧断言（旧文写「strict = 全量 A1-A6 + B1-B5」，而**本脚本没有 B5**、`A7` 也不由 level 触发而是 `--require-gates`）+ §四.6 与表头注记补上「handoff 码族全覆盖」与覆盖面边界（脚本门族/规则号族刻意不设断言的理由）。**实测 31,035 → 34,157 B（+3,122）**（**改前已超旧上限 1,389 B**，属补登记）；按公式抬到 **35,840 B（余量 1,683 B）**。 **v18.42.0 显式抬升 31→32 KB（按定案 ① 同一公式）**：§三 新增 1 行——登记「闸门记录须写交接门 exit」这条**只到「可见」**的门（M-Exist-5 的 `noteBits`，主人 2026-09-27 裁定「B」保持软档），并写明本批实测出的结构性限制：模板检查项表刻意不含该行，而 M-Exist-5 按「模板为真源，逐项都要有行」对账 → **给表加行 = 静默收紧**（实测 9/10 新增缺行硬问题 + 1 跨档）。**实测 29,859 → 31,035 B（+1,176）**；旧上限只剩 709 B（< 定案 ① 的 1.5 KB），按公式抬到 **32,768 B（余量 1,733 B）**。 **v18.41.0 显式抬升 30→31 KB（按定案 ① 同一公式）**：§一 两行改判（卷期页码契约的「字段齐备那一半」由「无门」改成真门 `G15-VolIssue`；G 项机检 5 项 → 6 项并写明 `N/A`/`SKIP` 分清）+ §二 新增 2 行（真门要件与三条口径 / 作废号 `M-Form-2 v2` 的案卷从 §三 移入留档）+ §三 删掉那处幻影门行。**实测 28,844 → 29,859 B（+1,015）**；旧上限只剩 861 B（< 定案 ① 的 1.5 KB），按公式抬到 **31,744 B（余量 1,885 B）**。 **v18.40.0 显式下调 48→30 KB（表体收敛批）**：本表从 16 KB 涨到 48 KB（3×）且每批还在加行，而每行带的逐轮沿革在 `CHANGELOG.md` 与 `audits/机制文件修订记录-*` 里本就有一份（违反「注解聚合」）。本...'],
   // 外部机制借鉴批 1（2026-09-26）：G14 门文件因 §五 报告输出补第 6 条必含字段而越过 12 KB 登记线 → 首次登记。
   'skills/lunheng-article-pipeline/references/gates/14-中文AI痕迹-gate.md': [18432, 12288, '**2026-09-29 显式抬升 16→18 KB（跨文档对账批，按定案 ① 同一公式）**：§触发阶段 下新增**检测范围**条——文末五节与「AI 使用声明」节不参与检测，§二 各类判据里的「全文」一律指排除后的正文区（依据 = `templates/G14检测报告-template.md:138` 的「豁免：作者声明段」字段；排除是模板本意，此前只写在派发卡）。**实测 16,277 B**；旧上限只剩 **107 B**（远低于定案 ① 的 1.5 KB「等效禁止再写」线），按公式抬到 **18,432 B（余量 2,155 B）**。 G14 中文 AI 痕迹闸门定义（8 类维度 / 三层防御 / 判定规则 / D 类口径 / 报告输出）——**外部机制借鉴批 1（2026-09-26）首次登记（13 KB；主人指令「立即执行」= AGENTS.md 例外条款授权）**：本文件此前 12220 B（距 12 KB 登记线仅 68 B，任何增补都会越线），本次在 §五「报告输出」补第 6 条必含字段「**按章命中定位表**」（章名 / 该章汉字数 / 命中类别 / 命中条目与行号；**只报可核查事实、不出「AI 痕迹密度」类分数**）后越过门限，按 v18.1.0 规则⑨ ① 补登记。'],
   // v18.24.0（QLT-1）：《golden 项目》小节（质量回归基线与三条读法口径）使本文件越过 12 KB 登记线 → 首次登记。
@@ -791,293 +278,51 @@ const DOC_BUDGET = {
   'skills/lunheng-article-pipeline/references/case-studies.md': [18432, 12288, '**v18.27.0 QLT-4 显式抬升（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：golden 基线微调（86.8 / 66.9 / 70.0）。**实测 14140 B**；上限 = **16384 B**。 实战案例库 + **golden 项目（质量回归基线）**——**v18.24.0 首次登记**：新增 §golden 项目（3 例覆盖三种体例 + 基线分数/覆盖率 + 「怎么读这个分数」三条口径 + 历史项目偏差说明 + 可复现要求 + 基线更新时机）。本文件此前 10.7 KB（未达 12 KB 登记线），QLT-1 要求「机制改动前后各跑一次 quality-score 并写进反哺报告」，基线必须落在**版本控制内的文档**里（评分 JSON 含本机路径，不能入库）→ 故基线表进本文件。实测 13,718 B；上限按定案 ① 公式 = 「实测 + 1.5 KB 向上取整到整 KB」= **15,360 B（余量 1,642 B）**。长期目标 12 KB（本文件主体是历史案例散文，可继续压缩）。'],
   // v18.30.0（EFF-6）：图表-SVG 模板由「1 骨架 + 5 片段」改为 5 个可直接落盘的完整 SVG 文档 → 越过 12 KB 登记线，首次登记。
   'skills/lunheng-article-pipeline/references/templates/图表-SVG-template.md': [21504, 12288, '**v18.30.0 EFF-6 首次登记**：改造前实测——本文件 6 个 `svg` 代码块里 **5 个**过不了 `_lib/svg.mjs` 结构校验（无 `<svg>` 根 / 无 viewBox）＝照抄得到的文件会被 `md2html` 判 **exit 40**（「模板化」名不副实：要人脑手工合并骨架与片段）。改造为 **5 个可直接落盘的完整 SVG 文档**（条形 / 折线 / 占比条 / 矩阵 / 流程）+ 每块「填空清单」+ §三 数值→坐标映射表，并新增 `tests/figure-template.test.mjs` 三条机械保证（结构可落盘 / `<text>` 零可见数字 / 端到端 M-Form-9 绿）。**实测 19,091 B**；上限按定案 ① 公式 = 「实测 + 1.5 KB 向上取整到整 KB」= **21,504 B（余量 2,413 B）**。长期目标 12 KB——但**用法上不必整读**：SKILL.md 指针要求用 `ref-get.mjs` 只取对应 §4.x 一节（实测每节 2.1–2.8 KB）。'],
-  'skills/lunheng-article-pipeline/references/maintainers.md': [34816, 16384, '**2026-09-29 显式抬升 27→34 KB（主人授权修订 · 外部借鉴 context-mode A1/A3/B4，按定案 ① 同一公式）**：新增三节**维护者向承重内容**——**§十一 计量口径变更固定动作**（与 §七「收口批」、§十「发布前」并列的第三条固定动作：改口径须附 fix 前/后两列 + 影响面清单 + 空状态显式）／**§十二 昂贵验证的护栏规范**（Tier-2 五条护栏 + 「**验证要钉模型、发货路径不钉**」的刻意偏离判据）／**§十三 决策记录（ADR）位置与三条硬要求**（`audits/decisions/` 登记指针 + 「**源码钉**」要求）。三节均为「维护者决策时才查」的参考，按 v18.22.1 CTX-2 定下的判据（维护者向 → 本文件）落此、无处可挪。**实测 32,276 B**（旧上限 27,648 B 本批被**顶穿**：新增 6,352 B；按 32,033 B 算得 33,792 B 后，本批又补入「外部引用须标属主」一行 → 余量降至 1,516 B < 定案 ① 的 1.5 KB，故同批按公式再核定），按公式抬到 **34,816 B（余量 2,540 B）**。 **v18.45.0 显式抬升 23→26 KB（按定案 ① 同一公式）**：新增 **§十「发布前固定动作：工具链不得改写仓库」**——登记仓库级脚本 `scripts/no-write-check.mjs`（**不随包**）的用法/退出契约、它为什么存在（v18.44.0 那次**未定位成因**的改写事故：一个模板标题少了段**被登记的豁免括注**，已排除 bump 规则模拟 / `consistency --fix` / 套件 / 探针脚本）、边界（净状态语义 + 排除面）与三条已固化的教训（spawn 失败必须单独判负 / 「指错根」不许当「干净」/ 新增·内容变·删除三类都要点名）。**实测 24,515 B**（**改前已超旧上限 963 B**，属补登记）；按公式抬到 **26,624 B（余量 2,109 B）**。 **v18.42.0 显式抬升 21→23 KB（按定案 ① 同一公式；**改前实测已超旧上限 203 B**）**：§九 软档登记表的 M-Exist-5 / L-10 一行由「存量列 = —（未量）/ 待主人裁定」改为**实测填满**——存量（10 个项目有闸门记录：落档 9、已合规 1、踩硬档 0；10/10 的 M-Exist-5 今天已非通过但无一是因本条）+ 两个收紧方向的代价（转硬：新增翻红 0 + 9 条硬问题 + 1 个跨档；加模板行：≈ 同价）+ 主力结论「可达化与不新增红线在此表上不可兼得」。**实测 21,707 B**；按公式抬到 **23,552 B（余量 1,845 B）**。 **v18.34.0 显式抬升 19→21 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：新增 **§九 软档登记**（「已判软的那些门，各靠什么收紧」）——把散在三处注释里的软档集中成一张表，每行必须回答「靠什么事件收紧」，并写明 v18.33.0 起的**两半手法**（存量零落档直接收紧 / 存量全落档写死触发条件 + 补模板）。**实测 19,892 B**，按公式抬到 **21,504 B（余量 1,612 B）**。 **v18.24.0 QLT-1 显式抬升 18→19 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：§七「收口批固定动作」新增**质量回归基线**这一同族固定动作（机制改动前后各跑一次 `quality-score.mjs` + 判据「差异必须可解释」+ 与差集/反向核验的分工：前者查「修订项有没有落地」，这一步查「落地之后质量有没有变化」）。**实测 16,350 → 17,142 B（+792）**；上限按公式 = **19,456 B（余量 2,314 B）**。**v18.22.1 CTX-2 显式抬升 13→18 KB（接收 `AGENTS.md` §开发参考资料整体迁入）**：迁入内容 = 官方资料入口表（8 行）+ 机械层 3 条（`dsh-plugin-dev check` 14 项 / `verify` / `new`）+ 冲突裁决顺序 + 何时必须查官方资料 + 本包与官方的刻意偏离指针 + 仓库级打包面检查清单（含「两条静态门抓不到、必须由测试兜的」）。**实测 12690 → 16350 B（+3660 B）**；按定案 ① 上限 = 「实测 + 1.5 KB 向上取整到整 KB」= **18432 B（余量 2082 B）**。**报告 §四.2 的一般规则**：把文字从 A 搬到 B 时，**A 与 B 的棘轮必须在同一提交内一并调整**——本批 A（AGENTS.md）下调、B（本文件）抬升，同批完成。维护者向背景资料（rank 考证 / guard 已知边界 / 更正史 / 发布面事实 / 官方资料入口）——**运行期角色不读**。**v18.15.0 首次登记**：新增 §七「收口批固定动作：差集 + 反向核验」（主人指示「固化为固定动作」），含两次自证后的实现细节与**边界如实声明**（只报「需人工回核」，不判「已完成」）。本文件此前未达 12 KB 门限故未登记；本次跨过门限，按 v18.1.0「同一次提交显式抬升/登记」原则补登。目标（长期）维持 16 KB。'],
+  'skills/lunheng-article-pipeline/references/maintainers.md': [34816, 16384, '**2026-09-29 显式抬升 27→34 KB（主人授权修订 · 外部借鉴 context-mode A1/A3/B4，按定案 ① 同一公式）**：新增三节**维护者向承重内容**——**§十一 计量口径变更固定动作**（与 §七「收口批」、§十「发布前」并列的第三条固定动作：改口径须附 fix 前/后两列 + 影响面清单 + 空状态显式）／**§十二 昂贵验证的护栏规范**（Tier-2 五条护栏 + 「**验证要钉模型、发货路径不钉**」的刻意偏离判据）／**§十三 决策记录（ADR）位置与三条硬要求**（`audits/decisions/` 登记指针 + 「**源码钉**」要求）。三节均为「维护者决策时才查」的参考，按 v18.22.1 CTX-2 定下的判据（维护者向 → 本文件）落此、无处可挪。**实测 32,276 B**（旧上限 27,648 B 本批被**顶穿**：新增 6,352 B；按 32,033 B 算得 33,792 B 后，本批又补入「外部引用须标属主」一行 → 余量降至 1,516 B < 定案 ① 的 1.5 KB，故同批按公式再核定），按公式抬到 **34,816 B（余量 2,540 B）**。 **v18.45.0 显式抬升 23→26 KB（按定案 ① 同一公式）**：新增 **§十「发布前固定动作：工具链不得改写仓库」**——登记仓库级脚本 `scripts/no-write-check.mjs`（**不随包**）的用法/退出契约、它为什么存在（v18.44.0 那次**未定位成因**的改写事故：一个模板标题少了段**被登记的豁免括注**，已排除 bump 规则模拟 / `consistency --fix` / 套件 / 探针脚本）、边界（净状态语义 + 排除面）与三条已固化的教训（spawn 失败必须单独判负 / 「指错根」不许当「干净」/ 新增·内容变·删除三类都要点名）。**实测 24,515 B**（**改前已超旧上限 963 B**，属补登记）；按公式抬到 **26,624 B（余量 2,109 B）**。 **v18.42.0 显式抬升 21→23 KB（按定案 ① 同一公式；**改前实测已超旧上限 203 B**）**：§九 软档登记表的 M-Exist-5 / L-10 一行由「存量列 = —（未量）/ 待主人裁定」改为**实测填满**——存量（10 个项目有闸门记录：落档 9、已合规 1、踩硬档 0；10/10 的 M-Exist-5 今天已非通过但无一是因本条）+ 两个收紧方向的代价（转硬：新增翻红 0 + 9 条硬问题 + 1 个跨档；加模板行：≈ 同价）+ 主力结论「可达化与不新增红线在此表上不可兼得」。**实测 21,707 B**；按公式抬到 **23,552 B（余量 1,845 B）**。 **v18.34.0 显式抬升 19→21 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：新增 **§九 软档登记**（「已判软的那些门，各靠什么收紧」）——把散在三处注释里的软档集中成一张表，每行必须回答「靠什么事件收紧」，并写明 v18.33.0 起的**两半手法**（存量零落档直接收紧 / 存量全落档写死触发条件 + 补模板）。**实测 19,892 B**，按公式抬到 **21,504 B（余量 1,612 B）**。 **v18.24.0 QLT-1 显式抬升 18→19 KB（按定案 ① 同一公式：实测 + 1.5 KB 向上取整到整 KB）**：§七「收口批固定动作」新增**质量回归基线**这一同族固定动作（机制改动前后各跑一次 `quality-score.mjs` + 判据「差异必须可解释」+ 与差集/反向核验的分工：前者查「修订项有没有落地」，这一步查「落地之后质量有没有变化」）。**实测 16,350 → 17,142 B（+792）**；上限按公式 = **19,456 B（余量 2,314 B）**。**v18.22.1 CTX-2 显式抬升 13→18 KB（接收 `AGENTS.md` §开发参考资料整体迁入）**：迁入内容 = 官方资料入口表（8 行）+ 机械层 3 条（`dsh-plugin-dev check` 14 项 / `verify` / `new`）+ 冲突裁决顺序 + 何时必须查官方资料 + 本包与官方的刻意偏离指针 + 仓库级打包面检查清单（含「两条静态门抓不到、必须由测试兜的」）。**实测 12690 → 16350 B...'],
 }
 const ALWAYS_RESIDENT = [
   'skills/lunheng-article-pipeline/SKILL.md',
   'skills/lunheng-article-pipeline/AGENTS.md',
 ]
-// 常驻集合计上限（v18.1.0 由 51200 抬升：C 组四处机制事实入 SKILL.md/AGENTS.md）
-//   **v18.12.0 显式抬升 57344 → 60416（全量审计收口批）**：SKILL.md 抬到 37 KB（理由见上）后，
-//     常驻集合计实测 **57234 B**，距 57344 B 仅 **110 B** —— 与 v18.2.7 那次「99.8% 利用率 ≈ 等效
-//     禁止再写」同形。合计上限的**目的**是防「瘦 SKILL、肥 AGENTS 换口袋」，不是把两个文件各自
-//     的合法余量卡死；故随 SKILL.md 同步抬升，保持与逐文件上限同级的余量（AGENTS.md 自身未增长，
-//     仍为 20457 B / 上限 21504 B）。**瘦身待办不变**：常驻集长期目标仍为 51200 B。
-//   **v18.11.0 显式抬升 54272 → 57344**：① **补登记**——v18.10.0 落地 12 项战略改进时 SKILL.md 增长但
-//     **未同提交抬棘轮**（违反 v18.1.0），发布后即为红；改前实测**常驻集合计 54334 B，超限 62 B**。
-//     ② **本版新增**一行版本增量摘要（依「注解聚合」约定：单行 + 指针，细节归 CHANGELOG §18.11.0）→
-//     合计 **55599 B**。按 v18.1.0「同一次提交里显式抬升并写明理由」原则抬高，**不采用「删既有机制
-//     说明」腾空间**（那会以丢失机制事实为代价）；抬升后留 ~1.7 KB 余量，防重演「距上限仅数十 B ≈
-//     等效禁止再写」的失效态（v18.2.7 先例）。**瘦身待办不变**：常驻集长期目标仍为 51200 B（v18.1.0
-//     原始值），须把 SKILL.md 的运行期非承重段继续外移。
-//   **v18.2.7 由 53248 抬升到 54272（主人授权修订）**：改前实测常驻集合计 **53222 B**，距上限仅 **26 B**
-//   ——即该约束已处于 99.95% 利用率，实际等效于「禁止再向 SKILL.md 写任何内容」。而本次新增
-//   `scripts/segment-chars.mjs` 后，**规则 ⑩（随包脚本白名单集合一致性）强制要求**把新脚本名写进
-//   SKILL.md 的白名单行——该写入**不可回避**（不写则规则 ⑩ 判 P1「白名单漏列」）。故按「同一次提交里
-//   显式抬升并写明理由」原则抬高 1 KB，不采用「删既有机制说明」来腾空间（那会以丢失机制事实为代价）。
 const ALWAYS_LIMIT = 70656  // v18.61.0 反哺 v4（主人授权落地）：SKILL.md 增 11 行 H3/H4/H6/H7 段后常驻集合计 68,252 B（SKILL.md 48,589 B + AGENTS.md 19,663 B）；按 v18.1.0「同一次提交里显式抬升并写明理由」原则（旧 67,584 = 66 KB，超 668 B）抬到 70,656 B（= 69 KB，余量 2,404 B）。**瘦身待办不变**：长期目标仍为 51,200 B（v18.1.0 原始值）
 
-const budgetBad = []
-let docOver = 0
-let residentTotal = 0
-// v18.62.4（全量审计-v18.62.3 §8.3 #36）：**第 4 项不再被静默丢弃**。
-//   实测（运行时解析 DOC_BUDGET 字面量）：35 条里 **34 条 3 元、1 条 4 元** ——
-//   `references/_shared/外部检索源接入面.md` 是唯一的 4 元项：`[上限, 目标, 较新理由, 更早理由]`，
-//   而本行旧版只解构 `[limit, target, why]` → **那份更早的抬升理由被无声吃掉**。
-//   「数组多一项、解构少一项」最坏之处是**它不报错**：数据在源码里、读者以为它在生效。
-//   修法：显式接收第 4 项，并把两段理由**都**带进超限报错文案（多一条理由 = 多一条
-//   「为什么必须增长」的上下文，正是这条报错要回答的问题）。⚠️ 只改**本循环的解构与文案**，不动数据形状。
-for (const [rel, [limit, target, why, whyOlder]] of Object.entries(DOC_BUDGET)) {
-  const whyAll = whyOlder ? `${why}｜更早：${whyOlder}` : why
-  const abs = join(ROOT, rel)
-  if (!existsSync(abs)) { fail('doc-budget', `词预算表登记了不存在的文件：${rel}（表已过期，请删除该行）`); continue }
-  const size = statSync(abs).size
-  if (ALWAYS_RESIDENT.includes(rel)) residentTotal += size
-  const pct = ((size / limit) * 100).toFixed(0)
-  if (size > limit) {
-    docOver++
-    fail(
-      'doc-budget',
-      `${rel} 已达 ${size} B（${kb(size)}），超出上限 ${limit} B（${kb(limit)}）——「${whyAll}」。` +
-        `两条合法出路：① **先瘦身**（把细节移到按需加载的 references/，本文件只留指针与判据）；` +
-        `② 若确需增长，在**同一次提交**里把 repo-hygiene-check.mjs 的 DOC_BUDGET 上限抬到 ≥${Math.ceil(size / 1024) * 1024} B 并在 CHANGELOG 写明为何必须增长。` +
-        `目标（长期）${target} B（${kb(target)}），当前 ${pct}% 用了上限。`,
-    )
-  } else if (limit - size < 256) {
-    // 余量 < 256 B：下一次改动几乎必然撞上限——提前在 note 里点名（上限按整 KB 取，故余量恒在 0–1023 B）
-    budgetBad.push(`${rel} 余量仅 ${limit - size} B`)
-  }
-}
-// 覆盖：技能目录内 ≥ 阈值的 .md 必须登记（否则新胖文档可无声进入上下文成本）
-const unregistered = []
-const skillAbs = join(ROOT, 'skills', 'lunheng-article-pipeline')
-if (existsSync(skillAbs)) {
-  const walk = (d) => {
-    for (const e of readdirSync(d, { withFileTypes: true })) {
-      const f = join(d, e.name)
-      if (e.isDirectory()) walk(f)
-      else if (e.name.endsWith('.md')) {
-        const rel = relative(ROOT, f).split(sep).join('/')
-        if (statSync(f).size >= DOC_BUDGET_MIN && !DOC_BUDGET[rel]) unregistered.push(`${rel}（${kb(statSync(f).size)}）`)
-      }
-    }
-  }
-  walk(skillAbs)
-}
-if (unregistered.length) {
-  fail('doc-budget', `技能目录内 ≥${kb(DOC_BUDGET_MIN)} 的文档未登记词预算：${unregistered.join('；')}——请在 DOC_BUDGET 加一行（含上限与理由）`)
-}
-if (residentTotal > ALWAYS_LIMIT) {
-  fail(
-    'doc-budget',
-    `常驻集（SKILL.md + AGENTS.md）合计 ${residentTotal} B（${kb(residentTotal)}）超上限 ${ALWAYS_LIMIT} B（${kb(ALWAYS_LIMIT)}）` +
-      '——这两个文件是每次会话的固定开销，不能用「此消彼长」绕开逐文件上限。',
-  )
-}
-notes.push(
-  `⑨ 词预算：登记 ${Object.keys(DOC_BUDGET).length} 个文档（≥${kb(DOC_BUDGET_MIN)} 全覆盖，未登记 ${unregistered.length} 个）` +
-    `；常驻集合计 ${kb(residentTotal)}/${kb(ALWAYS_LIMIT)}（SKILL.md + AGENTS.md）` +
-    (docOver ? `；❗ 超限 ${docOver} 个` : budgetBad.length ? `；⚠️ 接近上限：${budgetBad.join('、')}` : '，均在预算内'),
-)
-
-// ⑩ 注解密度门（v18.8.0 新增，P2 文档瘦身战役的「防再膨胀」机制）：
-//    全量审计（v18.7.1）实证：四大文档 83-90KB 中 20-30% 是「vX.Y.Z 新增/修订，教训：…」式版本考古注解，
-//    自家的「注解聚合」政策（AGENTS.md）从未回溯执行。本门把该政策机械化：
-//    references/**/*.md 中匹配版本注解模式的行占比 > 阈值即 fail——先治病的瘦身（P2a）已完成，此后不许再沉积。
-//    口径：行含 `v\d+\.\d+[^）\n]{0,40}(新增|修订|修复|更正|补)` 或 `(v\d+\.\d+(?:\.\d+)?[-a-z.\d]*…)` 形态
-//    且非「已聚合」标记行 / 目录锚链（`...](##` 形态） / 表格行 / 代码块内。
-//    v18.8.0 阈值 = 12%（v18.8.0 P2a 完成 SKILL/08-终检/07-审计/任务简报 聚合后实测）——v18.8.x 须降，
-//    本规则**禁止抬升**；任何后续提交超 12% 即失败（强制先瘦身）。锚链/表格行/标题行/已聚合引言豁免）。
-{
-  const ANN_RE = /v\d+\.\d+(?:[-.\d]*[a-z]*)?\s*[^，。\n]{0,24}(新增|修订|修复|更正|补充|扩展|抬升|登记)/
-  const EXEMPT_RE = /注解聚合|git log|CHANGELOG|maintainers\.md|版本头|v18\.8\.0/
-  const ANCHOR_LINK_RE = /\]\(#/
-  const ANN_MAX_RATIO = 0.12
-  const annOver = []
-  const annStats = []
-  const annWalk = (dir) => {
-    for (const e of readdirSync(dir, { withFileTypes: true })) {
-      const p = join(dir, e.name)
-      if (e.isDirectory()) { annWalk(p); continue }
-      if (!e.name.endsWith('.md')) continue
-      const lines = readFileSync(p, 'utf8').split('\n')
-      let hits = 0
-      for (const l of lines) {
-        if (!ANN_RE.test(l) || EXEMPT_RE.test(l) || ANCHOR_LINK_RE.test(l)) continue
-        // 标题行（# / ## / ### 开头）豁免：标题文本中的版本引用是结构性装饰（例：## 修订任务书（v2.2.4 新增）），不是散文注解
-        if (/^\s*#{1,6}\s/.test(l)) continue
-        // 表格行（| 开头）不计
-        if (/^\s*\|/.test(l)) continue
-        hits++
-      }
-      const ratio = lines.length ? hits / lines.length : 0
-      annStats.push(`${relative(ROOT, p).split(sep).join('/')} ${(ratio * 100).toFixed(1)}%`)
-      if (ratio > ANN_MAX_RATIO) annOver.push(`${relative(ROOT, p).split(sep).join('/')}（${(ratio * 100).toFixed(1)}% > ${ANN_MAX_RATIO * 100}%，${hits}/${lines.length} 行）`)
-    }
-  }
-  annWalk(join(ROOT, 'skills', 'lunheng-article-pipeline', 'references'))
-  if (annOver.length) {
-    fail('ann-density', `版本注解密度超 ${ANN_MAX_RATIO * 100}% 上限：${annOver.join('；')}——按 AGENTS.md「注解聚合」政策合并为卡头单行（最新版本 + 一句教训），历史细节指向 git log；确需抬升阈值须在同一次提交写明理由`)
-  }
-  notes.push(`⑩ 注解密度：references/**/*.md 版本注解行占比 ≤ ${(ANN_MAX_RATIO * 100)}%（超限 ${annOver.length} 个；TOP5：${annStats.sort((a, b) => parseFloat(b.split(' ')[1]) - parseFloat(a.split(' ')[1])).slice(0, 5).map((s) => s.replace('%', '%')).join('、') || '—'}）`)
+// ───── ctx 构造：所有规则共享的运行期状态 ─────
+const ctx = {
+  fail, note, ROOT,
+  scanSet, tracked, untracked,
+  isText, SELF,
+  scriptDir,
+  EXIT_CONTRACT, EXIT_GUARDED_EXEMPT,
+  DOC_BUDGET, ALWAYS_RESIDENT, ALWAYS_LIMIT,
+  git,
+  // ⑥ + ⑦b 共用：发布物清单（三态：string[] / null = UNKNOWN）
+  packFiles: null,
 }
 
-// ⑪ `lib/**:LINE` 裸行号引用（C-9 机械化 · v18.18.9）
-//   动机：审计 C-9 实测 `SECURITY.md` 引 `lib/tools.js:18,24,133,191`，四行全都不是它说的东西。
-//   该处改成符号引用后，**同一份文档就地写下了政策**「行号随改动漂移故按符号引用，不写绝对行号」
-//   ——**但政策没有门**。v18.18.9 复核发现隔壁那行仍写着 `lib/guard.js:177`，而该行是
-//   `const cwd = process.cwd()`（真实安装点 = `installMechanismGuard()` 内的 `tools.guard(...)`）。
-//   **同一页上，一行宣布政策、下一行违反它** —— 政策要靠门落，不能靠同一页的另一句话。
-//   口径与豁免见 `_lib/lib-line-refs.mjs`（历史留痕按目录豁免；上游包路径如 `dsh-app-boot/lib/...` 不算）。
-{
-  const docExts = /\.(md|html)$/
-  const scannedDocs = scanSet.filter((p) => docExts.test(p) && !isHistoricalDoc(p))
-  let refHits = 0
-  let scannedExisting = 0
-  for (const p of scannedDocs) {
-    const abs = join(ROOT, p)
-    if (!existsSync(abs)) continue
-    scannedExisting++
-    for (const hit of findLibLineRefs(readFileSync(abs, 'utf8'))) {
-      refHits++
-      if (refHits <= 5) {
-        fail(
-          'lib-line-ref',
-          `${p} 用了裸行号引用 \`${hit.raw}\`——请改为**符号引用**（如「\`lib/guard.js\` 的 \`installMechanismGuard()\` 内的 \`tools.guard(...)\`」）。` +
-            '理由：行号随任何改动漂移，而它读起来像一个可核验的事实——C-9 实测某处引的四行全都不是它说的东西',
-        )
-      }
-    }
-  }
-  if (refHits > 5) fail('lib-line-ref', `另有 ${refHits - 5} 处裸行号引用未逐条列出`)
-  notes.push(`⑪ 文档行号引用：${scannedExisting} 个当前文档（.md/.html，已排除历史留痕）零裸 \`lib/**:LINE\` 引用`)
-}
+// 按原顺序执行 15 条规则
+r01.run(ctx)
+r02.run(ctx)
+r03.run(ctx)
+r04.run(ctx)
+r05.run(ctx)
+r06.run(ctx)
+// r06 写入 ctx.packFiles（⑥ 成功则非 null）；⑦b 据此判断发布物档
+// （原文件中 r06 与 r07 顺序：⑥→⑦→⑦b；⑦b 需要 packFiles，故必须在 r06 之后）
+r07.run(ctx)
+r07b.run(ctx)
+r08.run(ctx)
+r08b.run(ctx)
+r08c.run(ctx)
+r08d.run(ctx)
+r09.run(ctx)
+r10.run(ctx)
+r11.run(ctx)
+r12.run(ctx)
+r13.run(ctx)
+r14.run(ctx)
+r15.run(ctx)
 
-// ⑫ E 族「单源不变量」机检（v18.18.10）
-//   审计 E 族统一处理法要「该事实只允许出现在真源一处，其余必须是指针」——但**对 17 组异质散文
-//   事实不可判定**，硬做只能退化成字面禁令，而字面禁令在本仓**必然误报**（文档规范要求更正记录
-//   写出旧值：`07卡` 写「无 M-Form-12」、期刊文档写「原写 25 个，真源实为 28」都属正当）。
-//   故本规则只做两类**可判定**检查，均为正向存在性或可派生数值、没有绕过口：
-//     ① **E-14 数值派生**：真源自称的规模 == 它自己的表行数（「按磁盘表行数导出规模」的题面本身）
-//     ② **E-8 / E-14 锚点在场**：新名字（`MC-` 三标签）与新指针（「规模真源 = 期刊数据库.md」）
-//        必须在场——单侧回退会让锚点消失
-//   边界：E 族**语义半边**（取哪一侧是否正确）没有门，也不假装有；详见模块头注释。
-{
-  const S = (p) => join(ROOT, 'skills', 'lunheng-article-pipeline', p)
-  // ① 期刊规模：自称 vs 表行数
-  try {
-    const db = readFileSync(S('references/_shared/期刊数据库.md'), 'utf8')
-    const derived = deriveJournalCounts(db)
-    const declared = declaredJournalCounts(db)
-    for (const k of ['zh', 'en']) {
-      const label = k === 'zh' ? '中文' : '英文'
-      if (derived[k] === null || declared[k] === null) {
-        fail('e-family', `期刊库${label}规模：真源里「表行数」或「章节标题自称」有一侧读不到（派生 ${derived[k]} / 自称 ${declared[k]}）——解析器与文档形状脱节`)
-      } else if (derived[k] !== declared[k]) {
-        fail('e-family', `期刊库${label}规模不自洽：章节标题自称 ${declared[k]}，而表实有 ${derived[k]} 行——加减期刊后忘了改标题（E-14 的原病就是这个）`)
-      }
-    }
-    notes.push(`⑫① 期刊库规模真源自洽：中文 ${derived.zh} 行 / 英文 ${derived.en} 行（与章节标题自称一致）`)
-  } catch (e) {
-    fail('e-family', `⑫① 期刊规模核对无法执行：${e.message}`)
-  }
-  // ② 锚点在场（E-8 新名字 / E-14 新指针）
-  const anchors = [
-    { file: MC_LABEL_ANCHORS.file, miss: MC_LABEL_ANCHORS.labels.filter((n) => !MC_LABEL_ANCHORS.definitionRe(n).test(readFileSync(S(MC_LABEL_ANCHORS.file), 'utf8'))), what: 'MC- 命名空间三标签的**定义项**（E-8）' },
-    ...JOURNAL_POINTER_ANCHORS.map((a) => ({
-      file: a.file,
-      miss: a.must.test(readFileSync(S(a.file), 'utf8')) ? [] : ['「规模真源 = 期刊数据库.md」指针'],
-      what: '期刊规模指针（E-14）',
-    })),
-  ]
-  for (const a of anchors) {
-    if (a.miss.length) {
-      fail('e-family', `${a.file} 缺 ${a.what}：${a.miss.join('、')}——单侧回退（改回旧名 / 改回硬编码数字）会让锚点消失，故此处正向要求它在场`)
-    }
-  }
-  notes.push(`⑫② E 族锚点在场：MC- 三标签 + ${JOURNAL_POINTER_ANCHORS.length} 处期刊规模指针均在场`)
-}
-
-// ⑬ CHANGELOG「版本段结构自洽」（v18.18.13）
-//   真教训（不是假想）：v18.18.12 发版后复查发现 **`## 18.18.11 — 2026-09-26` 这个版本标题被删了**——
-//   写 v18.18.12 段时 `old_string` 只匹配了那行标题、`new_string` 末尾忘了写回去，于是 v18.18.11 的
-//   整段内容（`### 一、`…`### 六、`）挂到了 `## 18.18.12` 名下，两个版本段被合并。
-//   **它逃过了所有门**：`consistency-check` 规则 ⑪ 只核「**当前**版本段存在」（`## 18.18.12` 在场 → 通过），
-//   没有任何门管历史版本标题被删。同形失真在 v18.12.0 段也发生过一次（段内两个 `### 七、`）直到本次才发现。
-//   三条不变量（完全自洽可判，不依赖 git / 网络 / 发布记录——理由与代价见 `_lib/changelog-structure.mjs` 头注释）：
-//     ① 段内小节编号严格递增（抓「版本标题被删 → 两段合并 → 编号回绕」这一结构指纹）
-//     ② 首个 `## ` 段的版本 == `package.json.version`
-//     ③ 版本键不重复 ④ 版本键降序
-//   解析器在 `_lib/changelog-structure.mjs`（可单测）；形状变了会**抛错**而不是静默通过。
-try {
-  // v18.68.0 拆档：主档 + changelog/archive/ 联合校验（不变量覆盖全量历史，见 readChangelogAll 注释）
-  const clText = readChangelogAll(ROOT)
-  const pkgVer = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version
-  const { sections } = parseChangelogSections(clText)
-  const { checked, withSubs, violations } = reconcileChangelogStructure(sections, pkgVer)
-  for (const v of violations) fail('changelog', `⑬ CHANGELOG 版本段结构（${v.kind}）:${v.line} ${v.msg}`)
-  // 退化防线（独立于违例报出，两者不互相吞掉——设计理由见 `_lib/changelog-structure.mjs` 头注释）
-  if (withSubs === 0) {
-    fail('changelog', '⑬ CHANGELOG 段形变了：没有任何「### 一、」式编号小节 → 子序不变量**空跑**（不是「通过」）——请同步解析器')
-  }
-  if (!violations.length && withSubs > 0) {
-    notes.push(`⑬ CHANGELOG 版本段结构：${checked} 个版本段（其中 ${withSubs} 个含编号小节）编号递增、版本降序、无重复键，且首段 == package.json`)
-  }
-} catch (e) {
-  fail('changelog', `⑬ CHANGELOG 版本段结构对账无法执行：${e.message}`)
-}
-
-// ⑭ 外部 CLI pin 单点（三次复审 N-3，2026-09-26）
-//   真教训：`scripts/plugin-surface-check.mjs` 的 `CLI_SPEC` 与 `.github/workflows/ci.yml` 的
-//   loader-smoke 各硬编码了一份 CLI 版本 pin——v18.20.2 抬 pin 时**只改了前者**，于是两处分叉
-//   （发布门用新检验器、CI 的「真实 Loader 冒烟」仍用旧检验器），且**无门守护**。这与仓库标志性的
-//   「修一处不修一类」同型，故把「运行面只允许一处 pin」机械化。
-//   判据：运行面（`scripts/**` / `.github/**` / `lib/**` / `skills/**` / 根 `package.json` /
-//   `cordis.patch.yml`）里，`dsh-plugin-guide@<semver>` 只允许出现在唯一真源文件里。
-//   **刻意不扫** `CHANGELOG.md` / `audits/**` / `docs/**`——那里是**留痕叙述**（引述历史 pin），
-//   不是运行期 pin；按字面扫它们会把「引述被纠正内容」当成那内容本身（仓库已踩过三次的老毛病）。
-const CLI_PIN_OWNER = 'scripts/plugin-surface-check.mjs'
-const CLI_PIN_RE = /dsh-plugin-guide@(\d+\.\d+\.\d+)/g
-const inRunSurface = (p) =>
-  /^(scripts|\.github|lib|skills)\//.test(p) || p === 'package.json' || p === 'cordis.patch.yml'
-{
-  const hits = []
-  for (const p of scanSet) {
-    if (!inRunSurface(p) || p === SELF) continue
-    if (!/\.(mjs|js|yml|yaml|json|md)$/.test(p)) continue
-    const abs = join(ROOT, p)
-    if (!existsSync(abs)) continue
-    for (const m of readFileSync(abs, 'utf8').matchAll(CLI_PIN_RE)) hits.push({ p, v: m[1] })
-  }
-  const ownerHits = hits.filter((h) => h.p === CLI_PIN_OWNER)
-  const others = hits.filter((h) => h.p !== CLI_PIN_OWNER)
-  for (const h of others.slice(0, 5)) {
-    fail('cli-pin', `⑭ 外部 CLI pin 出现第二处：${h.p} 硬编码 dsh-plugin-guide@${h.v}——本包所用 CLI 版本的**唯一 pin 点**是 ${CLI_PIN_OWNER} 的 CLI_SPEC；CI 应改用 \`node scripts/plugin-surface-check.mjs --print-cli-spec\` 派生。两处 pin 会分叉（N-3 实测：发布门 0.3.19 / CI 0.3.16）`)
-  }
-  if (!ownerHits.length) {
-    fail('cli-pin', `⑭ ${CLI_PIN_OWNER} 里找不到 dsh-plugin-guide@<semver> pin——真源消失（常量被改名？），本门会变成恒真断言`)
-  } else if (!others.length) {
-    notes.push(`⑭ 外部 CLI pin 单点：dsh-plugin-guide@${ownerHits[0].v} 仅出现于 ${CLI_PIN_OWNER}（运行面零分叉）`)
-  }
-}
-
-// ⑮ 宿主契约门（v18.62.1 全量审计 P2-2）
-//   真教训：v18.61.0 把 H2 监听器写成 4 参 `(tool, args, result, next)`，而宿主 `tools/post-execute` 是
-//   3 参 waterfall——入参错位后真实宿主**每次工具调用**抛 `next is not a function`、被静默改写成 isError，
-//   却因「自建桩测试照着实现写」而 600 用例全绿。H4 同族（2 参且不调 next() → 截断下游模型选择）。
-//   本门静态解析 lib/index.js 的 `ctx.on(...)`，对每条断言「事件名存在于宿主契约表 + 形参个数逐位一致」。
-//   契约表真源与更新口径见 `_lib/host-contract.mjs` 头注释（宿主 0.2.0-rc.2 三个派发点）。
-try {
-  const libIndexSrc = readFileSync(join(ROOT, 'lib', 'index.js'), 'utf8')
-  const { regs, errors } = reconcileHostContract(libIndexSrc)
-  for (const e of errors) fail('host-contract', `⑮ 宿主契约：${e}`)
-  if (!errors.length) {
-    notes.push(`⑮ 宿主契约：${regs.length} 个 ctx.on 监听器（${regs.map((r) => r.event).join(' / ')}）签名与宿主 waterfall 契约逐位一致`)
-  }
-} catch (e) {
-  fail('host-contract', `⑮ 宿主契约对账无法执行：${e.message}`)
-}
-
+// ───── 末尾汇总（逐字保留：notes 前缀「  ✓ 」、fails「✗ 未通过：N 项」+「  - 」、汇总「✓ 全部通过」、退出码 0/1）───
 console.log('\n=== 仓库机械卫生门（repo-hygiene-check）===')
 for (const n of notes) console.log('  ✓ ' + n)
 if (fails.length) {
