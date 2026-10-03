@@ -135,4 +135,9 @@ export const LOCAL_PATH_BASELINE = {
   //   这正是全量审计报告 P2-10「bump-version 会改写 audits/ 历史记录」的又一例实证。
   'audits/机制文件修订记录-2026-10-01-全量审计v18.62.3落地.md': 2,
   'tests/e2e-feedback.test.mjs': 1,
+  // 2026-10-03 反哺方案「文类档案与 Phase 0 可选项」：登记 **2** 处——均为头部「勘察对象 = 已安装 bundle」
+  //   的绝对路径（`C:\Users\Zuoyunlai\.dsh\profiles\...\node_modules\lunheng-article-pipeline\skills\...`）
+  //   与附录 A「证据索引」的包根绝对路径。这两处是「本方案勘察的是哪一份安装」的**界定前提**，占位化会让
+  //   「结论锚点取自哪一版」变得不可考；其余正文/附录一律相对路径。按本门棘轮设计登记而非豁免为硬零。
+  'audits/反哺方案-文类档案与Phase0可选项-v1.md': 2,
 }
