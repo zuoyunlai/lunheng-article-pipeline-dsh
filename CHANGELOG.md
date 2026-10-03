@@ -2,6 +2,18 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.67.0 — 2026-10-03
+
+> **性质**：**止血批**——《全量审计报告-v18.66.0》（`audits/全量审计报告-v18.66.0.md`）批 1：P0×1 + P1×6，每条先独立复现再修，全部带回归钉（`tests/batch18-audit-v18-66-fixes.test.mjs` + `tests/cite-format.test.mjs` ⑨⑩）。
+
+- **P0-1 修复**：`cite-format.mjs` 的 `UNVERIFIED` 正则把英文占位词从无边界子串改为**词边界锚定**（`\b(?:unknown|tbd|n\/?a)\b`）。旧版 `n\/?a` 匹配凡含 "na" 子串的著录值（实测 `Nancy Fraser`/`Hannah Arendt`/`Nature`/`China Quarterly`/`Governance` 全中）→ 系统性假占位 + 假对账不一致 + exit 1。中文关键词子串匹配保留（无歧义）。
+- **P1 修复（lib/guard.js）**：`writtenPaths` 数组分支原先丢弃递归返回值 → 深度哨兵 `SENTINEL_DEPTH_EXCEEDED` 在嵌套**数组**第 7 层超深时被吞，B-5「超深→拒绝」对数组形态失效。现与对象分支同法传播。
+- **P1 修复（lib/index.js H7）**：`agent/request` 命中三档时直接 `return {...request, ...override}` 不调 `next()` → 截断更晚注册的下游监听器，与本仓 H4 确立的 waterfall 契约自相矛盾。改 `await next()` 后合并（override 后置合并，env 覆盖语义不变）。
+- **P1 修复（lib/commands.js）**：`/lunheng-stats --run-dir` 围栏恢复第③层物理层——两侧同入 realpath 空间再判包含。旧版为避「假拒绝」砍掉 realpath（字符串包含判定可被 `run/` 内 junction 指向工作区外绕过）；假拒绝的真根因是只 realpath 一侧，两侧同 realpath 后合法路径不误伤、junction 逃逸被拦；realpath 失败降级字符串规范化（不劣于旧版）。
+- **P1 修复（m-gate-check.mjs）**：`.bak` 回滚点拒绝路径（exit 3）的判据**前移到报告构造前**，stdout JSON 现自报 `write_refused: 'orphan_bak_with_t8_verdict'`。旧版该路径发生在 stdout 打印之后 → 字段缺失 → `final-check` 把「拒绝写盘须人工」误读成「仅 P2 残留」（语义相反，T8 会走错处置方向）。判据与退出码不变。
+- **P1 修复（m-gate-check.mjs）**：`--adjudicate` 的 `true_p0/true_p1` 增加非负整数校验。旧版 `Number("2条")=NaN` 使 adjExit 静默按 0 计，机械值恰为 0 时绕过证伪四件套，NaN 落盘变 null。现 exit 30 拒绝。
+- **测试**：新增 `tests/batch18-audit-v18-66-fixes.test.mjs`（B18-①②③）+ `tests/cite-format.test.mjs` ⑨⑩ 两钉；全量 719/719 全绿。
+
 ## 18.66.0 — 2026-10-03
 
 > **性质**：**新能力**——参考文献格式的**正向生成**（GB/T 7714-2015 ⇄ APA 7th）。主人 2026-10-03 指令：『C2/D1 之后，问「能否支持 APA/GB-T/IEEE 自动转换」→ 选「A 档但先只做 GB/T ↔ APA，IEEE 暂缓」』。

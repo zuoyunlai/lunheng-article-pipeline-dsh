@@ -68,7 +68,10 @@ const STYLE_NAME = { gbt: 'GB/T 7714-2015', apa: 'APA 7th' }
 const PLACEHOLDER = (what) => `⟨缺 ${what}⟩`
 // 「待核/待补/未知」类**占位值**一律当缺字段处理：本仓既有铁律就禁「待核」占位（`文献卡-template.md:110` 作者栏），
 //   实测卡片里也真有 `期刊版本待核验`（L12）——若原样进著录串，就把**未核验**当成了**已著录**。
-const UNVERIFIED = /待核|待补|待确认|待定|未知|不详|未检索到|未找到|unknown|tbd|n\/?a/i
+// v18.67.0 审计 P0-1 修复：英文占位词必须**词边界锚定**——旧版 `n\/?a` 是无边界子串匹配，
+//   实测把 `Nancy Fraser`/`Hannah Arendt`/`Nature`/`China Quarterly`/`Governance`（凡含 "na" 子串）
+//   系统性误判成「未核验」→ 假占位 + 假对账不一致。中文关键词无歧义，保留子串匹配。
+const UNVERIFIED = /待核|待补|待确认|待定|未知|不详|未检索到|未找到|\b(?:unknown|tbd|n\/?a)\b/i
 const clean = (v) => (v == null ? null : (UNVERIFIED.test(String(v)) ? null : String(v).trim()))
 const stripParen = (s) => String(s || '').replace(/[（(][^（()）]*[）)]/g, ' ').trim()
 

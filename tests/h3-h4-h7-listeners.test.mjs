@@ -173,9 +173,11 @@ test('H7 agent.request waterfall：subagent_retrieval + LUNHENG_RETRIEVAL_MODEL 
     assert.ok(handlers.length >= 1, 'H7 监听器未注册到 ctx.on(agent/request)')
 
     const request = { toolName: 'subagent_retrieval', provider: 'original-provider', model: 'original-model' }
-    const result = handlers[0](request, () => {})
+    // v18.67.0（全量审计 P1 修复）起 H7 是 async waterfall：await next() 拿下游结果后再合并 override
+    const result = await handlers[0](request, async () => ({ ...request }))
     assert.ok(result && result.model === 'test-model-retrieval', `model 应被 env 覆盖，实际 ${JSON.stringify(result)}`)
     assert.equal(result.provider, 'original-provider', '未设 provider env → 保留原值')
+    assert.equal(result.toolName, 'subagent_retrieval', '下游字段保留（不截断 next 链）')
   } finally {
     if (ORIG_P !== undefined) process.env.LUNHENG_RETRIEVAL_PROVIDER = ORIG_P
     if (ORIG_M !== undefined) process.env.LUNHENG_RETRIEVAL_MODEL = ORIG_M
@@ -190,7 +192,7 @@ test('H7 agent.request waterfall：非论衡三档 → 委托', async () => {
 
   const request = { toolName: 'some_other_tool', provider: 'p', model: 'm' }
   const nextReturn = Symbol('next')
-  const result = listeners['agent/request'][0](request, () => nextReturn)
+  const result = await listeners['agent/request'][0](request, () => nextReturn)
   assert.equal(result, nextReturn, '非论衡三档 → 应调用 next() 返回原值')
 })
 
@@ -207,7 +209,7 @@ test('H7 agent.request waterfall：未设 env → 委托', async () => {
 
     const request = { toolName: 'subagent_strong', provider: 'p', model: 'm' }
     const nextReturn = Symbol('next')
-    const result = listeners['agent/request'][0](request, () => nextReturn)
+    const result = await listeners['agent/request'][0](request, () => nextReturn)
     assert.equal(result, nextReturn, '未设 env → 不覆盖，委托给 next()')
   } finally {
     if (ORIG_P !== undefined) process.env.LUNHENG_STRONG_PROVIDER = ORIG_P

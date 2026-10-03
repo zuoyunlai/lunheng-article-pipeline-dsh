@@ -129,3 +129,39 @@ test('⑧ 源码钉：真源文档在场，且生成器零 spawn、不 import �
   assert.match(src, /IEEE 暂缓/, '用法/l 说明里必须写明 IEEE 暂缓（不得声称支持）')
   assert.ok(existsSync(join(ROOT, 'skills', 'lunheng-article-pipeline', 'references', '_shared', '引用格式.md')), '真源契约必须在场')
 })
+
+// v18.67.0（全量审计-v18.66.0 P0-1 回归钉）：英文占位词必须**词边界锚定**。
+//   旧版 `n\/?a` 是无边界子串匹配（/i），实测把 `Nancy Fraser`/`Nature`/`China Quarterly`/
+//   `Governance`（凡含 "na" 子串）系统性误判成「未核验」→ 假占位 + 假对账不一致 + exit 1。
+test('⑨ P0-1 回归：含 "na" 子串的正当著录值（Nancy/Nature/China…）不得判为未核验占位', () => {
+  const body = [
+    '### [L01] Fraser "Rethinking the Public Sphere"（na 子串·作者）', '',
+    '- **作者**: Nancy Fraser',
+    '- **年份**: 1990',
+    '- **类型**: 期刊文章 [J]',
+    '- **出版社/期刊**: *China Quarterly*, Vol. 12, No. 3, pp. 1-20',
+    '- **DOI/URL**: DOI: 10.9999/na.001',
+    '',
+  ].join('\n')
+  const d = mk(body, { withIndex: false })
+  try {
+    // 索引段省略时索引作者缺失属正常降级；此处只钉「作者/刊名不被占位」
+    const r = run([S(), d, '--json'])
+    assert.equal(r.code, 0, '正当著录值不得产出假占位/假对账 → 必须 exit 0：' + r.out + r.err)
+    const j = JSON.parse(r.stdout.slice(r.stdout.indexOf('{')))
+    assert.equal(j.generated, 1)
+    assert.equal(j.blocked.length, 0)
+    assert.equal(j.placeholders.length, 0, 'Nancy Fraser / China Quarterly 不得被误判为未核验 → 假 ⟨缺 作者/刊名⟩')
+    assert.equal(j.crossCheck.length, 0, '正当著录值不得产出假对账不一致')
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
+test('⑩ P0-1 回归对照：整值 n/a / N/A / unknown / TBD 仍判为未核验占位（词边界不放宽真占位）', () => {
+  const d = mk(J('L01').replace('- **作者**: Robert Nozick', '- **作者**: n/a'))
+  try {
+    const r = run([S(), d, '--json'])
+    assert.equal(r.code, 1, '整值 n/a 作者必须仍判缺字段 → exit 1')
+    const j = JSON.parse(r.stdout.slice(r.stdout.indexOf('{')))
+    assert.match(JSON.stringify(j.placeholders || []), /⟨缺 作者⟩/)
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})

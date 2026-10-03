@@ -506,6 +506,24 @@ const transientInfo = (() => {
 //   当场被 `tests/scripts.test.mjs` 的 A5 用例（机械 1 / 裁定 0 的同稿复跑）红掉。
 const refuseOverwrite = !!(reportPath && !adjudicatePath && !overwriteAdjudicated
   && transientInfo?.prevHadVerdict && transientInfo.prevSha && transientInfo.prevSha !== draftSha256);
+// v18.67.0（全量审计-v18.66.0 P1 修复）：「报告不存在但同目录留有带裁定的 .bak 回滚点」的判据
+//   **前移到报告构造之前**，并把 `write_refused` 字段写进 stdout JSON。
+//   旧版该判据在 stdout 打印（下文 console.log(JSON.stringify(report))）**之后**才跑 → 走这条
+//   exit 3 路径时 stdout **没有** `write_refused` 字段 → `final-check.mjs` 的 `mGateRefusedWrite=false`
+//   → 磁盘报告不存在 → recommendation 落入「仅 P2 / LLM 兜底 / SKIP 残留」——与真实原因
+//   （拒绝写盘、须人工处置）**语义相反**，T8 会走错处置方向。判据与退出码完全不变，只让工具自己说。
+const bakRefuse = (() => {
+  if (!reportPath || adjudicatePath || overwriteAdjudicated || existsSync(reportPath)) return null;
+  const bakDir = dirname(reportPath); const bakBase = basename(reportPath);
+  let baks = [];
+  try { baks = readdirSync(bakDir).filter((f) => f.startsWith(bakBase + '.') && f.endsWith('.bak')); } catch { return null; }
+  let newestBak = null; let newestT = -1;
+  for (const f of baks) {
+    try { const st = statSync(join(bakDir, f)); if (st.mtimeMs > newestT) { newestT = st.mtimeMs; newestBak = join(bakDir, f); } } catch { /* 跳过读不动的 */ }
+  }
+  if (!newestBak) return null;
+  try { return /"_t8_(?:conclusion|llm_review)"/.test(readFileSync(newestBak, 'utf8')) ? newestBak : null; } catch { return null; }
+})();
 if (transientInfo?.transient) {
   console.error(`⚠️ 本次运行处于**换稿重裁中间态**（v18.52.0 F-BB）：${transientInfo.transient_reason}`);
 }
@@ -543,6 +561,8 @@ const report = {
   //   消费侧（`final-check.mjs` 的 `summary.mGate`）据此把「磁盘旧报告」标成非本次产物；
   //   没有这个字段时，它只能按「那一步非零」猜，而同稿复跑的进程码非零但**写了盘**（A5 用例实测红）。
   ...(refuseOverwrite ? { write_refused: 'existing_t8_verdict_on_changed_draft' } : {}),
+  // v18.67.0（全量审计 P1 修复续）：第二条拒绝写盘路径（.bak 回滚点仍在）同样自报——见上方 bakRefuse。
+  ...(bakRefuse ? { write_refused: 'orphan_bak_with_t8_verdict' } : {}),
 };
 console.log(JSON.stringify(report, null, 2));
 if (reportPath) {
@@ -698,6 +718,14 @@ if (reportPath) {
         console.error('裁定文件缺 `true_p0` / `true_p1`（可写 `true_p0_count` / `true_p1_count`）——无法判定裁定值');
         process.exit(30);
       }
+      // v18.67.0（全量审计-v18.66.0 P1 修复）：true_p0/true_p1 必须是**可整数值**。
+      //   旧版只挡 `undefined`：`Number("2条")`/`Number("一")` = NaN，`NaN > 0` = false → adjExit 静默
+      //   按 0 计；若本次机械值恰为 0，`adjExit === report.exit` 绕过证伪四件套校验，且 NaN 经
+      //   JSON.stringify 落盘变 null（非合法 JSON number）。裁定通道是放行权威入口，宁拒勿猜。
+      if (!Number.isInteger(Number(aP0)) || !Number.isInteger(Number(aP1)) || Number(aP0) < 0 || Number(aP1) < 0) {
+        console.error(`裁定文件的 true_p0 / true_p1 必须是非负整数（收到 true_p0=${JSON.stringify(aP0)}, true_p1=${JSON.stringify(aP1)}）——拒绝裁定`);
+        process.exit(30);
+      }
       const adjExit = Number(aP0) > 0 ? 2 : (Number(aP1) > 0 ? 1 : 0);
       const reviewText = typeof adj.llm_review === 'string' ? adj.llm_review : JSON.stringify(adj.llm_review ?? '');
       const FOUR = [/逐条/, /真阳性/, /规范/, /复核|独立/];
@@ -753,25 +781,16 @@ if (reportPath) {
     //   除非调用方显式声明 `--overwrite-adjudicated`。
     // 边界（如实）：它挡不住「连 `.bak` 一起删」——那已是有意毁灭证据，超出「防**静默**越界」的范围
     //   （同 ADR-0004 的 Consequences/Negative）。
-    if (reportPath && !existsSync(reportPath) && !adjudicatePath && !overwriteAdjudicated) {
-      const bakDir = dirname(reportPath); const bakBase = basename(reportPath);
-      let baks = [];
-      try { baks = readdirSync(bakDir).filter((f) => f.startsWith(bakBase + '.') && f.endsWith('.bak')); } catch { /* 目录读不动 → 不据此判负 */ }
-      let newestBak = null; let newestT = -1;
-      for (const f of baks) {
-        try { const st = statSync(join(bakDir, f)); if (st.mtimeMs > newestT) { newestT = st.mtimeMs; newestBak = join(bakDir, f); } } catch { /* 跳过读不动的 */ }
-      }
-      let bakHadVerdict = false;
-      if (newestBak) { try { bakHadVerdict = /"_t8_(?:conclusion|llm_review)"/.test(readFileSync(newestBak, 'utf8')); } catch { /* 跳过 */ } }
-      if (bakHadVerdict) {
-        console.error('⛔ **拒绝写盘（回滚点仍在）**：目标报告不存在，但同目录留有**带 T8 裁定的回滚点**：');
-        console.error(`   ${basename(newestBak)}`);
-        console.error('   判读：**有人删掉了带裁定的报告**（`rm` 是「重跑」的恢复动作，也是本判据唯一能看到的痕迹）。');
-        console.error('   两条出路：① 确认要弃掉旧裁定重来 → 显式加 `--overwrite-adjudicated` 重跑；② 要写/更新裁定 → 走正式通道 `--adjudicate <T8裁定.json>`。');
-        console.error('   判据：**防的是静默越界**——删报告再重跑会让旧裁定整段消失而不留痕（v18.64.2 反哺报告-v5 §v5.0-1 收口）。');
-        console.error('→ 退出码 3（需人工复核，不得当作通过）');
-        process.exit(3);
-      }
+    // v18.67.0（全量审计 P1 修复）：判据已**前移**到报告构造前（`bakRefuse`），stdout JSON 现已带
+    //   `write_refused: 'orphan_bak_with_t8_verdict'` 字段——final-check 不再把它误读成「仅 P2 残留」。
+    if (bakRefuse) {
+      console.error('⛔ **拒绝写盘（回滚点仍在）**：目标报告不存在，但同目录留有**带 T8 裁定的回滚点**：');
+      console.error(`   ${basename(bakRefuse)}`);
+      console.error('   判读：**有人删掉了带裁定的报告**（`rm` 是「重跑」的恢复动作，也是本判据唯一能看到的痕迹）。');
+      console.error('   两条出路：① 确认要弃掉旧裁定重来 → 显式加 `--overwrite-adjudicated` 重跑；② 要写/更新裁定 → 走正式通道 `--adjudicate <T8裁定.json>`。');
+      console.error('   判据：**防的是静默越界**——删报告再重跑会让旧裁定整段消失而不留痕（v18.64.2 反哺报告-v5 §v5.0-1 收口）。');
+      console.error('→ 退出码 3（需人工复核，不得当作通过）');
+      process.exit(3);
     }
     // v18.12.0（全量审计 L-50）：`--report` 旧版是裸 writeFileSync —— 路径敲成被审正文即销毁它。
     //   现走 writeReport：与 draftPath 同文件 → exit 10；并留时间戳 .bak（旧版无回滚点）。
