@@ -94,11 +94,19 @@ if (process.argv.includes('--dump-thresholds')) {
 }
 
 const args = process.argv.slice(2);
-const MGATE_USAGE = '用法: node m-gate-check.mjs <定稿.md> <证据包目录> [--summary] [--fig-dir <dir>] [--report <path>] [--adjudicate <T8裁定.json>]';
-let wantSummary, figDirArg, reportPath, adjudicatePath, positional;
+const MGATE_USAGE = '用法: node m-gate-check.mjs <定稿.md> <证据包目录> [--summary] [--fig-dir <dir>] [--report <path>] [--adjudicate <T8裁定.json>] [--overwrite-adjudicated]'
+  + '（`--overwrite-adjudicated` 与 `--adjudicate` 同给时本旗标无效：裁定通道优先）';
+// v18.64.0（反哺报告-v5 §v5.0-1）：新增 `--overwrite-adjudicated` —— **阶段边界显式化**旗标。
+//   为什么要有它：目标报告已存在且含 T8 裁定时，普通 `--report` 复跑**默认拒绝覆盖**（exit 3），
+//   因为「谁有权写哪个阶段的产物」在工具层原本没有任何校验（实测事故：G14 终闸子代理用 `--report`
+//   覆盖了 T8 的裁定报告，14 278 B → 9 609 B；阶段边界被**静默**破坏，只在 `.bak` 时序里看得见）。
+//   但 T8 自己的**换稿重裁**是正当的，且它与越界覆盖在工具层**无法凭身份区分**（身份只能自报，
+//   自报不可信）→ 故判据不挂在「你是谁」，而挂在「**是否显式声明**」：要跨越阶段边界，必须显式带旗标。
+//   判据一句话：**防的是静默越界，不是禁止越界**（同 `对照表` 的「不设防同改清单，防的是静默」）。
+let wantSummary, figDirArg, reportPath, adjudicatePath, overwriteAdjudicated, positional;
 try {
   const parsed = parseCliArgs(args, {
-    flags: ['--summary'],
+    flags: ['--summary', '--overwrite-adjudicated'],
     values: { '--fig-dir': 'final/图件', '--report': 'final/M-Gate-Report.json', '--adjudicate': 'audits/t8-conclusion.json' },
     minPositionals: 2,
     maxPositionals: 2,
@@ -108,6 +116,7 @@ try {
   figDirArg = parsed.opts['--fig-dir'];
   reportPath = parsed.opts['--report'];
   adjudicatePath = parsed.opts['--adjudicate'];
+  overwriteAdjudicated = parsed.flags.has('--overwrite-adjudicated');
   positional = parsed.positionals;
 } catch (e) {
   if (e && e.code === CLI_USAGE_CODE) { console.error(e.message); console.error(MGATE_USAGE); process.exit(10); }
@@ -455,7 +464,7 @@ const transientInfo = (() => {
   try { if (existsSync(reportPath)) prev = JSON.parse(readFileSync(reportPath, 'utf8')); } catch { prev = null; }
   const prevRun = prev ? (Number.isInteger(prev.write_run) ? prev.write_run : 1) : 0;
   const writeRun = prevRun + 1;
-  if (!prev) return { write_run: writeRun, transient: false };
+  if (!prev) return { write_run: writeRun, transient: false, prevHadVerdict: false, prevSha: null };
   const prevSha = prev.verdict_scope?.draft_sha256;
   // 闸门记录里的「实据 sha256」——取法与 M-Exist-5 的互锁**同源**（同一正则，免得两处口径分叉）
   const projDirT = dirname(dirname(draftPath));
@@ -472,14 +481,31 @@ const transientInfo = (() => {
     return {
       write_run: writeRun,
       transient: true,
+      // v18.64.2（自审）：把「阶段边界」要用到的两个事实一并带出——避免写盘块与预告块**两处各算一遍**
+      //   （同一事实两处实现 = 本仓最反感的形态）。
+      prevHadVerdict: !!(prev._t8_conclusion || prev._t8_llm_review),
+      prevSha: typeof prevSha === 'string' ? prevSha : null,
       transient_reason:
         `换稿重裁窗口：闸门记录-${recWhich} 已指向本稿（sha256 ${sha12(draftSha256)}…），`
         + `而磁盘上既有报告仍绑定旧稿（sha256 ${sha12(prevSha)}…）→ 本次 M-Exist-5 的指纹互锁是对着**旧报告**判的，`
         + `其 P0/P1 可能在下次运行消失。**本次机械值不构成权威**：请确认闸门记录与报告都已更新后再跑一次取稳定态（v18.52.0 F-BB）`,
     };
   }
-  return { write_run: writeRun, transient: false };
+  return {
+    write_run: writeRun,
+    transient: false,
+    prevHadVerdict: !!(prev._t8_conclusion || prev._t8_llm_review),
+    prevSha: typeof prevSha === 'string' ? prevSha : null,
+  };
 })();
+// v18.64.2（自审 + 独立审计 A-P0-①）：**「本次是否因阶段边界拒绝写盘」必须在打印报告之前算出来**，
+//   并作为字段写进 stdout 的 JSON。为什么：消费侧（`final-check.mjs`）只能从 `steps[].exit` 判断那一步
+//   成不成功，而「m-gate 非零」**既有可能是没写盘（拒绝覆盖），也有可能是写了盘但机械值非零**
+//   （同稿复跑就是后者：进程码 = 本次机械值 1，报告照写且保留裁定）——两者**不能靠退出码区分**。
+//   判据：**让工具自己说**（一个字段比两处推断可靠）。实测教训：本判据第一版按「那一步非零」推断，
+//   当场被 `tests/scripts.test.mjs` 的 A5 用例（机械 1 / 裁定 0 的同稿复跑）红掉。
+const refuseOverwrite = !!(reportPath && !adjudicatePath && !overwriteAdjudicated
+  && transientInfo?.prevHadVerdict && transientInfo.prevSha && transientInfo.prevSha !== draftSha256);
 if (transientInfo?.transient) {
   console.error(`⚠️ 本次运行处于**换稿重裁中间态**（v18.52.0 F-BB）：${transientInfo.transient_reason}`);
 }
@@ -513,6 +539,10 @@ const report = {
       ...(transientInfo.transient_reason ? { transient_reason: transientInfo.transient_reason } : {}),
     }
     : {}),
+  // v18.64.2（自审 + 独立审计 A-P0-①）：**本次是否因阶段边界拒绝写盘**——让工具自己说。
+  //   消费侧（`final-check.mjs` 的 `summary.mGate`）据此把「磁盘旧报告」标成非本次产物；
+  //   没有这个字段时，它只能按「那一步非零」猜，而同稿复跑的进程码非零但**写了盘**（A5 用例实测红）。
+  ...(refuseOverwrite ? { write_refused: 'existing_t8_verdict_on_changed_draft' } : {}),
 };
 console.log(JSON.stringify(report, null, 2));
 if (reportPath) {
@@ -578,6 +608,35 @@ if (reportPath) {
               `⛔ 硬 P0 红线命中（${hardRedLineHits.join(' / ')}）——拒绝采纳既有 T8 裁定值，落盘 exit=${report.exit}；`
               + `红线 4 类不可 LLM 兜底（v18.11.0 F-1 契约，v18.12.0 L-44 实装）`,
             );
+          } else if (refuseOverwrite) {
+            // === v18.64.0（反哺报告-v5 §v5.0-1）：阶段边界**硬判据** —— 拒绝**静默**覆盖带 T8 裁定的报告 ===
+            // 触发条件（四个同时成立）：① 目标报告已存在且**含 T8 裁定**；② **被审正文真的换了**
+            //   （`prev.verdict_scope.draft_sha256 !== 本次`，即旧裁定绑定的正文已不是本稿）；
+            //   ③ **不是** `--adjudicate` 正式通道（那条通道有自己的四道校验 + exit 30，且「拒绝裁定时
+            //   落盘机械值」是它刻意的行为，见上方 `rejectAdjudication`）；④ 调用方**没有**显式声明
+            //   `--overwrite-adjudicated`。
+            // ⚠️ 判据刻意**收窄到「正文真换了」**（而不是笼统的 `!sameDraft`）：`sameDraft` 还包含
+            //   「`verdict_scope` 指向本稿、但裁定段自述指纹写错」这一种**同一稿内的自相矛盾**（F-AV②）——
+            //   那种情形没有跨阶段，应当照旧「标 verdict_stale + 落盘本次机械值」把它**改对**，
+            //   拦下来反而会锁死一份内部矛盾的报告（实测：按 `!sameDraft` 写会让 F-AV② 用例红）。
+            //   同理 `prevSha` 缺失（v18.0.5 之前写入的报告）**不拦**——无法证明裁决绑的是哪一稿，
+            //   旧行为（覆盖 + 标过期 + 在 reason 里写明「无指纹」）才是诚实的兜底。
+            // 为什么拒绝而不是照旧覆盖：旧行为（分支 D）是「覆盖 + 标 `verdict_stale`」——内容上旧裁定仍被
+            //   `keep` 保留，但**产物边界**被静默跨过（实测事故：G14 子代理覆盖 T8 报告，文件 14 278 → 9 609 B），
+            //   且只在 `.bak` 时间序列里可查。判据：**跨阶段写盘必须是显式动作**。
+            // 为什么复用 exit 3（不新开码）：3 的既有语义 = 「仅 P2·soft·SKIP，**需人工复核**，不得当通过」
+            //   （`m-gate-check.mjs` 的取值分支 + `final-check.mjs:175` 同义复用都如此），本场景正是
+            //   「脚本拒绝替你判断，交人看一眼」；退出码配额（12 个）已满，新开码要动三处契约而不增信息量。
+            console.error(
+              '⛔ **拒绝覆盖**：目标报告已存在且含 T8 裁定，而被审正文指纹已变更 —— 本次**不写盘**。\n'
+              + `   既有报告绑定正文：${String(prevSha).slice(0, 12)}… ｜ 本次正文：${draftSha256.slice(0, 12)}…\n`
+              + `   既有裁定值 exit=${typeof prev.exit === 'number' ? prev.exit : 'n/a'}；报告**原样保留**在磁盘（${reportPath}）。\n`
+              + '   两条出路：① 这确是 T8 的**换稿重裁** → 显式加 `--overwrite-adjudicated` 重跑'
+              + '（旧裁定原文保留、`verdict_stale` 标 true）；② 要写**新裁定** → 走正式通道 `--adjudicate <T8裁定.json>`。\n'
+              + '   判据：**防的是静默越界，不是禁止越界**——阶段边界的跨越必须显式（v18.64.0 反哺报告-v5 §v5.0-1）。',
+            );
+            console.error('→ 退出码 3（需人工复核，不得当作通过）');
+            process.exit(3);
           } else {
             // 正文已变（或旧报告无指纹）→ 旧裁定不再适用于本版正文：保留裁定原文供追溯，但落盘用**机械值**
             out.verdict_stale = true;
@@ -684,6 +743,35 @@ if (reportPath) {
       };
       finalExit = adjExit;
       console.error(`✅ 已写入 T8 裁定：exit=${adjExit}（script_exit_raw=${report.exit}，证伪四件套 ${fourHits}/4，正文指纹 ${String(draftSha256).slice(0, 12)}…）`);
+    }
+    // === v18.64.2（自审 · 独立审计 A-P0-②）：**删掉报告再跑**不得静默丢掉裁定 ===
+    // 停靠点：上面的「拒绝覆盖」只在「目标报告**存在**且含裁定」时生效；把报告 `rm` 掉再跑就绕过了它
+    //   （实测：rm → 换稿 → 普通 `--report` → 新报告落盘、`_t8_conclusion` 整段消失），而 `rm` 恰好是
+    //   「想重跑却看到旧报告」的**恢复动作**——即：事故的恢复路径 = 本判据的绕过路径。
+    // 判据（刻意窄）：目标**不存在**、但同目录留有 `writeReport` 写下的**带裁定的回滚点**
+    //   （`<名>.<时间戳>.bak`）→ 视为「有人删掉了带裁定的报告」，按同一套语义拒绝（exit 3），
+    //   除非调用方显式声明 `--overwrite-adjudicated`。
+    // 边界（如实）：它挡不住「连 `.bak` 一起删」——那已是有意毁灭证据，超出「防**静默**越界」的范围
+    //   （同 ADR-0004 的 Consequences/Negative）。
+    if (reportPath && !existsSync(reportPath) && !adjudicatePath && !overwriteAdjudicated) {
+      const bakDir = dirname(reportPath); const bakBase = basename(reportPath);
+      let baks = [];
+      try { baks = readdirSync(bakDir).filter((f) => f.startsWith(bakBase + '.') && f.endsWith('.bak')); } catch { /* 目录读不动 → 不据此判负 */ }
+      let newestBak = null; let newestT = -1;
+      for (const f of baks) {
+        try { const st = statSync(join(bakDir, f)); if (st.mtimeMs > newestT) { newestT = st.mtimeMs; newestBak = join(bakDir, f); } } catch { /* 跳过读不动的 */ }
+      }
+      let bakHadVerdict = false;
+      if (newestBak) { try { bakHadVerdict = /"_t8_(?:conclusion|llm_review)"/.test(readFileSync(newestBak, 'utf8')); } catch { /* 跳过 */ } }
+      if (bakHadVerdict) {
+        console.error('⛔ **拒绝写盘（回滚点仍在）**：目标报告不存在，但同目录留有**带 T8 裁定的回滚点**：');
+        console.error(`   ${basename(newestBak)}`);
+        console.error('   判读：**有人删掉了带裁定的报告**（`rm` 是「重跑」的恢复动作，也是本判据唯一能看到的痕迹）。');
+        console.error('   两条出路：① 确认要弃掉旧裁定重来 → 显式加 `--overwrite-adjudicated` 重跑；② 要写/更新裁定 → 走正式通道 `--adjudicate <T8裁定.json>`。');
+        console.error('   判据：**防的是静默越界**——删报告再重跑会让旧裁定整段消失而不留痕（v18.64.2 反哺报告-v5 §v5.0-1 收口）。');
+        console.error('→ 退出码 3（需人工复核，不得当作通过）');
+        process.exit(3);
+      }
     }
     // v18.12.0（全量审计 L-50）：`--report` 旧版是裸 writeFileSync —— 路径敲成被审正文即销毁它。
     //   现走 writeReport：与 draftPath 同文件 → exit 10；并留时间戳 .bak（旧版无回滚点）。

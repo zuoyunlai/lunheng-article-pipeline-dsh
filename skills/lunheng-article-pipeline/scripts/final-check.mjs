@@ -35,11 +35,11 @@ installExitGuard();   // fs 类异常 → 10；其余内部错误 → 70（不�
 // v18.2.9（第三方审计 A7）：参数解析迁移到 `_lib/cli-args.mjs` 唯一实现
 //   （旧手写 find/indexOf：未知旗标静默忽略、多余位置参数静默取第一个——详见 cli-args 头注释）。
 const args = process.argv.slice(2);
-const FC_USAGE = '用法: node scripts/final-check.mjs <run/项目名> [--no-summary] [--json] [--report <path>]';
-let wantJson, noSummary, reportPath, project;
+const FC_USAGE = '用法: node scripts/final-check.mjs <run/项目名> [--no-summary] [--json] [--report <path>] [--overwrite-adjudicated]';
+let wantJson, noSummary, reportPath, overwriteAdjudicated, project;
 try {
   const parsed = parseCliArgs(args, {
-    flags: ['--json', '--no-summary'],
+    flags: ['--json', '--no-summary', '--overwrite-adjudicated'],
     values: { '--report': 'final/final-check-report.json' },
     minPositionals: 1,
     maxPositionals: 1,
@@ -47,6 +47,7 @@ try {
   });
   wantJson = parsed.flags.has('--json');
   noSummary = parsed.flags.has('--no-summary');
+  overwriteAdjudicated = parsed.flags.has('--overwrite-adjudicated');
   reportPath = parsed.opts['--report'];
   project = parsed.positionals[0];
 } catch (e) {
@@ -74,7 +75,11 @@ const steps = [
   //   视图与报告不同步。现改为四步：字数 → 证据卡刷新 → M 门 → 审计视图（读本次报告）。
 ];
 if (!noSummary) steps.push({ name: 'build-evidence-bundle.mjs（刷新证据卡）', cmd: 'node', args: [join(scriptDir, 'build-evidence-bundle.mjs'), project], opt: true, parse: null });
-steps.push({ name: 'm-gate-check.mjs', cmd: 'node', args: [join(scriptDir, 'm-gate-check.mjs'), final, evDir, '--report', join(project, 'final', 'M-Gate-Report.json')], opt: false, parse: 'm-gate' });
+steps.push({ name: 'm-gate-check.mjs', cmd: 'node', args: [join(scriptDir, 'm-gate-check.mjs'), final, evDir, '--report', join(project, 'final', 'M-Gate-Report.json'), ...(overwriteAdjudicated ? ['--overwrite-adjudicated'] : [])], opt: false, parse: 'm-gate' });
+// v18.64.0（反哺报告-v5 §v5.0-1）：`--overwrite-adjudicated` **必须能从这个唯一串联方透传**——
+//   否则 T8 的正当「换稿重裁」会在 final-check 这一层被硬挡（m-gate-check 拒绝覆盖并 exit 3，
+//   而 final-check 的 args 是写死的）→ 那会造出「唯一的正常入口反而进不去」的死结。
+//   **它不是默认行为**：不带旗标时 M 门拒绝静默覆盖带裁定的报告，并把两条出路打在 stderr 上。
 
 if (!wantJson) {
   console.log(`# final-check: ${project}`);
@@ -96,7 +101,19 @@ for (const step of steps) {
   const spawnFailed = r.status === null && (r.error || r.signal);
   const statusVal = spawnFailed ? EXIT_INTERNAL : r.status;
   const ok = statusVal === 0;
-  summary.push({ step: step.name, exit: statusVal, ok, ...(spawnFailed ? { spawnError: String(r.error?.message || r.signal) } : {}) });
+  // v18.64.2（自审批 P1）：**非零步的子进程 stderr 必须被 surface**。
+  //   病灶（本批实测暴露，非本批引入）：旧版 `spawnSync` 用 `stdio:['ignore','pipe','pipe']` 捕获了 stderr
+  //   却**从不读取**，而本文件自己的文案（:293 那句「请…查该步 stderr」）叫读者去看一个**从未被打印的东西**。
+  //   本批之前这只是一个「文案与实现不符」的瑕疵；v18.64.0 起 `m-gate-check` 的**拒绝覆盖**把
+  //   「两条出路」只打在 stderr 上 → 在 `final-check` 这条**T8 主管道**里，操作者只会看到 `exit 3` 而
+  //   **看不到该怎么办**（`08-终检-finalizer.md` 正是让 T8 走这条命令）。故升为 P1 修掉。
+  //   口径：只在**非零**时带（正常步的 stderr 是进度噪音，全带上会把报告撑爆）；截尾 1 200 字符。
+  const stderrTail = (r.stderr || '').trim()
+  summary.push({
+    step: step.name, exit: statusVal, ok,
+    ...(spawnFailed ? { spawnError: String(r.error?.message || r.signal) } : {}),
+    ...(!ok && stderrTail ? { stderrTail: stderrTail.length > 1200 ? stderrTail.slice(-1200) : stderrTail } : {}),
+  });
   // 解析子脚本的 JSON 输出（捕获整段 stdout，从头找第一个 { 到末尾找最后一个 }）
   if (step.parse) {
     const stdout = (r.stdout || '').trim();
@@ -122,6 +139,20 @@ for (const step of steps) {
   }
   if (!ok && !step.opt) {
     if (!wantJson) console.error(`\n❌ [${step.name}] 非零退出 ${statusVal}（硬依赖，主控必须修复）`);
+    // v18.64.2：把该步自己的话原样转出来——它是**唯一**的处置线索（例：m-gate-check 的「拒绝覆盖」
+    //   会在这里给出两条出路）。旧版把它吞掉，等于「让人查一份从不存在的日志」。
+    if (stderrTail) console.error(`   ↳ 该步 stderr（原样，尾部 ${stderrTail.length} 字符）：\n${stderrTail}`);
+    // 机器面同样要标注：`outputs[...]` 里的值是**该步 stdout 打印的**，而该步非零 ⇒ **落盘结果未确认**
+    //   （v18.64.0 起 m-gate 的拒绝覆盖正是这种形态：stdout 说机械值 1，磁盘报告仍是旧裁定 0）。
+    //   不给标注的话，只读 `outputs['m-gate'].exit` 的消费者会以为报告已被更新——本仓对
+    //   「产物说 A、退出码说 B」有专门的历史教训（F-BF①）。
+    if (step.parse && parsedOutputs[step.parse] && typeof parsedOutputs[step.parse] === 'object') {
+      parsedOutputs[step.parse] = {
+        ...parsedOutputs[step.parse],
+        _stdoutOnly: true,
+        _stdoutOnlyNote: '该步非零退出：上面这些字段来自它的 **stdout**，其**落盘结果未确认**（磁盘产物可能未更新）——判定请以各产物自身为准',
+      };
+    }
     exitCode = statusVal || 1;
     break;
   }
@@ -132,6 +163,7 @@ for (const step of steps) {
       `\n⚠️ [${step.name}] 可选步骤非零退出 ${statusVal} —— 本步骤输出缺失或不可用，`
       + `终检结论已按降级处理（不得据此认为该步骤「通过」）`,
     );
+    if (stderrTail) console.error(`   ↳ 该步 stderr（原样）：\n${stderrTail}`);
   }
 }
 
@@ -188,6 +220,17 @@ if (exitCode === 0 && notes.length > 0) exitCode = 3;
 //     故这个等式成立就是「M 门是首个失败步」），且裁定值存在且 ≠ 机械值。
 //     **其它步骤**（count-chars 口径失真 → 3 / 内部错误 70 / 参数错 10）一律**原样保留**：
 //     裁定只对 M 门的机械值有权威，不得把别的失败一并掩掉。
+// v18.64.2（自审 + 独立审计 A-P0-① 残余）：**「m-gate 那一步非零」≠「磁盘报告属于本次运行」**。
+//   病灶（实测）：v18.64.0 的**拒绝覆盖**让 m-gate 不写盘 → 磁盘上仍是**上一版正文**的裁定报告，
+//   而下面 `mGateInfo` 照读不误 → `summary.mGate` 报出 `stableExit: 0` + note「机械值 1 → T8 裁定 0」，
+//   同时进程码是 3（拒绝写盘）。**只读 `summary.mGate` 的消费方会把「拒绝」读成「已裁定放行」**——
+//   与 F-BF①「产物说 A、退出码说 B」同型，只是这次错在**摘要块**而非退出码。
+//   判据：**不做推断，读工具自己说的那个字段**——m-gate 在 stdout JSON 上给了 `write_refused`
+//   （v18.64.2）。⚠️ 第一版按「那一步非零」推断，当场被 `tests/scripts.test.mjs` 的 A5 用例红掉：
+//   同稿复跑的**进程码也是非零**（= 本次机械值），但报告照写、裁定照留。
+const mGateStep = summary.find((s) => s.step === 'm-gate-check.mjs');
+const mGateRefusedWrite = !!(parsedOutputs['m-gate'] && parsedOutputs['m-gate'].write_refused);
+
 const mGateInfo = (() => {
   const mg = parsedOutputs['m-gate'];
   if (!mg || mg.exit === undefined) return null;
@@ -213,10 +256,23 @@ const mGateInfo = (() => {
     hardExit: mg.exit,                        // 机械值（= M-Gate-Report.json 的 script_exit_raw 语义）
     adjudicatedExit,                          // T8 经 --adjudicate 写入的裁定值（null = 未裁定）
     adjudicatedBy,
-    stableExit: adjudicatedExit ?? mg.exit,   // **交付件应引用的稳定态**（有裁定取裁定）
-    note: adjudicatedExit !== null
-      ? `机械值 ${mg.exit} → T8 裁定 ${adjudicatedExit}（稳定态 = ${adjudicatedExit}；交付件只引用稳定态，v18.52.0 F-BB）`
-      : '无 T8 裁定（稳定态 = 机械值）',
+    // **交付件应引用的稳定态**（有裁定取裁定）。⚠️ v18.64.2：本次 M 门**未写盘**时它**不适用** →
+    //   显式 null（不给一个会被误读成「通过」的 0），并把原因写在 `stableExitApplies` / `reportIsStale` 上。
+    stableExit: mGateRefusedWrite ? null : (adjudicatedExit ?? mg.exit),
+    stableExitApplies: !mGateRefusedWrite,
+    ...(mGateRefusedWrite
+      ? {
+        reportIsStale: true,
+        reportIsStaleReason: `本次 m-gate 步**拒绝写盘**（write_refused=${mg.write_refused}，该步 exit ${mGateStep?.exit ?? 'n/a'}）——`
+          + '上面这些裁定值取自**磁盘既有报告**，它绑定的是**上一版正文**，**不构成本次交付判据**'
+          + '（处置见该步 stderr 的两条出路）',
+      }
+      : {}),
+    note: mGateRefusedWrite
+      ? `⚠️ 本次 M 门**拒绝写盘**（该步 exit ${mGateStep?.exit ?? 'n/a'}）：磁盘报告仍是**旧稿裁定**，**稳定态不适用**`
+      : (adjudicatedExit !== null
+        ? `机械值 ${mg.exit} → T8 裁定 ${adjudicatedExit}（稳定态 = ${adjudicatedExit}；交付件只引用稳定态，v18.52.0 F-BB）`
+        : '无 T8 裁定（稳定态 = 机械值）'),
   };
 })();
 const adjudicationCoversFailure = !!(mGateInfo && typeof mGateInfo.hardExit === 'number'
@@ -258,18 +314,22 @@ const report = {
     // v18.2.6：末档不再把「任何非 0/1/2/3/70 的码」都渲染成 exit 10（那是误导）——10 与非 10 分开。
     // v18.62.7（A5）：**本字段与 `exit` 都由稳定态渲染**（有 T8 裁定取裁定）；两数不同时前缀点明，
     //   使「脚本说 1、报告说 0」这类自相矛盾在**同一条文案里**就被解释掉（不再要求人去比对两份 JSON）。
-    recommendation: (stableExitCode !== exitCode
-      ? `[交付判据 = 稳定态 ${stableExitCode}；机械读数 ${exitCode} 已被 T8 裁定覆盖（两份读数都在报告里）] `
-      : '') + (stableExitCode === 0
+    recommendation: (mGateInfo?.reportIsStale
+      ? '[⚠️ 本次 M 门**拒绝写盘**：磁盘 `M-Gate-Report.json` 仍是**上一版正文**的裁定，**不得据此判定本次交付**；两条出路见该步 stderr] '
+      : (stableExitCode !== exitCode
+        ? `[交付判据 = 稳定态 ${stableExitCode}；机械读数 ${exitCode} 已被 T8 裁定覆盖（两份读数都在报告里）] `
+        : '')) + (stableExitCode === 0
       ? '✅ 终检通过（无失败项），可交付主人终审'
       : stableExitCode === 1
       ? '⚠️ 终检存在 P1 残留，主控可触发 T5 修订一轮'
       : stableExitCode === 2
       ? '❌ 终检存在 P0 致命问题，禁止标记终检完成'
       : stableExitCode === 3
-      ? (notes.length
-        ? `🔍 不足以判「通过」：${notes[0]}${notes.length > 1 ? `（另有 ${notes.length - 1} 条见 summary.notes）` : ''}——须 T8 逐项复核后以 T8 裁定值放行`
-        : '🔍 仅 P2 / LLM兜底 / SKIP 残留（无 P0/P1）——须 T8 逐项复核后以 T8 裁定值放行（不得当作失败，也不得无条件当作通过）')
+      ? (mGateInfo?.reportIsStale
+        ? '⛔ M 门**拒绝覆盖**（exit 3，需人工复核）：磁盘报告未更新 → **本次没有有效稳定态**；请按该步 stderr 的两条出路处置（换稿重裁加 `--overwrite-adjudicated`，或走 `--adjudicate` 写新裁定）'
+        : (notes.length
+          ? `🔍 不足以判「通过」：${notes[0]}${notes.length > 1 ? `（另有 ${notes.length - 1} 条见 summary.notes）` : ''}——须 T8 逐项复核后以 T8 裁定值放行`
+          : '🔍 仅 P2 / LLM兜底 / SKIP 残留（无 P0/P1）——须 T8 逐项复核后以 T8 裁定值放行（不得当作失败，也不得无条件当作通过）'))
       : stableExitCode === EXIT_INTERNAL
       ? '🛠️ 内部错误（EX_SOFTWARE 70）——子步骤未跑起来或脚本缺陷，**与正文内容无关**；核对上面的 spawnError/栈后重跑'
       : stableExitCode === EXIT_USAGE

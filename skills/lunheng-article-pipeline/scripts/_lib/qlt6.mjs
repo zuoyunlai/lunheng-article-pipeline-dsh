@@ -201,6 +201,27 @@ export const evaluateQlt6 = ({ projectDir, draftPath }) => {
       panel.ratio = +norm.toFixed(4);
       panel.weighted = +(panel.weight * panel.ratio).toFixed(3);
       panel.evidence = { source: `audits/${rep.name}`, totalRaw: `${total}/30`, formula: 'clamp((总评分 − 16) / 14, 0, 1)' };
+      // ── v18.65.0（反哺报告-v5 §v5.3-2 的 C2 变体）：**逐维明细**（不新增尺、不参与计分）──
+      // 为什么只加明细而不造新框架：① QLT-6 已经把「论证强度」这把尺建好了（有标定），再拼一个总分
+      //   就等于把两种效度混成一个数（F-BC 的病灶本仓已明文禁止）；② 但「总评分 24/30」这个数**看不清
+      //   哪一维拖后腿** —— 而审稿人给分与作者改稿需要的正是这个定位信息。故只把**已有的**六维分
+      //   从报告里解析出来并列，**不动 ① 的 ratio/weighted，也不动总分**。
+      // 形态实测（`run/共锁-自愿性理论的第四象限/audits/审稿报告-v2.md`）：`### 1. 原创性（4/5）` ×6。
+      const dims = [...rt.matchAll(/^#{3,4}\s*\d+\.\s*([^（(\n]{1,24}?)\s*[（(]\s*(\d(?:\.\d)?)\s*\/\s*5\s*[）)]/gm)]
+        .map((mm) => ({ dimension: mm[1].trim(), score: Number(mm[2]), max: 5, ratio: +(Number(mm[2]) / 5).toFixed(4) }));
+      if (dims.length) {
+        panel.evidence.byDimension = dims;
+        const minR = Math.min(...dims.map((d) => d.ratio));
+        const weakest = dims.filter((d) => d.ratio === minR);
+        notes.push('① 逐维明细（**不参与计分**，只用于定位）：'
+          + dims.map((d) => `${d.dimension} ${d.score}/${d.max}`).join(' ｜ ')
+          + (weakest.length === dims.length
+            ? `；**各维同分（${weakest[0].score}/${weakest[0].max}），无相对短板**`
+            : '；最低维 = ' + weakest.map((d) => `${d.dimension} ${d.score}/5`).join('、')));
+      } else {
+        panel.evidence.byDimension = [];
+        notes.push('① 未解析出逐维明细（该审稿报告无 `### N. 名称（x/5）` 形态的六维标题）——只给总评分，**不影响 ① 的计分**');
+      }
       const verLine = rt.match(/评审版本[^\n]{0,40}?v(\d+)/) || rt.match(/被审[^\n]{0,16}?v(\d+)/);
       if (verLine && curVer && verLine[1] !== curVer) {
         panel.stale = true;
@@ -253,6 +274,32 @@ export const evaluateQlt6 = ({ projectDir, draftPath }) => {
         strictP01Count: strictCount,
       };
       notes.push(`② 计分用「${source}」（${conditions.length} 条）；同报告 P0/P1 条目全量为 ${strictCount} 条（非计分，供核对是否只挑了易关的条目）`);
+      // ── v18.65.0（C2 变体，同 ①）：**逐域明细**（按条件 id 里的 C1–C7 域聚合，不参与计分）──
+      // 它回答的是「哪一类反方攻击反复出现且没被回应」——这是闭合率一个总数看不出来的定位信息。
+      const byDomain = (() => {
+        const m = new Map();
+        for (const id of conditions) {
+          const dm = (id.match(/-(C\d+)-/) || [])[1] || 'other';
+          const e = m.get(dm) || { domain: dm, proposed: 0, closed: 0, openIds: [] };
+          e.proposed += 1;
+          if (closedIds.includes(id)) e.closed += 1; else e.openIds.push(id);
+          m.set(dm, e);
+        }
+        return [...m.values()]
+          .map((e) => ({ ...e, closureRatio: +(e.closed / e.proposed).toFixed(4) }))
+          .sort((a, b) => a.domain.localeCompare(b.domain, 'en'));
+      })();
+      closure.evidence.byDomain = byDomain;
+      if (byDomain.length) {
+        const unclosed = byDomain.filter((d) => d.closureRatio < 1);
+        notes.push('② 逐域明细（**不参与计分**，只用于定位）：'
+          + byDomain.map((d) => `${d.domain} ${d.closed}/${d.proposed}`).join(' ｜ ')
+          + (unclosed.length
+            // 只给「域(关闭/提出)」——逐条 openId 在 `components[1].evidence.byDomain[].openIds` 里，
+            //   不在这里展开（note 是给人扫一眼的；30 条 id 挤一行会把可读性打掉）
+            ? '；未闭合域 = ' + unclosed.map((d) => `${d.domain}(${d.closed}/${d.proposed})`).join('、')
+            : '（**全部域已闭合**）'));
+      }
       if (!bound.length) {
         notes.push(`② 无绑定当前正文指纹的复核报告（已在 ${reviews.length} 份里找过）→ **保守计 0**（未关闭）——`
           + '读数属于**低估方向**，跨项目比较前先看 `closureBasis`');
@@ -289,6 +336,10 @@ export const evaluateQlt6 = ({ projectDir, draftPath }) => {
         + '① 若审稿报告绑的是较早版本，会标 `stale` 但计入（如实附注）。两分量条件集来源可能不同（自述清单 / 标题全集），'
         + '已在 `components.closure.evidence.conditionSetSource` 写明——**跨项目比较前先对齐这一点**',
       noSum: '**不得与 QLT-1 相加**：合规分 + 论证强度拼一个总分 = 把两种效度混成一个数（F-BC 的病灶）',
+      byDomainNote: '**逐维 / 逐域明细（v18.65.0）只用于定位**（哪一维拖后腿、哪一类反例没被回应）——'
+        + '它们**不参与计分**（score 只由 ① 的 ratio 与 ② 的闭合率按 50/50 合成），**不得另算总分、不得与 QLT-1/QLT-6 相加**；'
+        + '逐维来自审稿报告的 `### N. 名称（x/5）` 标题（无该形态则空数组，不影响 ① 计分），'
+        + '逐域来自条件 id 的 `C1–C7` 段（无对应段则归 `other`）',
       calibration: CALIBRATION,
     },
     meta: {

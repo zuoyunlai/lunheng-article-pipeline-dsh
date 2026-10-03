@@ -145,6 +145,10 @@ const RULES = [
   ['analysis/素材加载清单.md', '素材加载清单.md'],   // v2.5.2-dsh.17：M-Form-11 的判定依据，须随证据包给 T7/T8 可见
   ['01-任务简报.md', '01-任务简报.md'],
   ['status.md', 'status.md'],
+  // v18.64.0（反哺报告-v5 §v5.3-1 的 C1-b 半）：**负知识账本**——外审要看的正是「哪些主张被证伪过」。
+  //   它存在就随包走（进 manifest，受 M-Exist-2 复算）；**不存在时跳过并计入「缺失源」是正常的**
+  //   （语义 = 本项目确实无已证伪项；契约见 `references/_shared/负知识账本.md` §七 空状态）。
+  ['audits/disproofs.jsonl', 'disproofs.jsonl'],
 ];
 
 // 版本化报告：**取版本号最大**的那一份（v2.5.2-dsh.17：与 M-Gate-Algorithm「N 取最大」同口径；
