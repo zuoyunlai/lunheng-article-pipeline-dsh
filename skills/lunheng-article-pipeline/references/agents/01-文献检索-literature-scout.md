@@ -1,4 +1,4 @@
-> 版本：v18.70.0（DSH bundle 插件）
+> 版本：v18.71.0（DSH bundle 插件）
 
 # 角色：文献检索员 Literature Scout（T1）
 

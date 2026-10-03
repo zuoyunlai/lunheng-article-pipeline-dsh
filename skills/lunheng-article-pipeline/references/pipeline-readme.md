@@ -1,4 +1,4 @@
-> 版本：v18.70.0（DSH bundle 插件）
+> 版本：v18.71.0（DSH bundle 插件）
 
 
 # 论衡（lunheng-article-pipeline）— 通用深度长文多 Agent 流水线 运行手册
@@ -374,6 +374,8 @@ Phase 5 终检      **T8** 主控终检 → final/定稿.md + 图件/（如有�
 
 
 <a id="dispatch"></a>
+
+> **可选：Phase 1 用 `workflow` 编排（D2，v18.71.0）**：三方检索（T1∥T2∥T3）无人在环，主控**显式选择**时可改用 `workflow` 工具一条脚本编排（主控只拿结构化结果、编排可复现）。**配方（复制即用脚本）与边界（四道人在环/闸门方向决策/T7 打回留主控）见 [`examples/workflow/phase1-retrieval.md`](../../examples/workflow/phase1-retrieval.md)**。默认仍用 `subagent` 三方真并行，不替换。
 
 ## 派发话术（主控复制即用）
 

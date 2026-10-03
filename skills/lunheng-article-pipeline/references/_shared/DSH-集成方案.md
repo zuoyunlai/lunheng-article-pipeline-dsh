@@ -1,6 +1,6 @@
 # 论衡 × DSH 能力面集成方案
 
-> 版本：v18.70.0
+> 版本：v18.71.0
 > **用途**：把论衡的既有机制（**随包脚本** / 并行阶段 / 状态机 / 人在环闸门）**对齐 DSH 已有能力面**，替代平行自建。§一–§六 是**实施方案**，§七 是**落地状态表**，§八 是**可选配方**。**脚本清单与数量真源 = `SKILL.md` §执行能力边界 的「随包脚本白名单」行**（本文件不复述数字）。
 > **依据**：DSH 官方文档 `docs/cookbook/adding-a-tool.md`、`docs/tool-execution-pipeline.md`、`docs/subsystems/*.md`、`docs/capability-seams.md`（知识库副本见 `dsh-plugin-guide/references/official-docs/`；行号对快照 commit `d347e703…`）。
 > **当前状态**：**C 组 10 项已启用 + 1 项 preset 已落地**：原生只读工具 + `executionMode` 声明 / `ctx.tools.guard()` 写保护 / `/lunheng-status` / 词预算门 / `tools/post-execute` 伦理脱敏自动挂载 / `file-watcher:change` refresh-gates HMR 联动 / `assistant/chunk` G14 启发式预筛 / `system-prompt/assemble` 钩子 / `agent/request` waterfall 模型路由 / `examples/preset/agent-tiered/cordis.yml` preset 化。一项仍未接线（Phase 内并行→`workflow`，依官方用法限定「仅在用户明确要求 workflow 或大规模编排时」用，故**降级为按需**）。**未做（Backlog）**：**H8** `session-log` SessionEvent 投影（依赖 v2.5.2-dsh.5 双文件分工定案，主人 review 后再做）；**H9** `session-query-sqlite`（依赖 H8）；**H10** `web_profile`（价值小）；**H11** `workflow` / `goals` / `jobs`（AGENTS.md 显式禁接）。
@@ -114,6 +114,8 @@ export function apply(ctx, config) {
 ---
 
 ## 三、方案 D2：Phase 内并行交给 `workflow` 工具
+
+> **状态（v18.71.0）**：**配方已落地**——Phase 1 三方检索的「复制即用」workflow 脚本见 [`examples/workflow/phase1-retrieval.md`](../../../examples/workflow/phase1-retrieval.md)；`pipeline-readme.md` §派发话术顶部加一行指针、`SKILL.md` 工具映射表加 `workflow` 可选入口。**仍是可选配方、不默认替换 `subagent`**；§3.3 边界与 §3.4 前置（主控显式选择、四道人在环留主控、留痕不变）全部维持。Phase 4.5（T9∥G14）涉及 T9 审稿人工判读与 G14 终闸，**未纳入**本配方（保持 subagent 路径）。
 
 ### 3.1 适用与收益
 
