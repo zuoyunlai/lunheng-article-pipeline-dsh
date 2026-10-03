@@ -51,41 +51,35 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { installExitGuard, requireExistingFile } from './_lib/exit-guard.mjs';
+import { parseArgs, USAGE_CODE } from './_lib/cli-args.mjs';   // v18.70.0：CLI 解析唯一实现（旧手写解析移除，见下）
 import { writeReport } from './_lib/destructive-write.mjs';
 import { countHan } from './_lib/han.mjs';                    // 汉字口径唯一真源
 import { parseTargetCandidates } from './_lib/target-chars.mjs';   // 篇幅候选解析唯一真源（v18.23.0 扩展；G8 字数硬阈用单值版 parseTargetChars）
 import { refsOf, quantNumberRegex } from './_lib/refs.mjs';     // 引用编号口径唯一真源；§8.3 #38 加定量数字口径
 import { firstEndnoteIndex, bodyStartAfterAbstract, maskFences } from './_lib/sections.mjs';  // 正文区切分 / 围栏掩码（与 count-chars / m-gate-check 同源）
 import { packageVersionTag } from './_lib/pkg-version.mjs';   // §8.3 #39：产物 version 单一真源
+import { CARD_SPECS as MGATE_CARD_SPECS } from './_lib/mgate-helpers.mjs';   // v18.70.0：卡片路径规格唯一真源（CARD_SPECS 收敛）
 installExitGuard();
 
 // --- CLI ---
-const argv = process.argv.slice(2);
-let file = null;
-let cardsDir = null;
-let briefPath = null;
-let reportPath = null;
-let qlt = false;   // G15-VolIssue 的模式开关（显式声明，见该段注释）
 const USAGE = '用法: node g-audit-check.mjs <正文.md> [--cards <目录>] [--brief <任务简报.md>] [--qlt] [--report <path>] [--json]';
-for (let i = 0; i < argv.length; i++) {
-  const a = argv[i];
-  if (a === '--cards' || a === '--brief' || a === '--report') {
-    const v = argv[++i];
-    if (!v || v.startsWith('--')) { console.error(`${a} 缺少值（示例：${a} <path>）\n${USAGE}`); process.exit(10); }
-    if (a === '--cards') cardsDir = v;
-    else if (a === '--brief') briefPath = v;
-    else reportPath = v;
-  } else if (a === '--qlt') {
-    qlt = true;   // G15-VolIssue 的模式开关（见该段注释：模式相关的项**只能由调用方显式声明**，不从简报字面推断）
-  } else if (a === '--json') {
-    continue;   // JSON 是默认且唯一输出形态；本旗标为调用方兼容保留
-  } else if (a.startsWith('--')) {
-    console.error(`未知参数: ${a}\n${USAGE}`);
-    process.exit(10);
-  } else if (file === null) file = a;
-  else { console.error(`多次传入文件参数: ${a}\n${USAGE}`); process.exit(10); }
+let flags, opts, positionals;
+try {
+  ({ flags, opts, positionals } = parseArgs(process.argv.slice(2), {
+    flags: ['--qlt', '--json'],   // --json 为调用方兼容保留（JSON 是唯一输出形态，无实际开关）
+    values: { '--cards': 'evidence', '--brief': '01-任务简报.md', '--report': 'final/G-Audit-Report.json' },
+    minPositionals: 1, maxPositionals: 1,
+    positionalHint: '<正文.md>',
+  }));
+} catch (e) {
+  if (e && e.code === USAGE_CODE) { console.error(e.message); console.error(USAGE); process.exit(10) }
+  throw e;
 }
-if (!file) { console.error(USAGE); process.exit(10); }
+const file = positionals[0];
+const cardsDir = opts['--cards'];
+const briefPath = opts['--brief'];
+const reportPath = opts['--report'];
+const qlt = flags.has('--qlt');   // G15-VolIssue 的模式开关（见该段注释：模式相关的项**只能由调用方显式声明**，不从简报字面推断）
 if (!existsSync(file)) { console.error(`文件不存在: ${file}`); process.exit(10); }
 requireExistingFile(file, '待检查正文');
 if (briefPath !== null && !existsSync(briefPath)) { console.error(`任务简报不存在: ${briefPath}`); process.exit(10); }
@@ -104,7 +98,9 @@ if (cardsDir !== null && !existsSync(cardsDir)) { console.error(`素材卡目录
   }
 }
 
-const text = readFileSync(file, 'utf8');
+let text = readFileSync(file, 'utf8');
+// v18.70.0（批 7 · BOM 口径统一）：剥 UTF-8 BOM（与 count-chars/md2html 同口径；编码卫生非内容失败，不改退出码）
+if (text.charCodeAt(0) === 0xfeff) text = text.slice(1)
 // 正文区与 `count-chars.mjs` **同源同切法**（`## 摘要` 之后 → 第一个文末节之前）——
 //   v18.23.0 EFF-1 校准：首版从文件头起算，实测同一份定稿比 count-chars 多 41 字（标题+摘要），
 //   会让 T7 看到「两个正文字数」。字数类判据的**权威口径唯一 = count-chars**，本脚本只复用。
@@ -119,11 +115,12 @@ const normDigits = (s) => String(s ?? '')
   .replace(/[,\uff0c\s]/g, '');
 
 // --- 素材卡定位：`--cards` 目录下直接找，找不到再回退 `<dir>/literature|data|cases/` ---
-const CARD_SPECS = [
-  { key: '文献卡', names: ['文献卡.md', join('literature', '文献卡.md')] },
-  { key: '数据卡', names: ['数据卡.md', join('data', '数据卡.md')] },
-  { key: '案例卡', names: ['案例卡.md', join('cases', '案例卡.md')] },
-];
+// v18.70.0（批 7 · CARD_SPECS 收敛）：卡片路径规格唯一真源 = `_lib/mgate-helpers.mjs` 的 CARD_SPECS
+//   （扁平名 → 项目内相对路径）。旧版此处另写一份 {key,names}，三张卡的扁平名/相对路径与真源重复
+//   → 改路径须改两处，属「一事实多处维护必漂」。现由真源派生（先行者清单本脚本不消费，滤掉）。
+const CARD_SPECS = MGATE_CARD_SPECS
+  .filter(([name]) => name !== '先行者清单.md')
+  .map(([name, rel]) => ({ key: name.replace(/\.md$/, ''), names: [name, rel] }));
 const cards = {};
 if (cardsDir) {
   for (const spec of CARD_SPECS) {

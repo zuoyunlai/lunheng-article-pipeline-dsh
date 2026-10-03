@@ -215,7 +215,11 @@ if (evMissing.length > 0) {
   );
 }
 
-const text = readFileSync(draftPath, 'utf8');
+let text = readFileSync(draftPath, 'utf8');
+// v18.70.0（批 7 · BOM 口径统一）：剥 UTF-8 BOM（pwsh `Set-Content -Encoding UTF8` 默认写 BOM），
+//   与 count-chars/md2html/build-evidence-bundle 同口径；不改退出码（BOM 是编码卫生，非内容失败）。
+//   指纹（下方 sha256/bytes）仍取**原始字节**——它绑定的是「哪一版文件」，须与磁盘一致。
+if (text.charCodeAt(0) === 0xfeff) { console.error('⚠️ 被审正文含 UTF-8 BOM，已剥离首字符后继续（不改退出码）'); text = text.slice(1) }
 // 被审正文指纹（v18.0.5 新增，第三方审计 P0-1）：T8 裁定必须**绑定它所审的那一版正文**，
 //   否则旧裁定会在正文被改动后继续放行（实测：正文追加一段后机械 exit=2，落盘 exit 仍为 0，
 //   审计视图同屏显示「P0: 2 ｜ exit: 0」，而该视图被 8 个角色当闸门真源读）。
@@ -567,7 +571,8 @@ const report = {
 console.log(JSON.stringify(report, null, 2));
 if (reportPath) {
   try {
-    mkdirSync(dirname(reportPath), { recursive: true });
+    // v18.70.0（批 7 · mkdir 收敛）：删除旧版 `mkdirSync(dirname(reportPath))` 预建——`writeReport`
+    //   （下方落盘出口）内部已 mkdirSync recursive，此处属死代码（同一事实两处实现）。
     // === T8 裁定段保留 + 指纹绑定（v18.0.0 新增；v18.0.5 加指纹，修第三方审计 P0-1）===
     // 背景：`final-check.mjs` 会串联调用本脚本并 `--report final/M-Gate-Report.json`，
     //   旧实现直接覆写 → **冲掉 T8 手写的 `_t8_llm_review` / `_t8_conclusion`** →

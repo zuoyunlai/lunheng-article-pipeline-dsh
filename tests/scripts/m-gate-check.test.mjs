@@ -905,14 +905,17 @@ test('v18.2.9 审计 A7：m-gate-check 未知旗标 / 多余位置参数一律 e
   rmSync(d, { recursive: true, force: true })
 })
 
-test('v18.2.9 审计 B14：--report 落盘失败 → exit 70（闸门机械证据缺失不得伪装成内容判定）', () => {
+test('v18.2.9 审计 B14：--report 路径错（父目录是文件）→ exit 10 且响亮报错（不得伪装成内容判定/静默通过）', () => {
   const { d, proj, fin, ev } = mkProject()
   writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
-  // 报告路径的父目录其实是一个普通文件 → mkdirSync 抛 ENOTDIR → 落盘失败（磁盘满/权限错的同构形态）
+  // 报告路径的父目录其实是一个普通文件 → 建目录失败（磁盘满/权限错的同构形态）
+  // v18.70.0（批 7 · mkdir 收敛）语义精化：预建目录的死代码删除后，此场景由 writeReport 的
+  //   建目录守卫归 **exit 10**（路径/参数错，与全仓「路径错=10」教义一致），比旧的 70 更准确。
+  //   真实「写盘失败」仍由 writeWithSafety 抛错 → 外层 catch → exit 70（落盘失败≠内容判定），该路径未变。
   const badReport = join(join(fin, '定稿.md'), 'no', 'report.json')
   const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev, '--report', badReport])
-  assert.equal(r.code, 70, '报告落盘失败应 exit 70（旧版吞掉后 exit 语义不变 → 主控拿 exit 0 却无机械证据）')
-  assert.match(r.err || r.out || '', /落盘失败/)
+  assert.equal(r.code, 10, '路径错（父目录是文件）应 exit 10，不得 exit 0 伪装通过')
+  assert.match(r.err || r.out || '', /无法创建|路径|目录/)
   rmSync(d, { recursive: true, force: true })
 })
 

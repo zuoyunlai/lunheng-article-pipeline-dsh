@@ -360,8 +360,9 @@ if (wantJson) {
 
 // 写报告到默认 / 指定路径
 const finalReportPath = reportPath || join(project, 'audits', 'final-check-v0.json');
-const reportDir = dirname(finalReportPath);   // 旧版硬编码反斜杠 → POSIX 与正斜杠 --report 都会崩（v2.5.2-dsh.13 修复）
-if (!existsSync(reportDir)) mkdirSync(reportDir, { recursive: true });
+// v18.70.0（批 7 · mkdir 收敛）：旧版在此预建目录（`mkdirSync recursive`），但 `writeReport`
+//   （destructive-write.mjs）内部已做同一件事——此处预建属「同一事实两处实现」的死代码，删除。
+//   目录由下方 writeReport 建；`--report` 的 CWD 相对语义与落根警告不受影响。
 // v18.62.4（全量审计-v18.62.3 §8.1 #4，**主人裁定方案 (C)**）：**保持 `--report` 的 CWD 相对语义，
 //   但把「它落在哪」由静默变成显式**。
 //   为什么选 (C) 而不是改基准：`--report` 在全仓（m-gate-check / g-audit-check / cite-coverage-check /

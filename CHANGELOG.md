@@ -2,6 +2,16 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.70.0 — 2026-10-03
+
+> **性质**：**维护收口批**——反哺 v6 §2.2 核心发现（去味清单副本漂移）+ 批 6 登记不修的四项维护 P2 一并落地。全量 **728/728 全绿** + 五门全过。
+
+- **V6-1 去味清单副本漂移收敛（反哺 v6 §2.2 核实）**：`operations.md` 的「AI 去味 10 项」第 3 项停在旧字面「无第一人称（要有"我认为"）」——与 `05-写作-writer.md` 的「主体声音 ≠ 第一人称经历」及克制档「禁"我认为"式主观句」互相矛盾，写手/审计员无从同时满足两边 → 产出必然四平八稳。现 `operations.md` 收敛为**指针**（单一真源 = 05 卡），`SKILL.md` 审计必查项行同步改指向，`audit-checklist-quickref.md` G5 的「无第一人称」改为「主体声音≠第一人称经历」。
+- **UTF-8 BOM 剥离口径统一**：`m-gate-check` / `handoff-check` / `cite-format` / `g-audit-check` 补齐剥 BOM（与 count-chars/md2html/build-evidence-bundle 同口径；编码卫生非内容失败，不改退出码）。m-gate-check 指纹仍取原始字节（绑定「哪一版文件」）。
+- **g-audit-check 手写 CLI 解析 → `_lib/cli-args.mjs`**（唯一实现）：移除 ~20 行手写 argv 循环，改 `parseArgs`（flags/values/positionals）。行为不变，消除「守卫写在调用处必漂」隐患。
+- **CARD_SPECS 收敛**：g-audit-check 的三卡路径规格改为从 `_lib/mgate-helpers.mjs` 的 CARD_SPECS 派生（滤掉先行者清单），不再另写一份 {key,names}——改卡片路径只改真源一处。
+- **mkdir 冗余删除**：`final-check` / `m-gate-check` 在 `writeReport`（内部已 mkdirSync recursive）之外的预建目录删除。连带语义精化：`--report` 父目录是文件（路径错）由 writeReport 归 **exit 10**（与全仓「路径错=10」一致），真实写盘失败仍走 exit 70——B14 测试据此更新。
+
 ## 18.69.0 — 2026-10-03
 
 > **性质**：**P2 清理批**（全量审计-v18.66.0 的 P2 清单收尾）——lib 十项、脚本两项、子技能两项、文档一项落地，四项纯维护项登记不修。全量 **728/728 全绿** + 五门全过。

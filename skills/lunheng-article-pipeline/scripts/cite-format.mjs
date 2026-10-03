@@ -199,7 +199,9 @@ if (!existsSync(cardPath)) {
   else console.error(msg)
   process.exit(3)
 }
-const raw = readFileSync(cardPath, 'utf8')
+let raw = readFileSync(cardPath, 'utf8')
+// v18.70.0（批 7 · BOM 口径统一）：剥 UTF-8 BOM（与 count-chars/md2html 同口径；编码卫生非内容失败，不改退出码）
+if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1)
 
 // 索引段表：[L01] | Nozick | 1969 | 信任级别 | 用途
 //   ⚠️ 实测教训（第一版 bug）：**必须只在本节里扫**。第一版对全文逐行匹配 `| [Lxx] | … |`，

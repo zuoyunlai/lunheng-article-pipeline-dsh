@@ -160,11 +160,15 @@ const role = opt.role
 const level = opt.level
 const strict = level === 'strict'
 
+// v18.70.0（批 7 · BOM 口径统一）：剥 UTF-8 BOM（与 count-chars/md2html 同口径）。本脚本是**结构校验器**
+//   （回报/产物按 `##`/`###` 匹配），BOM 只影响首行 h1，故**静默剥离不警告**（警告纯属噪音）；不改退出码。
+const readText = (p) => { const t = readFileSync(p, 'utf8'); return t.charCodeAt(0) === 0xfeff ? t.slice(1) : t }
+
 let reportText = null
 if (opt.report === '-') reportText = readFileSync(0, 'utf8')          // stdin
 else if (opt.report != null) reportText = opt.report
 else if (opt.reportFile) {
-  try { reportText = readFileSync(opt.reportFile, 'utf8') }
+  try { reportText = readText(opt.reportFile) }
   catch { console.error(`回报文件不存在或不可读: ${opt.reportFile}`); process.exit(10) }
 }
 
@@ -199,7 +203,7 @@ const reviewOverdue = (() => {
   const ap = resolveArtifact(project, '审计报告')
   if (!ap.path || !existsSync(ap.path)) return false
   let t = ''
-  try { t = readFileSync(ap.path, 'utf8') } catch { return false }
+  try { t = readText(ap.path) } catch { return false }
   const decl = /\*{0,2}被审正文\*{0,2}\s*[：:]\s*`?([^\s`|，。]+\.md)/.exec(t)
   if (!decl) return false
   const rel = decl[1].replaceAll('\\', '/')
@@ -242,7 +246,7 @@ for (const artifact of required) {
 
   // A3 结构（strict）
   let text = ''
-  try { text = readFileSync(art.path, 'utf8') } catch { addHard('A3', artifact, `产物不可读: ${art.path}`, 21); continue }
+  try { text = readText(art.path) } catch { addHard('A3', artifact, `产物不可读: ${art.path}`, 21); continue }
   if (art.isCard) {
     const entries = cardEntries(text)
     const hasIndex = indexSection(text.split('\n')) != null
