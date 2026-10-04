@@ -16,7 +16,7 @@ import { TRUST_COMPLIANT_RE, TRUST_LOOSE_RE } from '../trust.mjs'
 import { splitCard } from '../cards.mjs'
 import { ENDNOTE_SECTIONS, ENDNOTE_ORDER, h2Headings } from '../sections.mjs'
 import { countHan } from '../han.mjs'
-import { figurePlaceholders, analyzeSvg, svgTextNumbers, figureNoOf } from '../svg.mjs'
+import { figurePlaceholders, analyzeSvg, svgTextNumbers, figureNoOf, checkGrid } from '../svg.mjs'
 import { indexSection, sectionRange, CARD_SPECS, entryIds, idsByToken } from '../mgate-helpers.mjs'
 
 // v2.5.2-dsh.5 修订：白名单 5 节 + AI 使用声明（M-Form-2 / M-Form-7 一致；原主文件模块级常量随门族迁入）
@@ -876,9 +876,19 @@ try {
     // ④ SVG 良构 / 安全
     if (figDir) {
       for (const [n, f] of fileNos) {
-        const a = analyzeSvg(readFileSync(join(figDir, f), 'utf8'));
+        const svgTxt = readFileSync(join(figDir, f), 'utf8');
+        const a = analyzeSvg(svgTxt);
         if (!a.ok) problems.push(`图${n}(${f}) 结构不合格: ${a.problems.join('；')}`);
         if (a.warnings.length) softNotes.push(`图${n}(${f}) 告警: ${a.warnings.join('；')}`);
+        // ④′ v18.73.0（反哺报告-v7 F-17）：**声明式网格自检**（可选——未声明 data-grid 时 checkGrid 返回 null，不检）
+        //   病灶：本项目图 3 有 6 个标记不落列中心 + 1 个多余标记，**通过了当时的全部机检**，
+        //   是主控借 PNG 目视才发现的。**不声明的图一律不检**（概念图/流程图本无网格，
+        //   强制检会大面积误报，而一个会误报的新门比没有门更糟）。
+        //   判据：标记数须 = rows×cols；标记 x 聚类数须 ≤ cols、y 聚类数须 ≤ rows。
+        //   档位：**软提示 P2**（几何错位是"要人看一眼"的事，不该硬拦交付）。
+        const g = checkGrid(svgTxt);
+        if (g && g.problems.length) softNotes.push(`图${n}(${f}) 网格自检：${g.problems.join('；')}（声明 rows=${g.rows} cols=${g.cols}，实测标记 ${g.markers} 个）`);
+        if (g && g.notes.length) softNotes.push(`图${n}(${f}) 网格自检提示：${g.notes.join('；')}`);
       }
       // ⑤ 图上数字 ⊆ 数据卡 ∪ 正文（启发式：仅查 <text>/<tspan>/<title> 文本节点，跳过单字符刻度）
       const unionRaw = dataCard + '\n' + text;

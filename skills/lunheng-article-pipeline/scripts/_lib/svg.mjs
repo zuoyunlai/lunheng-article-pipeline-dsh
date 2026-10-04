@@ -113,6 +113,70 @@ export function analyzeSvg(src) {
  * 不抽属性值（x/y/d/transform 都是坐标，会污染）。
  * @returns {Map<string, number>} 数字 token → 出现次数
  */
+/**
+ * v18.73.0（反哺报告-v7 F-17）：**声明式网格自检**。
+ *
+ * 只核「**标记数**」与「**坐标聚类数**」，**不需要知道中心坐标**——因为 `data-grid` 也只给行列数。
+ *
+ * **病灶（本项立法理由）**：本项目图 3（矩阵图）有 **6 个标记不落列中心 + 1 个多余标记**，
+ *   而它**通过了当时的全部机检**（`M-Form-9` 只核图位/图件/图上数字），是主控借 PNG 目视才发现的。
+ *
+ * **为什么必须"可选"**：**不声明 `data-grid` 一律返回 `null`、一律不检**——概念图/流程图本无网格，
+ *   强制检会大面积误报，**而一个会误报的新门比没有门更糟**（同批 F-9 的教训）。
+ *
+ * **判据**：矩阵图里，标记的 **x 坐标应恰好聚成 `cols` 个离散值**（每列一个中心），
+ *   **y 聚成 `rows` 个**。多于该数即说明有标记**不落在行列中心**（错位）；
+ *   标记总数 ≠ `rows×cols` 即说明**多标或少标**。
+ *
+ * @returns {null | { rows:number, cols:number, markers:number, problems:string[], notes:string[] }}
+ *   未声明 `data-grid` → `null`（调用方据此**跳过**，不得当成通过或失败）。
+ */
+export function checkGrid(src) {
+  const s = String(src || '');
+  const m = /data-grid\s*=\s*["']\s*rows\s*=\s*(\d+)\s*[;,]\s*cols\s*=\s*(\d+)\s*["']/i.exec(s);
+  if (!m) return null;
+  const rows = Number(m[1]);
+  const cols = Number(m[2]);
+  const problems = [];
+  const notes = [];
+  // 标记 = 内容为**单个标记字符**的 <text>（● ○ ◎ ◉ △ ▲ ■ □ ★ ☆ × ✕）
+  const MARK_CHARS = '●○◎◉△▲■□★☆×✕⊙◯';
+  const xs = [];
+  const ys = [];
+  let count = 0;
+  for (const t of s.matchAll(/<text\b([^>]*)>([\s\S]*?)<\/text>/gi)) {
+    const body = t[2].replace(/<[^>]*>/g, '').trim();
+    if (body.length !== 1 || !MARK_CHARS.includes(body)) continue;
+    const x = /\bx\s*=\s*["']([-\d.]+)["']/.exec(t[1]);
+    const y = /\by\s*=\s*["']([-\d.]+)["']/.exec(t[1]);
+    if (!x || !y) continue;
+    count += 1;
+    xs.push(Number(x[1]));
+    ys.push(Number(y[1]));
+  }
+  if (count === 0) {
+    notes.push('已声明 data-grid，但未找到标记元素（内容为单个 ●/○/■ 等字符的 <text>）——本项无从核验');
+    return { rows, cols, markers: 0, problems, notes };
+  }
+  const expect = rows * cols;
+  if (count !== expect) {
+    problems.push(`标记数 ${count} ≠ rows×cols = ${rows}×${cols} = ${expect}（多标或少标）`);
+  }
+  const distinct = (arr) => new Set(arr.map((v) => Math.round(v))).size;
+  const cx = distinct(xs);
+  const cy = distinct(ys);
+  // 容差：允许 1 个离散值的偏差（图形可能有图例/边注标记）。超过则判错位。
+  if (cx > cols) {
+    problems.push(`标记的 x 坐标有 ${cx} 个离散值 > cols ${cols}——**有标记不落在列中心**（每列应只有一个中心 x）`);
+  }
+  if (cy > rows) {
+    problems.push(`标记的 y 坐标有 ${cy} 个离散值 > rows ${rows}——**有标记不落在行中心**`);
+  }
+  if (cx < cols) notes.push(`标记的 x 只有 ${cx} 个离散值，少于 cols ${cols}——该列可能整列无标记（本项按软提示报出，不判错）`);
+  if (cy < rows) notes.push(`标记的 y 只有 ${cy} 个离散值，少于 rows ${rows}——该行可能整行无标记（本项按软提示报出，不判错）`);
+  return { rows, cols, markers: count, problems, notes };
+}
+
 export function svgTextNumbers(src) {
   const out = new Map();
   const blocks = String(src || '').matchAll(/<(?:text|tspan|title)\b[^>]*>([\s\S]*?)<\/(?:text|tspan|title)>/gi);

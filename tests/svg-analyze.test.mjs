@@ -11,7 +11,7 @@
 // 运行：node --test tests/
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { analyzeSvg } from '../skills/lunheng-article-pipeline/scripts/_lib/svg.mjs'
+import { analyzeSvg, checkGrid } from '../skills/lunheng-article-pipeline/scripts/_lib/svg.mjs'
 
 const NS = 'xmlns="http://www.w3.org/2000/svg"'
 
@@ -41,4 +41,65 @@ test('无 `<svg>` 根 / 只有嵌套 `<svg>` → 判「未找到根元素」（�
   const nested = analyzeSvg('<div><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"/></div>')
   // 嵌套形态：本模块把**第一个** <svg> 当根（无解析器），故这里判合格——如实断言该口径，避免后来者误判
   assert.equal(nested.ok, true, '第一个 <svg> 即视为根（无 XML 解析器的口径，写进注释）')
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v18.73.0（反哺报告-v7 F-17）：**声明式网格自检** `checkGrid`
+//
+// 立法理由（实测病灶）：本项目图 3（矩阵图）有 **6 个标记不落列中心 + 1 个多余标记**，
+//   而它**通过了当时的全部机检**（`M-Form-9` 只核图位/图件/图上数字），是主控借 PNG 目视才发现的。
+//
+// ⚠️ **本项刻意"可选"**：**未声明 `data-grid` 一律返回 `null`、一律不检**。第 4 个用例就是守这条——
+//   概念图/流程图本无网格，强制检会大面积误报，**而一个会误报的新门比没有门更糟**（同批 F-9 的教训）。
+// ─────────────────────────────────────────────────────────────────────────────
+const __gridHdr = (r, c) => `<svg viewBox="0 0 640 400" data-grid="rows=${r};cols=${c}">`
+function __gridSvg(rows, cols, { extra = 0, misplace = [] } = {}) {
+  const colX = (c) => 100 + c * 60
+  const rowY = (r) => 80 + r * 50
+  let s = __gridHdr(rows, cols)
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const bad = misplace.some(([rr, cc]) => rr === r && cc === c)
+      s += `<text x="${colX(c) + (bad ? 34 : 0)}" y="${rowY(r)}">●</text>`
+    }
+  }
+  for (let i = 0; i < extra; i++) s += `<text x="${colX(0) + 34}" y="${rowY(0)}">○</text>`
+  return s + '</svg>'
+}
+
+test('checkGrid：规整矩阵**不报**（不误报是它能被启用的前提）', () => {
+  const r = checkGrid(__gridSvg(5, 7))
+  assert.notEqual(r, null, '声明了 data-grid 就必须执行检查')
+  assert.deepEqual(r.problems, [], `规整 5×7 全标记不应报任何问题：${JSON.stringify(r.problems)}`)
+  assert.equal(r.markers, 35, '标记数应 = rows×cols')
+  assert.equal(r.rows, 5); assert.equal(r.cols, 7)
+})
+
+test('checkGrid：**标记不落列中心**必须报（本项目图 3 的病灶之一）', () => {
+  const r = checkGrid(__gridSvg(5, 7, { misplace: [[0, 0], [1, 0]] }))
+  assert.ok(r.problems.length > 0, '2 个标记被挪到列边界（x +34）→ 必须报')
+  assert.ok(r.problems.some((p) => /x 坐标.*离散值.*> cols/.test(p)),
+    `应点名「x 离散值超出 cols」：${JSON.stringify(r.problems)}`)
+})
+
+test('checkGrid：**标记数 ≠ rows×cols** 必须报（本项目图 3 的病灶之二）', () => {
+  const r = checkGrid(__gridSvg(5, 7, { extra: 1 }))
+  assert.ok(r.problems.some((p) => /标记数 36 ≠ rows×cols/.test(p)),
+    `多 1 个标记必须点名计数不符：${JSON.stringify(r.problems)}`)
+})
+
+test('checkGrid：**未声明 data-grid → 返回 null（完全不检）**——这一刻意设计不得被"顺手启用"', () => {
+  // 概念图 / 流程图：有标记字符但**没有网格语义**
+  const concept = '<svg viewBox="0 0 640 400"><text x="10" y="20">●</text><text x="90" y="300">○</text></svg>'
+  assert.equal(checkGrid(concept), null,
+    '未声明 data-grid 必须返回 null（调用方据此跳过）——否则本项会对概念图大面积误报')
+  assert.equal(checkGrid('<svg viewBox="0 0 1 1"></svg>'), null, '空 SVG 同样为 null')
+  assert.equal(checkGrid(''), null, '空串同样为 null')
+})
+
+test('checkGrid：声明了但**找不到标记元素** → 不判错，只记 note（无从核验 ≠ 不合格）', () => {
+  const r = checkGrid(__gridHdr(2, 2) + '<text x="10" y="20">反应性</text></svg>')
+  assert.deepEqual(r.problems, [], '无标记元素时不得判错——"核不了"不等于"不合格"')
+  assert.ok(r.notes.some((n) => /未找到标记元素/.test(n)), '必须留 note 说明为何未核')
+  assert.equal(r.markers, 0)
 })

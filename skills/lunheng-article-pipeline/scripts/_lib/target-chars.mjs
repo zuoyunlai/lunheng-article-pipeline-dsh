@@ -73,8 +73,22 @@ export function parseTargetChars(briefText) {
 //   故本函数返回**全部候选值**（供调用方做「落在候选区间内」判定）+ 原始行，**不**替调用方选一个目标——
 //   选哪个是语义判断（哪个数才是目标）且简报可能本身已过期（另有项目明文写「主人已确认字数不作硬规定」）。
 //
-// 覆盖四类字段名 + 表格形态；`万 / 千 / k` 数量级与千分位逗号沿用同一口径。
-const CAND_LINE_RE = /(?:目标篇幅|目标字数|篇幅|总字数)\s*[:：|]?\s*([^\n|]{0,60})/;
+// 覆盖五类字段名 + 表格形态；`万 / 千 / k` 数量级与千分位逗号沿用同一口径。
+// v18.73.0（F-13 真因）：**补 `目标正文`** —— 实测简报写的是「- **目标正文 12000 汉字**（首要落点…）」，
+//   旧正则无此字段名 → 整行匹配不上 → 落到**上一行的裸「篇幅」**（见下方 `TARGET_FIELD_RE` 的说明）。
+const CAND_LINE_RE = /(目标篇幅|目标字数|目标正文|篇幅|总字数)\s*[:：|]?\s*([^\n|]{0,60})/;
+// v18.73.0（F-13 真因）：**「目标\*」族字段优先于裸「篇幅」/「总字数」**。
+//   真因（实测《不能评估的忠诚》简报行 17–20）：
+//     行 17 `- **篇幅**: ≥5000（全量流水线档）；**字数三线制（主人明示「1万字以上」）**：`
+//       → 命中「篇幅」，其**后 60 字窗口内有 5000（档位下限）与 1万→10000（主人硬下限）** —— **两个都不是目标**；
+//     行 18 `- **目标正文 12000 汉字**（首要落点…）` → **才是真正的目标**。
+//   旧实现「**首个有候选的命中即返回**」→ 行 17 已产候选 {5000,10000} → **永远走不到行 18**；
+//   后果：判定区间取成 [5000,10000]，实测 11205 → 「1.121× 超上界」**假阳性**（11205/10000=1.1205，与本项目当年读数逐位吻合）。
+//   ⚠️ 旧实现那条「逐条命中试到出候选为止」的注释只修了「首个命中**无**候选」的情形，
+//     **没修「首个命中有候选、但候选来自非目标字段」**——本条补的正是后者。
+//   ⚠️ **不改「下限进候选」的语义**：`g-audit-check.test.mjs` 明确断言「档位下限与目标**都进候选**」
+//     （判据是「落在候选区间内」）。本条只改**选哪一行**，不改**行内取哪些数**。
+const TARGET_FIELD_RE = /^目标/;
 const CAND_NUM_RE = /(\d+(?:\.\d+)?)\s*(万|千|[wWkK])?/g;
 
 /**
@@ -88,8 +102,10 @@ export function parseTargetCandidates(briefText) {
   //   `## 三、篇幅与结构`（命中「篇幅」但后面 60 字内没有字数）→ 只取首个命中会得到「无候选」的假 SKIP，
   //   而真正的字段行 `- **总字数**：6000 字（±5%）` 就在几行之后。
   const attempts = [];
+  const hits = [];   // v18.73.0（F-13）：{ field, line, raw, candidates } —— 供「目标*族优先」择优
   for (const m of text.matchAll(new RegExp(CAND_LINE_RE.source, 'g'))) {
-    const raw = (m[1] || '').trim();
+    const field = m[1] || '';
+    const raw = (m[2] || '').trim();
     attempts.push(raw);
     const nums = [];
     for (const x of raw.matchAll(CAND_NUM_RE)) {
@@ -102,8 +118,14 @@ export function parseTargetCandidates(briefText) {
       if (v >= MIN_TARGET && v <= MAX_TARGET) nums.push(v);
     }
     const candidates = [...new Set(nums)].sort((a, b) => a - b);
-    if (candidates.length > 0) return { line: m[0], raw, candidates, reason: '' };
+    if (candidates.length > 0) hits.push({ field, line: m[0], raw, candidates });
   }
-  if (attempts.length === 0) return { line: null, raw: null, candidates: [], reason: '未找到「篇幅 / 目标篇幅 / 目标字数 / 总字数」字段行' };
+  // v18.73.0（F-13 真因）：**先用「目标*」族字段的命中**，只有它一个都没有时才退回首处有候选的命中。
+  //   为什么：裸「篇幅 / 总字数」行常同时含**档位下限**与**主人硬下限**（都不是目标），
+  //   而真正的目标往往写在**下一行的「目标正文」**里（旧实现因「首处有候选即返回」永远看不到它）。
+  const preferred = hits.find((h) => TARGET_FIELD_RE.test(h.field));
+  if (preferred) return { line: preferred.line, raw: preferred.raw, candidates: preferred.candidates, reason: '' };
+  if (hits.length > 0) return { line: hits[0].line, raw: hits[0].raw, candidates: hits[0].candidates, reason: '' };
+  if (attempts.length === 0) return { line: null, raw: null, candidates: [], reason: '未找到「篇幅 / 目标篇幅 / 目标字数 / 目标正文 / 总字数」字段行' };
   return { line: null, raw: attempts[0], candidates: [], reason: `命中了 ${attempts.length} 处「篇幅」类字样但都没有落在 ${MIN_TARGET}–${MAX_TARGET} 区间内的数字（首处：「${attempts[0]}」）` };
 }
