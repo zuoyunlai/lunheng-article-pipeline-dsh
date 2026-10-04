@@ -199,4 +199,59 @@ for (const f of diskScripts) {
   }
 }
 
+// ㉚ `lib/**` 代码面不得出现**当前包版本**字面量（v18.76.0 · v18.75.1 全量架构审计 R7-E5 修复）
+//   病灶（E5）：本仓全部版本规则跑在**技能根**（本文件与 docs 规则都只收 `.md`），`lib/**` 是唯一
+//     敞着的版本面。历史两次漂移都出在这里：v18.62.4 的尾注正文、v18.62.6 的尾注**标题**各硬编码一次
+//     当前版本，两次都靠人工发现（`lib/index.js` 的注释自己承认「`lib/**` 完全在扫描面之外」）。
+//   判据（刻意收窄以零假阳性）：**先剥注释**（`/* */` 与行内 `//` 到行尾），再看剩余代码里有没有
+//     等于 `pkgVer` 的 semver。为什么必须剥注释：本仓的注释惯例正是**引用当前版本号**记录本轮修复
+//     （如 `v18.76.0（…修复）`），那不是漂移源——漂移源是**会被渲染/执行的字面量**。
+//     剥注释只会导致假阴性（代码行里出现 `//` 之后被切掉），**不会制造假阳性**——方向是安全的。
+{
+  const libDir = REPO_ROOT ? join(REPO_ROOT, 'lib') : null
+  if (libDir && existsSync(libDir)) {
+    const walkJs = (dir, acc = []) => {
+      for (const name of readdirSync(dir)) {
+        const p = join(dir, name)
+        if (statSync(p).isDirectory()) walkJs(p, acc)
+        else if (name.endsWith('.js') || name.endsWith('.mjs')) acc.push(p)
+      }
+      return acc
+    }
+    for (const f of walkJs(libDir)) {
+      const src = readFileSync(f, 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, ' ')   // 块注释
+        .split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n')   // 行注释
+      const hits = [...new Set([...src.matchAll(new RegExp(`\\bv?${pkgVer.replace(/\./g, '\\.')}\\b`, 'g'))].map((m) => m[0]))]
+      if (hits.length) {
+        errors.push(`[P1 lib 版本写死] ${relative(REPO_ROOT, f)} 的**代码**（去注释后）出现当前包版本字面量 ${hits.join(' / ')}`
+          + '——该串会随 bump 腐烂且无门能发现（v18.62.4/v18.62.6 两次实测）。请改用运行时真源'
+          + '（`lib/index.js` 的 `readPackageVersion()` / `_lib/pkg-version.mjs` 的 `packageVersionTag()`）')
+      }
+    }
+  }
+}
+
+// ㉛ 派发话术格式硬约束 ⊆ `_shared/机检硬格式.md` 必填项（v18.77.0 · 文档与运行-审计 v1 批 P-12 落地）
+//   病灶：v18.2.7 已写明「最小集 ↔ 真源不同步」的代价（最小集没把 `[Lxx]` 列进，2026-09-20 全流程
+//     第三次踩到）——派发话术的格式硬约束只写在 `pipeline-readme.md` §派发话术 段里，
+//     `_shared/机检硬格式.md` §一/§五 的必填项**新增**时（如 v18.7.x 加 G15 / v18.41.0 加 G15-VolIssue）
+//     **没有任何门提醒去同步派发话术**。
+//   实现（v18.77.0 首版）：只检**派发话术段必须存在「⚠️ 格式硬约束」段**（存在性断言）——不做
+//     「每条具体项 ⊆ 真源」的语义级派生（实测首次尝试报 11 项假阳性，正则难精确；改为存在性断言
+//     同样能捕捉「整段漏写」型漂移，副作用小）。后续批可逐步收紧为「每条项 ⊆ 真源」语义级派生。
+//   为什么重要：派发话术是真源下游唯一执行面——子代理照抄派发话术产出，**少了某条**等于主人侧项目
+//     漏核（如漏 [Lxx] → 漏引 → T8 终检才发现 → 已无修订余量 = 列入 final/局限性.md）。
+{
+  const src = join(REPO_ROOT, 'skills/lunheng-article-pipeline/references/pipeline-readme.md')
+  if (existsSync(src)) {
+    const text = readFileSync(src, 'utf8')
+    // §派发话术 段必须含「⚠️ 格式硬约束」段
+    const dispatchSection = text.split(/^## 派发话术/m)[1] || ''
+    if (!/⚠️\s*格式硬约束/.test(dispatchSection)) {
+      errors.push('[P1 派发话术缺格式硬约束段] pipeline-readme.md §派发话术 段必须含「⚠️ 格式硬约束」段（v18.77.0 P-12；存在性断言；语义级每条 ⊆ 真源派生留待后续批）')
+    }
+  }
+}
+
 }

@@ -1,13 +1,13 @@
 ---
 name: "lunheng-article-pipeline"
-version: "18.75.1"
-description: "论衡 v18.75.1：DSH 原生多 Agent 深度长文流水线（学术论文 / 商业评论 / 行业分析 / 公众号）。9 个独立角色 T1-T9 + 主控；三角验证 + M 门 + G 审计 + 修订回环双轨（≤2 轮纠错 + 至多 +1 深化） + 期刊匹配 + auto_cite 预标注 + 内嵌 11 个 /lunheng 斜杠命令。适用：≥2000 字、证据须可追溯的长文（4 个人在环节点、**数小时**）。**不适用**：<2000 字短文与即时问答；文学创作；需数学推导或实验设计的理工科论文；营销软文；需一手数据而未投喂素材。版本增量见 CHANGELOG.md。"
+version: "18.76.0"
+description: "论衡 v18.76.0：DSH 原生多 Agent 深度长文流水线（学术论文 / 商业评论 / 行业分析 / 公众号）。9 个独立角色 T1-T9 + 主控；三角验证 + M 门 + G 审计 + 修订回环双轨（≤2 轮纠错 + 至多 +1 深化） + 期刊匹配 + auto_cite 预标注 + 内嵌 11 个 /lunheng 斜杠命令。适用：≥2000 字、证据须可追溯的长文（4 个人在环节点、**数小时**）。**不适用**：<2000 字短文与即时问答；文学创作；需数学推导或实验设计的理工科论文；营销软文；需一手数据而未投喂素材。版本增量见 CHANGELOG.md。"
 whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 description（v18.0.5：官方目录只渲染 name + description，本字段对模型不可见，保留仅供工具链与维护者阅读）。"
 ---
 
-> 版本：v18.75.1（DSH bundle 插件）
+> 版本：v18.76.0（DSH bundle 插件）
 > **逐版明细与历史成因外移（v18.22.1 CTX-1）**：本文件只留**现行口径**；逐版明细与成因（v18.12.1 / v18.12.0 / v18.11.0 / v18.10.0 / v18.8.0 / v18.7.x …）全部在**仓库根 `CHANGELOG.md`** 同名版本段——该文件**不在随包目录内**（npm 发布物与纯技能目录部署都没有它），读不到就跳过，**不要当成断链**。
-> **v2.5.2-dsh.8 角色语义定案（主人指令）**：**9 个角色 T1-T9 各自独立、不可相互替代**——T8 终检不是「主控兼做的杂活」而是独立角色（有独立角色卡），只是执行者由主控担任（**主控 = T0 调度 + T8 终检执行双重身份**），不 spawn 子代理；**T9 审稿启用与否按 [`references/_shared/文类档案.md`](references/_shared/文类档案.md)**（`academic-*` 必选不可关、`lit-review` 可选、其余默认不选；v18.75.0 由旧「默认选中」改）。
+> **v2.5.2-dsh.8 角色语义定案（主人指令）**：**9 个角色 T1-T9 各自独立、不可相互替代**——T8 终检不是「主控兼做的杂活」而是独立角色（有独立角色卡），只是执行者由主控担任（**主控 = T0 调度 + T8 终检执行双重身份**），不 spawn 子代理；**T9 审稿启用与否按 [`references/_shared/文类档案.md`](references/_shared/文类档案.md)**（`academic-cn/-hum/-case` 必选不可关、`lit-review` 可选、其余默认不选；v18.75.0 由旧「默认选中」改）。
 
 # 多 Agent 深度长文流水线（论文/深度文章生产）
 
@@ -27,10 +27,10 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 
 **结构性要点（DSH 原生）**：
 1. **技能级工具白名单/denied 在 DSH 无效**：工具集由 Agent 预设决定；文档提到的工具以当前会话预设为准（本机 standard 预设实测含 read / write / edit / web_search / web_fetch / todo_write / subagent / subagent_fork / list_agents / pwsh 等；**预设不同则工具集不同，勿假定某工具必然存在**）。
-2. **模型分配（通用自适应）**：`subagent` 默认继承会话模型（零配置可用）；三档分档工具（`subagent_retrieval`/`strong`/`audit`）**v18.2.6 起默认不装载**——**装载有两条路径**：① 设 `LUNHENG_TIERING=on`（显式装载）；② **设任一档 `LUNHENG_*_PROVIDER` / `LUNHENG_*_MODEL` 即自动装载**（旧用户「设了模型就生效」行为不变）；`LUNHENG_TIERING=off` 优先级最高、强制不装载（实现真源 = `cordis.patch.yml` 三行 `disabled` 表达式）。档位明细见下方「何时使用」。（分档预设的安装配方在**仓库级** `examples/preset/`，**不随包**——bundle 部署下读不到，运行期只需知道上面那几条开关。**2026-09-29 跨文档对账修复**：本条原写「设 `LUNHENG_TIERING=on` **才**装载」，与实现及 `_shared/DSH-集成方案.md` §八 互斥——「才」字把充分条件误写成必要条件，会让照单一真源设了 `_MODEL` 的主人误判「未装载」。）
+2. **模型分配（通用自适应）**：`subagent` 默认继承会话模型（零配置可用）；三档分档工具（`subagent_retrieval`/`strong`/`audit`）**v18.2.6 起默认不装载**——**装载有两条路径**：① 设 `LUNHENG_TIERING=on`（显式装载）；② **设任一档 `LUNHENG_*_PROVIDER` / `LUNHENG_*_MODEL` 即自动装载**（旧用户「设了模型就生效」行为不变）；`LUNHENG_TIERING=off` 优先级最高、强制不装载（实现真源 = `cordis.patch.yml` 三行 `disabled` 表达式）。档位明细见下方「何时使用」。（分档预设的安装配方在**仓库级** `examples/preset/`，**不随包**——bundle 部署下读不到，运行期只需知道上面那几条开关。**2026-09-29 跨文档对账修复**：本条原写「设 `LUNHENG_TIERING=on` **才**装载」，与实现及 `_shared/DSH-集成方案.md` §八 互斥——「才」字把充分条件误写成必要条件，会让照单一真源设了 `_MODEL` 的主人误判「未装载」。**v18.77.0 P-11 收口**：三档装载的真源与 installer 表 = `cordis.patch.yml` 的三行 `disabled` 表达式；**诊断与复算命令** = `node scripts/model-routing.mjs`（**只读复算面**——不修改运行期行为，只读 + 报告；与 `glossary.md` §五 同口径）。）
 3. **执行约定**：状态机（status.md 主控独占写）+ 交接报告六要素 + G8 自检 + 超时介入（`list_agents` 软巡检）；**无心跳/8 分钟硬卡**。
 4. **「（检查）」占位符**：发布包中 shell 示例被净化剥离为「（检查）」——按「人类 host shell 验证示例」处理（`read` 全文 + LLM 推理模拟判定）。**证据包 sha256 一律取 `final/证据包/manifest.json` 实值，主人不参与回填**（2026-09-29 主人授权修订 EXEC-1；见 `_shared/M-Gate-Algorithm.md` §M-Exist-2）。
-5. **角色体系**：**9 个独立角色 T1-T9 互不可替代**（T1-T3 检索 / T4-T5 加工 / T6-T9 防御）；T8 终检独立角色、由主控 T0 亲执行；T9 审稿**启用按文类档案**（`academic-*` **必选**、`lit-review` 可选、其余默认不选）。
+5. **角色体系**：**9 个独立角色 T1-T9 互不可替代**（T1-T3 检索 / T4-T5 加工 / T6-T9 防御）；T8 终检独立角色、由主控 T0 亲执行；T9 审稿**启用按文类档案**（`academic-cn/-hum/-case` **必选**、`lit-review` 可选、其余默认不选）。
 6. **包形态**：本包为 DSH bundle（`cordis.patch.yml` 的**自注册行 `- id/name: lunheng-article-pipeline` 不能删**，删了入口不加载、技能注册不上）；部署形态 / 包面自检见 `AGENTS.md` §包形态。
 7. **DSH 能力面集成（v18.1.0 起部分启用）**：**已落地**——门禁脚本→原生只读工具、机制文件写保护→`ctx.tools.guard()`、进展自查→`/lunheng-status`。**仍未启用（按需）**——Phase 内并行→`workflow`、分档工具行→agent preset、状态机→`goals`/`planMode`：契约与**边界**见 [`references/_shared/DSH-集成方案.md`](references/_shared/DSH-集成方案.md)（人在环节点与闸门决策**不得**交给 workflow / 子代理）。
 
@@ -63,10 +63,11 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
   > **`disproofs-check.mjs`**：**负知识账本校验**（只读）——`node scripts/disproofs-check.mjs <项目目录> [--json] [--file <路径>]`，核 `audits/disproofs.jsonl`（一行一条）的**形状与必填**：`id/claim/verdict/basis/evidence/reproduce/author` 七字段齐备、`verdict ∈ disproven/weakened/unverifiable`、`evidence` 非空数组、`id` 不复用。exit `0` 合法 ｜ `1` 有非法行**或账本存在却 0 有效行**（空占位与「没记」同形，禁止）｜ **`3` 账本不存在**（须人工确认「确实无已证伪项」还是「漏记」——与 `g-audit-check` 的「`N/A` ≠ `SKIP`」同口径，**不把「没账本」读成通过**）｜ `10` / `70`。**它不是闸门、不判 P0/P1**（挂闸门会催生「为过门补一条像样的证伪」的刷分压力）；契约 = [`references/_shared/负知识账本.md`](references/_shared/负知识账本.md)。
   > **`self-check.mjs`**：**随包完整性自检**（给「装完包的人」的离线自证入口）——`node scripts/self-check.mjs [--json]`，五组：白名单↔磁盘**双向**对账 / 承重文件与关键目录 / 版本头一致性 / 包面齐备 / 相对导入可解析。**零 spawn、零写盘、零网络**，不依赖仓库与 DSH 会话。exit `0` 全过 ｜ `1` 有 FAIL（包不完整）｜ `3` 无 FAIL 但有 SKIP（须人工复核）｜ `10` 参数错 ｜ `70` 内部错。**它不是闸门、也不做任何内容判定**——只回答「手里这份包是不是完整的」（npm 发布物不含 `tests/`，故这是包内唯一可验物；详见 `QUICKSTART.md`）。
 - ❌ **不做**：凭据访问 / 浏览器自动化 / 定时任务（除白名单脚本与验证命令外，主控默认不执行任意 shell，LLM 推理判定）。
+- ⚙️ **主控亲跑路径（v18.77.0 P-2 收口）**：`final-check.mjs` / `m-gate-check.mjs --adjudicate` / `handoff-check.mjs` / `m-gate-check.mjs`（终检期使用）**四条路径**属「主控亲跑」——**不走子代理 spawn**，**不通过 `subagent` 工具代发**。其中 `m-gate-check --adjudicate` 前的 `<裁定.json>` 由主控 LLM 在裁定过程中推理写出（凭证伪四件套由主控亲生成），**不是子代理产物**。判据：08 卡的「T8 不 spawn 子代理」已写死，子代理路径产出的"裁定 JSON"在本门禁止出现——`subagent` 工具对新上下文不继承主控裁定，新上下文写出的 `<裁定.json>` 会让 `verdict_stale` 在终检期持续保留。
 - 🔒 **机制文件写保护**：`SKILL.md` / `AGENTS.md` / `references/**` / `scripts/**` / `cordis.patch.yml` 属**机制文件**——任何角色（含主控与子代理）**不得**用 write/edit 改动；改进动议只写 `audits/反哺报告-vN.md`，由主人在 host shell apply。**改机制文件 = P0 违规，本次交付作废**。bundle 部署下由入口注册的全局 `ctx.tools.guard()` 机制否决（主人授权走 `LUNHENG_ALLOW_MECH_EDIT=1` 或插件行 config）；已知边界与部署处方见 [`references/maintainers.md`](references/maintainers.md) §二（运行期只需记住：guard 不覆盖 pwsh）。
 - 🧾 **闸门必须留机械证据**：T2.5/T7.5 与 M 门**不得只凭自述**——附脚本 exit code + 产物路径。exit：`0` 通过 / `1` P1 / `2` P0 / `3` 仅 P2·soft·SKIP（需复核，不得当通过）/ `10` 参数路径错（含异常路径，`exit-guard` 统一映射，**不得与 P1 混用**）/ **`30` `--adjudicate` 裁定被拒**（红线命中 / 证伪四件套不全 / 缺 `true_p0`-`true_p1`；v18.12.0 L-05，**拒绝裁定 ≠ 内容失败**）/ `70` 内部错误。`model-routing.mjs` 用 `4`＝需人工决定；`handoff-check.mjs` 用 `20/21/22`（收报验收，见下 §⚡）；非闸门工具不共用本语义（见 `docs/troubleshooting.md §8`）。
 - 🛠 **原生工具 / 人类命令（可选）**：只读工具 `lunheng_m_gate` / `lunheng_char_count` / `lunheng_handoff_check` / `lunheng_ethics_sanitize`（伦理脱敏，v18.60.1）——清单里有就优先用（省 `pwsh` + stdout 解析），没有就 `pwsh` 直调脚本（两条路径等价，脚本是唯一真源）；主人可用 `/lunheng-status` 自查进展（不产生模型消息）。详见 `references/_shared/DSH-集成方案.md`。
-- 🪪 **技能来源自检**：启动时用 `read` 核对本文件版本头「> 版本：v…」与期望版本一致；**不一致即停机**并报告主人「技能来源可疑」——同名 skill 按 rank 就近取胜，低 rank 会**静默顶替**。判据：项目级副本（rank 100）胜过一切（含已装 bundle 250），故「装了 bundle 又留 `.dsh/skills/` 副本」时生效的一直是副本，自检只能靠**读到的 `SKILL.md` 绝对路径 + 版本头**。完整 rank 表与考证见 [`references/maintainers.md`](references/maintainers.md) §一。
+- 🪪 **技能来源自检**：启动时用 `read` 核对本文件版本头「> 版本：v…」与期望版本一致；**不一致即停机**并报告主人「技能来源可疑」——同名 skill 按 **rank 数字越小越近（胜出）**（`100 < 200 < 250 (bundle) < 300 < 500 < 600 (官方 bundled)`；与 `maintainers.md` §一 rank 表一致）就近取胜，低 rank 会**静默顶替**。判据：项目级副本（**rank 100，就近取胜**）胜过项目级 rank ≥250 的 bundle，败 rank <100 的同名技能；副本须显式删除才能换回 bundle。故「装了 bundle 又留 `.dsh/skills/` 副本」时生效的一直是副本，自检只能靠**读到的 `SKILL.md` 绝对路径 + 版本头**（v18.77.0 P-10 收口：rank 数字语义先前读成「数值越大越优先」，与 `maintainers.md` §一 表「数字越小越近」相反，本条收口）。完整 rank 表与考证见 [`references/maintainers.md`](references/maintainers.md) §一。
 - ℹ️ **M 门**：**总 25 项 = 机械 24 项（M-Form 1-11 + M-Exist 1-11 + M-Integrity-1 + M-Fact-1，走 `scripts/m-gate-check.mjs`）+ 人工 1 项（M-Integrity-2 跨文件判断；M-Form-8 承重墙质量同源由主控 LLM 兜底）**——文档内 shell 示例仅供人类复核，agent 不执行任意 shell。
 - 💰 **长会话体量治理**：会话成本 ≈ **步数 × 每步上下文**；最贵的是**人驱动的主会话**（主控读产物 / 跑门 / 回填四门），不是某个子代理。① 审计类长会话**按 Phase 拆 session**（插件侧无法自动做，靠落盘产物 + `status.md` 交接）；② **先跑机械门，只把失败项交给会话**——`m-gate-check` / `final-check` / `handoff-check` / `consistency-check` / `repo-hygiene-check` 零模型成本。使用者向说明见 [`docs/usage.md`](docs/usage.md) §长会话与主会话体量。
 
@@ -103,7 +104,7 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 
 ## ⚡ 启动速查表
 
-- 版本：v18.75.1｜角色：T0 主控（= T8 终检执行者）＋ T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / T8 终检（主控亲执行）/ T9 审稿（启用按文类档案：`academic-*` 必选，其余默认不选）
+- 版本：v18.76.0｜角色：T0 主控（= T8 终检执行者）＋ T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / T8 终检（主控亲执行）/ T9 审稿（启用按文类档案：`academic-cn/-hum/-case` 必选，其余默认不选）
 - Phase：0 定题 → 1 检索(T1∥T2∥T3) → 1.5 补检索(可选,spawn T1) → 2 分析 → 2.5 大纲(人) → 3 写作 → 3.5 洞察(人) → 3.6 批判 → 4 审计 → **4.2 修订回环(≤2 轮+A 轨)** → 4.5 配图 → **4.6 G14 终闸(串行)** → 4.7 审稿 → 5 终检(人)
   > **本行的权威性**：本行是主控排 `todo_write` 的**唯一 Phase 真源**；机检规则 **㉔** 断言「流水线全景出现的 Phase 编号 ⊆ 本行」。**流水线全景仍是 1.5 / 4.2 的详述真源**（`Phase 1.5` 定向补检索 / `Phase 4.2 修订`）。
 - G14 时点（**三层防御**）：**① T5 v1 自检（零 spawn）→ ② 修订轮收尾自查（零 spawn）→ ③ 终闸 4.6（v18.75.0 起串行，不再与 T9 并行）（唯一一次 spawn，报告 = 最终版本真源）**
@@ -123,14 +124,14 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 - **激活时序**：M-Exist-4/5/6/9 的前提是「报告已落盘」——**相关报告落盘后必须重跑 M 门再取闸门口径**（脚本已对这四项加 `[报告后激活]` 标记）；主控预跑的 JSON 不得直接当闸门输入
 - 详细：pipeline-readme.md（派发话术/模型）／ glossary.md（概念单一真源）
 
-## ⚡ DSH 原生能力接缝（H1-H7）
+## ⚡ DSH 原生能力接缝（H1-H6）
 
 > 落地状态表、参数签名、边界论证与接线记录**单一真源 = [`references/_shared/DSH-集成方案.md`](_shared/DSH-集成方案.md) §C 组**（v18.60.1 反哺 v3 / v18.61.0 反哺 v4 的实现史已外移至此 + `audits/机制文件修订记录-2026-09-30-反哺v3/v4全批.md`，CTX-1）。
 
 - **H1 工具并发**：4 个只读工具声明 `executionMode: 'parallel'`——子代理可并发调用（无写面冲突）。
-- **H2 材料自动脱敏**：材料类工具（`read` / `web_*` / `subagent*`）的 result 自动过 `lunheng_ethics_sanitize`（basic），`reviewFlags` / `ethicsSanitized` 计数注入 result（降低泄露面，不构成合规保证）。
+- **H2 材料自动脱敏**：材料类工具（`read` / `web_*` / `subagent*`）的 result 自动过 `lunheng_ethics_sanitize`（basic）；命中摘要经 `decision.additionalContexts` 作为**一行标记**进下一轮上下文（宿主唯一采纳的插件副通道），`reviewFlags` / `ethicsSanitized` 只挂在**返回值**上供同进程监听器读——**不写 `result`**（真宿主传入的 result 是深冻对象，且结果随后按字段白名单投影）。`Config.hookRewriteContent: true` 时才用脱敏正文替换工具结果 content。降低泄露面，**不构成合规保证**。
 - **H4 prompt 追加**：system-prompt 装配时**只追加**论衡提示段——不改 dsh 默认内容、不截断下游监听器。
-- **H6 / H7 三档模型路由**：`examples/preset/agent-tiered/` preset + `agent/request` waterfall——改 `LUNHENG_*_PROVIDER` / `LUNHENG_*_MODEL` env **不必重启 dsh 即切模型**（preset 切换需会话空白期）。Backlog：H8-H11（session-log 投影 / session-query-sqlite / web_profile / workflow 族，见集成方案）。
+- **H6 三档模型路由（preset）**：`examples/preset/agent-tiered/` 的 `agentOptions`（**加载期** `!!js` 求值）读 `LUNHENG_*_PROVIDER` / `LUNHENG_*_MODEL`——**改 env 后需重载插件行**（本包不注册 `agent/request` 监听器；分档路由由该 preset 单独承载）。Backlog：H8-H11（session-log 投影 / session-query-sqlite / web_profile / workflow 族，见集成方案）。
 
 ## 何时使用 + 字数分层
 
@@ -228,7 +229,7 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 
 ## 角色卡与模板
 
-- **9 个独立角色卡（T1-T9）**：`references/agents/01~09`（00-主控-coordinator.md = T0 调度 + T8 终检双重身份；**`00-主控-扩展职责.md` = T0 的实操手册（含 §一–§二十三：编排循环防空转 / 闸门公共动作 / 主人侧产物…）**；T8 独立卡 08-终检-finalizer.md，主控亲执行不 spawn；T9 启用按文类档案（`academic-*` 必选，其余默认不选）；T3 任何量级必 spawn 含 0 条空卡协议）。
+- **9 个独立角色卡（T1-T9）**：`references/agents/01~09`（00-主控-coordinator.md = T0 调度 + T8 终检双重身份；**`00-主控-扩展职责.md` = T0 的实操手册（含 §一–§二十三：编排循环防空转 / 闸门公共动作 / 主人侧产物…）**；T8 独立卡 08-终检-finalizer.md，主控亲执行不 spawn；T9 启用按文类档案（`academic-cn/-hum/-case` 必选，其余默认不选）；T3 任何量级必 spawn 含 0 条空卡协议）。
 - **模板**：`references/templates/`（**清单以 `ls references/templates/` 为准，不在此写死数字——防 27/28 式计数漂移**；按用途取用，别整目录读）：`任务简报 / status / 交接报告 / 文献卡 / 数据卡 / 案例卡` 各含 **full + lite**（实战用 lite，培训/字段详解用 full）+ 单文件模板 `先行者清单 / G14检测报告 / 主人确认（= 阶段确认单通用模板）/ AI-使用声明 / 修订说明-template-full（无 lite 版） / 投稿就绪检查表 / 图表-SVG / 素材加载清单 / 闸门记录 / 交付说明 / 局限性 / 模型路由表 / 进展-主人版 / 主人投喂清单 / style-baseline`。
   > `机检硬格式` 表已收口到 [`references/_shared/机检硬格式.md`](references/_shared/机检硬格式.md)。
 - **运行手册**：`references/pipeline-readme.md`（含 T1-T9/G14 派发话术 + M 门 + F 模式 + AI 披露）。
