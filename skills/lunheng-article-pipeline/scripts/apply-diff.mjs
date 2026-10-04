@@ -159,7 +159,7 @@ const locateAndReplace = (text, oldPart, newPart, a, i, j) => {
 const stripMd = (s) => s
   .replace(/^\s*[-*]\s*/, '')            // 列表符
   .replace(/^\s*\*\*[^*]*\*\*\s*[:：]?\s*/, '')  // `**现况**：` / `**修改**：`
-  .replace(/^\s*(?:现况|修改|增补|定位|估算|估算字数|依据|验收|说明|优先级)\s*[:：]\s*/u, '')
+  .replace(/^\s*(?:现况|修改|增补|定位|估算|估算字数|依据|验收|说明|优先级|旧串|新串)\s*[:：]\s*/u, '')
   .trim();
 
 const listLines = readFileSync(listPath, 'utf8').split('\n');
@@ -180,21 +180,59 @@ let cur = null;
 //   现把「该条目正文范围内、既非定位/现况/修改、又非空」的行记进 `droppedLines`，随 unparsed 一起上报。
 const droppedLines = [];
 const unparsedHeads = [];
+// v18.73.0（反哺报告-v7 F-3）：**HTML 注释是区间语义，不是行首语义** ——
+//   旧版判据 `!/^<!--/.test(t)` 只跳「自身以 `<!--` 开头」的行；一对 `<!-- … -->` 包裹的整段里，
+//   中间行**不被视为注释**，全被计入上一条目的 `droppedLines` → `exit 1`。
+//   实测（《不能评估的忠诚》B 轨末轮）：附录块置于最后一个条目头之后 → `dropped_count: 40`，
+//   而清单作者自报 `0`（其自检只扫「注释外」，**扫描面与应用器计数面不一致**）。
+//   旁证：同一清单在 v3 那轮把附录放在**第一个条目头之前**（`cur` 未建立 → `continue`）→ `dropped_count: 0`。
+let inComment = false;
 for (let n = 0; n < listLines.length; n++) {
   const line = listLines[n];
   const m = HEAD_RE.exec(line);
   if (m) {
     if (cur) items.push(cur);
-    cur = { id: headId(m), line: n + 1, cur: null, new: null, loc: '', rawLoc: '', dropped: [] };
+    // v18.73.0（F-2）：新增 `hasNew` 哨兵 —— 「修改」行**出现过但内容为空**（= 删除整段）
+    //   与「根本没写修改」是两回事。旧版用 `it.new` 的真假一并判掉，导致「空新串 = 删除」
+    //   一律落 `unparsed`（实测：撤条目 3 条全落）。**下游本就支持删除**
+    //   （`kind: newPart === '' ? '删除'`），故只需把「是否出现过」与「内容是什么」分开。
+    cur = { id: headId(m), line: n + 1, cur: null, new: null, hasNew: false, loc: '', rawLoc: '', dropped: [] };
     continue;
   }
+  // v18.73.0（F-3）：注释块内一律跳过（含块外，本判定置于 `cur` 检查**之前**）
+  //   ⚠️ 终止判据必须是「**行首**为 `-->`」，不能是「行内出现 `-->`」——
+  //   实测：附录里有一行**说明文字**写「附录整段 `<!-- -->` 包裹」，其中 `-->` 在反引号内，
+  //   若按「行内出现」判终止，注释状态会在此提前结束，其后 4 行重新落回 `droppedLines`。
+  if (inComment) { if (/^\s*-->/.test(line)) inComment = false; continue; }
+  if (/^\s*<!--/.test(line)) { if (!/-->\s*$/.test(line)) inComment = true; continue; }
   // 方括号开头但**不属于四个清单族**的行：只在 `cur` 之外时收集，供「0 条解析」时点名
   if (!cur && /^\s*(?:#{1,6}\s*)?\[[^\]]+\]/.test(line)) unparsedHeads.push({ line: n + 1, text: line.trim().slice(0, 60) });
   if (!cur) continue;
   if (/^\s*(?:[-*]\s*)?(?:\*\*)?定位(?:\*\*)?\s*[:：]/u.test(line)) { cur.loc = stripMd(line); cur.rawLoc = line.trim(); continue; }
   // 「现况」可能写成 `- **现况**：` / `  现况：` / `现况：「…」`
-  if (/^\s*(?:[-*]\s*)?(?:\*\*)?现况(?:\*\*)?\s*[:：]/u.test(line)) { cur.cur = stripMd(line); continue; }
-  if (/^\s*(?:[-*]\s*)?(?:\*\*)?(?:修改|增补|改为)(?:\*\*)?\s*[:：]/u.test(line)) { cur.new = stripMd(line); continue; }
+  // v18.73.0（反哺报告-v7 F-1）：**接受 `旧串` / `新串` 作为别名** ——
+  //   `references/pipeline-readme.md` 行 306 的协议原文长期教调用方写「旧串 / 新串」，
+  //   而本 parser 只认「现况 / 修改」。**照协议写清单 = 必然 0 条解析、整条机械应用路径空转**
+  //   （实测：《不能评估的忠诚》A 轨第 1 轮 dry-run `parsed: 0 ／ dropped_lines: 233`）。
+  //   判据：**协议与实现二者只能有一个真源**；此处让实现对协议兼容，同时保留原标签。
+  if (/^\s*(?:[-*]\s*)?(?:\*\*)?(?:现况|旧串)(?:\*\*)?\s*[:：]/u.test(line)) {
+    // v18.73.0（反哺报告-v7 F-1b）：**一条目内出现第二对「现况/修改」时自动拆条** ——
+    //   旧实现 `cur.cur` / `cur.new` 各只有一个槽位，第二条「现况」**静默覆盖**第一条，
+    //   于是「同一条目写多对改动」的清单里，第一对**被吃掉且不报错**（落 `unparsed` 或半截应用）。
+    //   实测（《不能评估的忠诚》A 轨原清单）：T5 按当时的话术把同段多处改动合并在一条里 →
+    //   `unparsed 14`；而协议文档（`pipeline-readme.md` §修订轮默认段级 diff）**从未禁止**一条多对。
+    //   修法：**拆条而不改语义** —— 已有「现况」时，先把当前条目收尾压入 `items`，
+    //   再以**同一 id** 起一条新条目承接这一对。这样每条仍只吃一对，但一条目内的多对不再丢失。
+    //   已在应用器契约内的头部族（`[P1-n]` 等）不受影响；`id` 相同不构成冲突——
+    //   下游按条目独立处理，输出 `applied_items` 亦逐条列出。
+    if (cur.cur !== null || cur.hasNew) {
+      items.push(cur);
+      cur = { id: cur.id, line: cur.line, cur: null, new: null, hasNew: false, loc: cur.loc, rawLoc: cur.rawLoc, dropped: [] };
+    }
+    cur.cur = stripMd(line);
+    continue;
+  }
+  if (/^\s*(?:[-*]\s*)?(?:\*\*)?(?:修改|增补|改为|新串)(?:\*\*)?\s*[:：]/u.test(line)) { cur.new = stripMd(line); cur.hasNew = true; continue; }
   // 其余非空、非注释行 → 丢弃并留痕（缩进续行、忘了写标签的行都落这里）
   const t = line.trim();
   if (t && !/^<!--/.test(t) && !/^[-*_]{3,}$/.test(t)) {
@@ -204,8 +242,10 @@ for (let n = 0; n < listLines.length; n++) {
 }
 if (cur) items.push(cur);
 
-const parsed = items.filter((it) => it.cur && it.new);
-const unparsed = items.filter((it) => !it.cur || !it.new);
+// v18.73.0（F-2）：判据由 `it.new` 改为 `it.hasNew` —— **「修改行出现过」才算解析成功**；
+//   内容为空是**合法删除**（下游 `kind: newPart === '' ? '删除'` 已支持），不是解析失败。
+const parsed = items.filter((it) => it.cur && it.hasNew);
+const unparsed = items.filter((it) => !it.cur || !it.hasNew);
 const emptyList = items.length === 0;   // v18.2.6（B-4 ③）：清单解析出 0 条——见下方两处判定的顺序说明
 
 // v18.13.0（L-59 收口配套）：**解析出 0 条但文件里明明有方括号行** → 必须点名，不得只说「未解析出任何条目」。

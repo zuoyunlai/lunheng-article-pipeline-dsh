@@ -21,6 +21,7 @@
 //   → 正文区终点退化为文件末尾 → `hanChars` 实测 503 → **1707**（虚高 3.4 倍）且不置 degraded。
 // 用途：写手写完即跑（替代 LLM 推理估算）；T7 G8 字数核验；T8 终检权威回填
 import { readFileSync, existsSync } from 'node:fs';
+import { writeReport } from './_lib/destructive-write.mjs';   // 报告类写盘唯一出口（v18.73.0 F-6）
 import { countHan } from './_lib/han.mjs';   // 汉字口径唯一真源（v2.5.2-dsh.13 抽 _lib；v18.0.3 计数改走 countHan）
 // v18.2.6：`HAN_RE` 曾是**死导入**（v18.0.3 计数改走 countHan 后无人引用）——连带把 `_lib/han.mjs`
 //   的模块级 `g` 正则状态问题遮住（见该文件注释）。现删除死导入，边界口径改走 sections。
@@ -29,9 +30,30 @@ import { installExitGuard, requireExistingFile } from './_lib/exit-guard.mjs'; /
 installExitGuard();   // 传目录/权限错 → exit 10（旧版未捕获 EISDIR → exit 1 = 被读成「P1 内容失败」）
 
 // v18.16.0（S-2 反哺）：argv 解析从 4 token 扩到 ≤5 token，允许 `--warn-threshold <N>` 双 token。
-const argvTokens = process.argv.slice(2);
+// v18.73.0（反哺报告-v7 F-6）：新增 `--report <path>`（可出现在任意位置）。
+//   病灶实测（《不能评估的忠诚》）：T7 复核轮的交接报告声称落盘 `count-chars-v2.json`，**该文件并不存在**
+//   （目录实测只有 4 份报告）——因为**本脚本从来没有 `--report` 旗标**，角色按同类脚本的惯例假定它有。
+//   判据：**同一族脚本的旗标面不一致时，调用方会按惯例假定最全的那一套** → 要么补齐旗标，要么显式写死「本工具无报告输出」。
+//   实现策略：**把 `--report <path>` 从 token 流里摘出，其余 token 原样喂给既有位置式逻辑** ——
+//   不传该旗标时，`argvTokens` 与旧版逐 token 相同，**行为零变化**。
+const rawTokens = process.argv.slice(2);
+let reportPath = null;
+const argvTokens = [];
+for (let i = 0; i < rawTokens.length; i++) {
+  if (rawTokens[i] === '--report') {
+    const v = rawTokens[++i];
+    if (!v || v.startsWith('-')) {
+      console.error('--report 缺少值（示例：--report audits/count-chars.json）');
+      console.error('用法: node count-chars.mjs <文件.md> [--full | --summary | --warn-threshold <N>] [--report <path>]');
+      process.exit(10);
+    }
+    reportPath = v;
+    continue;
+  }
+  argvTokens.push(rawTokens[i]);
+}
 if (argvTokens.length === 0) {
-  console.error('用法: node count-chars.mjs <文件.md> [--full | --summary | --warn-threshold <N>]');
+  console.error('用法: node count-chars.mjs <文件.md> [--full | --summary | --warn-threshold <N>] [--report <path>]');
   process.exit(10);
 }
 const file = argvTokens[0];
@@ -216,6 +238,19 @@ if (warnThreshold !== null) {
     out.warnDetail = `字数 ${count} > 阈值 ${warnThreshold}（差 ${count - warnThreshold}）`;
   } else {
     out.warnOvershoot = false;
+  }
+}
+// v18.73.0（反哺报告-v7 F-6）：`--report <path>` 落盘 —— **与 stdout 同一份 JSON**（不另造结构）。
+//   写盘走 `_lib/destructive-write` 的 `writeReport`（而非裸 `writeFileSync`）—— 它给三条硬保证：
+//   ① 不与本次运行**读过的源文件**同文件（`protect` 防不可回滚地销毁被审正文）；
+//   ② 覆盖既有文件前留**时间戳 `.bak`**；③ 缺失父目录自动建。
+//   判据：**报告类写盘一律经 `writeReport`** —— 裸写会绕开这三条，而本脚本的 `protect` 正是被审正文本身。
+if (reportPath) {
+  try {
+    writeReport(reportPath, JSON.stringify(out, null, 2) + '\n', { protect: [file], label: '--report' });
+  } catch (e) {
+    // 落盘失败**不得改变退出码语义**（字数统计本身已成功）——但必须显式告警，不得静默。
+    console.error(`⚠️ --report 落盘失败（字数统计结果仍有效，见 stdout）：${e.message}`);
   }
 }
 console.log(JSON.stringify(out, null, 2));

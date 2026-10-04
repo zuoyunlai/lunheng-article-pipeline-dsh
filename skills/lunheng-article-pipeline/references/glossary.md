@@ -1,4 +1,4 @@
-> 版本：v18.72.0（DSH bundle 插件）
+> 版本：v18.73.0（DSH bundle 插件）
 
 
 <a id="concepts"></a>

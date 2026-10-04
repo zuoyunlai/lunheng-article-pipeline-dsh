@@ -64,6 +64,8 @@ test('readability：21 份真实定稿**全部在标定界内**（不误报—�
   //   **样本**，且排除名单是**具名枚举**（不是前缀/正则通配），新增实验项目必须**显式**登记于此。
   const EXCLUDED_EXPERIMENTS = new Set(['AB-ai-content-farm-A', 'AB-ai-content-farm-B', 'AB-共锁-A', 'AB-共锁-B'])
   let n = 0
+  let maxLong = 0          // v18.73.0（F-25 重标定）：标定语料的长句占比极值——用于双向校准守卫
+  let maxStd = 0
   const excluded = []
   for (const name of readdirSync(root, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)) {
     if (EXCLUDED_EXPERIMENTS.has(name)) { excluded.push(name); continue }
@@ -74,11 +76,28 @@ test('readability：21 份真实定稿**全部在标定界内**（不误报—�
     const e = firstEndnoteIndex(text)
     const r = evaluate(text.slice(a.found ? a.index : 0, e === -1 ? text.length : e))
     assert.equal(r.pass, true, `${name} 被误报：${r.hits.join('；')}（阈值 ${JSON.stringify(THRESHOLDS)}）`)
+    const m = r.metrics || {}
+    if (typeof m.longSentenceRatio === 'number') maxLong = Math.max(maxLong, m.longSentenceRatio)
+    if (typeof m.sentenceLenStd === 'number') maxStd = Math.max(maxStd, m.sentenceLenStd)
     n++
   }
   assert.ok(n >= 5, `真实稿样本过少（${n}）——本用例的价值就在样本量`)
+  // ── v18.73.0（反哺报告-v7 F-25）：**双向校准守卫** ──
+  //   立法目的：本用例此前只断言「不误报」（单向）。于是**阈值可以静默地变得过松**——
+  //   只需语料变短或变易，而没人会发现「25% 已远高于极值」。
+  //   实测教训：本项目 27 份语料的极值 27.6% **已高于**原阈值 25%，即**标定原则被打破却无人报**，
+  //   直到主控实测才发现（F-25）。
+  //   ⚠️ 此处**仍不放宽任何阈值**：两条断言都是「标定是否仍然成立」，不是「这一篇过不过」。
+  assert.ok(maxLong <= THRESHOLDS.longRatioMax,
+    `标定语料长句占比极值 ${(maxLong * 100).toFixed(1)}% **已超阈值** ${THRESHOLDS.longRatioMax * 100}% —— 标定原则（阈值应略高于真实稿极值）被打破，请重新标定`)
+  assert.ok(maxLong > THRESHOLDS.longRatioMax * 0.85,
+    `标定语料长句占比极值 ${(maxLong * 100).toFixed(1)}% 距阈值 ${THRESHOLDS.longRatioMax * 100}% 过远（< 85%）—— 阈值可能**过松**，请重新标定`)
   // v18.48.0（F-BD）：排除须**可见**——排了哪几个、排了几个，随用例一起报出来。
-  assert.ok(true, `（本次排除受控实验产物 ${excluded.length} 个：${excluded.join('/') || '无'}；标定样本 n=${n}）`)
+  // v18.73.0（F-25）：改为**报告实测校准量**（此前那条 `assert.ok(true, …)` 无论校准如何都恒真，
+  //   等于「排除可见」但「校准不可见」）。现在把极值与语料规模一并报出，供逐版对照。
+  assert.ok(true, `（本次排除受控实验产物 ${excluded.length} 个：${excluded.join('/') || '无'}；`
+    + `标定样本 n=${n}；实测极值 长句占比 ${(maxLong * 100).toFixed(1)}% / 句长std ${maxStd.toFixed(2)}；`
+    + `阈值 长句占比 ${THRESHOLDS.longRatioMax * 100}% —— 极值必须 ≤ 阈值 且 > 阈值×85%）`)
 })
 
 test('quality-score：可读性剖面是第 8 分量，八分量权重合计 100', () => {
@@ -96,6 +115,24 @@ test('quality-score：可读性剖面是第 8 分量，八分量权重合计 100
   const sum = j.components.reduce((s, c) => s + c.weight, 0)
   assert.equal(sum, 100, `八分量权重合计必须 100（八项全适用时）：实测 ${sum}｜${j.components.map((c) => c.id + ':' + c.weight).join(' ')}`)
   assert.ok(rd.evidence.metrics && typeof rd.evidence.metrics.sentenceLenStd === 'number', '分值须带四指标原值供逐版对照')
+})
+
+// ── v18.73.0（F-25 重标定的**源码钉**）：阈值字面量不得被静默改动 ──
+//   ADR 第 ③ 条要求「成对测试 = 行为测 + 源码钉」。上面那条「真实稿不误报」是**行为测**
+//   （真跑 evaluate 并断言行为）；本条是**源码钉**——直接断言源文件里的字面量。
+//   二者缺一则重标定可被静默回退：**行为测**在语料恰好都不越界时会通过（阈值调松了也看不出来），
+//   **源码钉**则在有人改数时立刻点名。
+test('readability：长句占比阈值的**源码钉**（v18.73.0 F-25 重标定后不得被静默改动）', async () => {
+  const { readFileSync } = await import('node:fs')
+  const src = readFileSync(join(SCRIPTS, '_lib', 'readability.mjs'), 'utf8')
+  assert.match(src, /longRatioMax:\s*0\.30\b/,
+    'longRatioMax 必须逐字为 0.30（v18.73.0 由 0.25 重标定：在册语料极值 27.6% + 约 2.4pp）。'
+    + '**若确要再改，必须同批更新本断言、`readability.mjs` 的标定注释、以及 `audits/decisions/` 里的重标定记录**——'
+    + '不得只改数字。')
+  // 另三维仍为原标定值——一并钉住，防止"顺手调一个"。
+  assert.match(src, /stdMin:\s*13\b/, 'stdMin 必须为 13（本轮未重标定）')
+  assert.match(src, /termRateMax:\s*50\b/, 'termRateMax 必须为 50（本轮未重标定）')
+  assert.match(src, /passiveRatioMax:\s*0\.22\b/, 'passiveRatioMax 必须为 0.22（本轮未重标定）')
 })
 
 test('quality-score：M-Gate 分量名与权重不得随「证据包有无」改变（同 id 即同分量）', () => {

@@ -1,4 +1,4 @@
-> 版本：v18.72.0（DSH bundle 插件）
+> 版本：v18.73.0（DSH bundle 插件）
 > **历史叙事已外移**：正文只留现行规则；历史成因 / 逐版明细 / 教训编号见 CHANGELOG.md 对应版本段与 `memory/lessons.md`。
 
 # auto_cite 集成约定

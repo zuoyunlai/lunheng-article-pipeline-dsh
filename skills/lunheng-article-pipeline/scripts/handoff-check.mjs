@@ -274,9 +274,33 @@ if (strict && role === 'T7') {
   const review = artifacts.find((a) => a.name === '复核报告')
   if (audit && review && audit.exists && review.exists && audit.version != null && review.version != null) {
     if (audit.version !== review.version) {
-      addHard('A4b', 'T7 审计↔复核', `审计报告 v${audit.version} 与复核报告 v${review.version} **不同轮**——复核必须与它复核的那一轮审计同号（N = 审计轮次）。`
-        + `**可执行指引**：把该文件改名为 \`audits/复核报告-v${audit.version}.md\`（现为 \`复核报告-v${review.version}.md\`）；`
-        + '命名契约一句话 = **审计族（审计报告 / 复核报告 / 反哺报告）跟审计轮次；审稿报告 / G14-检测报告跟正文轮次**（v18.62.7 A7）', 21)
+      // v18.73.0（反哺报告-v7 F-4）：**接受「同一审计轮次的第 k 次独立复核」** ——
+      //   旧判据 `audit.version !== review.version` 隐含假定「**一个审计轮次只做一次复核**」。
+      //   实测（《不能评估的忠诚》）：对**同一个 `审计报告-v1`** 做了**三次**独立复核
+      //   （A 轨修订后一次、B 轨第 1 轮后一次、B 轨末轮后一次）→ `latestReport` 取到 `复核报告-v3.md`
+      //   → 与 `审计报告-v1` 不同号 → **A4b 恒判 hard**，且**无合法出口**：改名则三次复核重名，
+      //   不改名则硬失败。本项目只能「遵从语义正确的文件名 + 如实登记冲突」绕过。
+      //   修法：**保住本项的原意**（「复核了上一轮」/「审计了没复核的稿」必须仍被抓），
+      //   判据由「最新那份复核的编号必须相等」改为「**该审计轮次是否已被复核过**」：
+      //     · 磁盘上存在 `audits/复核报告-v{audit.version}.md` → 该轮**已被复核**
+      //       · 且 review.version > audit.version（后续独立复核）→ 软提示（留痕，不判 hard）
+      //       · 且 review.version < audit.version（复核的轮次**早于**审计）→ 仍判 hard（真错轮）
+      //     · 磁盘上**不存在**同轮复核报告 → 仍判 hard（「审计了没复核的稿」）
+      const sameRoundPath = join(project, 'audits', `复核报告-v${audit.version}.md`)
+      const reviewedThisRound = existsSync(sameRoundPath)
+      const isLaterReview = review.version > audit.version
+      if (reviewedThisRound && isLaterReview) {
+        addSoft('A4b', 'T7 审计↔复核', `审计报告 v${audit.version} 已有同轮复核（\`复核报告-v${audit.version}.md\` 在盘）；`
+          + `当前最新复核为 v${review.version}，属对**同一审计轮次**的第 k 次独立复核——**合规**（v18.73.0 F-4）。`
+          + '命名契约一句话 = **审计族（审计报告 / 复核报告 / 反哺报告）跟审计轮次；审稿报告 / G14-检测报告跟正文轮次**（v18.62.7 A7）。')
+      } else {
+        addHard('A4b', 'T7 审计↔复核', `审计报告 v${audit.version} 与复核报告 v${review.version} **不同轮**——复核必须与它复核的那一轮审计同号（N = 审计轮次）。`
+          + (reviewedThisRound
+            ? `**当前问题**：最新复核（v${review.version}）**早于**审计报告（v${audit.version}），即「复核了上一轮」。`
+            : `**当前问题**：磁盘上**没有** \`audits/复核报告-v${audit.version}.md\`，即该审计轮次**尚未复核**。`)
+          + `**可执行指引**：把该文件改名为 \`audits/复核报告-v${audit.version}.md\`（现为 \`复核报告-v${review.version}.md\`）；`
+          + '命名契约一句话 = **审计族（审计报告 / 复核报告 / 反哺报告）跟审计轮次；审稿报告 / G14-检测报告跟正文轮次**（v18.62.7 A7）', 21)
+      }
     }
   }
 }

@@ -602,8 +602,14 @@ try {
       //   （T4 大纲自检亦明示「所有承重墙负载 ≤2」）。两者结论相反，根因即锚点选错表。
       //   修法：首列锚点 `^\s*\|\s*承重(证据|墙|清单)` —— 映射表首列是「论点」，不再命中。
       const wallHeadAnchor = (l) => /^\s*\|\s*承重(证据|墙|清单)/.test(l);
+      // v18.73.0（反哺报告-v7 F-7）：**允许可选的章节号前缀** ——
+      //   旧判据 `^#{2,4}\s*(承重墙|…)` 要求 `#` 后**紧跟**关键词；而本仓大纲的承重墙清单节
+      //   常写成 `### §11.6 承重墙清单（…）`（章节号在关键词之前）→ **不匹配** → 脚本退选到
+      //   下一个匹配项（`#### 承重墙超载自检`）→ M-Form-8 报「承重墙清单无结构性条目」**假阳性**。
+      //   实测（《不能评估的忠诚》）：改名为 `### 承重墙清单（§11.6；…）` 后即报「22 条标注、无超载」。
+      //   判据：**章节号是编排习惯，不是内容的组成部分**——锚点不应要求关键词出现在标题首位。
       const wallTextAnchor = (l) => /^#{2,4}\s/.test(l)
-        ? /^#{2,4}\s*(承重墙|承重证据|承重清单)/.test(l)
+        ? /^#{2,4}\s*(?:§\s*[\d.]+[、．.]?\s*)?(?:[一二三四五六七八九十]+[、．.]\s*)?(承重墙|承重证据|承重清单)/.test(l)
         : /承重证据\s*top\s*1/i.test(l);
       let fenceOn = false;
       const headCandidates = [];
@@ -1096,12 +1102,16 @@ try {
   // 卡片侧真源：正文条目编号（幽灵判定）+ 索引段编号（选择性判定）
   const cardEntryIds = new Set();
   const cardIndexIds = new Set();
+  // v18.73.0（反哺报告-v7 F-8 的真残留）：卡片全文留底 —— 供 ghost 判定区分
+  //   「卡片里根本没有这个编号」（真 ghost）与「有、但不在行首」（模板形态偏离，报文须说清）。
+  let cardAllText = '';
   // v18.0.0：纳入 **先行者清单** —— `[先NN]` 编号不在三张素材卡内（存在 `literature/先行者清单.md`），
   //   否则 ghost 判定会把清单里的 [先01]-[先07] 误判为「清单编造」（假 P0）。
   for (const [name, rel] of CARD_SPECS) {
     const p = findCard(name, rel);
     if (!p) continue;
     const t = readFileSync(p, 'utf8');
+    cardAllText += t + '\n';
     for (const id of idsByToken(t, REF_TOKEN)) cardEntryIds.add(id);
     const idx = indexSection(t.split('\n'));
     if (idx) {
@@ -1164,6 +1174,17 @@ try {
     if (badRanges.length) soft11.push(`加载清单含无法展开的范围写法：${badRanges.slice(0, 3).join(' ')}（请改为逐项列出）`)
     const notLoaded = [...cited11].filter((x) => !loaded11.has(x));
     const ghost = [...loaded11].filter((x) => cardEntryIds.size > 0 && !cardEntryIds.has(x));
+    // v18.73.0（反哺报告-v7 F-8 的真残留）——**让诊断可行动**：
+    //   `idsByToken` **刻意锚定行首**（模板形态 = `[先NN] 标题 | …`，见 `mgate-helpers.mjs` 的来由注释），
+    //   故「卡片里写了、但写成表格行/句中」的编号会被漏扫 → 表现为 ghost。
+    //   旧报文只说「卡片中不存在」，**看不出「其实存在、只是不在行首」** → 读者会以为清单编造了编号
+    //   （本项目实测困惑点）。现将两种情形分开点名，后者给**可执行改法**。
+    //   ⚠️ **不改正则**：放宽成全形态会把「句中引用编号」重新算作条目，重演行首锚定当初要修的病。
+    const ghostNonAnchored = ghost.filter((x) => {
+      const raw = x.slice(1, -1);
+      return new RegExp('\\[' + raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\]').test(cardAllText);
+    });
+    const ghostTrulyAbsent = ghost.filter((x) => !ghostNonAnchored.includes(x));
     // v18.2.2（主人授权的机制修订；依据 2026-09-12 ai-era-humanity-crisis 全量测试反哺）：
     //   **「白读」软提示排除「清单中已声明跳过」的编号**。清单契约允许另设 `## 已跳过` 段解释
     //   「为什么读了索引段却不引用某条」（§八）；写手常把「读过的索引段编号」与「实际未读的条目」
@@ -1179,7 +1200,14 @@ try {
     );
     const unused = [...loaded11].filter((x) => !cited11.has(x) && !skippedIds11.has(x));
     if (notLoaded.length) findings11.push(`正文引用但清单未记「已加载」：${notLoaded.slice(0, 6).join(',')}（引了没读 = 引用不可信）`);
-    if (ghost.length) findings11.push(`清单里的编号在卡片中无对应条目：${ghost.slice(0, 6).join(',')}（清单与素材卡不一致）`);
+    // v18.73.0（F-8 真残留）：两种情形分开点名 —— 后者给**可执行改法**，不再让读者以为清单编造了编号
+    if (ghostTrulyAbsent.length) findings11.push(`清单里的编号在卡片中无对应条目：${ghostTrulyAbsent.slice(0, 6).join(',')}（清单与素材卡不一致）`);
+    if (ghostNonAnchored.length) {
+      findings11.push(`清单里的编号 ${ghostNonAnchored.slice(0, 6).join(',')} **在卡片中存在、但不在行首** —— `
+        + '本门按**行首裸编号**形态识别条目（模板形态：`[先NN] 标题 | 作者 | 年份 | URL`）。'
+        + '**可执行改法**：把该条目的编号移到**行首**（若原本写成表格行 `| [先NN] | …`，改成行首裸编号即可）；'
+        + '放宽本门正则**不是**正解——那会把正文/句中的编号引用重新算作条目');
+    }
     // v18.2.5 改（主控实战反哺 P2）：文案补**合规留痕豁免**说明。
     //   实测误伤（本项目）：[先06] 被 T7 第 1 轮判「与 [L11] 同篇重复、应从文末节删除」→
     //   主控按判从文末节删除，但 `素材加载清单.md` **保留**它是**正确行为**（它确实被读过）。
