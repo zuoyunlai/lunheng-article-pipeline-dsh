@@ -18,7 +18,7 @@
 | **辅助线** | `#8A8580`（浅灰棕） | 坐标轴／网格 |
 | **强调色** | `#A0413F`（砖红） | 关键数据点／对比落差点 |
 | **浅底块** | `#E8DDC8`（浅棕） | 图例底／高亮块 |
-| **字体** | `-apple-system, 'PingFang SC', 'Noto Serif CJK SC', 'Source Han Serif SC', serif` | 衬线，极简自然 |
+| **字体** | `'Source Han Serif SC', 'Noto Serif CJK SC', STZhongsong, STSong, SimSun, serif` | 衬线，极简自然（**v18.75.1 定案**：原栈 4 个字**本机一个都没有**、实际全靠 `serif` 兜底；现改为**实测可得**的衬线族，通用族 `serif` 仍是最后的实际保险） |
 | **画布** | `viewBox="0 0 700 500"`（默认） | 可调；**必须有 viewBox 或 width+height** |
 
 ---
@@ -76,7 +76,7 @@
 
 ```svg
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 500" font-family="-apple-system, 'PingFang SC', 'Noto Serif CJK SC', 'Source Han Serif SC', serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 500" font-family="'Source Han Serif SC', 'Noto Serif CJK SC', STZhongsong, STSong, SimSun, serif">
   <rect width="700" height="500" fill="#F4EFE5"/>
   <text x="350" y="45" text-anchor="middle" font-size="22" font-weight="bold" fill="#2A2826">【图表标题】</text>
   <text x="350" y="68" text-anchor="middle" font-size="12" fill="#6A6560">【副标题／口径：样本量 · 时间范围】</text>
@@ -105,7 +105,7 @@
 
 ```svg
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 500" font-family="-apple-system, 'PingFang SC', 'Noto Serif CJK SC', 'Source Han Serif SC', serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 500" font-family="'Source Han Serif SC', 'Noto Serif CJK SC', STZhongsong, STSong, SimSun, serif">
   <rect width="700" height="500" fill="#F4EFE5"/>
   <text x="350" y="45" text-anchor="middle" font-size="22" font-weight="bold" fill="#2A2826">【图表标题】</text>
   <text x="350" y="68" text-anchor="middle" font-size="12" fill="#6A6560">【副标题／口径：样本量 · 时间范围】</text>
@@ -147,7 +147,7 @@
 
 ```svg
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 500" font-family="-apple-system, 'PingFang SC', 'Noto Serif CJK SC', 'Source Han Serif SC', serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 500" font-family="'Source Han Serif SC', 'Noto Serif CJK SC', STZhongsong, STSong, SimSun, serif">
   <rect width="700" height="500" fill="#F4EFE5"/>
   <text x="350" y="45" text-anchor="middle" font-size="22" font-weight="bold" fill="#2A2826">【图表标题】</text>
   <text x="350" y="68" text-anchor="middle" font-size="12" fill="#6A6560">【副标题／口径：样本量 · 统计范围】</text>
@@ -174,7 +174,7 @@
 
 ```svg
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 500" font-family="-apple-system, 'PingFang SC', 'Noto Serif CJK SC', 'Source Han Serif SC', serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 500" font-family="'Source Han Serif SC', 'Noto Serif CJK SC', STZhongsong, STSong, SimSun, serif">
   <rect width="700" height="500" fill="#F4EFE5"/>
   <text x="350" y="45" text-anchor="middle" font-size="22" font-weight="bold" fill="#2A2826">【图表标题】</text>
   <text x="350" y="68" text-anchor="middle" font-size="12" fill="#6A6560">【副标题／口径：两个维度的定义与取值范围】</text>
@@ -207,7 +207,7 @@
 
 ```svg
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 500" font-family="-apple-system, 'PingFang SC', 'Noto Serif CJK SC', 'Source Han Serif SC', serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 500" font-family="'Source Han Serif SC', 'Noto Serif CJK SC', STZhongsong, STSong, SimSun, serif">
   <rect width="700" height="500" fill="#F4EFE5"/>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">

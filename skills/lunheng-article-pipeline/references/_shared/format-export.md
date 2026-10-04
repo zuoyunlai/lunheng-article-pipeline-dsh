@@ -1,4 +1,4 @@
-> 版本：v18.75.0（DSH bundle 插件）
+> 版本：v18.75.1（DSH bundle 插件）
 > **历史叙事已外移**：正文只留现行规则；历史成因 / 逐版明细 / 教训编号见 CHANGELOG.md 对应版本段与 `memory/lessons.md`。
 
 
@@ -49,7 +49,7 @@ node scripts/md2html.mjs <定稿.md> <定稿.html> <SVG 文件路径>
 
 **导出前置校验**：`md2html.mjs` 会先用 `scripts/_lib/svg.mjs` 校验每张 SVG——**结构不合格（未闭合 / 无 `<svg>` 根 / 无 viewBox 且无宽高 / 含 DTD·ENTITY）直接 `exit 40` 拒绝导出且不产出 HTML**（旧用 `exit 2` 与 M 门「2 = P0」撞义，会把「缺图件」读成「定稿有 P0」，现改用独立码 40）；`<script>`/`on*`/`foreignObject`/`javascript:`/`<style>`/外部引用会被剥离并逐条告警；`--strict` 可让任何告警都判失败（同样 `exit 40`）。缺图的图位输出显式占位（含期望文件名），不会静默留白。**读码须知**：`40` = 补/修图件，**不要改正文**；`10` = 参数或路径错。
 
-校验：`scripts/pdfcheck.mjs`（解压 PDF FlateDecode 流 + 原始字节直查 `/Page` `/Font`/`ToUnicode`/`CIDFont` 计数 + `%%EOF`）。中文字体依赖系统字体（Windows 自带 SimSun/微软雅黑即够）。
+校验：`scripts/pdfcheck.mjs`（解压 PDF FlateDecode 流 + 原始字节直查 `/Page` `/Font`/`ToUnicode`/`CIDFont` 计数 + `%%EOF`）。中文字体依赖系统字体——**正文与图件同用衬线栈**（`'Source Han Serif SC', 'Noto Serif CJK SC', STZhongsong, STSong, SimSun, serif`，真源 = `templates/图表-SVG-template.md` 品牌视觉规范表 + `scripts/md2html.mjs` 的 `body` 规则；v18.76.0 起两者逐字一致）。Windows 自带 SimSun（宋体）即满足；**该栈不经任何门校验**——改字体前先读 [`../operations.md`](../operations.md) §图件字体栈。
 
 ## 四、Phase 0 + Phase 5 选择流程
 

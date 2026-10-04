@@ -293,7 +293,7 @@ const page = `<!DOCTYPE html>
 <title>论衡导出</title>
 <style>
 @page { size: A4; margin: 2.2cm 2cm; }
-body { font-family: 'Microsoft YaHei','SimSun',serif; font-size: 12pt; line-height: 1.75; color: #111; margin: 0; }
+body { font-family: 'Source Han Serif SC','Noto Serif CJK SC',STZhongsong,STSong,SimSun,serif; font-size: 12pt; line-height: 1.75; color: #111; margin: 0; }
 h1 { font-size: 18pt; text-align: center; line-height: 1.45; margin: 0.3em 0 0.6em; }
 h2 { font-size: 15pt; margin: 1.1em 0 0.4em; border-bottom: 1px solid #ccc; padding-bottom: 3px; }
 h3 { font-size: 13pt; margin: 0.9em 0 0.3em; }
