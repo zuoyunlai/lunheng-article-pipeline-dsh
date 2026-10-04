@@ -21,15 +21,17 @@ Phase 3.5 洞察补充 → 主人深度洞察补充（人在环）→ 写手 v2 
 Phase 3.6 批判   → spawn T6 批判伙伴（C1-C7 反方攻击 v2，轻量档可跳）→ analysis/批判报告-vN.md
 Phase 4 审计     → spawn T7 审计员 → audits/审计报告-vN.md（G0-G14 全项检查，v2.4.0 加 G14 中文 AI 痕迹闸）
                  → 打回修订 ≤2 轮（必须 spawn 独立写手）；仍不过 → 升级决策 / Acknowledged Limitations 模式
-Phase 4.5 审稿   → spawn T9 同行评审（可选，默认选中，**学术论文必选**）∥ **G14 终闸**（主人 Phase 0 可显式关闭）→ audits/审稿报告-vN.md（6 维度评分 + 期刊匹配助手 Top 3）
+Phase 4.6 G14终闸 → **G14 中文 AI 痕迹闸**（**唯一一次 spawn**；**v18.75.0 起串行，不再与 T9 并行**；主人 Phase 0 可显式关闭）→ **Pass → 冻结一份正文（尚不是 `final/`）｜ Warning/Fail → 走 G 环修订，改完重跑 G14 至 Pass** → audits/G14-检测报告-vN.md
+Phase 4.7 审稿   → spawn T9 同行评审（**v18.75.0：启用与否按 `references/_shared/文类档案.md`——`academic-*` 必选不可关；`lit-review` 可选；其余默认不选**）→ audits/审稿报告-vN.md（6 维度评分 + 期刊匹配助手 Top 3）；**建议的处置走法见该档案「T9 后处置」列**（三视角类可开 B 轨；单视角类**只出建议件**，要改由主控在**交付后**另行修订）
 [🔒 T7.5 完整性门] 审计报告最新版 + P0/P1 清单 + M 门全 exit 0 + 隔离 → 通过才终检
 Phase 5 终检     → T8 终检（独立角色，主控 T0 以 T8 身份亲完成 M 门：M-Form 11 / M-Exist 11 / M-Integrity 2 / M-Fact 1，LLM 兜底）→ final/定稿.md + 证据包/ + 交付说明.md
+                 ↑ **v18.75.0：T8 在 T9 之后**（`final/` 此时才落盘；T9 评的是 Phase 4.6 冻结的那份正文）→ 主人终检验收 → **流水线走完**
 ```
 
 ## 关键规则
 - **派发话术**：直接从 `references/pipeline-readme.md` 复制，改项目名即可
 - **每个项目一个目录**：`run/<项目名>/`，产物路径见任务简报
-- **角色编号（v2.3.0 重构，v2.5.2 延续，v2.5.2-dsh.8 语义定案）**：**9 个独立角色 T1-T9 不可相互替代**——T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / **T8 终检（独立角色，主控 T0 亲执行）** / **T9 同行评审（可选默认选中，学术必选）**（编号 = 流水线 Phase 顺序）
+- **角色编号（v2.3.0 重构，v2.5.2 延续，v2.5.2-dsh.8 语义定案）**：**9 个独立角色 T1-T9 不可相互替代**——T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / **T8 终检（独立角色，主控 T0 亲执行）** / **T9 同行评审（**v18.75.0 起按文类档案决定启用与否**；`academic-*` 必选、`lit-review` 可选、其余默认不选）**（编号 = 流水线 Phase 顺序）
 - **模型分配**：`subagent` 默认继承会话模型（零配置可用）；要按角色分档时**先跑 `node scripts/model-routing.mjs`**（只读）探测本机 provider×模型给「档位→模型」建议。四档能力表 / 兜底链 / 配置方式（`LUNHENG_*_MODEL` + `_PROVIDER`，不设 = 三档全继承）/ 主控工作流**单一真源 = [`references/_shared/模型路由.md`](references/_shared/模型路由.md)**；**禁止写死厂商默认值**（宿主无模型级回退，写错模型 = 该档工具不可用）。
 - **子代理产出必须交交接报告**：六要素缺一不可（做了什么/产物在哪/怎么验证/已知问题/下一步 + 状态更新）——**定义真源 = `references/glossary.md` §执行韧化协议，字段形态 = `references/templates/交接报告-template.md`**（本行只给名称，不再展开）；长时间无产出则主控用 `list_agents` 查看并介入
 - **子代理失败三段式处理**：① **落盘校验**——子代理 settle 后主控必跑 `read`/`ls` 检查关键产物是否存在+非空+结构完整，区分「写盘前失败」vs「写盘后失败」vs「任务完成」；② **产物完整 → `send_message` 续接原子代理**（DSH continuable，让它读已落盘产物确认后继续，**不是整任务重派**）；③ **产物缺失 → 才 spawn 新子代理重派**。**连续失败**：先查 DSH 环境（`list_agents` 看是否 `[ready]` 可续接；全失败可能 = DSH 进程状态问题，重启 dsh web 再试）。
@@ -48,8 +50,8 @@ Phase 5 终检     → T8 终检（独立角色，主控 T0 以 T8 身份亲完�
 - **技能来源自检（v2.5.2-dsh.13）**：启动时核对 `SKILL.md` 版本头与期望版本一致，不一致即停机报「技能来源可疑」（同名技能会按 rank 就近静默顶替）
 - **M 门（v2.2.0+）**：终检前必读 `references/_shared/M-Gate-Algorithm.md`（**仅 T7/T8 读**——T1-T5/T9 不读，因 M 门 25 项中 24 项已脚本化为 `scripts/m-gate-check.mjs`（M-Form 1-11 + M-Exist 1-11 + M-Integrity-1 + M-Fact-1 佐证），LLM 只复核 M-Form-8 的承重墙质量与 M-Integrity-2 跨文件判断），按伪代码执行 M-Form/M-Exist/M-Integrity/M-Fact（M-Form 11 项含 M-Form-7 文末白名单 v2.3.5 + M-Form-8 三角验证 v2.3.7 + M-Form-9 图件闭环 v2.5.2-dsh.16 + M-Form-10 索引段完整性 / M-Form-11 素材按需加载闭环 v2.5.2-dsh.17；**M-Fact-1 跨节事实一致性 v18.25.0**），产出 `final/M-Gate-Report.json`，exit 0 才返回
 - **图件链路（v2.5.2-dsh.16）**：写手只标 `[图N：标题]`（**独占一行**）→ 主控 Phase 4.5 用 `write` 手写 SVG 到 `final/图件/图N_标题.svg`（**唯一口径**）→ 导出 `md2html.mjs --fig-dir final/图件`（按图号配图，缺图显式标注）→ **M-Form-9** 对账（缺图/图位不足 → P0·P1；孤儿图件/图上数字无出处 → P2 提示）
-- **G14 中文 AI 痕迹闸（v2.4.0+；v18.2.8 删早闸，三层防御、仅一次 spawn）**：**① T5 v1 自检**（写作时，零 spawn，结论入 `drafts/修订说明-v1.md`）→ **② 修订轮收尾自查**（每轮修订后主控执行，零 spawn）→ **③ 终闸 = Phase 4.5 与 T9 并行**（**唯一一次 spawn**；报告 = 最终版本真源）。LLM 推理判定、零 exec，8 类检测维度，0-2 类 Pass / 3-4 类 Warning 触发 T5 修订 1 轮 / 5+ 类 Fail 触发 2 轮；主人在 Phase 0 可显式关闭。闸门定义 `references/gates/14-中文AI痕迹-gate.md`，检测器 `references/checkers/中文AI痕迹-checker.md`
-- **T9 同行评审 + 期刊匹配（v2.4.0+/v2.5.0，v2.5.2-dsh.8 定案：可选默认选中，学术论文必选）**：Phase 4.5 终稿前触发，6 维度评分 → accept/minor/major/reject；学术模式输出 Top 3 推荐期刊（`references/_shared/期刊数据库.md` + `期刊匹配算法.md`）
+- **G14 中文 AI 痕迹闸（v2.4.0+；v18.2.8 删早闸，三层防御、仅一次 spawn）**：**① T5 v1 自检**（写作时，零 spawn，结论入 `drafts/修订说明-v1.md`）→ **② 修订轮收尾自查**（每轮修订后主控执行，零 spawn）→ **③ 终闸 = Phase 4.6**（**唯一一次 spawn**；报告 = 最终版本真源）。LLM 推理判定、零 exec，8 类检测维度，**0-2 类 Pass / 3-4 类 Warning → G 环 1 轮 / 5+ 类 Fail → G 环 2 轮**；主人在 Phase 0 可显式关闭。**v18.75.0：终闸串行（不再与 T9 并行），且其修订走 G 环、不占 B 轨额度**（见 `references/pipeline-readme.md` §6.6.1）。闸门定义 `references/gates/14-中文AI痕迹-gate.md`，检测器 `references/checkers/中文AI痕迹-checker.md`
+- **T9 同行评审 + 期刊匹配（v2.4.0+/v2.5.0；**v18.75.0 起按文类档案决定启用与否**）**：**Phase 4.7（G14 通过并冻结正文之后）**触发，6 维度评分 → accept/minor/major/reject；学术模式输出 Top 3 推荐期刊（`references/_shared/期刊数据库.md` + `期刊匹配算法.md`）。**启用**：`academic-*` 必选不可关 / `lit-review` 可选 / 其余默认不选。**建议处置**：见 `_shared/文类档案.md`「`T9 后处置`」列（三视角类可开 B 轨；单视角类只出建议件，要改由主控在交付后另行修订）
 - **项目进展记入** `memory/YYYY-MM-DD.md` 和 `memory/projects.md`
 - **注解聚合（v2.5.2-dsh 补丁，token 优化）**：新机制注解**不再逐层堆叠**（v2.1.8 新增/v2.2.1 新增/v2.3.0 改…），同主题合并为单行「v2.5.2-dsh 补丁，教训：…」格式；历史分层注解聚合到卡头一行，细节见 git log——防角色卡/文档随版本膨胀。
 

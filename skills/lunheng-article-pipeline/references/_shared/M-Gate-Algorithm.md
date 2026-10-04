@@ -1,4 +1,4 @@
-> 版本：v18.74.0（DSH bundle 插件）
+> 版本：v18.75.0（DSH bundle 插件）
 
 > **v2.5.2-dsh.5 重大修订**（测试轮反哺 14 项问题落地）：
 > - **P0** #1 M-Form-2 与 M-Form-7 白名单统一（含 AI 使用声明）
@@ -1030,7 +1030,7 @@ required[gate] = 模板 templates/闸门记录-template.md 中「## T2.5」/「#
 **判定伪代码**：
 
 ```
-report = audits/审稿报告-vN.md（N 取最大）；无 → N/A（T9 未启用或未到 Phase 4.5），pass=true
+report = audits/审稿报告-vN.md（N 取最大）；无 → N/A（T9 未启用或未到 Phase 4.7），pass=true
 6 维 = 原创性/方法论/证据强度/论证结构/写作质量/引文规范，各须有 x/5 评分        → 缺 → P2
 declared = 「总评分 XX/30」（或「总分 XX/30」）                                 → 缺 → P1
 若 6 维齐 → Σ6维 == declared                                                   → 不等 → P1（评分表与总分自相矛盾）

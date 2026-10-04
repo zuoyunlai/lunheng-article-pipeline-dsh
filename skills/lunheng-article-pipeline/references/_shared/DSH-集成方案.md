@@ -1,6 +1,6 @@
 # 论衡 × DSH 能力面集成方案
 
-> 版本：v18.74.0
+> 版本：v18.75.0
 > **用途**：把论衡的既有机制（**随包脚本** / 并行阶段 / 状态机 / 人在环闸门）**对齐 DSH 已有能力面**，替代平行自建。§一–§六 是**实施方案**，§七 是**落地状态表**，§八 是**可选配方**。**脚本清单与数量真源 = `SKILL.md` §执行能力边界 的「随包脚本白名单」行**（本文件不复述数字）。
 > **依据**：DSH 官方文档 `docs/cookbook/adding-a-tool.md`、`docs/tool-execution-pipeline.md`、`docs/subsystems/*.md`、`docs/capability-seams.md`（知识库副本见 `dsh-plugin-guide/references/official-docs/`；行号对快照 commit `d347e703…`）。
 > **当前状态（v18.71.0 对账）**：**C 组 10 项已启用 + 1 项 preset 已落地 + D2 workflow 配方已落地（可选）**：原生只读工具 + `executionMode` 声明 / `ctx.tools.guard()` 写保护 / `/lunheng-status` / 词预算门 / `tools/post-execute` 伦理脱敏自动挂载 / `system-prompt/assemble` 钩子 / `agent/request` waterfall 模型路由 / `examples/preset/agent-tiered/cordis.yml` preset 化（**C-9 `file-watcher:change`、C-10 `assistant/chunk` 两条死监听器已移除**，见 §七）。**D2（Phase 内并行→`workflow`）配方已落地**（v18.71.0，`examples/workflow/phase1-retrieval.md`，**可选、不默认替换 subagent**，见 §三）。**未做（Backlog）**：**H8** `session-log` 投影 / **H9** `session-query-sqlite` / **H10** `web_profile`（主人 2026-09-30 裁定**不做**）；**H11** `goals` / `jobs`（仍禁接）。
@@ -115,7 +115,7 @@ export function apply(ctx, config) {
 
 ## 三、方案 D2：Phase 内并行交给 `workflow` 工具
 
-> **状态（v18.71.0）**：**配方已落地**——Phase 1 三方检索的「复制即用」workflow 脚本见 [`examples/workflow/phase1-retrieval.md`](../../../examples/workflow/phase1-retrieval.md)；`pipeline-readme.md` §派发话术顶部加一行指针、`SKILL.md` 工具映射表加 `workflow` 可选入口。**仍是可选配方、不默认替换 `subagent`**；§3.3 边界与 §3.4 前置（主控显式选择、四道人在环留主控、留痕不变）全部维持。Phase 4.5（T9∥G14）涉及 T9 审稿人工判读与 G14 终闸，**未纳入**本配方（保持 subagent 路径）。
+> **状态（v18.71.0）**：**配方已落地**——Phase 1 三方检索的「复制即用」workflow 脚本见 [`examples/workflow/phase1-retrieval.md`](../../../examples/workflow/phase1-retrieval.md)；`pipeline-readme.md` §派发话术顶部加一行指针、`SKILL.md` 工具映射表加 `workflow` 可选入口。**仍是可选配方、不默认替换 `subagent`**；§3.3 边界与 §3.4 前置（主控显式选择、四道人在环留主控、留痕不变）全部维持。Phase 4.6（G14 终闸）与 Phase 4.7（T9 审稿）**v18.75.0 起已串行**（原「T9∥G14」并行安排废止），涉及 T9 审稿人工判读与 G14 终闸，**未纳入**本配方（保持 subagent 路径）。
 
 ### 3.1 适用与收益
 
@@ -123,7 +123,7 @@ export function apply(ctx, config) {
 
 - **Phase 1：T1 文献 ∥ T2 数据 ∥ T3 案例**（三方独立，互不干涉）
 - **Phase 3.6：T6 批判**（v18.2.8：G14 早闸已删除，不再与 T6 同批；T6 单独运行）
-- **Phase 4.5：T9 审稿 ∥ G14 终闸**（v18.2.8：终闸为 G14 **唯一一次 spawn**；v18.2.6 审计修复：旧写「Phase 4.5：T6 ∥ T9 ∥ G14」——T6 在 Phase 3.6，与 4.5 无法并行）
+- **Phase 4.6 / 4.7：G14 终闸 → T9 审稿**（v18.75.0 相位重排：两者**已串行**，不再是「T9 ∥ G14」；v18.2.8：终闸为 G14 **唯一一次 spawn**；v18.2.6 审计修复：旧写「Phase 4.5：T6 ∥ T9 ∥ G14」——T6 在 Phase 3.6，与 4.5 无法并行）
 
 当前实现是主控逐次 `subagent` + 等通知。改为 `workflow` 工具的收益：
 
@@ -180,7 +180,7 @@ return { gate: 'T2.5', pass: gatePass, literature: lit, data: dat, cases: cas }
 
 ### 3.4 启用前须知
 
-- `workflow` 工具描述明确要求「**ONLY when the user explicitly asks for a workflow or for large multi-agent orchestration**」——论衡的 Phase 1 / 4.5 符合，但**必须由主控显式选择**，不得默认替换
+- `workflow` 工具描述明确要求「**ONLY when the user explicitly asks for a workflow or for large multi-agent orchestration**」——论衡的 **Phase 1**（三方检索）符合，但**必须由主控显式选择**，不得默认替换（**Phase 4.6/4.7 自 v18.75.0 起已串行，不再具备并行编排价值**）
 - 子代理的交接报告六要素契约仍需保留：可在 `schema` 的 `required` 字段中强制（如上述 `path` / `entries`）
 - `status.md` / `agents-log.md` 的留痕职责不变（脚本结束后由主控统一落盘）
 
@@ -206,7 +206,7 @@ return { gate: 'T2.5', pass: gatePass, literature: lit, data: dat, cases: cas }
 
 | 批次 | 内容 | 状态 |
 |---|---|---|
-| 1 | **D2**（Phase 1 并行改用 `workflow`） | ✅ **已落地**（v18.71.0，`examples/workflow/phase1-retrieval.md`；Phase 4.5 未纳入） |
+| 1 | **D2**（Phase 1 并行改用 `workflow`） | ✅ **已落地**（v18.71.0，`examples/workflow/phase1-retrieval.md`；Phase 4.6/4.7 未纳入——v18.75.0 起该两阶段已串行） |
 | 2 | **D1**（脚本→工具） | ✅ **已落地**（C-1：4 个只读工具；含 `count-chars` + `m-gate-check`） |
 | 3 | **D3**（`goals` / `planMode` 映射） | ⏸️ **待定**——会动 `status.md` 留痕语义与人在环呈现，需主人单独认可，不在本批范围 |
 

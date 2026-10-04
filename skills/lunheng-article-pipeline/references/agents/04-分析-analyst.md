@@ -1,4 +1,4 @@
-> 版本：v18.74.0（DSH bundle 插件）
+> 版本：v18.75.0（DSH bundle 插件）
 
 # 角色：分析员 Analyst（T4）
 
@@ -155,7 +155,7 @@
 
 ### 📰 期刊拒稿反向提示段
 
-> **本段义务**：Phase 4.5 期刊匹配阶段，**主控必跑** `node scripts/journal-fit.mjs <期刊名> [--project <run/项目名>] [--report <路径>]`，把结果纳入 T9 期刊推荐：
+> **本段义务**：**Phase 4.7 期刊匹配阶段**（v18.75.0 后移；旧文为「Phase 4.5」），**主控必跑** `node scripts/journal-fit.mjs <期刊名> [--project <run/项目名>] [--report <路径>]`，把结果纳入 T9 期刊推荐：
 > - **J-Reason 命中 desk-reject 原因**：P1（投稿前可自查项）
 > - **J-Cycle 审稿周期 > 12 月**：P1（急稿避开）
 > - **J-Format 格式合规**：参考文献双向闭环 / AI 使用声明 / 摘要 / 字数 — 任一不合规 → P1
