@@ -1,11 +1,11 @@
 ---
 name: "lunheng-commands"
 version: "1.0.3"
-description: "lunheng-commands v1.0.3：论衡 v18.77.0 **内嵌子技能**，提供 11 个 /lunheng 斜杠命令 UX（-draft/-resume/-cite/-audit/-journal/-ppt/-history/-rollback/-status/-stats/-help）。薄壳设计：不引入新角色 / 新阶段 / 新 M 门；所有重活仍走论衡 9 角色流水线。-rollback 需 --confirm 二次确认；-stats 显示 run/ 项目汇总看板（包装论衡 lunheng-stats.mjs）；**-status --pending = 跨项目「待我决策」聚合收件箱**（v1.0.2）；**v1.0.3 修复 CLI 入口不可用**（-draft 等命令此前在任何真实 `node` 调用下都必然报用法错）。history-cli / pending-cli 的 `--run-dir` 与 `projectId` 入参**统一三层围栏**（词法 → 结构 → 物理 realpath），与 `/lunheng-stats` 同源——**共用 `lib/run-path-fence.mjs` 的同一份实现**（v18.67.0 起 pending-cli 亦真复用，不再手写两层）。**不适用**：<2000 字短文与即时问答；实时聊天 / 朋友圈 / 邮件。"
+description: "lunheng-commands v1.0.3：论衡 v18.77.1 **内嵌子技能**，提供 11 个 /lunheng 斜杠命令 UX（-draft/-resume/-cite/-audit/-journal/-ppt/-history/-rollback/-status/-stats/-help）。薄壳设计：不引入新角色 / 新阶段 / 新 M 门；所有重活仍走论衡 9 角色流水线。-rollback 需 --confirm 二次确认；-stats 显示 run/ 项目汇总看板（包装论衡 lunheng-stats.mjs）；**-status --pending = 跨项目「待我决策」聚合收件箱**（v1.0.2）；**v1.0.3 修复 CLI 入口不可用**（-draft 等命令此前在任何真实 `node` 调用下都必然报用法错）。history-cli / pending-cli 的 `--run-dir` 与 `projectId` 入参**统一三层围栏**（词法 → 结构 → 物理 realpath），与 `/lunheng-stats` 同源——**共用 `lib/run-path-fence.mjs` 的同一份实现**（v18.67.0 起 pending-cli 亦真复用，不再手写两层）。**不适用**：<2000 字短文与即时问答；实时聊天 / 朋友圈 / 邮件。"
 whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 description（v18.0.5：官方目录只渲染 name + description，本字段对模型不可见，保留仅供工具链与维护者阅读）。v18.7.1 起：本技能随论衡 bundle 自动安装——`dsh plugin add lunheng-article-pipeline` 即获，无需单独 install。"
 ---
 
-> 版本：v1.0.3（v18.62.4 全量审计-v18.62.3 落地；2026-10-01）｜引擎版本引用当前锚定 **v18.77.0**
+> 版本：v1.0.3（v18.62.4 全量审计-v18.62.3 落地；2026-10-01）｜引擎版本引用当前锚定 **v18.77.1**
 > **v1.0.3 变更**：① **修复 CLI 入口不可用**（P1-4）——`scripts/route-command.mjs` 旧入口把 `process.argv` 直接交给 `routeCommand`，而 `argv[1]` 恒为**脚本路径** → `argv[1] !== '-lunheng'` 恒真 → **任何真实命令都只打印用法并 exit 1**，help 表与 JSON 输出从未可达（单测只传合成 argv，故测不到）。现入口改为 `['node','-lunheng', ...process.argv.slice(2)]`，并补 **6 条端到端用例**（真 spawn 进程 + 一条源码级回归钉）。② 引擎版本引用当时由 v18.62.0 更正为 **v18.62.4**——但该口径此后又随包漂移到 v18.62.5 而无人发现（规则 ㉖ 原先只管子技能自己的 1.0.x）。**v18.67.0 已把「引擎版本锚定」纳入规则 ㉖ 机检**：`论衡 vX.Y.Z **内嵌子技能**` 声明式锚点必须等于主包 `package.json` 版本，同类漂移不再可能静默存活。
 > **版本同步点（7 处，改动须同批）**：本文件 frontmatter `version` + 本行 + `README.md` 标题 + `package.json` `version` + `references/command-routing.md` 版本头 + `scripts/route-command.mjs` 头注释 + **「引擎版本引用当前锚定」行**（v18.67.0 新增，由规则 ㉖ 机检）——**v18.20.0 审计的 P1-① 正是只改了其中三处留下的漂移**，勿重演。（v18.62.4 更正：本行原写「5 处」而实际列了 6 项。）
 > **v18.7.1 升级**：从独立 npm 包**嵌入**到论衡 bundle 内——`skills/lunheng-commands/` 作为论衡第二个技能自动注册。所有 11 个 /lunheng 命令免单独安装。

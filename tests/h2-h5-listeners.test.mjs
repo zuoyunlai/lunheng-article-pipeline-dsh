@@ -145,7 +145,7 @@ test('H2 R1 核心回归：**深冻 result**（真宿主形状）驱动 → 不�
   const msg = ctxs[0]
   assert.equal(msg.role, 'user', '元素必须是 user 消息（与宿主 createUserMessage 产物同形）')
   assert.ok(typeof msg.id === 'string' && msg.id.length > 0, '元素必须带唯一 id（否则 dsh-agent 的 Inbox.validate 判重会失败）')
-  assert.deepEqual(msg.source, { kind: 'plugin', plugin: 'lunheng-article-pipeline' }, '元素应带 plugin 来源标记')
+  assert.deepEqual(msg.source, { kind: 'lunheng-article-pipeline' }, '元素应带生产者自有 source.kind（DSH 0.2.x v4 要求禁用泛用 plugin:{kind:"plugin"} 包装）')
   const marker = msg.content.map((b) => b.text).join('')
   assert.match(marker, /H2 伦理脱敏/, '标记应点名 H2')
   assert.match(marker, /命中替换 \d+ 处/, '标记应含替换计数')
