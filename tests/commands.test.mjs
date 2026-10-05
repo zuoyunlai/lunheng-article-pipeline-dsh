@@ -183,3 +183,51 @@ test('v18.67.0 P2：字面名以 `..` 开头的合法直接子目录不得被误
     rmSync(d, { recursive: true, force: true })
   }
 })
+
+// v18.76.0（v18.75.1 全量架构审计 R7-Q5 修复）：补 `lib/run-path-fence.mjs` 两个导出函数的直接用例。
+//   为什么必须补：这两条函数此前**零直接用例**（`tests/**` 检索 `isSafeProjectArg|resolveProjectDir` = 0
+//   命中）——任何分支重构只能靠 `/lunheng-status` 端到端用例间接兜，安全边界的回归可能在单元层静默。
+test('Q5：isSafeProjectArg 词法白名单（含合法与非法字面量）', async () => {
+  const { isSafeProjectArg } = await import(pathToFileURL(join(PACKAGE_ROOT, 'lib', 'run-path-fence.mjs')).href)
+  // 合法的字面名（应 true）：与审计报告 R7-Q5 验收口径一致；'..backup' / 'a..b' / '.hidden' 等含 `..` 或 `.`
+  //   但**不**是纯 `..`/`.` 的字面量，按实现（`:32` `s === '.' || s === '..'`）也允许——这是正确语义
+  //   （`.hidden` 是隐藏子目录名也是合法名）。
+  for (const ok of ['真项目', 'my-project', '..backup', 'project_2026', 'a.b', 'a..b', '.hidden']) {
+    assert.equal(isSafeProjectArg(ok), true, `应判 true：${ok}`)
+  }
+  // 非法的字面量（应 false）：纯 `..` / `.` / 空 / 含分隔符 / 绝对路径（按实现 `:30-35`）
+  for (const bad of ['a/b', 'a\\b', '/abs', '..', '.', '', '  ', '/']) {
+    assert.equal(isSafeProjectArg(bad), false, `应判 false：${JSON.stringify(bad)}`)
+  }
+})
+
+test('Q5：resolveProjectDir 三层收口（不存在路径 / 二级子目录 / 合法直接子目录）', async () => {
+  const { resolveProjectDir } = await import(pathToFileURL(join(PACKAGE_ROOT, 'lib', 'run-path-fence.mjs')).href)
+  const d = mkdtempSync(join(tmpdir(), 'lh-rpd-'))
+  try {
+    const runDir = join(d, 'run')
+    mkdirSync(runDir, { recursive: true })
+    const projectDir = join(runDir, 'proj')
+    mkdirSync(projectDir, { recursive: true })
+
+    // ① 合法直接子目录 → 返回绝对路径
+    const ok = resolveProjectDir(runDir, 'proj')
+    assert.ok(typeof ok === 'string' && ok.endsWith(join('run', 'proj')), `应返回绝对路径：${ok}`)
+
+    // ② 二级子目录 → 拒绝（只接受直接子目录）
+    mkdirSync(join(runDir, 'parent', 'child'), { recursive: true })
+    const tooDeep = resolveProjectDir(runDir, join('parent', 'child'))
+    assert.equal(tooDeep, null, '二级子目录必须判 null')
+
+    // ③ 不存在路径 → 拒绝
+    assert.equal(resolveProjectDir(runDir, 'nope'), null, '不存在的子目录必须判 null')
+
+    // ④ 越界（绝对路径） → 拒绝
+    assert.equal(resolveProjectDir(runDir, '/abs/path'), null, '绝对路径必须判 null（词法白名单前置）')
+
+    // ⑤ 越界（含路径分隔符）→ 拒绝
+    assert.equal(resolveProjectDir(runDir, 'parent/child'), null, '含分隔符必须判 null')
+  } finally {
+    rmSync(d, { recursive: true, force: true })
+  }
+})

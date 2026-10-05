@@ -2,6 +2,89 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.77.0 — 2026-10-04
+
+> **性质**：**文档与运行-审计 v1 批落地批（合并 v18.76.0 全量架构审计修订批与 v18.77.0 文档口径收口批）**。主人 2026-10-04 显式指令『按这份报告开始修订』+『A. 真动手 — 全量三批并行』+『发版』。**版本判据 = minor**：v18.76.0 是上一批未发布的版本（CHANGELOG 头段 + 交付说明齐备、`audits/交付说明-v18.76.0-2026-10-04-审计修订批.md`），v18.77.0 是本批 P-1 / P-5 本批关闭、其余 11 处 P-* 落地的批。**主人授权合发**：bump 18.76.0 → 18.77.0，v18.76.0 段保留为次段、v18.77.0 段写本批 11 处 P-*。
+>
+> **依据**：`audits/论衡-文档与运行-审计报告-v1.md`（v1，2026-10-04 落盘，约 8500 字 / 442 行 / 13 处 P-*）+ `audits/decisions/decision-2026-10-04-文档与运行-审计v1-修订路由.md`（决策档）+ `audits/修订计划-文档与运行-审计v1-2026-10-04.md`（修订计划档）+ `audits/机制文件修订记录-2026-10-04-文档与运行-审计v1批.md`（落地批修订记录）。
+>
+> **验证**：commit `7b9adb6` v18.77.0: 文档与运行-审计 v1 批 落地 11 处 P-*（16 files changed, 879 insertions(+), 33 deletions(-)）+ v18.76.0 commit `a6763b7` fix(v18.75.1 · 字体栈批 / F-19 结案) + `8f223c5` feat(v18.75.0 · 相位与修订环口径统一批) 已合并入本批合发。全量套 **753 / 753 pass**；六门全绿（`consistency` / `repo-hygiene` / `link-check` / `plugin-surface` (STRICT_WARN=1) / `closeout-verify` / `no-write-check`）；`host-contract-probe` 绿。
+
+**病根（13 处 P-* 按 P0/P1/P2/P3 排序；2 条本批关闭、11 条落地）**：
+
+- **P-1 [本批关闭]** 版本头不一致：审计报告说 SKILL.md frontmatter = `v18.75.1`，实测 = **`v18.76.0`**（L4 + L8 一致），与 `references/` 一致——**审计报告前提错**，本批无修改。
+- **P-2 [🔴 P0]** T8 终检职责边界：「T8 裁定 JSON 必须主控 LLM 亲写」+「SKILL.md §执行能力边界 显式列出主控亲跑四条路径（`final-check.mjs` / `m-gate-check.mjs --adjudicate` / `handoff-check.mjs` / 终检期 `m-gate-check.mjs`）」。收口判据：裁定 JSON 不是任何子代理产物（`subagent` 工具对新上下文不继承主控裁定，否则 `verdict_stale` 持续保留）。
+- **P-3 [🔴 P0]** T9 `academic-*` 通配 vs 特指：SKILL.md 4 处（L10/L33/L107/L232）通配 → `academic-cn/-hum/-case` 特指，与 `_shared/文类档案.md` 表 1:1 对齐。
+- **P-4 [🟠 P1]** 修订回环三环制命名：glossary.md §修订回环 + §十二 加「**全库命名统一：A 轨 / B 轨 / G 环；禁用 'A/B/C 三类' / '0/1/2/超 2 轮' 替代命名**」（07 卡实测无 A/B/C 三类字面，判据已满足）。
+- **P-5 [本批关闭]** 脚本白名单 31 vs 35：实测 `scripts/*.mjs` 顶层 = **31 个**（精确 `Get-ChildItem *.mjs | Measure-Object`），与 SKILL.md §执行能力边界 字面「31 个」一致——**审计报告把 `_lib/` 也计入了**，属统计口径错。
+- **P-6 [🟠 P1]** M 门 25 项拆分表述：`deliverables.md` §M 门四类段 改写为「**M-Integrity 2 项（M-Integrity-1 机检 + M-Integrity-2 人工）**」与 `mgate-doc-rules.mjs:55` 的「脚本标签数 + 1 = 2」同源。**v18.61.1 后第一次正确收口**，与 glossary.md / SKILL.md / 08 卡 表述形式一致。
+- **P-7 [🟠 P1]** Phase 4.5 / 4.6 / 4.7 三套描述：`pipeline-readme.md` L263/L473「旧文为「Phase 4.5 终稿前」」加 `**[废止]**` 标签，避免与「Phase 4.5 = 现行配图阶段」字面混淆。
+- **P-8 [🟠 P1]** T8 finalizer §触发条件：08 卡 §触发条件 补「T8 启动时正文已是 Phase 4.6 G14 终闸冻结的版本；若 T9 启用须一致；**版本不一致 → 报告主人，不要擅自合并**」（同 P-2 同址）。
+- **P-9 [🟡 P2]** T9 三视角决策树：`_shared/文类档案.md` 加 §T9 决策树 段（三视角强制 / 三视角默认 / 单视角默认 三分支）+ `pipeline-readme.md` §T9 段头部补「按 `_shared/文类档案.md` §T9 决策树」+ 09 卡 「学术论文强制三视角」→「学术论文（`academic-cn/-hum/-case`）强制三视角」。**副作用**：`tests/batch15-qlt5-docs.test.mjs:201` 行引用守卫基线从 L920 → **L921**（整体下移 1 行），字面从「B 轨累计已达 1 → 不再开」改为「B 轨累计轮数 ≤ 1」。
+- **P-10 [🟡 P2]** DSH bundle vs 项目级副本 rank：SKILL.md §技能来源自检 加「**rank 数字越小越近（胜出）**；100 < 200 < 250（bundle）< 300 < 500 < 600（官方 bundled）」+ 「项目级副本（rank 100，就近取胜）胜过项目级 rank ≥250 的 bundle，败 rank <100 的同名技能」（替代「胜过一切」措辞）。
+- **P-11 [🟡 P2]** 工具面"分档预设"三处复述：SKILL.md §模型分配 末加指针「三档装载的真源与 installer 表 = `cordis.patch.yml` 的三行 `disabled` 表达式；诊断与复算命令 = `node scripts/model-routing.mjs`」+ glossary.md §五 末加「**`model-routing.mjs` = 宿主 `dsh-tool-subagent` 的**复算面**」行。
+- **P-12 [🟡 P2]** 派发话术格式硬约束同步：`pipeline-readme.md` §派发话术 顶部加「**v18.77.0 P-12 收口约束**」+ `consistency-check.mjs` 新增规则 **㉛**「派发话术格式硬约束 ⊆ `_shared/机检硬格式.md` 必填项」（**首版仅做存在性断言**——派发话术段必须含「⚠️ 格式硬约束」段；语义级「每条项 ⊆ 真源」派生留待后续批；首次尝试报 11 项假阳性，正则难精确，改为存在性断言副作用小）。`consistency-check.mjs` 头部计数 29 → **30**。
+- **P-13 [🟢 P3]** README 句式瘦身：英文 `README.md` L7 一句话叠多个版本注拆为 4 行项目符号列表 + `pipeline-readme.md` TOC 段 L17「9 个独立角色 T1-T9 互不可替代（v2.5.2-dsh.7 定案，教训：...）」拆为 3 行（角色独立性 / T8 双重身份 / 编号演进指针）。
+
+**棘轮抬升（5 处，按定案 ① 公式：实测 + 1.5 KB → 向上取整到整 KB；`v18.1.0「同一次提交里显式抬升并写明理由」原则）**：
+
+- `references/agents/08-终检-finalizer.md`: 17,408 → **19,456** B（实测 18,012 B；P-2+P-8）。
+- 常驻集 `ALWAYS_LIMIT` (SKILL.md + AGENTS.md): 70,656 → **73,728** B（实测 70,940 B；P-2 配 SKILL.md §执行能力边界）。
+- `references/glossary.md`: 40,960 → **41,984** B（实测 41,594 B；P-4）+ 41,984 → **43,008** B（实测 42,008 B；P-11）。
+- `references/pipeline-readme.md`: 128,000 → **131,072** B（实测 127,800 B；P-9）。
+
+**棘轮基线登记**：`scripts/_lib/local-path-scan.mjs` `LOCAL_PATH_BASELINE` 新增 `audits/论衡-文档与运行-审计报告-v1.md = 2`（报告头「审计对象」+ 落盘位置两段真源仓库绝对路径，与 v18.75.1 全量架构审计批判据同源）。
+
+**新规则 / 新文件**：
+
+- `scripts/_lib/cc-rules/script-rules.mjs` 末段新增 **规则 ㉛**「派发话术格式硬约束 ⊆ `_shared/机检硬格式.md` 必填项」（v18.77.0 P-12；首版仅做存在性断言）。
+- `scripts/consistency-check.mjs` 头部规则清单：计数 29 → **30**（v18.77.0 P-12）；新增 ㉛ 描述。
+- `tests/batch15-qlt5-docs.test.mjs`「行引用守卫」：L920 → **L921**（P-9 决策树指针整体下移 1 行）；期望字面从「B 轨累计已达 1 → 不再开」改为「B 轨累计轮数 ≤ 1」。
+
+**未做 / 延后（按主人 review）**：
+
+- **P-12 规则 ㉛ 语义级派生**（每条项 ⊆ 真源）：留待后续批；首次尝试报 11 项假阳性（正则难精确），改为存在性断言同样能捕捉「整段漏写」型漂移，副作用小。
+- **`audits/maintainers.md §一` rank 考证**：余量仅 4 B — 棘轮紧锁，本批不动；后续批若动须同批抬上限。
+- **五语 README**（`README-zh.md` / `-es.md` / `-pt.md` / `-hi.md`）：P-13 只动了英文 README L7；跨语种不重复派发话术（派发话术在 pipeline-readme.md），不强制同步。
+
+**v18.76.0 段已保留为次段（不删改）**——交付说明 `audits/交付说明-v18.76.0-2026-10-04-审计修订批.md` §八 第 1 条自述「本批不打 tag / 不发布，交主人 review 后主人定」；主人 2026-10-04 选定『合发』路径 = v18.77.0 段覆盖在 v18.76.0 段之上（CHANGELOG 现行格式 = 版本降序 + 首段 == package.json），v18.76.0 段保留为次段作为历史锚点。
+
+## 18.76.0 — 2026-10-04
+
+> **性质**：**v18.75.1 全量架构审计落地批（R1 · P0 + R2-R5 · P1/P2）**。主人 2026-10-04 显式授权「先落盘核实报告，然后开工」（`audits/核实报告-v18.75.1-全量架构审计-2026-10-04.md`）。**版本判据 = minor**：H2 监听器**整体静默失效**（P0，宿主深冻 + 白名单投影双杀）+ H7 **恒空转**（P1，payload 无判别键）+ host-contract 三版本漂移（P1），其余均经核实属实。
+> **验证**：全量 **753/753 全绿**（`tests/**` + `skills/*/tests/**`，0 skip）；六门全绿（`consistent` / `surface`(STRICT_WARN=1) / `hygiene` / `link` / `closeout` / `host-contract-probe`）；专项新增 `tests/h2-h5-listeners`（基于新契约 12 用例）+ `tests/h3-h4-h7-listeners`（H7 移除后 5 用例）+ `tests/host-contract-probe`（双向 7 用例）+ `tests/ethics-render`（3 用例）+ `tests/commands` Q5（2 用例）。
+
+**病根（三处均为 P0/P1）**：
+
+- **R1（P0）H2 监听器真宿主下整体静默失效**：旧实现把命中项写在 `result.*` 上，但真宿主交给 `tools/post-execute` 的 result 是 `dsh-tools` `materializeFinalResult()` 的**深冻对象**（D1：赋值抛 TypeError），且结果随后过**字段白名单投影**（D2：非白名单字段被结构性丢弃）——两条机制各自独立成立，**共同把写入 result 的标记吞掉**。结论 = **被文档化的隐私开关整体失效且无任何可观测信号**。
+- **R2（P1）H7 `agent/request` 监听器恒空转**：监听器读 `request.toolName`，但该事件 payload **只有 `{turn, step, signal}`**（宿主 `dsh-agent-loop` 派发点）——「派发方存在但判别键缺失」的死监听器，继 H5 / H3 之后**第三例**。本仓自己的 `host-contract.mjs:23` 早已写明这三键，但契约门只比 arity，看不见判别键缺失。
+- **R3（P1）宿主契约**三版本漂移 + **无运行时契约验证**：`host-contract.mjs` 注 `0.2.0-rc.2` / `ci.yml:146` pin `0.1.7-rc.2` / 本地实装 `0.1.2-rc.1` —— peer 区间 `<0.2.0` 还不含 `0.2.0-rc.2`。契约表无 `since` 字段。
+
+**改动（5 类、约 100 行内）**：
+
+- **R1 修复（lib/index.js 单函数）**：H2 监听器**先 `await next()` 取下游裁决**（只调一次、绝不截断下游 waterfall）；**命中摘要走 `decision.additionalContexts`**（宿主 `tools/post-execute:3380/:3391` 唯一采纳的插件副通道），元素形状与 `createUserMessage` 产物一致（`id`/`role`/`content`/`source`）；opt-in 改写走 `decision.content`（宿主 `:3404` 采纳）；**结构化 `ethicsSanitized` 仍挂返回值**，供更晚注册的同进程监听器读——**不再假装是消费方契约**。catch 内 `report('warn', ...)`，**降级必留痕**（与 `guard.js:265-272` 同口径）。标记文本**只含计数与类别**，不含 `reviewFlags[].text`（避免把 PII 落进会话日志）。
+- **R2 处置（lib/index.js + 文档）**：删除 H7 `agent/request` 监听器，参照 H5/H3 的删除留痕格式。删除前后行为**完全等价**（删除前每次请求都空转）。分档路由仍由 `examples/preset/agent-tiered/cordis.yml` 的 `agentOptions` 单独承载（**加载期** `!!js` 求值），改 env 后需**重载插件行**——「改 env 不重启」卖点一并撤下。SKILL.md / SECURITY.md / DSH-集成方案.md / pipeline-readme.md 同步更新；契约表保留 `agent/request` 行 + `payloadKeys:['turn','step','signal']`（删的是注册、不是契约记录）。
+- **R3 修复（scripts/host-contract-probe.mjs + scripts/_lib/host-contract.mjs + ci.yml）**：新增**产物探针**（`scripts/host-contract-probe.mjs`，~150 行）——直接读**已装宿主产物**做三件事：`materializeFinalResult()` 引用的 `result.*` 字段集合**恰好等于**白名单（增删即红，并指名变化点）；三处派发点的归一化子串（含 `agent/request` payload 键集合）必须出现；本地 `@deepseek-ai/dsh-tools` 的 `version` 必须等于 `CONTRACT_HOST_VERSION` 常量（散文注释升级为可执行事实）。契约表加 `since` 字段（每条目已实测的最低宿主版本），防「peer 下限用户遇到事件无派发方而静默死监听」。探针挂 `ci.yml` 的 `lockfile-frozen` 作业（已 `pnpm install --frozen-lockfile`）。`npm scripts` 加 `check:host-contract`。
+- **R4 修复（lib/tools.js render 一行）**：`lunheng_ethics_sanitize` 的 `render`（= 唯一被会话日志持久化的那面）此前会打印 `reviewFlags[].text`（**原文人名**）——与同一返回值里的占位符一一对应、整篇匿名化稿可被还原；现只打印**项数 + 类别**。**残留如实登记**：canonical value 仍含 `replacements[].from` / `reviewFlags[].text`（output schema 明文声明「原名 → 占位符」）——它不进会话日志，但 Code Mode / 结构化消费方读得到。
+- **R5 + Q4 + Q6 顺带**：`publish.yml:62` 测试步改为 `no-write-check` 包裹 + `--test-timeout=180000`（与 ci.yml:197 同形）；`ci.yml:79` 加 `STRICT_WARN=1`；`plugin-surface-check.mjs` 的 `redline-waterfall-next` SKIP 理由从「本包不用任何 waterfall 监听器」（**与现状相反**）改写为真实理由（结构上永远 skip + 等价覆盖由 ⑮ + 测试 net() 行为断言兜）。
+
+**新规则 / 新工具**：
+
+- `consistency-check` 规则 **㉚**（v18.76.0）：`lib/**` 代码面（**剥注释后**）不得出现**当前包版本**字面量。判据：先剥注释（块 `/* */` 与行内 `//` 到行尾），再看剩余代码里有没有 == `pkgVer` 的 semver——剥离方向只能制造假阴性、不会制造假阳性，零误报地防住 v18.62.4 / v18.62.6 两次实测过的「注入文本硬编码当前版本」。
+- `scripts/host-contract-probe.mjs`（v18.76.0 新增）：详见上文 R3。
+- 新增 `tests/host-contract-probe.test.mjs`（双向自证：篡改产物字段白名单 / payload 键集合 / 版本都必须红并指名）。
+- 新增 `tests/ethics-render.test.mjs`（R4 回归网：render 不打印原文）。
+- `tests/commands.test.mjs` 补 2 条 Q5 用例：`isSafeProjectArg` 词法白名单 + `resolveProjectDir` 三层收口（**两条函数此前零直接用例**——v18.75.1 审计 R7-Q5 修复）。
+- `tests/h2-h5-listeners.test.mjs` / `tests/h3-h4-h7-listeners.test.mjs`（**全量重写**）：断言面从 `result` 换到「监听器返回值」（新契约下 result 不可写），并增加「**next() 只调一次**」「下游抛错传播」「标记不含原文」「opt-in 时 value+content 不并存」等覆盖。
+
+**未做 / 延后**：
+
+- **R6 镜像漂移门**（脚本 `mirror-version-check.mjs` + 用例）：**未在本批**。理由：与 R3 的产物探针耦合——`autoInstallPeers:true` 是本地真宿主产物的来源，先收紧会抽掉 R3 探针的唯一运行体；本机实测样本保留（profile 实装 18.74.0 vs 仓库 18.75.1），下批开工前主人 review。
+- **E4 `autoInstallPeers:true`**：同上理由，**排在 R6 之后**。
+- **S5 / S6 / E6 / R8 / P3 回滚演练**：保留为文档/治理项，**非本批必改**。
+
+**审计报告需更正的 4 处事实**（不影响结论，仅备忘）：`_backup/lunheng-mirror-*` 副本版本号实测为 `18.72.0` 与 `18.73.0`（报告写「均为 18.73.0」）；E4 位置列写 `pnpm-workspace.yaml:14-19`，实际在 `pnpm-lock.yaml:3-5`；Q4 写「ci.yml 5 job + script-tests」，实际 7 job；E5 表述「`lib/**` 完全在扫描面之外」偏宽，实为**版本规则**不覆盖（content-rules.mjs 的枚举规则仍扫 lib/index.js）。
+
 ## 18.75.1 — 2026-10-04
 
 > **性质**：**字体栈批（反哺报告-v7 F-19 结案）**。主人 2026-10-04 逐项裁定：选「**A. 只补跨平台衬线候选，不改调性**」＋「**单开小批**」＋ 范围「**图件 + 正文 `md2html` 同批改**」。**版本判据 = patch**：本批只改字体族名与文档说明，**不改任何行为契约**。

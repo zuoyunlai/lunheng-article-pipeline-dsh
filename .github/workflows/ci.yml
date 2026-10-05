@@ -45,6 +45,14 @@ jobs:
           package-manager-cache: false # v5 默认反转为 true；本仓刻意不开缓存
       - name: lockfile 与 package.json 一致性（--frozen-lockfile，漂移即红）
         run: pnpm install --frozen-lockfile
+      # v18.76.0（v18.75.1 全量架构审计 R3 修复）：**宿主契约产物探针**。
+      #   为什么挂在本 job：它是 CI 里**唯一**会 `pnpm install` 的作业——探针读的是**已装宿主产物**
+      #   （三处派发点的实参形态 / `materializeFinalResult` 的字段白名单 / 实装版本 == 契约表常量）。
+      #   没有 node_modules 就没有可核对的产物事实，而 R3 的病根正是「门只比本包自己的形参个数、
+      #   从不读宿主产物」。`--require-host`：本作业里产物必须存在，缺失即红（本地裸仓库无依赖时
+      #   同一命令判 N/A 并 exit 0，见脚本头注释）。
+      - name: 宿主契约产物探针（三处派发点 + 结果字段白名单 + 版本一致）
+        run: node scripts/host-contract-probe.mjs --require-host
 
   # 打包面检查：cordis.patch.yml 合法性 / 行 id 唯一 / dsh.bundle.patch 指向 /
   # package.json 元数据 / 工程红线（与 drift-check 互补，互不重叠）
@@ -76,6 +84,12 @@ jobs:
           node-version: '24'
           package-manager-cache: false # v5 默认反转为 true；本仓**刻意不开缓存**（缓存面=供应链面）。依赖一致性改由 lockfile-frozen job 的 --frozen-lockfile 保证（v18.67.0 审计批 3：旧注释称「本仓库无 lockfile」已失效——lockfile 自 v18.66.0 起入库）
       - name: 打包面检查（dsh-plugin-dev check，v18.0.0 起无豁免）
+        # v18.76.0（v18.75.1 全量架构审计 R7-Q4 修复）：**与发布门同源开 `STRICT_WARN=1`**。
+        #   此前只有 `publish.yml` 开这一项 → warn 级问题会**累积到打 tag 那一刻**才红（发布前才发现 =
+        #   已经在 tag 上），而 `scripts/plugin-surface-check.mjs` 的注释自述「CI 与发布门统一打开」——
+        #   承诺与实现不一致。本仓当前实测 0 warn（11 通过 / 0 失败 / 0 提示 / 3 skip），故本项改动零风险。
+        env:
+          STRICT_WARN: '1'
         run: node scripts/plugin-surface-check.mjs
 
   # 机械卫生门（v2.5.2-dsh.13 新增）：语法 / JSON / YAML 结构 / 行尾 / UTF-8 / 发布包内容

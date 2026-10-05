@@ -59,7 +59,12 @@ jobs:
         # v18.57.x（审计修订 P1-2）：旧版只有 1 个 glob，漏掉 `skills/*/tests/**`——
         #   子技能 lunheng-commands 的 route.test.mjs（22 用例）不在发布 gates 的验证范围内，
         #   而它定义着 11 个 /lunheng 命令。现与 package.json 的 test / ci.yml 的 script-tests 同形。
-        run: node --test "tests/**/*.test.mjs" "skills/*/tests/**/*.test.mjs"
+        # v18.76.0（v18.75.1 全量架构审计 R5 修复）：**与 ci.yml:197 同形**——`no-write-check` 包裹
+        #   + `--test-timeout=180000`。此前这一条两样都没有：① 任一用例挂死只能等 GitHub job 默认上限
+        #   （约 6h）且无法归因；② 「测试或工具偷偷写进真仓库」这道守卫**只存在于 push 侧**——而发布是
+        #   **不可逆**动作（npm 版本不可覆盖），判据强度不该低于 push。`no-write-check` 内部已把
+        #   「被包命令 exit≠0」判负（见其 `:128-135`），故不需要再加一条裸跑步。
+        run: node scripts/no-write-check.mjs -- node --test --test-timeout=180000 "tests/**/*.test.mjs" "skills/*/tests/**/*.test.mjs"
 
   # ── 发布（唯一持有发布身份的作业）─────────────────────────────────────────────
   publish:

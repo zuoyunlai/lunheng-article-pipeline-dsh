@@ -120,7 +120,15 @@ const WAIVERS = []
  */
 const SKIP_ALLOWED = new Map([
   ['redline-persona-role', '该检查找**仓库根**的 SKILL.md / systemPrompt 段落，而本包（bundle 形态）的技能体在 skills/lunheng-article-pipeline/SKILL.md —— 结构上永远看不到'],
-  ['redline-waterfall-next', '本包不用任何 waterfall 监听器（能力面走 ctx.effect / ctx.tools.guard / ctx.commands.register），没有 next() 可漏'],
+  // v18.76.0（v18.75.1 全量架构审计 R7-Q6 修复）：旧理由写「本包不用任何 waterfall 监听器（能力面走
+  //   ctx.effect / ctx.tools.guard / ctx.commands.register），没有 next() 可漏」——**与现状相反**：
+  //   `lib/index.js` 现在有 2 处 waterfall 监听器（`tools/post-execute`、`system-prompt/assemble`）。
+  //   该 skip 是**唯一**能覆盖「waterfall 不调 next() → 截断下游」的上游检查，照旧理由判断会错误地长期维持 skip。
+  //   真实理由 = 结构上永远 skip（该检查扫**仓库根**的入口文件，本包 `main` → `lib/index.js` 在子目录）；
+  //   **等价覆盖 = `repo-hygiene ⑮`**（事件名 + arity 对账，`scripts/_lib/hygiene/r15-host-contract.mjs`）
+  //   **+ 本仓监听器的 `next()` 行为断言**（`tests/h2-h5-listeners.test.mjs` / `tests/h3-h4-h7-listeners.test.mjs`）。
+  //   ⚠️ 边界如实登记：⑮ **不**覆盖「必须调用 next()」这一条（它只比形参个数），该条完全由行为断言兜。
+  ['redline-waterfall-next', '结构上永远 skip：该检查只扫**仓库根**的入口文件，而本包是 bundle 形态、`main` → `lib/index.js` 在子目录。**等价覆盖 = `repo-hygiene ⑮`（事件名 + arity 对账）+ `tests/h2-h5-listeners.test.mjs` 与 `tests/h3-h4-h7-listeners.test.mjs` 的 `next()` 行为断言**（⑮ 不覆盖「必须调 next()」，该条只由行为断言兜；v18.76.0 · R7-Q6 更正——旧理由「本包不用任何 waterfall 监听器」与现状相反）'],
   ['redline-no-hardcoded-tunables', 'CLI 只认 `export const Config = Schema.…`（Schemastery）与 `= {`（会被判 fail）；本包入口刻意用 standard-schema 形态 `Object.freeze({…})`（不引入宿主依赖，见 lib/index.js 头注释）→ 三条正则都不命中，只能 skip。**已实测**（CLI dist 0.3.10 的 checkRedlineNoHardcodedTunables：:1065-1066,1077）。等价语义由 tests/entry.test.mjs 的 Config 用例与「非法配置加载期响亮失败」覆盖'],
   ['redline-async-apply-registration', 'v18.20.2 抬 pin 0.3.16→0.3.19 时上游**新增**的检查（「async apply 首个 await 之后不得注册」，卸载窗口竞态）。**pin 已于 v18.21.1 回退到 0.3.16**（0.3.19 的 verify 在无凭据 CI 上必红，见 CLI_SPEC 注释）→ 本条在 pin 为 0.3.16 时**不触发**，保留它是为了「将来抬到 ≥0.3.19 时该 skip 已被人工确认过」。本包入口 lib/index.js 的 `apply(ctx, config)` 是**同步函数**（apply 体内的异步安装走 `ctx.effect()` 回调，注册发生在其 await 之前；apply 自身不 await）→ 无 async apply 可查，skip 是「本包没有该面」的正常形态，**非**静默失效'],
 ])

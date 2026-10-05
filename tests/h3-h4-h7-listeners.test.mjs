@@ -1,13 +1,17 @@
-// H4 + H7 集成测试（v18.61.0 反哺 v4 落地；v18.62.1 全量审计 P1-2 修复 H4 + P1-1 移除 H3）
+// H4 集成测试（v18.61.0 反哺 v4 落地；v18.62.1 全量审计 P1-2 修复 H4 + P1-1 移除 H3/H5）
 //
-// 验证 lib/index.js 的两个新增 ctx.on 监听器：
-//   · H4 `system-prompt/assemble` 钩子（**只追加不覆盖** — 3 参 waterfall）
-//   · H7 `agent/request` waterfall 模型路由（按 LUNHENG_* env 覆盖 provider/model）
-//   H3 `assistant/chunk` 监听器已按 v18.62.1 全量审计 P1-1 移除（session 日志事件、无 ctx 派发方），不再测。
+// v18.76.0（v18.75.1 全量架构审计 R2 · P1 修复）：H7 `agent/request` waterfall 监听器**已移除**。
+//   该事件 payload 只有 `{turn, step, signal}`（宿主 `dsh-agent-loop` 派发点；本仓 `host-contract.mjs`
+//   的表注早已写明这三键），监听器读的 `request.toolName` 恒 `undefined` → 「派发方存在但判别键缺失」
+//   的死监听器。删后行为与删前**完全等价**（删除前该监听器对任何请求都空转返回 `next()` 的结果）。
+//   原 H7 的 3 个 case 由本批「agent/request 0 监听器 + 契约表带 since / payloadKeys」覆盖；
+//   `tests/host-contract.test.mjs` 进一步以契约表断言 `since`/`payloadKeys` 的存在与形态。
+//   H3 `assistant/chunk` / H5 `file-watcher:change` 已按 v18.62.1 全量审计 P1-1 移除（宿主无派发方），
+//   维持原口径。
 //
-// 做法沿用 tests/h2-h5-listeners.test.mjs 同款：直接 import apply + 真 fire。
-// H4 关键差异（v18.62.1 修复前 vs 后）：修复前 2 参 `(prompt, next)` 不调 next()，把下游链（含模型选择）静默
-//   截断；修复后 3 参 `(assembly, context, next)`，`await next()` 拿到装配结果再向 sections 追加论衡段。
+// H4 关键差异（v18.62.1 修复前 vs 后）：修复前 2 参 `(prompt, next)` 不调 next()，把下游链（含模型选择）
+//   静默截断；修复后 3 参 `(assembly, context, next)`，`await next()` 拿到装配结果再向 sections 追加论衡段。
+// H4 S7 修复：版本号改为每次 assemble 现读 `package.json`（不再用 apply 期快照）。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -107,11 +111,11 @@ test('H4 system-prompt 钩子：await next() 后向 sections 追加论衡段，�
   assert.deepEqual(result.variables, assembly.variables, '下游写入的 variables（模型选择）必须原样保留')
 })
 
-test('H4 版本自证：尾注里出现的版本号必须**只有**当前包版本（不得留任何字面量）', async () => {
-  // 为什么需要（v18.62.6）：这段尾注**每个会话都进模型上下文**，是「装错了要看得见」的唯一载体。
-  //   历史两次踩到：① v18.61.0 时整串硬编码 `v18.61.0` 而包已到 v18.62.x（v18.62.4 修）；
-  //   ② **v18.62.4 那次只改了一半**——正文换成 `${pkgVersion}`，标题 `## 论衡·按需追加（v18.62.5）`
-  //   仍是字面量，于是 v18.62.5 bump 时标题照旧漂移，且 `lib/**` 不在任何版本门扫描面内 → 无人发现。
+test('H4 版本自证（S7 修复）：尾注里出现的版本号必须**只有**当前包版本（不得留任何字面量）', async () => {
+  // 为什么需要（v18.62.6；v18.76.0 S7 修复升级）：这段尾注**每个会话都进模型上下文**，是「装错了要看得见」的
+  //   唯一载体。历史三次踩到：① v18.61.0 时整串硬编码；② v18.62.4 只改一半（标题仍字面量）；
+  //   ③ v18.62.6 标题也改后，**apply 期一次性快照**让原地升级看不到真实版本。
+  // S7 改后：版本改为每次 assemble 现读 `package.json`（`buildPromptTail()`），原地升级也能看到真实版本。
   // 断言口径：**只看运行时渲染出的字符串**（注释/历史注记天然不参与），因此零假阳性。
   const { ctx, listeners } = makeCordaxLikeCtx()
   const mod = await import(pathToFileURL(INDEX_MOD).href)
@@ -134,7 +138,7 @@ test('H4 版本自证：尾注里出现的版本号必须**只有**当前包版�
     stale,
     [],
     `尾注含非当前版本号 ${stale.join(', ')}（当前 = ${pkgVersion}）——` +
-      '该串每会话进模型上下文，旧版本号会直接抵消版本自证行；真源 = lib/index.js 的 LUNHENG_PROMPT_TAIL（应全部走 ${pkgVersion} 派生）',
+      '该串每会话进模型上下文，旧版本号会直接抵消版本自证行；真源 = lib/index.js 的 buildPromptTail()（应全部走 readPackageVersion() 派生）',
   )
 })
 
@@ -156,80 +160,21 @@ test('H4 system-prompt 钩子：next() 返回无 sections 的对象也安全追�
   assert.deepEqual(result.variables, { model: 'x' }, '下游字段保留')
 })
 
-test('H7 agent.request waterfall：subagent_retrieval + LUNHENG_RETRIEVAL_MODEL → 覆盖', async () => {
-  // **必须清理**两个 env 变量：测试用例不清理的话，listener 会读真实 process.env（如主人工作时的
-  // LUNHENG_RETRIEVAL_PROVIDER=minimax-cn-openai），导致断言失败。这是测试卫生，不是 listener bug。
-  const ORIG_P = process.env.LUNHENG_RETRIEVAL_PROVIDER
-  const ORIG_M = process.env.LUNHENG_RETRIEVAL_MODEL
-  delete process.env.LUNHENG_RETRIEVAL_PROVIDER
-  process.env.LUNHENG_RETRIEVAL_MODEL = 'test-model-retrieval'
-  try {
-    const { ctx, listeners } = makeCordaxLikeCtx()
-    const mod = await import(pathToFileURL(INDEX_MOD).href)
-    mod.apply(ctx, {})
-    await new Promise((r) => setTimeout(r, 50))
-
-    const handlers = listeners['agent/request'] || []
-    assert.ok(handlers.length >= 1, 'H7 监听器未注册到 ctx.on(agent/request)')
-
-    const request = { toolName: 'subagent_retrieval', provider: 'original-provider', model: 'original-model' }
-    // v18.67.0（全量审计 P1 修复）起 H7 是 async waterfall：await next() 拿下游结果后再合并 override
-    const result = await handlers[0](request, async () => ({ ...request }))
-    assert.ok(result && result.model === 'test-model-retrieval', `model 应被 env 覆盖，实际 ${JSON.stringify(result)}`)
-    assert.equal(result.provider, 'original-provider', '未设 provider env → 保留原值')
-    assert.equal(result.toolName, 'subagent_retrieval', '下游字段保留（不截断 next 链）')
-  } finally {
-    if (ORIG_P !== undefined) process.env.LUNHENG_RETRIEVAL_PROVIDER = ORIG_P
-    if (ORIG_M !== undefined) process.env.LUNHENG_RETRIEVAL_MODEL = ORIG_M
-  }
-})
-
-test('H7 agent.request waterfall：非论衡三档 → 委托', async () => {
+test('基线契约：ctx.on 注册两个监听器（H2 + H4）；H3/H5/H7 已移除（v18.62.1 + v18.76.0）', async () => {
   const { ctx, listeners } = makeCordaxLikeCtx()
   const mod = await import(pathToFileURL(INDEX_MOD).href)
   mod.apply(ctx, {})
   await new Promise((r) => setTimeout(r, 50))
 
-  const request = { toolName: 'some_other_tool', provider: 'p', model: 'm' }
-  const nextReturn = Symbol('next')
-  const result = await listeners['agent/request'][0](request, () => nextReturn)
-  assert.equal(result, nextReturn, '非论衡三档 → 应调用 next() 返回原值')
-})
-
-test('H7 agent.request waterfall：未设 env → 委托', async () => {
-  const ORIG_P = process.env.LUNHENG_STRONG_PROVIDER
-  const ORIG_M = process.env.LUNHENG_STRONG_MODEL
-  delete process.env.LUNHENG_STRONG_PROVIDER
-  delete process.env.LUNHENG_STRONG_MODEL
-  try {
-    const { ctx, listeners } = makeCordaxLikeCtx()
-    const mod = await import(pathToFileURL(INDEX_MOD).href)
-    mod.apply(ctx, {})
-    await new Promise((r) => setTimeout(r, 50))
-
-    const request = { toolName: 'subagent_strong', provider: 'p', model: 'm' }
-    const nextReturn = Symbol('next')
-    const result = await listeners['agent/request'][0](request, () => nextReturn)
-    assert.equal(result, nextReturn, '未设 env → 不覆盖，委托给 next()')
-  } finally {
-    if (ORIG_P !== undefined) process.env.LUNHENG_STRONG_PROVIDER = ORIG_P
-    if (ORIG_M !== undefined) process.env.LUNHENG_STRONG_MODEL = ORIG_M
-  }
-})
-
-test('基线契约：ctx.on 注册三个监听器（H2/H4/H7），H3/H5 已移除', async () => {
-  const { ctx, listeners } = makeCordaxLikeCtx()
-  const mod = await import(pathToFileURL(INDEX_MOD).href)
-  mod.apply(ctx, {})
-  await new Promise((r) => setTimeout(r, 50))
-
-  // v18.62.1 全量审计 P1-1 之后，lib/index.js 应注册 3 个监听器（全部有真实宿主派发方）：
+  // v18.76.0：lib/index.js 应注册 2 个监听器（全部有真实宿主派发方）：
   //   · tools/post-execute（H2）
-  //   · agent/request（H7）
   //   · system-prompt/assemble（H4）
-  // H3（assistant/chunk）与 H5（file-watcher:change）已移除（宿主无派发方）。
+  // H3（assistant/chunk）/ H5（file-watcher:change）/ H7（agent/request）均已移除——
+  //   H3/H5 = 宿主无派发方（v18.62.1 P1-1），H7 = 派发方存在但判别键缺失（v18.75.1 审计 R2）。
+  // 契约表里 `agent/request` 的条目保留（它是宿主事实 + 由 host-contract-probe 持续守 payload 键集合），
+  // 但本仓**不再注册**该事件监听器——所以这里 listeners 里 `agent/request` 应为空数组。
   assert.ok((listeners['tools/post-execute'] || []).length >= 1, 'H2 应注册')
-  assert.ok((listeners['agent/request'] || []).length >= 1, 'H7 应注册')
+  assert.equal((listeners['agent/request'] || []).length, 0, 'H7 应已移除（payload 无判别键，死监听器）；契约表保留但本仓不注册')
   assert.ok((listeners['system-prompt/assemble'] || []).length >= 1, 'H4 应注册')
   assert.equal((listeners['assistant/chunk'] || []).length, 0, 'H3 应已移除（无派发方）')
   assert.equal((listeners['file-watcher:change'] || []).length, 0, 'H5 应已移除（无派发方）')

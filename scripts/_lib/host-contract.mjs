@@ -11,37 +11,67 @@
 //   死监听器 `assistant/chunk` / `file-watcher:change` 正是这样）。此前没有任何门校验这两条，故 P0-1
 //   从机制上不可能被现有门发现（600 个用例全绿，因为自建桩测试「照着实现写」、与实现共错）。
 //
-// 契约真源（宿主 `@deepseek-ai/dsh` **0.2.0-rc.2**，核对日期 2026-10-01；0.1.7-rc.2 同形）：
-//   · `tools/post-execute` → 3 参 `(exec, result, next)`
-//       派发：`dsh-tools/lib/index.js` `postExecute` →
-//         `this.ctx.waterfall(..., "tools/post-execute", exec, result, () => Promise.resolve({ kind: "accept" }))`
-//       官方同事件监听器（dsh-spill-policy / dsh-repeat-tool-reminder / dsh-tool-fs-search / dsh-hooks-*）
-//        全部写 `(exec, result, next)`。
-//   · `system-prompt/assemble` → 3 参 `(assembly, context, next)`
-//       派发：`dsh-system-prompt/lib/index.js` `assemble` →
-//         `this.ctx.waterfall(..., "system-prompt/assemble", assembly, context, () => Promise.resolve(assembly))`
-//   · `agent/request` → 2 参 `(payload, next)`（payload = `{ turn, step, signal }`）
-//       派发：`dsh-agent-loop/lib/index.js` →
-//         `this.dispatch.waterfall("agent/request", { turn, step, signal }, () => Promise.resolve(seedConfig))`
-//
+// 契约真源版本（v18.76.0 · v18.75.1 全量架构审计 R3 修复）：**从散文注释提升为可执行常量**。
+//   旧版这里写死「宿主 `@deepseek-ai/dsh` **0.2.0-rc.2**，核对日期 2026-10-01；0.1.7-rc.2 同形」——
+//   三个数字互相打架且**无人校验**：本文件注 `0.2.0-rc.2` / `ci.yml` 的 loader-smoke pin `0.1.7-rc.2`
+//   / lockfile 实装 `0.1.2-rc.1`。现改为：本常量 = **探针实际核对的产物版本**，由
+//   `scripts/host-contract-probe.mjs` 断言「本地已装 `@deepseek-ai/dsh-tools` 的 version 必须 == 它」。
+//   三条版本轴的分工（**不再假装它们是同一个数**）：
+//     · 本常量 / 探针目标 = lockfile 实装的宿主（本包 dev + CI 的 `pnpm install --frozen-lockfile` 产物）；
+//     · `ci.yml` 的 `loader-smoke` pin = 全局 npm 装一个**更新的**宿主，只验「宿主能加载本插件」；
+//     · 契约表条目本身只在**探针目标**上被核对，跨 rc 线的 arity/payload 变化由探针红来暴露。
+export const CONTRACT_HOST_VERSION = '0.1.2-rc.1'
+
 // 更新契约表的口径：宿主升版后**重新核对上面三个派发点**（真源出处已写在 host 字段），实参个数变了就
 //   同步改本表；**不要凭记忆改**（这正是本门要守的「凭记忆推断」病）。
+// 每条另带 `since`（v18.76.0 R3 修复）：该事件**在本包验证过的最低宿主版本**上实测存在。缺 `since`
+//   即门红（`tests/host-contract.test.mjs`）——它防的是「落在 peer 区间下限的用户遇到事件根本没有派发方
+//   而静默死监听」这一类：没有 `since` 就无法判断「这个事件在用户的宿主版本上是否存在」。
 export const HOST_CONTRACT = Object.freeze({
   'tools/post-execute': {
     arity: 3,
     params: ['exec', 'result', 'next'],
     host: 'dsh-tools postExecute',
+    since: '0.1.2-rc.1',
   },
   'system-prompt/assemble': {
     arity: 3,
     params: ['assembly', 'context', 'next'],
     host: 'dsh-system-prompt assemble',
+    since: '0.1.2-rc.1',
   },
   'agent/request': {
     arity: 2,
     params: ['payload', 'next'],
     host: 'dsh-agent-loop agent/request',
+    since: '0.1.2-rc.1',
+    // payload 键集合（v18.76.0 R3 修复新增）：本包**不再注册**该事件监听器（H7 已按 R2 移除），
+    //   但契约记录保留——它是「为什么不能读 request.toolName」的机械证据，也是将来若恢复热路由时的前置事实。
+    payloadKeys: ['turn', 'step', 'signal'],
   },
+})
+
+/**
+ * `materializeFinalResult()` 的**字段白名单**（v18.76.0 · R3 修复新增）——单一真源。
+ *
+ * 为什么必须机械化：本包 H2 监听器曾把 `reviewFlags` / `ethicsSanitized` 写在 `result` 上，而真宿主在
+ *   结果落地前会按这个白名单**投影一次**，非契约字段被结构性丢弃（D2）；同时对象是 `deepFreeze` 过的
+ *   （D1，赋值抛 TypeError）。两条机制各自独立成立 → 监听器整体静默失效（P0）。
+ *   `scripts/host-contract-probe.mjs` 断言宿主产物里 `materializeFinalResult` 引用的 `result.*` 字段集合
+ *   **恰好等于**本表——宿主增删字段即红，且指名变化点。
+ */
+export const MATERIALIZE_WHITELIST = Object.freeze([
+  'additionalContexts', 'concludesTurn', 'content', 'error', 'isError', 'meta', 'value',
+])
+
+/**
+ * 本包关心的三处**宿主派发点**的规范化期望形态（v18.76.0 · R3 修复新增）——探针按此断言宿主产物。
+ * 判据 = 空白归一后子串必须出现；`{ turn, step, signal }` 这一项同时钉住 `agent/request` 的 payload 键集合。
+ */
+export const HOST_DISPATCH = Object.freeze({
+  'tools/post-execute': '"tools/post-execute", exec, result, () =>',
+  'system-prompt/assemble': '"system-prompt/assemble", assembly, context, () =>',
+  'agent/request': '"agent/request", { turn, step, signal }, () =>',
 })
 
 // 匹配真实注册：`ctx.on('event', [async] (a, b, ...) => {`

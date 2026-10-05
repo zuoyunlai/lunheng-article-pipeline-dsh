@@ -1,9 +1,9 @@
 # 论衡 × DSH 能力面集成方案
 
-> 版本：v18.75.1
+> 版本：v18.77.0
 > **用途**：把论衡的既有机制（**随包脚本** / 并行阶段 / 状态机 / 人在环闸门）**对齐 DSH 已有能力面**，替代平行自建。§一–§六 是**实施方案**，§七 是**落地状态表**，§八 是**可选配方**。**脚本清单与数量真源 = `SKILL.md` §执行能力边界 的「随包脚本白名单」行**（本文件不复述数字）。
 > **依据**：DSH 官方文档 `docs/cookbook/adding-a-tool.md`、`docs/tool-execution-pipeline.md`、`docs/subsystems/*.md`、`docs/capability-seams.md`（知识库副本见 `dsh-plugin-guide/references/official-docs/`；行号对快照 commit `d347e703…`）。
-> **当前状态（v18.71.0 对账）**：**C 组 10 项已启用 + 1 项 preset 已落地 + D2 workflow 配方已落地（可选）**：原生只读工具 + `executionMode` 声明 / `ctx.tools.guard()` 写保护 / `/lunheng-status` / 词预算门 / `tools/post-execute` 伦理脱敏自动挂载 / `system-prompt/assemble` 钩子 / `agent/request` waterfall 模型路由 / `examples/preset/agent-tiered/cordis.yml` preset 化（**C-9 `file-watcher:change`、C-10 `assistant/chunk` 两条死监听器已移除**，见 §七）。**D2（Phase 内并行→`workflow`）配方已落地**（v18.71.0，`examples/workflow/phase1-retrieval.md`，**可选、不默认替换 subagent**，见 §三）。**未做（Backlog）**：**H8** `session-log` 投影 / **H9** `session-query-sqlite` / **H10** `web_profile`（主人 2026-09-30 裁定**不做**）；**H11** `goals` / `jobs`（仍禁接）。
+> **当前状态（v18.76.0 对账）**：**C 组 9 项已启用 + 1 项仅配方（C-2）+ D2 workflow 配方已落地（可选）**：原生只读工具 + `executionMode` 声明 / `ctx.tools.guard()` 写保护 / `/lunheng-status` / 词预算门 / `tools/post-execute` 伦理脱敏自动挂载（命中标记经 `decision.additionalContexts` 送达，v18.76.0 · R1 修复） / `system-prompt/assemble` 钩子 / `examples/preset/agent-tiered/cordis.yml` preset 化（**C-9 `file-watcher:change`、C-10 `assistant/chunk`、C-12 `agent/request` 三条死监听器已移除**，见 §七）。**D2（Phase 内并行→`workflow`）配方已落地**（v18.71.0，`examples/workflow/phase1-retrieval.md`，**可选、不默认替换 subagent**，见 §三）。**未做（Backlog）**：**H8** `session-log` 投影 / **H9** `session-query-sqlite` / **H10** `web_profile`（主人 2026-09-30 裁定**不做**）；**H11** `goals` / `jobs`（仍禁接）。
 
 ---
 
@@ -223,7 +223,7 @@ return { gate: 'T2.5', pass: gatePass, literature: lit, data: dat, cases: cas }
 
 ---
 
-## 七、v18.1.0（C 组）落地状态：**十三项已启用 + 一项 preset 已落地**（v18.60.1 反哺 v3 + v18.61.0 反哺 v4 后）、D2 已配方落地（可选，v18.71.0）
+## 七、v18.1.0（C 组）落地状态：**九项已启用 + 一项仅配方（C-2）+ 三项已移除（C-9 / C-10 / C-12）**（v18.60.1 反哺 v3 + v18.61.0 反哺 v4 后；C-12 按 v18.75.1 全量架构审计 R2 移除）、D2 已配方落地（可选，v18.71.0）
 
 > **依据**：第三方全量审计 v2 §4「C. 中期偏架构（6 条）」，本轮逐条处置。**官方文档行号**取自 `dsh-plugin-guide/references/official-docs/`（快照 commit `d347e703…`，2026-09-04）。
 
@@ -236,12 +236,12 @@ return { gate: 'T2.5', pass: gatePass, literature: lit, data: dat, cases: cas }
 | C-5 `/lunheng-status` 命令 | ✅ **已启用** | `lib/commands.js` → `ctx.commands.register()` | `docs/subsystems/commands.md:5`（dispatch 不产生模型消息） |
 | C-6 词预算门 | ✅ **已启用** | 仓库门 `repo-hygiene-check`（**仓库根** `scripts/` 下，不随包）规则⑨ | `official-docs/AGENTS.md`（`verify-doc-budgets` 先例） |
 | C-7 `executionMode` 声明 | ✅ **已启用** | `lib/tools.js` 的 4 个 `defineTool`（`lunheng_m_gate` / `lunheng_char_count` / `lunheng_handoff_check` / `lunheng_ethics_sanitize`）全部加 `executionMode: 'parallel'` | `docs/subsystems/tools.md` 的 `executionMode`（parallel/exclusive 由 driver 有界滚动池调度） |
-| C-8 `tools/post-execute` 自动伦理脱敏监听器 | ✅ **已启用**（**3 参 `(exec, result, next)`**——v18.62.1 全量审计 P0-1 修正旧 4 参错位） | `lib/index.js` 里的 `ctx.on('tools/post-execute', listener)`；监听器对 `read` / `web_*` / `subagent*` 自动调 `lib/ethics-sanitize.js` 的 `sanitize(text, { mode: 'basic' })`，把 `reviewFlags` 与 `ethicsSanitized` 计数注入 result | `docs/subsystems/tools.md`（post-execute waterfall 模式 accept / block） |
+| C-8 `tools/post-execute` 自动伦理脱敏监听器 | ✅ **已启用**（**3 参 `(exec, result, next)`**——v18.62.1 全量审计 P0-1 修正旧 4 参错位；**载体改写 v18.76.0 · R1 修复**） | `lib/index.js` 里的 `ctx.on('tools/post-execute', listener)`；监听器对 `read` / `web_*` / `subagent*` 自动调 `lib/ethics-sanitize.js` 的 `sanitize(text, { mode: 'basic' })`，命中摘要经 **`decision.additionalContexts`**（宿主 `tools/post-execute` 唯一采纳的插件副通道）作为一行标记送达下一轮上下文，`ethicsSanitized` 结构化字段另挂在返回值上供同进程监听器读——**不再写 `result.*`**（真宿主的 result 已深冻、且结果随后过字段白名单投影，写它必然静默失效，见 `audits/核实报告-v18.75.1-全量架构审计-2026-10-04.md` §2） | `docs/subsystems/tools.md`（post-execute waterfall 模式 accept / block；`additionalContexts` 语义） |
 | C-9 `file-watcher:change` refresh-gates HMR 联动 | ❌ **已移除**（v18.62.1 全量审计 P1-1：`file-watcher:change` 在宿主全树 0 命中、无派发方，是死监听器） | 原 `lib/index.js` 里的 `ctx.on('file-watcher:change', listener)` 已删除；refresh-gates 仍是幂等脚本、可手动跑 | DSH HMR 设计（事件在宿主无派发方，不落地） |
 | C-10 `assistant/chunk` G14 启发式预筛监听器 | ❌ **已移除**（v18.62.1 全量审计 P1-1：`assistant/chunk` 是 session 日志事件、无 ctx 派发方，监听器永不触发） | 原 `lib/index.js` 里的 `ctx.on('assistant/chunk', listener)` 已删除；G14 检测由 G14 终闸（三层防御第 3 层 LLM 推理判定）完整覆盖 | v18.2.8 G14 修订（§A/§B 类判据） |
-| C-11 `system-prompt/assemble` 钩子 | ✅ **已启用**（**3 参 `(assembly, context, next)`**——v18.62.1 全量审计 P1-2 修正旧 2 参截断下游缺陷） | `lib/index.js` 新增 `ctx.on('system-prompt/assemble', listener)`；监听 prompt 装配 → `await next()` 后向 `sections` **只追加不覆盖** dsh 默认 prompt（附加「论衡技能加载中」提示段，**最保守模式**）| dsh agent-loop 文档（system-prompt/assemble waterfall 模式）|
-| C-12 `agent/request` waterfall 模型路由 | ✅ **已启用** | `lib/index.js` 新增 `ctx.on('agent/request', listener)`；监听模型请求事件 → 论衡三档 subagent（retrieval / strong / audit）请求时按 `LUNHENG_*_PROVIDER` / `LUNHENG_*_MODEL` env **覆盖** provider/model | dsh x.dev「agent/request waterfall」（换请求配置）+ DSH-集成方案 §八 D4 配方 + `examples/preset/agent-tiered/cordis.yml`（**双保险**：preset 内同样公式的 `agentOptions`）|
-| C-13 H6 agent preset 化 + `modelSelectionSettings:true` | ✅ **已落地**（preset 文件已写） | 新增 `examples/preset/agent-tiered/cordis.yml`；按 §八 第 2 步配方，论衡三档 subagent 工具行开 `modelSelectionSettings:true` → 该 preset 内可用 `list_subagent_models` 工具 + per-call `provider`/`model`/`reasoning_effort`。**真源 roles**：retrieval = T1/T2/T3、strong = T4/T5、audit = T6/T7/T9/G14 | `docs/subsystems/core.md:564`（"the new preset's id, which becomes its directory name"）+ `capability-seams.md:507`（"preset cordis.yml"）+ `capability-seams.md:491`（Agent-scoped delegation tools）|
+| C-11 `system-prompt/assemble` 钩子 | ✅ **已启用**（**3 参 `(assembly, context, next)`**——v18.62.1 全量审计 P1-2 修正旧 2 参截断下游缺陷；**v18.76.0 · S7 修复**：尾注版本号改为**每次装配现读** `package.json`，不再用 apply 期快照——原地升级也能看到真实版本） | `lib/index.js` 新增 `ctx.on('system-prompt/assemble', listener)`；监听 prompt 装配 → `await next()` 后向 `sections` **只追加不覆盖** dsh 默认 prompt（附加「论衡技能加载中」提示段 + 版本自证行，**最保守模式**）| dsh agent-loop 文档（system-prompt/assemble waterfall 模式）|
+| C-12 `agent/request` waterfall 模型路由 | ❌ **已移除**（v18.76.0 · v18.75.1 全量架构审计 R2：该事件 payload **只有 `{turn, step, signal}`**，监听器读的 `request.toolName` 恒 `undefined` → 判别键缺失的死监听器，且挂在每个模型请求的 waterfall 上。继 C-9「无派发方」、C-10「session 日志事件」之后第三例） | 原 `lib/index.js` 里的 `ctx.on('agent/request', listener)` 已删除（删的是**注册**，不是该事件的契约记录——`scripts/_lib/host-contract.mjs` 的表项保留，由 `host-contract-probe` 持续断言 payload 键集合）。分档路由由 C-13 preset 单独承载，**改 env 后需重载插件行** | ~~dsh x.dev「agent/request waterfall」~~（不再使用）；改由 C-13 + `docs/capability-seams.md`（agent preset）承载 |
+| C-13 H6 agent preset 化 + `modelSelectionSettings:true` | ✅ **已落地**（preset 文件已写） | 新增 `examples/preset/agent-tiered/cordis.yml`；按 §八 第 2 步配方，论衡三档 subagent 工具行开 `modelSelectionSettings:true` → 该 preset 内可用 `list_subagent_models` 工具 + per-call `provider`/`model`/`reasoning_effort`。**真源 roles**：retrieval = T1/T2/T3、strong = T4/T5、audit = T6/T7/T9/G14 | dsh 官方文档（DSH 仓库 `docs/subsystems/tools.md` + `docs/capability-seams.md`，本仓未随包）|
 
 ### 7.1 C-1 的关键设计（为什么不是 patch 行、也不要 `exports`）
 
@@ -307,7 +307,7 @@ return { gate: 'T2.5', pass: gatePass, literature: lit, data: dat, cases: cas }
 
 > 「普通行按 id 覆盖既有行」是本包 `cordis.patch.yml` 头注释记录的既有语义；`publish.md:114-121` 给出层顺序（**profile 层在 bundle 层之后**，故能覆盖）。
 
-**第 2 步：写一个预设目录**（目录名 = 预设 id，见 `docs/subsystems/core.md:564`「the new preset's id, which becomes its directory name」），放入官方所称的 **「preset cordis.yml」**（`capability-seams.md:507`）：
+**第 2 步：写一个预设目录**（目录名 = 预设 id，见 `docs/capability-seams.md:564`「the new preset's id, which becomes its directory name」），放入官方所称的 **「preset cordis.yml」**（`capability-seams.md:507`）：
 
 ```yaml
 # <预设目录>/<preset cordis.yml>
@@ -343,8 +343,8 @@ dsh --profile web --dump-config 2>&1 | grep -E "tool-subagent-(retrieval|strong|
 
 ### 8.3 已知限制（决定要不要做之前先看）
 
-1. **预设只在会话空白期可切**：官方 `core.md:621-623`「swapping tools mid conversation would leave logged tool calls the new composition cannot make」——**长跑会话中途换不了**。论衡一次跑 1-3 小时，**必须在开跑前选定预设**。
-2. **子代理靠「加入同一组合」继承能力**，不是各自继承 scope（`glossary.md:13`「scoped registrations do not inherit down to subagents」；`core.md:499-524` 的 `composeFrom`）。正常父子关系下 T1-T9 会 join 到同一 standing composition，**用得到三档工具**；但**跨预设 fork 的子代理不一定看得到**——派发前先确认工具清单。
+1. **预设只在会话空白期可切**：官方 `docs/capability-seams.md:621-623`「swapping tools mid conversation would leave logged tool calls the new composition cannot make」——**长跑会话中途换不了**。论衡一次跑 1-3 小时，**必须在开跑前选定预设**。
+2. **子代理靠「加入同一组合」继承能力**，不是各自继承 scope（`glossary.md:13`「scoped registrations do not inherit down to subagents」；`docs/capability-seams.md:499-524` 的 `composeFrom`）。正常父子关系下 T1-T9 会 join 到同一 standing composition，**用得到三档工具**；但**跨预设 fork 的子代理不一定看得到**——派发前先确认工具清单。
 3. **`restrict` 藏不住预设层工具**（`tools.md:507-513`：对 scope-local 名会失败）——想「有预设但偶尔禁掉某档」只能靠不选该预设。
 4. **预设行会被校验拒绝**：`capability-seams.md:507`「rejecting a row that never activates or that publishes into the root service realm」——写错 `toolName` 或把它当 service 用会**加载期报错**（这是好事：响亮失败）。
 5. **本包默认不动 patch**：`cordis.patch.yml` 仍保留三行全局声明，但 **v18.2.6 起由行级 `disabled: !!js` 决定是否装载——默认（不设任何 `LUNHENG_*`）不装载**。§八 第 1 步（按 id 关掉三行）因此只对「已主动设了 `LUNHENG_*`、三行被装载」的会话才需要；对纯 `subagent` 会话，「装了不坏」优先——**换了作用域就不再是「装了就可用」**，需要主人主动选择会话预设。
