@@ -1,4 +1,4 @@
-> 版本：v18.77.1（DSH bundle 插件）
+> 版本：v18.78.0（DSH bundle 插件）
 >
 > **历史叙事已外移**：正文只留现行规则；历史成因 / 逐版明细 / 教训编号见 CHANGELOG.md 对应版本段与 `memory/lessons.md`。
 
@@ -176,6 +176,11 @@
 > **审计员启动必读**：审计是论衡核心质量关卡，必查项 + M 门 + F 模式 三层验证。
 
 - **M 门算法**：详见 [`_shared/M-Gate-Algorithm.md`](../_shared/M-Gate-Algorithm.md) + [`glossary.md § M 门`](../glossary.md#m-门形式合规门)
+  > **按需读（v18.78.0 反哺 F9）**：该文件 ≈97 KB，**整读 = 一次近乎整库的通读**。先跑
+  > `node scripts/ref-get.mjs references/_shared/M-Gate-Algorithm.md --list` 取**锚点清单 + 各自字节数**，
+  > 再按锚点只取所需节；锚点未命中时该脚本 **exit 10 并列出可用锚点**（**绝不返回空节**）——
+  > 此时改锚点重试，**不得把空结果读成「这一节已读过」**。机制说明 = [`../pipeline-readme.md` §共享读取纪律](../pipeline-readme.md) §按需读。
+  > 本项是**机制动作**（派发前跑 `ref-get`），不是「模型自觉按需读」——实测主控曾把该文件整读两遍。
 - **审计必查项 G0-G14**：详见 [`_shared/audit-checklist-quickref.md`](../_shared/audit-checklist-quickref.md) + [`glossary.md § G 清单`](../glossary.md#g-清单质量审计清单)
 - **G 项机检门**：见上方 §🧮 G 项机检段——**先跑 `scripts/g-audit-check.mjs` 拿实据**（6 项机检 = 对应 G 子项的实据），判断力项再人工补；分片并行见 §🔀 审计分片并行。
 - **G 项覆盖会被机检**：审计报告里 **G0-G14 十五个主项必须逐项出现，且邻域内有结论词**（通过/不通过/N/A + 证据）——完全未出现 → P1（缺 >3 项 → P0），只提不判 → P2；子项 G0.5 / G2.5 / G4-2 缺失 → P2。

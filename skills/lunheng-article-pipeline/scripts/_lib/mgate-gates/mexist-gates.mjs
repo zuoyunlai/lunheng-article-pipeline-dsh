@@ -682,7 +682,10 @@ export function mExist6(ctx) {
 // 依据：T9 审稿报告的 6 维度评分 + 建议词 + 期刊匹配表此前**零机械校验**——总评分可以是 6 个维度
 //   凑不出来的数，期刊推荐可以是《期刊数据库》里根本不存在的刊名，综合匹配度可以不由公式得出。
 //   本项做三件事：① 总分 == 6 维之和（算术自洽）；② 建议词与总分区间一致；③ 期刊匹配表**可复算**
-//   （综合 = 0.5×主题 + 0.3×风格 + 0.2×归一化，容差 ±1.5）且刊名出自 `期刊数据库.md`。
+//   （综合 = 0.45×主题 + 0.25×风格 + 0.15×范式 + 0.15×归一化，容差 ±1.5）且刊名出自 `期刊数据库.md`。
+//   ⚠️ **v18.78.0（反哺 F29）**：公式真源 = `_shared/期刊匹配算法.md` §二 步骤 5（v18.59.0 起为**四项式**）。
+//   本门旧实现是 v18.59.0 之前的 `0.5/0.3/0.2` 两项式且不读范式列 → 把照真源算出的数字判成「不可复算」
+//   （实测 cn-llm-inference-cost-econ：T9 按真源 83.1% 被判复算值 79.9%）。**错在本门，不在 T9**。
 //   v18.9.0 实战反哺补丁 / 2026-09-23：在原 3 项基础上加 **④ LLM 补充行来源标注契约**——T9 报告若含 LLM 补充期刊
 //   行（`来源 = LLM 补充（不在数据库，须人工核验）`），来源列必须含此精确字符串；否则该行报 P2。
 //   实战教训：数字社交-关系重构项目 T9 输出 3 条 LLM 补充英文 SSCI 行，主控手动标注「LLM 补充（不在数据库，须人工核验）」
@@ -790,6 +793,7 @@ try {
     //   ② 简报**存在但读不动**（EACCES/EISDIR/编码异常…）：那才是「承重子检查被静默跳过」，
     //      必须可见 → 记 soft6（旧 `catch { return false }` 与「简报说没启用」同形）。
     let journalNote = '';
+    let paradigmNote = '';   // v18.78.0（F29）：范式契合列的有无必须说出来（否则读者不知复算用了默认值）
     const wantJournal = /启用期刊匹配|期刊匹配助手/.test(rt) || (() => {
       try { return /启用期刊匹配/.test(readFileSync(join(projDir6, '01-任务简报.md'), 'utf8')); }
       catch (e) {
@@ -809,6 +813,26 @@ try {
       const head6 = tableCells(jLines[jHead]);
       const col6 = (kw) => head6.findIndex((h) => kw.test(h));
       const iComp = col6(/综合/), iTheme = col6(/主题/), iStyle = col6(/风格/), iCycle = col6(/审稿周期/), iWhy2 = col6(/推荐理由|理由/);
+      // ── v18.78.0（反哺-v18.78.0-candidate F29）：**公式真源对齐 + 范式契合列** ────────────────────
+      //   病灶（实测 cn-llm-inference-cost-econ，**本门误判**）：公式真源 = `references/_shared/期刊匹配算法.md`
+      //     §二 步骤 5（v18.59.0 起加第 3 项）：
+      //       综合匹配度 = 0.45×主题 + 0.25×风格 + 0.15×范式 + 0.15×归一化
+      //     而本门**沿用了 v18.59.0 之前的 0.5/0.3/0.2 两项式**（且不读范式列）→ T9 按真源算的 83.1%
+      //     被复算成 79.9%（差 3.2pp > 容差 1.5）→ 判「数字不可复算」。**错在本门，不在 T9**：
+      //     ① 反哺报告曾据此判「T9 用非标准公式」——**方向相反**，如实纠正；
+      //     ② 「同一事实两处维护必然发散」的又一实例（算法文档改了、脚本与 T9 卡没改齐）。
+      //   判据：公式**只有一处真源**（算法文档）——本门照它复算；范式列**未写时取中性默认 50%**
+      //     （算法文档原话「论文方法风格未填时范式匹配度 = 0.5（中性默认）」），并在 detail 里说明用了默认。
+      //   ⚠️ 不断言「必须有范式列」：存量报告没有该列 → 只记 detail 说明，**不判软/硬**（不对历史形态过度收紧）。
+      const iParadigm6 = col6(/范式契合|范式匹配度|^范式$/);
+      paradigmNote = iParadigm6 === -1
+        ? '期刊表无「范式契合」列 → 复算第 3 项按中性默认 50% 计；建议按 期刊匹配算法.md §三 输出格式补该列（含范式标签）'
+        : '';
+      const paradigmOf = (row) => {
+        if (iParadigm6 === -1) return null;
+        const v = pct(row[iParadigm6]);
+        return v === null ? null : v;   // 非百分比单元格（如「范式标签」列被误认）→ 视作「未填」
+      };
       // ── v18.62.7（反哺-主控实测-2026-10-02 §A15，**实测复现**）：刊名取**「期刊」那一列**，不再取首格 ──
       //   病灶：旧实现写死 `r[0]`；而派发话术里的期刊表示例是 `| 排名 | 期刊 | 综合 | … |`，
       //   首格是 `🥇 1` → 脚本拿「🥇 1」去查 `期刊数据库.md` → 报「『🥇 1』未在本库内找到」软提示。
@@ -846,9 +870,15 @@ try {
           findings6.push(`「${rawNameCell}」匹配度列缺百分比（综合/主题/风格都要有）`);
         } else if (declaredTotal !== null) {
           const normScore = Math.max(0, Math.min(1, (declaredTotal - 16) / 14));
-          const expectComp = 0.5 * theme + 0.3 * style + 0.2 * normScore * 100;
+          const paradigmPct = paradigmOf(r);
+          const PARADIGM_NEUTRAL = 50;   // 未填 → 中性默认 50%（= 0.5），见期刊匹配算法.md §二 步骤 4.5 的「与原版兼容」段
+          const pUsed = paradigmPct === null ? PARADIGM_NEUTRAL : paradigmPct;
+          // v18.78.0（F29）：公式 = 算法文档 §二 步骤 5 的**四项式**（本门旧版是两项式，属过期实现）
+          const expectComp = 0.45 * theme + 0.25 * style + 0.15 * pUsed + 0.15 * normScore * 100;
           if (Math.abs(comp - expectComp) > 1.5) {
-            findings6.push(`「${rawNameCell}」综合匹配度 ${comp}% ≠ 复算值 ${expectComp.toFixed(1)}%（=0.5×${theme} + 0.3×${style} + 0.2×${(normScore * 100).toFixed(1)}）——数字不可复算`);
+            findings6.push(`「${rawNameCell}」综合匹配度 ${comp}% ≠ 复算值 ${expectComp.toFixed(1)}%`
+              + `（=0.45×${theme} + 0.25×${style} + 0.15×${pUsed}${paradigmPct === null ? '（范式列未填→中性默认 50）' : ''} + 0.15×${(normScore * 100).toFixed(1)}）`
+              + '——数字不可复算（公式真源 = references/_shared/期刊匹配算法.md §二 步骤 5）');
           }
         }
         if (iCycle !== -1 && !/[0-9]/.test(r[iCycle] || '')) soft6.push(`「${rawNameCell}」审稿周期为空或无数值`);
@@ -928,6 +958,7 @@ try {
         hard6 ? `硬问题：${findings6.slice(0, 3).join('；')}` : '评分自洽、期刊匹配可复算',
         // v18.2.6：简报缺失属**合法差序输入**——留痕在 detail（不推 soft6，故不影响 pass）
         journalNote ? `备注：${journalNote}` : '',
+        paradigmNote,   // v18.78.0（F29）：范式列有无 / 复算用了中性默认
         // v18.62.7（A10）：取分范围必须**说得出来**——否则「6 维是取自哪张表」又要靠人读代码。
         dimScopeNote,
         soft6.length ? `软提示：${soft6.slice(0, 2).join('；')}` : '',

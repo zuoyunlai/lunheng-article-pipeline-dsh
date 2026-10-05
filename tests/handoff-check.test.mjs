@@ -387,7 +387,16 @@ test('A4c ② 断链回归：模板含门认的锚点形状、两份文档指向
     assert.match(readFileSync(join(SKILL, f), 'utf8'), /审计报告-template\.md/, `${f} 必须指向审计报告模板`)
   }
 
-  // ③ 「照模板填」= 把声明行的槽位换成真实路径 → 门不得再报 A4c 的声明缺项
+  // ③ v18.78.0（反哺 F27）：模板必须含 **M-Exist-4 的锚点形状**（段标题字面 + 六列表头）——
+  //    否则「结论为打回」时照模板产出仍判硬（缺「## 修订任务书」段或表格表头），
+  //    与本用例 ① 挡的是同一类断裂（**模板形状 ≠ 机检锚点**）。
+  assert.match(tpl, /^#{2,4}\s*修订任务书/m, '模板缺少 M-Exist-4 认的「## 修订任务书」段标题')
+  const tbookHead = (tpl.split('\n').find((l) => /^\|\s*编号\s*\|/.test(l) && /严重度/.test(l)) || '')
+  for (const col of ['编号', '严重度', '改哪里', '怎么改', '验收', '关闭状态']) {
+    assert.ok(tbookHead.includes(col), `修订任务书表头缺列「${col}」（现表头：${tbookHead}）——M-Exist-4 缺列即判硬`)
+  }
+
+  // ④ 「照模板填」= 把声明行的槽位换成真实路径 → 门不得再报 A4c 的声明缺项
   const filled = tpl.replace(/被审正文\*\*：[^\n]*/, '被审正文**：`drafts/初稿-v1.md`　｜　**审计时间**：2026-09-27')
   const d = makeProject({ 'audits/审计报告-v1.md': filled })
   const j = parseJson(run([SCRIPT, '--project', d, '--role', 'T7', '--level', 'strict']))

@@ -1,4 +1,4 @@
-> 版本：v18.77.1（DSH bundle 插件）
+> 版本：v18.78.0（DSH bundle 插件）
 
 # 项目状态机 — run/<项目名>/status.md
 

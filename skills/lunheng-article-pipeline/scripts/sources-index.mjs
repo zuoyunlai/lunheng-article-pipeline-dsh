@@ -24,6 +24,9 @@
 //   分片**由该线独占**（T1 只写 T1 分片）。**刻意不做「三线共写一个 sources.json」**：
 //   三个子代理并发写同一文件必然互相覆盖——这正是本仓 `status.md`（主控独占）/ `agents-log.md`
 //   （子代理各自追加）分离的同一条判据。合并成单文件 `sources.json` 的动作**由主控**在 Phase 2.5 跑 `--merge`。
+//   **补检索段（v18.78.0，反哺 F2）**：同一条线可以有**多个分片文件**——Phase 1.5 补检索写
+//   `T1-补.jsonl` 这类 `T<n>-<后缀>.jsonl`，本脚本会把它**归并入基础线 T<n>**（line 标记仍是 T1/T2/T3）。
+//   目录里其它 `*.jsonl`（命名不匹配）**不被静默忽略**：逐条记 problem → `--check` exit 1。理由见 `SHARD_RE` 段。
 //
 // ── 行 schema（JSONL，一行一个对象；真源 = references/templates/sources-索引-template.md）──
 //   { "url": "https://…", "title": "…", "fetchedAt": "YYYY-MM-DD", "summary": "一行摘要", "line": "T1",
@@ -52,11 +55,11 @@ const args = process.argv.slice(2);
 if (args.includes('-h') || args.includes('--help')) {
   console.log(`${USAGE}
 
-<项目目录>   run/<项目名>（须已存在；分片在 <项目>/sources/{T1,T2,T3}.jsonl）
---check      校验每个分片：文件存在性 / 每行合法 JSON / 必填键齐备 / url 形如 http(s) / **溯源字段「要么都不写、要么写齐」** / 统计跨线重复（重复是**预期收益**，只报不判错）
---merge      合并三线分片 → <项目>/sources.json（按 url 去重、保留来源线标记 + 计数；**主控在 Phase 2.5 跑**）
+<项目目录>   run/<项目名>（须已存在；分片在 <项目>/sources/——T1/T2/T3.jsonl 主分片 + 补检索段 T<n>-<后缀>.jsonl）
+--check      校验每个分片：文件存在性 / 每行合法 JSON / 必填键齐备 / url 形如 http(s) / **溯源字段「要么都不写、要么写齐」** / **未识别的 *.jsonl 分片名** / 统计跨线重复（重复是**预期收益**，只报不判错）
+--merge      合并三线分片（含补检索段）→ <项目>/sources.json（按 url 去重、保留来源线标记 + 计数；**主控在 Phase 2.5 跑**）
 --query      打印去重后的索引（可带 needle 过滤 url/title/summary）
-退出码：0 成功｜1 发现不合法行（--check 与 --merge **同判据**；--merge 仍写出 sources.json 但会报不完整）｜10 参数或路径错｜70 内部错误
+退出码：0 成功｜1 发现不合法行或未识别分片（--check 与 --merge **同判据**；--merge 仍写出 sources.json 但会报不完整）｜10 参数或路径错｜70 内部错误
 `);
   process.exit(0);
 }
@@ -79,6 +82,20 @@ requireExistingDir(project, '项目目录');
 if (!mode) { console.error(`需给一个模式：--check / --merge / --query\n${USAGE}`); process.exit(10); }
 
 const LINES = ['T1', 'T2', 'T3'];
+// ── v18.78.0（反哺-v18.78.0-candidate F2）：**分片发现 + 未识别分片响亮告警** ──────────────────────
+//   病灶（实测 cn-llm-inference-cost-econ，Phase 1.5）：补检索产出的 `sources/T1-补.jsonl`（5 行）
+//     **不在旧实现的 `LINES = ['T1','T2','T3']` 里** → `--merge` 只读三份主分片，那 5 行**无声地不进
+//     `sources.json`**，而退出码仍是 0。主控与主人只能靠事后比对行数才发现数据丢了。
+//   判据（与本脚本 `--merge` 段「掉了数据必须让调用方看出来」同一句话）：**目录里躺着没被读的分片，
+//     就不得算成功** —— 退出码必须能表达这件事。
+//   修法（两条，缺一不可）：
+//     ① **补检索分片纳入**：文件名形如 `T<n>-<后缀>.jsonl`（`T1-补.jsonl` / `T1_补.jsonl` /
+//        `T1.2.jsonl` …）→ 归并入**其基础线** `T<n>`。分片仍然「每线独占」，只是同一条线可以有
+//        **多个追加段**（补检索轮次）；line 标记保持三线语义，故「跨线重复」与 perLine 计数不受影响。
+//        ⚠️ 基础线必须 ∈ {T1,T2,T3}：`T4.jsonl` 这类**不认**（见 ②），防「多出第四条线」被静默混入。
+//     ② **其余 `*.jsonl` 响亮报告**：不匹配上述命名的分片**不静默忽略**，逐条记 problem
+//        （`--check` → exit 1；`--merge` → 同判据并明说这些行不在产物里）。
+const SHARD_RE = /^T(\d+)(?:[-_.].*)?\.jsonl$/i;
 const REQUIRED = ['url', 'title', 'fetchedAt', 'summary'];
 // ── v18.62.7（反哺-主控实测 §A22）：**溯源字段** ────────────────────────────────────
 //   病灶：`sources.json` / `sources/*.jsonl` 旧 schema 只有 `line/url/title/fetchedAt/summary`
@@ -89,41 +106,95 @@ const REQUIRED = ['url', 'title', 'fetchedAt', 'summary'];
 //     ——写了一个就必须三个全有；**全缺只记软提示并点名到行**（不判红），存量项目不因此翻红。
 //     `tool` / `engine` / `query` 写入后随 `--merge` 进 `sources.json`，`--query` 亦可显示。
 const PROVENANCE = ['tool', 'engine', 'query'];
-const shardPath = (p, line) => join(p, 'sources', `${line}.jsonl`);
+/** 列出 `sources/` 下的分片文件 → `{ files: [{file, base, path}], unknown: [文件名] }`。
+ *  `files` 按文件名排序（行序稳定）；`base` ∈ {T1,T2,T3}——**派生自文件名，不是全库常量**。 */
+const listShards = (p) => {
+  const dir = join(p, 'sources');
+  if (!existsSync(dir)) return { files: [], unknown: [] };
+  const files = [], unknown = [];
+  for (const f of readdirSync(dir)) {
+    if (!/\.jsonl$/i.test(f)) continue;
+    const m = SHARD_RE.exec(f);
+    const base = m ? 'T' + m[1] : null;
+    if (base && LINES.includes(base)) files.push({ file: f, base, path: join(dir, f) });
+    else unknown.push(f);
+  }
+  files.sort((a, b) => a.file.localeCompare(b.file));
+  unknown.sort();
+  return { files, unknown };
+};
 
-/** 读全部分片 → `{ entries, problems, provenance, shards }`（不判「该不该抓」，只判行是否合法）。 */
+/** 归一行标记：`T1/T2/T3` 及其任何后缀形态（`T1-补`）都记回基础线；无法归一时退回分片所在线。
+ *  为什么归一：`report.counts.perLine` 与「跨线重复」都按三线记账，非标 `line` 值会让同一条来源
+ *  **既不进 perLine、又被算成「跨线」**——正是「同一事实两处口径不一致」的形态。 */
+const normLine = (v, base) => {
+  const s = String(v || '').trim();
+  if (!s) return base;
+  const m = /^T(\d+)/i.exec(s);
+  return m && LINES.includes('T' + m[1]) ? 'T' + m[1] : base;
+};
+
+/** 行不合法时的**可执行出口**：把 schema 真源与最常踩的错形态直接写进 stderr。
+ *  v18.78.0（反哺 F1）：实测 T1/T2/T3 三线各写了一版**自造 schema**（素材卡式 `id/type/…`、
+ *    pricing 式 `vendor/input_price`、index 式 `index/event_status`）→ 全部行判非法，
+ *    而旧报文只说「缺必填键：fetchedAt,summary」——子代理据此**仍然不知道该长什么样**（它们以为自己写对了）。
+ *  判据：**报错若不给出合格形态的出处，它就不是可执行的报错**（同 `mexist-gates` 对建议段的处理）。 */
+const schemaHint = () => {
+  console.error('  → 合格行 schema 真源 = references/templates/sources-索引-template.md §二'
+    + '（必填 url / title / fetchedAt / summary；溯源 tool / engine / query **要么都不写、要么写齐**）。');
+  console.error('  → **分片行 ≠ 素材卡行**：`id/type/credibility`（文献卡式）、`vendor/input_price`（自造式）、'
+    + '`index/event_status`（自造式）都不是本 schema——按上表重写整行，别只补缺的那两个键。');
+};
+
+/** 报错定位串：有行号 → `分片文件:行号`；无行号（整份文件级问题，如未识别分片）→ 只给文件名。 */
+const fmtProblem = (p) => (p.line_no > 0 ? `${p.line}:${p.line_no}` : String(p.line));
+
+/** 读全部分片 → `{ entries, problems, provenance, shards, bom }`（不判「该不该抓」，只判行是否合法）。 */
 const readShards = (p) => {
-  const entries = [], problems = [], provenance = [], shards = {};
-  for (const line of LINES) {
-    const f = shardPath(p, line);
-    if (!existsSync(f)) { shards[line] = { path: f, exists: false, lines: 0 }; continue; }
+  const entries = [], problems = [], provenance = [], shardRows = [], bom = [];
+  const { files, unknown } = listShards(p);
+  for (const f of unknown) {
+    problems.push({
+      line: f, line_no: 0,
+      reason: '分片文件名未识别——本脚本只读 T1/T2/T3.jsonl 及其补检索分片 `T<n>-<后缀>.jsonl`；'
+        + '**该文件的行全部没有进索引**（若它就是补检索产物，改名为 `T1-补.jsonl` 这类即可）',
+    });
+  }
+  for (const { file, base, path: f } of files) {
     const raw = readFileSync(f, 'utf8').split('\n');
+    // v18.78.0（反哺 F6 的脚本侧落点）：**首行剥 UTF-8 BOM**。
+    //   病灶：分片若以 BOM 落盘（本仓 `.gitattributes` 要求无 BOM，但外部工具写入会带），
+    //   `JSON.parse('\uFEFF{…}')` 直接抛 → 旧实现把整行报成「不是合法 JSON」，
+    //   主控据此去查「JSON 写坏了」，而真因是编码头。
+    //   现：剥掉并在 `--check` 里显式点名（**机检硬格式要求无 BOM**，故这是要修的，不是可忽略的）。
+    if (raw.length && raw[0].charCodeAt(0) === 0xfeff) { raw[0] = raw[0].slice(1); bom.push(file); }
     let n = 0;
     raw.forEach((l, i) => {
       const t = l.trim();
       if (t === '') return;
       n++;
       let o;
-      try { o = JSON.parse(t); } catch { problems.push({ line, line_no: i + 1, reason: '不是合法 JSON（JSONL 每行一个对象）' }); return; }
+      try { o = JSON.parse(t); } catch { problems.push({ line: file, line_no: i + 1, reason: '不是合法 JSON（JSONL 每行一个对象）' }); return; }
       const miss = REQUIRED.filter((k) => !o[k] || String(o[k]).trim() === '');
-      if (miss.length) problems.push({ line, line_no: i + 1, reason: `缺必填键：${miss.join(',')}` });
-      if (o.url && !/^https?:\/\//i.test(String(o.url))) problems.push({ line, line_no: i + 1, reason: `url 不是 http(s)：${String(o.url).slice(0, 40)}` });
+      if (miss.length) problems.push({ line: file, line_no: i + 1, reason: `缺必填键：${miss.join(',')}` });
+      if (o.url && !/^https?:\/\//i.test(String(o.url))) problems.push({ line: file, line_no: i + 1, reason: `url 不是 http(s)：${String(o.url).slice(0, 40)}` });
       // 溯源字段：写了一个就必须三个全有；全缺 → 软提示（旧格式行）
       const got = PROVENANCE.filter((k) => o[k] && String(o[k]).trim() !== '');
       if (got.length > 0 && got.length < PROVENANCE.length) {
-        problems.push({ line, line_no: i + 1, reason: `溯源字段不齐：写了 ${got.join(',')}，缺 ${PROVENANCE.filter((k) => !got.includes(k)).join(',')}（要么都不写，要么写齐）` });
+        problems.push({ line: file, line_no: i + 1, reason: `溯源字段不齐：写了 ${got.join(',')}，缺 ${PROVENANCE.filter((k) => !got.includes(k)).join(',')}（要么都不写，要么写齐）` });
       } else if (got.length === 0) {
-        provenance.push({ line, line_no: i + 1, url: String(o.url || '').slice(0, 60) });
+        provenance.push({ line: file, line_no: i + 1, url: String(o.url || '').slice(0, 60) });
       }
-      entries.push({ line: o.line || line, url: String(o.url || ''), title: String(o.title || ''), fetchedAt: String(o.fetchedAt || ''), summary: String(o.summary || ''),
+      entries.push({ line: normLine(o.line, base), shard: file,
+        url: String(o.url || ''), title: String(o.title || ''), fetchedAt: String(o.fetchedAt || ''), summary: String(o.summary || ''),
         ...(got.length === PROVENANCE.length ? { tool: String(o.tool), engine: String(o.engine), query: String(o.query) } : {}) });
     });
-    shards[line] = { path: f, exists: true, lines: n, bytes: statSync(f).size };
+    shardRows.push({ file, line: base, exists: true, lines: n, bytes: statSync(f).size });
   }
-  return { entries, problems, provenance, shards };
+  return { entries, problems, provenance, shards: shardRows, bom };
 };
 
-const { entries, problems, provenance, shards } = readShards(project);
+const { entries, problems, provenance, shards, bom } = readShards(project);
 
 if (mode === '--check') {
   // 跨线重复：**这是本机制的收益来源**，只统计不判错（同一 URL 被两线各抓一次 = 本可只付一次）
@@ -136,15 +207,23 @@ if (mode === '--check') {
   const dup = [...byUrl.entries()].filter(([, ls]) => new Set(ls).size > 1).map(([url, ls]) => ({ url, lines: [...new Set(ls)] }));
   const perLine = Object.fromEntries(LINES.map((l) => [l, entries.filter((e) => e.line === l).length]));
   console.log(`# 来源索引校验（${project}）`);
-  for (const l of LINES) {
-    const s = shards[l];
-    console.log(`  ${l}: ${s.exists ? `${s.lines} 行 / ${s.bytes} B` : '分片不存在（该线尚未登记——不判错）'}`);
+  // v18.78.0（反哺 F2）：**逐文件列出**（一条线可能有主分片 + 补检索分片），并把「哪些线一份分片都没有」
+  //   如实说出——旧版 `for (const l of LINES)` 只认三份主分片，补检索分片的一行都不会出现。
+  for (const s of shards) {
+    console.log(`  ${s.file}${s.file === `${s.line}.jsonl` ? '' : `（线 ${s.line}·补检索段）`}: ${s.lines} 行 / ${s.bytes} B`);
   }
+  for (const l of LINES) {
+    if (!shards.some((s) => s.line === l)) console.log(`  ${l}: 分片不存在（该线尚未登记——不判错）`);
+  }
+  if (bom.length) console.log(`  ℹ ${bom.join('、')} 含 UTF-8 BOM（已剥除后解析）——机检硬格式要求无 BOM，请以 UTF-8 无 BOM 重写`);
   console.log(`  合计 ${entries.length} 行 → 去重后 ${byUrl.size} 个来源｜跨线重复 ${dup.length} 个（**可省的重复抓取数**）`);
   if (dup.length) for (const d of dup.slice(0, 5)) console.log(`    · ${d.url.slice(0, 70)} [${d.lines.join('+')}]`);
   if (problems.length) {
-    console.error(`\n✗ ${problems.length} 行不合法：`);
-    for (const p of problems.slice(0, 10)) console.error(`  · ${p.line}.jsonl:${p.line_no} — ${p.reason}`);
+    console.error(`\n✗ ${problems.length} 条问题（含未识别分片）：`);
+    for (const p of problems.slice(0, 10)) console.error(`  · ${fmtProblem(p)} — ${p.reason}`);
+    if (problems.length > 10) console.error(`    · …另有 ${problems.length - 10} 条`);
+    // v18.78.0（反哺 F1）：**不合格行必须给出合格形态的出处**——否则子代理以为自己写对了。
+    if (problems.some((p) => /缺必填键|不是合法 JSON|url 不是/.test(p.reason))) schemaHint();
     process.exit(1);
   }
   console.log('\n✓ 全部分片行合法（空分片/缺分片不算问题——那是「该线尚未登记」）');
@@ -152,7 +231,7 @@ if (mode === '--check') {
   if (provenance.length) {
     console.log(`\nℹ ${provenance.length}/${entries.length} 行**无溯源字段**（tool/engine/query）——旧格式行，可缺；`);
     console.log('  但**新写入的行必须写齐三字段**：否则「某条是不是用规定的检索源取的」在交付物里查不到（§A22/A19）。');
-    for (const p of provenance.slice(0, 3)) console.log(`    · ${p.line}.jsonl:${p.line_no} ${p.url}`);
+    for (const p of provenance.slice(0, 3)) console.log(`    · ${fmtProblem(p)} ${p.url}`);
     if (provenance.length > 3) console.log(`    · …另有 ${provenance.length - 3} 行`);
   }
   process.exit(0);
@@ -210,10 +289,15 @@ if (mode === '--merge') {
   //   但按**同一判据**定码：有跳过行 → exit 1 并指明这些行**不在**产物里；全合法 → exit 0。
   //   判据一句话：**「掉了数据」必须让调用方能从退出码看出来**——模式不该改变同一缺陷的严重度。
   if (problems.length) {
-    console.warn(`  ⚠ 有 ${problems.length} 行不合法被跳过（先跑 --check 看明细）`);
-    console.error(`\n✗ sources.json 已写出，但**不含上述 ${problems.length} 行**——索引不完整。`);
-    for (const p of problems.slice(0, 10)) console.error(`  · ${p.line}.jsonl:${p.line_no} — ${p.reason}`);
-    console.error('→ 退出码 1（与 --check 同判据：不合法行 = 有发现），请修正分片后重跑 --merge。');
+    // v18.78.0（反哺 F2）：未识别分片是**整份文件级**缺口（其行一份都没读），故 verbatim 只对「行级」
+    //   问题说「行」；文案按两类分述，避免把「整份文件没进索引」读成「少了几行」。
+    const fileLevel = problems.filter((p) => !(p.line_no > 0));
+    console.warn(`  ⚠ 有 ${problems.length} 条问题被跳过（先跑 --check 看明细）`);
+    console.error(`\n✗ sources.json 已写出，但**不含上述有问题的来源**——索引不完整。`);
+    if (fileLevel.length) console.error(`  （其中 ${fileLevel.length} 个是**整份分片文件未被识别**：${fileLevel.map((p) => p.line).join('、')}）`);
+    for (const p of problems.slice(0, 10)) console.error(`  · ${fmtProblem(p)} — ${p.reason}`);
+    if (problems.some((p) => /缺必填键|不是合法 JSON|url 不是/.test(p.reason))) schemaHint();
+    console.error('→ 退出码 1（与 --check 同判据：有发现），请修正分片后重跑 --merge。');
     process.exit(1);
   }
   process.exit(0);

@@ -252,6 +252,16 @@ for (const artifact of required) {
     const hasIndex = indexSection(text.split('\n')) != null
     if (entries === 0) addHard('A3', artifact, `卡片无条目（[LDC]/[先] 编号 0 条）: ${art.path}`, 21)
     else if (!hasIndex) addSoft('A3', artifact, `卡片缺「## 📇 索引段」（有 ${entries} 条但无索引）`)
+    // ── v18.78.0（反哺 F4/F21）**核实后不落地**，如实登记在此（防下一位维护者重复提案）──────────────
+    //   反哺报告 F4 主张「T3 案例卡 markdown 原文 URL 字段几乎全空」，据此要在本门加「C 类 URL 必填校验」。
+    //   现场核实结果（产物实据，逐条复算，命令见 `审计/核实` 记录）：**该主张与产物相反**——
+    //   `run/cn-llm-inference-cost-econ/cases/案例卡.md` 8 条案例（C01–C08）**每条都含 URL**，
+    //   且每条「2. **独立来源**」行内都带 `http(s)://`（逐条 URL 数：2/1/1/1/2/3/2/1）；
+    //   同判据下 `sources/{T1,T2,T3}.jsonl` 的 30/42/8 行**亦全部有 url**。
+    //   该实例真正的问题在**另一处**（且已被现有门抓住）：卡片条目写成 `## C01 …` 而非规范形态
+    //   `### [C01] …` → `entryIds` 命中 0 条 → A3 判「卡片无条目」。
+    //   判据：**没有失败证据的门不加**——新增门若只为「听起来更严」，付出的是**全量项目的误报面**
+    //   （离线来源：判决书 / 纸质档案 / 内部文件本就没有 URL，硬判会把合规稿判红）。
   } else {
     const h = headCount(text)
     if (h === 0) addHard('A3', artifact, `非卡片产物无任何二级标题（结构可疑）: ${art.path}`, 21)

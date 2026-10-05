@@ -109,3 +109,41 @@ test('A22：溯源字段「要么都不写、要么写齐」；写齐则随 --me
   assert.match(r3.out, /溯源字段不齐/)
   assert.match(r3.out, /engine,query/, '必须点名缺哪几个字段：' + r3.out.slice(-200))
 })
+
+// ── v18.78.0（反哺-v18.78.0-candidate F2）：**补检索分片 + 未识别分片** ─────────────────────────
+//   病灶（实测 cn-llm-inference-cost-econ）：Phase 1.5 补检索产出 `sources/T1-补.jsonl`（5 行），
+//   而 `LINES = ['T1','T2','T3']` 只认三份主分片 → 那 5 行**无声地不进 sources.json**，退出码仍 0。
+//   判据：**目录里躺着没被读的分片，就不得算成功**（与 --merge 的「掉了数据必须让调用方看出来」同源）。
+test('F2：补检索分片 T<n>-<后缀>.jsonl 纳入索引（归并入基础线），不再静默丢行', () => {
+  const d = mkProj({ T1: [OK('https://a/1')], 'T1-补': [OK('https://b/2')] })
+  const c = run([S, d, '--check'])
+  assert.equal(c.code, 0, '补检索分片合法时不得判红：' + c.out.slice(-200))
+  assert.match(c.out, /T1-补\.jsonl/, '--check 必须逐文件列出（否则读者看不到读了几份分片）：' + c.out)
+  const m = run([S, d, '--merge'])
+  assert.equal(m.code, 0, m.out.slice(-200))
+  const j = JSON.parse(readFileSync(join(d, 'sources.json'), 'utf8'))
+  assert.equal(j.counts.total, 2, '补检索段的 1 行必须进产物')
+  assert.equal(j.counts.perLine.T1, 2, '补检索段归并入基础线 T1（line 标记保持三线语义）')
+  assert.ok(j.entries.some((e) => e.url === 'https://b/2'), '补检索段的来源必须出现在 entries 里')
+})
+
+test('F2：未识别的 *.jsonl 分片不得静默忽略（--check 与 --merge 同判据）', () => {
+  const d = mkProj({ T1: [OK('https://a/1')], T4: [OK('https://x/9')] })
+  const c = run([S, d, '--check'])
+  assert.equal(c.code, 1, '未识别分片 = 该文件的行全部没进索引 → 必须判红：' + c.out.slice(-300))
+  assert.match(c.out, /分片文件名未识别/)
+  assert.match(c.out, /T4\.jsonl/, '必须点名是哪个文件')
+  const m = run([S, d, '--merge'])
+  assert.equal(m.code, 1, '--merge 必须与 --check 同判据（模式不得改变同一缺陷的严重度）')
+  assert.match(m.out, /整份分片文件未被识别/, '整份文件级缺口须与「少了几行」区分开：' + m.out.slice(-300))
+})
+
+test('F6：分片首行带 UTF-8 BOM 时剥除后照常解析（不再误报「不是合法 JSON」）', () => {
+  const d = mkProj({ T1: [OK('https://a/1')] })
+  const p = join(d, 'sources', 'T1.jsonl')
+  writeFileSync(p, '\uFEFF' + readFileSync(p, 'utf8'))
+  const r = run([S, d, '--check'])
+  assert.equal(r.code, 0, 'BOM 是编码头问题，不该被报成 JSON 写坏：' + r.out.slice(-300))
+  assert.doesNotMatch(r.out, /不是合法 JSON/)
+  assert.match(r.out, /含 UTF-8 BOM/, 'BOM 必须显式点名（机检硬格式要求无 BOM）')
+})

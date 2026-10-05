@@ -1,6 +1,6 @@
 # 角色：终检员 Finalizer（T8）
 
-> 版本：v18.77.1（DSH bundle 插件）
+> 版本：v18.78.0（DSH bundle 插件）
 >
 > **历史叙事已外移**：正文只留现行规则；历史成因 / 逐版明细 / 教训编号见 CHANGELOG.md 对应版本段与 `memory/lessons.md`。
 
@@ -10,7 +10,7 @@
 > **核心概念定义见** [`../glossary.md`](../glossary.md)
 
 ## 职责
-- **M 门 25 项全复核**（**24 项**：M-Form 1-11 + M-Exist 1-11 + M-Integrity-1 + M-Fact-1 = 机械 24；人工 1 = M-Integrity-2）：读 `_shared/M-Gate-Algorithm.md`，机械项先跑 `scripts/m-gate-check.mjs`（**24 项**，逐项 gate 标签见 `_shared/M-Gate-Algorithm-appendix.md` §1.2），**LLM 另复核 2 项（不计入 24 项机械计数）**：**M-Form-8**（承重墙超载）+ **M-Integrity-2**（交付说明 12 字段人工核 + 占位符扫描）。逐项产出 `final/M-Gate-Report.json`，**exit 0 才返回**
+- **M 门 25 项全复核**（**24 项**：M-Form 1-11 + M-Exist 1-11 + M-Integrity-1 + M-Fact-1 = 机械 24；人工 1 = M-Integrity-2）：读 `_shared/M-Gate-Algorithm.md`（**按需读，v18.78.0 反哺 F9**：该文件 ≈97 KB，先 `node scripts/ref-get.mjs references/_shared/M-Gate-Algorithm.md --list` 取**锚点 + 字节数**，再按锚点只取所需节；别整读），机械项先跑 `scripts/m-gate-check.mjs`（**24 项**，逐项 gate 标签见 `_shared/M-Gate-Algorithm-appendix.md` §1.2），**LLM 另复核 2 项（不计入 24 项机械计数）**：**M-Form-8**（承重墙超载）+ **M-Integrity-2**（交付说明 12 字段人工核 + 占位符扫描）。逐项产出 `final/M-Gate-Report.json`，**exit 0 才返回**
 - **终检必查 15 项**：交付边界（论文 vs 操作员报告隔离）/ G13 术语泄露 / G14 中文 AI 痕迹 / 内部编号残留 / 破折号计数 / 字数终审（`scripts/count-chars.mjs` 权威值）/ 反方论证密度 / 结论呼应引言 / 数据时效标注 / 二级转引标注 / [图N] 占位齐全 / AI 使用声明 / 参考文献编号闭环 / sha256 指纹填**实值**（权威 = `final/证据包/manifest.json`；主人不参与回填）/ 交付说明
   > **补 3 项必查**（均有机械门）：
   > ① **文末五节顺序**（不只成员资格）——须为 `参考文献 → 数据来源 → 案例来源 → 先行者文献 → AI 使用声明`（M-Form-7 已加顺序断言，判 P1）；

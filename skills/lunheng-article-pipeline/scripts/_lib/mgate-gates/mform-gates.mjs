@@ -1092,6 +1092,7 @@ export function mForm11(ctx) {
 //     ① 定稿正文引用的编号必须都在「## 已加载」集 → 否则「引了没读 = 引用不可信」（硬）
 //     ② 「已加载」的编号必须在卡片正文条目里有对应 → 否则「幽灵编号 = 清单编造」（硬）
 //     ③ 软提示：「读了不用」的编号（浪费上下文）/ 加载率 >90%（选择性不足，疑似整卡通读）
+//     ④ 正文引用 ∩「## 已跳过」 必须为 ∅ → 否则「清单声明不引用、正文却引」= 自相矛盾（硬，v18.78.0 F3/F26）
 try {
   const projDir11 = dirname(dirname(draftPath));
   const listPath11 = [
@@ -1209,6 +1210,22 @@ try {
       [...skippedSeg11.matchAll(new RegExp('\\[(' + REF_TOKEN + ')\\]', 'g'))].map((m) => '[' + m[1] + ']'),
     );
     const unused = [...loaded11].filter((x) => !cited11.has(x) && !skippedIds11.has(x));
+    // ── v18.78.0（反哺-v18.78.0-candidate F3 / F26）：**「已跳过」∩「正文引用」≠ ∅ → 硬** ─────────
+    //   病灶（实测 cn-llm-inference-cost-econ v2 修订轮）：`analysis/素材加载清单.md` 的 `## 已跳过`
+    //     段把 [L20] 显式声明为「读了索引段但不引用」，而正文仍在引用 [L20]；本门**没有任何判据看这个交集**。
+    //     旧实现里 `skippedIds11` 的唯一用途是把跳过编号从 `unused`（白读）软提示里**剔除**——
+    //     那是**降噪**方向；于是「清单说不引用、正文却引了」这种**自相矛盾既不是硬问题也不是软提示**，
+    //     静默通过（其唯一出口是 `notLoaded`，而该出口只在编号**没被记进「已加载」**时才触发）。
+    //   判据：`## 已跳过` 是「声明不读/不用」的留痕；被声明不读的编号出现在正文引用里，只有两种解释——
+    //     ① 清单写得不实（跳过声明与事实相反），② 正文引了一条声明未读的证据（引用不可信）。
+    //     **两者都是硬问题**（读者按引用追溯时追不到被读过/被核过的证据）。
+    //   ⚠️ 只在**交集**上判：不动 `unused`（读过但未引用仍是软提示）、不动 `notFound/ghost`（各自单判）。
+    const citedSkipped11 = [...cited11].filter((x) => skippedIds11.has(x));
+    if (citedSkipped11.length) {
+      findings11.push(`正文引用了「## 已跳过」段声明的编号：${citedSkipped11.slice(0, 6).join(',')}`
+        + '（该段 = 声明「读了索引段但不引用/不用」；正文引它 → 清单与正文自相矛盾，或引用了一条声明未读的证据）'
+        + '——**两处必须对齐**：把该编号移出「## 已跳过」，或删掉正文对其的引用（v18.78.0 F3/F26）');
+    }
     if (notLoaded.length) findings11.push(`正文引用但清单未记「已加载」：${notLoaded.slice(0, 6).join(',')}（引了没读 = 引用不可信）`);
     // v18.73.0（F-8 真残留）：两种情形分开点名 —— 后者给**可执行改法**，不再让读者以为清单编造了编号
     if (ghostTrulyAbsent.length) findings11.push(`清单里的编号在卡片中无对应条目：${ghostTrulyAbsent.slice(0, 6).join(',')}（清单与素材卡不一致）`);
@@ -1282,7 +1299,7 @@ try {
         hard11 ? `硬问题：${findings11.slice(0, 3).join('；')}` : '引用 ⊆ 已加载，加载集有卡片支撑',
         soft11.length ? `软提示：${soft11.slice(0, 2).join('；')}` : '',
       ].filter(Boolean).join(' ｜ '),
-      severity: hard11 ? (notLoaded.length + ghost.length > 3 ? 'P0' : 'P1') : (soft11.length ? 'P2' : '通过'),
+      severity: hard11 ? (notLoaded.length + ghost.length + citedSkipped11.length > 3 ? 'P0' : 'P1') : (soft11.length ? 'P2' : '通过'),
     });
   }
 } catch (e) {
