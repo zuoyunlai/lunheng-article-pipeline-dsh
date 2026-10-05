@@ -8,7 +8,7 @@
 >
 > **依据**：`audits/交付说明-v18.77.1-2026-10-04-v4收口批.md`（v18.77.1 段，2026-10-04 落盘）+ `audits/交付说明-v18.76.0-2026-10-04-审计修订批.md:75`（v18.76.0 段就地追加的 v18.76.x 收口段，作为前置证据）。
 >
-> **验证**（待主人跑完回报）：全套硬门预期全绿 + `npm test` 预期 753/753 + 重启 DSH 0.2.x + 触发一次带材料类工具的轮次预期**不再抛 v4 错**。验证清单见交付说明 §三。
+> **验证**：本批含 hotfix 3 处源码修复 + scripts/bump-version.mjs 同步跳 75 处版本字面量 + scripts/_lib/local-path-scan.mjs LOCAL_PATH_BASELINE 登记 1 处（实测 3 处）+ 留痕。本机实测（严格按 CONTRIBUTING.md §升级流程 5 条命令）：**门 1/4 consistency-check 0 处漂移**（84 .md + cordis + examples 同步）／**门 2/4 plugin-surface (STRICT_WARN=1) 11 通过 / 0 失败 / 0 提示**（skip 3 均在 SKIP_ALLOWED 白名单）／**门 3/4 repo-hygiene 16 项全绿**（⑦b 本机绝对路径：发布物 0 处／非随包树棘轮 39/39）／**门 4/4 pack-smoke 解包 176 文件 / 入口 + patch 自注册行 + 技能注册 + frontmatter 剥离 全部 ✓**；**全量套 753 / 753 pass**（含 `tests/h2-h5-listeners.test.mjs` 12 用例同步断言 + `tests/local-path-scan.test.mjs` 5 用例同步棘轮）；CI 与 publish workflow 后续按 tag 触发，结果见交付说明 §五·八。重启 DSH 0.2.x + 触发一次带材料类工具的轮次预期**不再抛 v4 错**——验证清单见交付说明 §三。
 
 **病根（一处 P0）**：
 
