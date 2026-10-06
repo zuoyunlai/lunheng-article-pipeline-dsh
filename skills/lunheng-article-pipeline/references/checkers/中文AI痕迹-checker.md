@@ -1,4 +1,4 @@
-> 版本：v18.78.1（DSH bundle 插件）
+> 版本：v18.78.2（DSH bundle 插件）
 > **历史叙事已外移**：正文只留现行规则；历史成因 / 逐版明细 / 教训编号见 CHANGELOG.md 对应版本段与 `memory/lessons.md`。
 
 # G14 中文 AI 痕迹检测器（Checker）
@@ -193,7 +193,7 @@ def detect_g14(article_text):
     paragraphs = split_paragraphs(article_text)
     consecutive_patterns = detect_consecutive_patterns(paragraphs)
     results['B'] = {
-        'hit': len(consecutive_patterns) >= 2,
+        'hit': len(consecutive_patterns) >= 3,
         'details': consecutive_patterns
     }
     

@@ -45,6 +45,11 @@
  *
  * 失败即失败（fail-closed）：所有策略都拿不到合法 JSON → 退出码 1，不静默放行；同时输出
  * GitHub Actions annotation（`::error::`），无需翻日志即可在 UI/API 看到失败原因。
+ * 同理（v18.78.2 · 全量审计-v18.78.1 B5 修复）：**CLI 上报的 status 不在白名单内也判阻塞**。
+ *   旧版 `blockingProblems` 是「非 fail 即放行」，主循环只打印四种已知 status、汇总只数 fail →
+ *   上游加一个 status（`error`/`critical`/拼错）时本门会打印「✓ … 0 项失败」并 exit 0，
+ *   即自称 fail-closed 的门留了一个 fail-open 出口（且它执行的 CLI 是从 registry 现场下载的）。
+ *   现改为：`status ∉ {pass,skip,warn,fail}` ⇒ 进 blocking 并**打印原始 status 原文**。
  */
 
 import { spawnSync } from 'node:child_process'
@@ -263,6 +268,21 @@ function resolveReport() {
   fail('所有 CLI 获取策略均失败', tried.join('\n'))
 }
 
+/**
+ * **CLI 允许上报的 status 集合**（v18.78.2 · 全量审计-v18.78.1 B5 修复）。
+ * 为什么必须是白名单：`blockingProblems` 旧版是 `if (check?.status !== 'fail') return []`，
+ *   主循环也只打印这四种已知 status、汇总只数 `status === 'fail'` —— 于是**上游 CLI 一旦上报任何新状态**
+ *   （`error` / `critical` / 拼错的 `fial`），本门仍会打印「✓ 打包面检查通过：… 0 项失败」并 **exit 0**。
+ *   本门自称 fail-closed，却对「未知状态」留了一个 fail-open 出口；而它执行的 CLI 是**从 registry
+ *   现场下载**的（`pnpm dlx`），上游加一个 status 值不需要通知本仓。判据：**不认识的状态一律按阻塞处理**
+ *   并**打印原始 status 原文**（不映射成 '?' 就丢掉）——宁可让人工看一次真话，也不要一次静默放行。
+ *   边界（如实）：本表只声明「本门认识哪些状态」；上游若把 `fail` 改名为 `failed`，本门会把它当未知状态拦下
+ *   （正确方向：改名即需人工确认），但会**同时**失去对旧名的语义判定——那正是要走人工确认的原因。
+ */
+const KNOWN_STATUS = new Set(['pass', 'skip', 'warn', 'fail'])
+/** 未知 status 的报警前缀（进 blocking；同时保证「上游加状态」在本门可见） */
+const UNKNOWN_STATUS_TAG = 'cli-unknown-status'
+
 /** 一个检查项的「有效问题」：有 detail 用 detail，否则用 message。 */
 function problemsOf(check) {
   const detail = check?.detail
@@ -272,7 +292,14 @@ function problemsOf(check) {
 
 /** 返回未被豁免覆盖的阻塞问题（已豁免的返回空数组）。 */
 function blockingProblems(check) {
-  if (check?.status !== 'fail') return []
+  // v18.78.2（B5）：未知 status **先于** fail 判定——它既不是 pass 也不是 fail，是「本门看不懂的报告」。
+  const status = check?.status
+  if (!KNOWN_STATUS.has(status)) {
+    return [`[${UNKNOWN_STATUS_TAG}] 上游 CLI 上报了本门不认识的状态「${String(status)}」（已知：${[...KNOWN_STATUS].join(' / ')}）——`
+      + `状态未知时旧版判据（仅 fail 阻塞）会直接放行，本版改为**阻塞**：请先人工确认该状态的语义`
+      + `（上游新增了检查项形态？改名了某个状态？）再决定是否登记进本脚本的 KNOWN_STATUS——不要在未确认的情况下放行`]
+  }
+  if (status !== 'fail') return []
   const waiver = WAIVERS.find((w) => w.id === check.id)
   const problems = problemsOf(check)
   if (!waiver) return problems
@@ -327,7 +354,9 @@ for (const check of checks) {
   const problems = blockingProblems(check)
   const isWaived = check.status === 'fail' && problems.length === 0
   if (isWaived) waivedUsed.add(check.id)
-  const sym = isWaived ? '✓' : (SYMBOL[check.status] ?? '?')
+  // v18.78.2（B5）：未知 status **打印原文**，不再落成裸 '?' —— 旧版把 `error`/`critical` 等渲染成
+  //   `? [id] message`，读的人无法判断这是「上游新状态」还是「本门渲染缺陷」。
+  const sym = isWaived ? '✓' : (SYMBOL[check.status] ?? `?(${String(check.status)})`)
   console.log(`${sym} [${check.id}] ${check.message}`)
   if (check.detail?.length && check.status !== 'pass' && !isWaived) {
     for (const d of check.detail) console.log(`    - ${d}`)
@@ -383,6 +412,9 @@ if (WAIVERS.length === 0) {
 const failed = checks.filter((c) => c.status === 'fail').length
 const passed = checks.filter((c) => c.status === 'pass').length
 const warned = checks.filter((c) => c.status === 'warn').length
+// v18.78.2（B5）：未知 status 单列一个计数。它**不在** failed/passed/warned 任一桶里，
+//   若只数 `fail` 就会在汇总行里凭空消失——而它已被 blockingProblems 判为阻塞，两处必须对得上。
+const unknownStatus = checks.filter((c) => !KNOWN_STATUS.has(c.status))
 
 // ── 本包自加的补充检查（v18.0.5，第三方审计 P1-6）─────────────────────────────
 // 动机：`dsh-plugin-dev check` 的 `manifest-peers` 只扫**源码 import**——不看 `cordis.patch.yml` 里
@@ -416,7 +448,7 @@ if (existsSync(pkgPath) && existsSync(patchPath)) {
 }
 
 if (blocking.length > 0) {
-  console.log(`\n✗ 打包面检查未通过：${blocking.length} 个未豁免问题（fail ${failed} / pass ${passed} / warn ${warned}）`)
+  console.log(`\n✗ 打包面检查未通过：${blocking.length} 个未豁免问题（fail ${failed} / pass ${passed} / warn ${warned}${unknownStatus.length ? ` / **未知 status ${unknownStatus.length}**` : ''}）`)
   for (const b of blocking) console.log(`  - ${b}`)
   annotate('error', `打包面检查未通过：${blocking.length} 个未豁免问题`)
   for (const b of blocking.slice(0, 5)) annotate('error', b)
@@ -428,5 +460,6 @@ console.log(
     ? `\n✓ 打包面检查通过：${passed} 项通过，0 项失败，${warned} 项提示（${STRICT_WARN ? 'STRICT_WARN=1：已逐一核对豁免' : '不阻塞'}）`
     : `\n✓ 打包面检查通过：${passed} 项通过，${failed} 项均为已声明豁免，${warned} 项提示（${STRICT_WARN ? 'STRICT_WARN=1：已逐一核对豁免' : '不阻塞'}）`)
   + `｜skip ${skipIds.length} 项（均在 SKIP_ALLOWED 白名单内）`
+  + `｜未知 status ${unknownStatus.length} 项（v18.78.2 B5：非 0 即阻塞，此处必然为 0）`
   + `｜CLI ${cliVersion}`,
 )

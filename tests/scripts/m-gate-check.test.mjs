@@ -380,9 +380,10 @@ test('m-gate-check M-Exist-6：审稿报告评分与期刊匹配（总分≠分�
     const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])
     return parseJson(r).results.find((x) => x.gate.startsWith('M-Exist-6'))
   }
-  // ① 无审稿报告 → N/A
+  // ① 无审稿报告 → SKIP（v18.78.2 · 全量审计 A5：**未检 ≠ 通过**；T9 按文类档案本就可选，故刻意不升 P1）
   let it = item()
-  assert.equal(it.pass, true, '无审稿报告应记 N/A')
+  assert.equal(it.pass, 'SKIP', '无审稿报告应记 SKIP 而非通过：' + it.detail)
+  assert.equal(it.severity, 'SKIP')
   assert.match(it.detail, /N\/A/)
 
   // ② 总分 = 分项和（24）+ 综合按**真源四项式**复算
@@ -497,9 +498,10 @@ test('m-gate-check M-Exist-7：交付说明 12 固定字段（缺字段 / 空字
     const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])
     return parseJson(r).results.find((x) => x.gate.startsWith('M-Exist-7'))
   }
-  // ① 无交付说明 → N/A
+  // ① 无交付说明 → SKIP（v18.78.2 · 全量审计 A5：未检 ≠ 通过；定稿在场而交付说明缺席是 T8 的正常中间态，故不升 P1）
   let it = item()
-  assert.equal(it.pass, true, '无交付说明应记 N/A')
+  assert.equal(it.pass, 'SKIP', '无交付说明应记 SKIP 而非通过：' + it.detail)
+  assert.equal(it.severity, 'SKIP')
   assert.match(it.detail, /N\/A/)
 
   // ② 12 字段齐备 → 通过
@@ -637,9 +639,10 @@ test('m-gate-check M-Exist-8：批判报告 C1-C7 覆盖（漏节 / 编号重复
     const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])
     return parseJson(r).results.find((x) => x.gate.startsWith('M-Exist-8'))
   }
-  // ① 无批判报告 → N/A（轻量档可跳）
+  // ① 无批判报告 → SKIP（v18.78.2 · 全量审计 A5：未检 ≠ 通过；轻量档一律跳过 Phase 3.6，故不升 P1）
   let it = item()
-  assert.equal(it.pass, true, '无批判报告应记 N/A')
+  assert.equal(it.pass, 'SKIP', '无批判报告应记 SKIP 而非通过：' + it.detail)
+  assert.equal(it.severity, 'SKIP')
   assert.match(it.detail, /N\/A/)
 
   // ② 七节齐备 + 规范清单条目 → 通过
@@ -683,10 +686,13 @@ test('m-gate-check M-Exist-9：审计报告 G0-G14 覆盖（漏项 / 只提不�
     const r = run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])
     return parseJson(r).results.find((x) => x.gate.startsWith('M-Exist-9'))
   }
-  // ① 无审计报告 → N/A
+  // ① 无审计报告 → **P1**（v18.78.2 · 全量审计 A5）：本夹具已写 `final/定稿.md` ⇒ Phase 5 已开始
+  //   ⇒ T7.5 闸门（审计报告 + M 门全 exit 0）必已通过 ⇒ **审计报告必然存在过**；报告却不在 = 被删/改名/移出。
+  //   旧行为记 `pass: true`（N/A）→ `rm audits/审计报告-*.md` 即可让本门静默退回「通过」。
   let it = item()
-  assert.equal(it.pass, true, '无审计报告应记 N/A')
-  assert.match(it.detail, /N\/A/)
+  assert.equal(it.pass, false, '定稿在场而审计报告缺席必须判 P1（防「删文件即通过」）：' + it.detail)
+  assert.equal(it.severity, 'P1')
+  assert.match(it.detail, /阶段已到却/)
 
   // ② 全 15 主项 + 子项齐 → 通过（G1 不得误命中 G14 / G0 不得误命中 G0.5）
   writeFileSync(AUD, mk(GALL))
@@ -1027,10 +1033,12 @@ test('m-gate-check M-Exist-4：修订任务书结构 + 审计↔复核编号闭�
   const HEAD = '| 编号 | 严重度 | 改哪里（文件+位置） | 怎么改（具体动作） | 验收标准 | 关闭状态 |\n|---|---|---|---|---|---|\n'
   const ROW = (id, st) => `| ${id} | P1 | 初稿.md §三第 2 段 | 补 [L01] 支撑该论点 | 该段含 [L01] 且 M-Form-8 通过 | ${st} |\n`
 
-  // ① 无审计报告 → N/A（不判失败）
+  // ① 无审计报告 → **P1**（v18.78.2 · 全量审计 A5）：本夹具已写 `final/定稿.md`（见本用例开头），
+  //   故「审计报告缺席」不是「阶段未到」而是被删/改名/移出 —— 旧行为记 N/A pass，删文件即可退回通过。
   let it = item()
-  assert.equal(it.pass, true, '无审计报告应记 N/A')
-  assert.match(it.detail, /N\/A/)
+  assert.equal(it.pass, false, '定稿在场而审计报告缺席必须判 P1：' + it.detail)
+  assert.equal(it.severity, 'P1')
+  assert.match(it.detail, /阶段已到却/)
 
   // ② 打回 + 完整任务书（待复核）+ 复核报告覆盖 → 通过
   writeFileSync(AUD, `# 审计报告 v1\n\n结论：打回修订 ❌\n\n## 修订任务书\n\n${HEAD}${ROW('P0-1', '待复核')}${ROW('P1-1', '待复核')}`)
@@ -1479,4 +1487,28 @@ test('v18.72.0 一致性钉：文类档案.md「文献下限」列 == GENRE_MIN_
     if (m) docMap[m[1]] = Number(m[2])
   }
   assert.deepEqual(docMap, { ...GENRE_MIN_L }, '文类档案.md 的文献下限列必须与脚本 GENRE_MIN_L 逐项一致')
+})
+
+test('v18.78.2 A5：审计报告缺席的两种结论（阶段未到 → SKIP；阶段已到 → P1）', () => {
+  // 审计实测的病灶：M-Exist-4/5/6/7/8/9 六处「N/A 未检」分支记 `pass: true, severity: '通过'`，
+  //   于是 `rm audits/审计报告-*.md` / `rm final/交付说明.md` 即可把这 6 道**实检**门退回「通过」，
+  //   退出码无任何信号（同族 M-Exist-10/11 早已是 `pass: 'SKIP'` → exit 3）。
+  // 本用例钉住修法两条：① 阶段未到 → SKIP（未检可见、exit 3）；② 阶段已到 → P1（报告被删/改名/移出）。
+  const MIN = '# 标题\n\n## 摘要\n\n正文 [L01]。\n'
+  const a = mkProject({ drafts: true })
+  writeFileSync(join(a.proj, 'drafts', '初稿-v1.md'), MIN)
+  const na = parseJson(run([join(SCRIPTS, 'm-gate-check.mjs'), join(a.proj, 'drafts', '初稿-v1.md'), a.ev]))
+    .results.find((x) => x.gate.startsWith('M-Exist-4'))
+  assert.equal(na.pass, 'SKIP', '阶段未到应记 SKIP（未检 ≠ 通过）而非 pass:true：' + na.detail)
+  assert.equal(na.severity, 'SKIP')
+  rmSync(a.d, { recursive: true, force: true })
+
+  const b = mkProject({ audits: true })
+  writeFileSync(join(b.fin, '定稿.md'), MIN)
+  const pa = parseJson(run([join(SCRIPTS, 'm-gate-check.mjs'), join(b.fin, '定稿.md'), b.ev]))
+    .results.find((x) => x.gate.startsWith('M-Exist-4'))
+  assert.equal(pa.pass, false, 'final/定稿.md 在场（Phase 5 已开始）而审计报告缺席必须判 P1：' + pa.detail)
+  assert.equal(pa.severity, 'P1')
+  assert.match(pa.detail, /阶段已到却/)
+  rmSync(b.d, { recursive: true, force: true })
 })

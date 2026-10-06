@@ -160,6 +160,37 @@ test('H4 system-prompt 钩子：next() 返回无 sections 的对象也安全追�
   assert.deepEqual(result.variables, { model: 'x' }, '下游字段保留')
 })
 
+test('H4 兜底（P3 回归）：next() 返回 undefined 时不得抹掉装配结果的 contexts / tools / variables', async () => {
+  // 为什么需要：原实现 `return { ...r, sections: [...] }`，`r === undefined` 时 `{...undefined}` = `{}`
+  //   → 返回值的键只剩 `['sections']`，**装配结果的 contexts / tools / variables（含模型选择）整体丢失**
+  //   （探针实测）。对照同文件 H2 的 `?? { kind: 'accept' }` 早有兜底——同族两处口径不一致。
+  //   现有用例只覆盖「next 返回**无 sections 的对象**」（见上一条），漏了「返回 undefined / 非对象」这一形态。
+  const { ctx, listeners } = makeCordaxLikeCtx()
+  const mod = await import(pathToFileURL(INDEX_MOD).href)
+  mod.apply(ctx, {})
+  await new Promise((r) => setTimeout(r, 50))
+
+  const handlers = listeners['system-prompt/assemble'] || []
+  assert.ok(handlers.length >= 1, 'H4 监听器未注册')
+  const assembly = {
+    sections: [{ name: 'persona', text: '你是一个 AI 助手...' }],
+    contexts: [{ kind: 'a' }],
+    tools: [{ name: 't' }],
+    variables: { provider: 'deepseek', model: 'deepseek-chat' },
+  }
+
+  const result = await handlers[0](assembly, { agent: {} }, async () => undefined)
+  assert.equal(result.sections.length, assembly.sections.length + 1, '仍应在入参装配结果上追加 1 段')
+  assert.equal(result.sections[0].text, '你是一个 AI 助手...', '入参原有 sections 必须保留')
+  assert.deepEqual(result.contexts, assembly.contexts, 'next() 未给结果时，contexts 必须从**入参 assembly** 保留（不得被抹成 undefined）')
+  assert.deepEqual(result.tools, assembly.tools, 'tools 必须保留')
+  assert.deepEqual(result.variables, assembly.variables, 'variables（含模型选择）必须保留——抹掉会让下游模型选择静默丢失')
+
+  // 非对象形态（如 next 返回字符串）同样不得把装配结果整体替换成散开的字符
+  const r2 = await handlers[0](assembly, { agent: {} }, async () => 'oops')
+  assert.deepEqual(r2.variables, assembly.variables, 'next() 返回非对象时也必须退回入参 assembly')
+})
+
 test('基线契约：ctx.on 注册两个监听器（H2 + H4）；H3/H5/H7 已移除（v18.62.1 + v18.76.0）', async () => {
   const { ctx, listeners } = makeCordaxLikeCtx()
   const mod = await import(pathToFileURL(INDEX_MOD).href)

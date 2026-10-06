@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { ROOT, SCRIPTS, run, parseJson, tmp, mkProject, mkRepo, MD, mkSvg, DRAFT_WITH_ENDNOTES, CARD, NPM_UNAVAILABLE, PIPE_SPAWN_BLOCKED, skipWhen, buildDeliveryNoteWithSec6, DELIVERY_NOTE_OTHER_SECTIONS } from '../_fixtures.mjs'
-import { mkProj, DRAFT_OK, cardOk, setupCards, gateOf, mkTriFixture, mform8Of } from '../_scripts-shared.mjs'
+import { mkProj, DRAFT_OK, cardOk, setupCards, gateOf, mkTriFixture, mform8Of, assertExitBySeverity } from '../_scripts-shared.mjs'
 
 
 // v18.2.3（主人授权修订；依据版本抬升 18.2.2 → 18.2.3 后的实测复核）：
@@ -129,7 +129,7 @@ test('consistency-check ⑫：加粗版版本头 `> **版本**：vX.Y.Z` 漂移�
   rmSync(d, { recursive: true, force: true })
 })
 
-test('consistency-check ㉖：UTF-8 BOM 污染必须报 P1（v18.9.0 反哺 / 教训 #2026-09-24 edit 工具静默注入 \\ufeff）', () => {
+test('consistency-check ㉞：UTF-8 BOM 污染必须报 P1（v18.9.0 反哺 / 教训 #2026-09-24 edit 工具静默注入 \\ufeff；编号 v18.78.2 由重号 ㉖ 改）', () => {
   const { d, repo, R } = mkRepo()
   const cc = join(R, 'scripts', 'consistency-check.mjs')
 
@@ -216,10 +216,7 @@ test('consistency-check ⑮⑯⑰：新规则必须真的会报（派发卡超�
   writeFileSync(tplPath, readFileSync(tplPath, 'utf8') + '\n> 本模板可省 77% token。\n')
   const r = run([join(R, 'scripts', 'consistency-check.mjs')])
   {
-    // v18.62.4（§8.1 #12）：本门现按严重度分档（含 [P0 …] → 2；仅 P1 → 1）。
-    //   断言**不得假定环境无 P0**——临时仓常缺版本一致性三文件，P0 参与退出码是**正确**行为。
-    const __p0 = /\[P0[ \-\]]/.test(r.out)
-    assert.equal(r.code, __p0 ? 2 : 1, '注入 3 处漂移后必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
+    assertExitBySeverity(r, '注入 3 处漂移后必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
   }
   assert.match(r.out, /派发卡超长/, '⑮ 必须捕获派发卡超长')
   assert.match(r.out, /审计视图断链/, '⑯ 必须捕获角色卡与文档断链')
@@ -307,10 +304,7 @@ test('consistency-check ⑱：图件路径口径与「宣称的图件门」必�
   writeFileSync(gl, readFileSync(gl, 'utf8').replace('M 门 25 项复核', 'M 门 13 项复核'))
   const r = run([join(R, 'scripts', 'consistency-check.mjs')])
   {
-    // v18.62.4（§8.1 #12）：本门现按严重度分档（含 [P0 …] → 2；仅 P1 → 1）。
-    //   断言**不得假定环境无 P0**——临时仓常缺版本一致性三文件，P0 参与退出码是**正确**行为。
-    const __p0 = /\[P0[ \-\]]/.test(r.out)
-    assert.equal(r.code, __p0 ? 2 : 1, '注入漂移后必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
+    assertExitBySeverity(r, '注入漂移后必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
   }
   assert.match(r.out, /图件路径口径漂移/, '⑱ 必须捕获旧图件路径')
   assert.match(r.out, /口径残留 M 门总项数/, '⑥b 必须捕获 M 门计数漂移')
@@ -328,10 +322,7 @@ test('consistency-check ⑳+⑥b：M 门文档节头项数 / 编号跳号 / 文�
     writeFileSync(p, readFileSync(p, 'utf8').replace('## M-Form 形式合规门（11 项，含', '## M-Form 形式合规门（10 项，含'))
     const r = run([join(R, 'scripts', 'consistency-check.mjs')])
     {
-      // v18.62.4（§8.1 #12）：本门现按严重度分档（含 [P0 …] → 2；仅 P1 → 1）。
-      //   断言**不得假定环境无 P0**——临时仓常缺版本一致性三文件，P0 参与退出码是**正确**行为。
-      const __p0 = /\[P0[ \-\]]/.test(r.out)
-      assert.equal(r.code, __p0 ? 2 : 1, '节头项数过期必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
+      assertExitBySeverity(r, '节头项数过期必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
     }
     assert.match(r.out, /M 门文档自洽/, '⑳ 必须按节内 ### 子节数抓出节头过期')
     assert.match(r.out, /括注项数/, '⑥b 放宽后的中文括注规则也必须命中带说明的写法')
@@ -346,10 +337,7 @@ test('consistency-check ⑳+⑥b：M 门文档节头项数 / 编号跳号 / 文�
     writeFileSync(fin, readFileSync(fin, 'utf8').replace('（**24 项**：M-Form 1-', '（**15 项**：M-Form 1-'))
     const r = run([join(R, 'scripts', 'consistency-check.mjs')])
     {
-      // v18.62.4（§8.1 #12）：本门现按严重度分档（含 [P0 …] → 2；仅 P1 → 1）。
-      //   断言**不得假定环境无 P0**——临时仓常缺版本一致性三文件，P0 参与退出码是**正确**行为。
-      const __p0 = /\[P0[ \-\]]/.test(r.out)
-      assert.equal(r.code, __p0 ? 2 : 1, '旧写法漂移必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
+      assertExitBySeverity(r, '旧写法漂移必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
     }
     assert.match(r.out, /已脚本化项数/, '⑥b 必须捕获「N 项中 M 项已脚本化」写法')
     assert.match(r.out, /「\*\*N 项\*\*：M-Form 1-」写法/, '⑥b 必须捕获「**N 项**：M-Form 1-」写法')
@@ -362,10 +350,7 @@ test('consistency-check ⑳+⑥b：M 门文档节头项数 / 编号跳号 / 文�
     writeFileSync(p, readFileSync(p, 'utf8').replace('### M-Exist-3:', '### M-Exist-9:'))
     const r = run([join(R, 'scripts', 'consistency-check.mjs')])
     {
-      // v18.62.4（§8.1 #12）：本门现按严重度分档（含 [P0 …] → 2；仅 P1 → 1）。
-      //   断言**不得假定环境无 P0**——临时仓常缺版本一致性三文件，P0 参与退出码是**正确**行为。
-      const __p0 = /\[P0[ \-\]]/.test(r.out)
-      assert.equal(r.code, __p0 ? 2 : 1, '编号跳号必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
+      assertExitBySeverity(r, '编号跳号必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
     }
     assert.match(r.out, /M 门编号跳号/, '⑳ 必须抓出子节编号不连续')
     rmSync(d, { recursive: true, force: true })
@@ -377,10 +362,7 @@ test('consistency-check ⑳+⑥b：M 门文档节头项数 / 编号跳号 / 文�
     writeFileSync(p, readFileSync(p, 'utf8').replace('### M-Form-11: 素材按需加载闭环（v2.5.2-dsh.17 新增）', '### 素材按需加载闭环（v2.5.2-dsh.17 新增）'))
     const r = run([join(R, 'scripts', 'consistency-check.mjs')])
     {
-      // v18.62.4（§8.1 #12）：本门现按严重度分档（含 [P0 …] → 2；仅 P1 → 1）。
-      //   断言**不得假定环境无 P0**——临时仓常缺版本一致性三文件，P0 参与退出码是**正确**行为。
-      const __p0 = /\[P0[ \-\]]/.test(r.out)
-      assert.equal(r.code, __p0 ? 2 : 1, '文档↔脚本不同步必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
+      assertExitBySeverity(r, '文档↔脚本不同步必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
     }
     assert.match(r.out, /M 门文档↔脚本不一致/, '⑳ 必须抓出「文档项数 ≠ 脚本 gate 标签数」')
     rmSync(d, { recursive: true, force: true })
@@ -392,10 +374,7 @@ test('consistency-check ⑳+⑥b：M 门文档节头项数 / 编号跳号 / 文�
     writeFileSync(p, readFileSync(p, 'utf8').replace('## M-Integrity 阶段闸门（2 项，含 v2.2.4 修订轮流程约束）', '## M-Integrity 阶段闸门'))
     const r = run([join(R, 'scripts', 'consistency-check.mjs')])
     {
-      // v18.62.4（§8.1 #12）：本门现按严重度分档（含 [P0 …] → 2；仅 P1 → 1）。
-      //   断言**不得假定环境无 P0**——临时仓常缺版本一致性三文件，P0 参与退出码是**正确**行为。
-      const __p0 = /\[P0[ \-\]]/.test(r.out)
-      assert.equal(r.code, __p0 ? 2 : 1, '节头缺项数必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
+      assertExitBySeverity(r, '节头缺项数必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
     }
     assert.match(r.out, /节头缺项数/, '⑳ 必须抓出节头未写「（N 项）」')
     assert.doesNotMatch(r.out, /M-Integrity 括注项数/, 'M-Integrity 括注应期望 2 项（含主控人工门），不得误报')
@@ -466,6 +445,41 @@ test('v18.22.1 CTX-1 ㉘：SKILL.md 正文出现历史叙事词必须报（且�
   writeFileSync(skPath, withFm)
   const fmOut = run([cc]).out
   assert.doesNotMatch(fmOut, /SKILL\.md 历史叙事句/, '㉘ 不得扫 frontmatter（description 是路由文案，不在本规则范围）：' + fmOut.slice(-300))
+
+  rmSync(d, { recursive: true, force: true })
+})
+
+// v18.78.2 ㉟（全量审计 A2）：一致性规则**登记表自洽**（登记表 ↔ 模块规则级标签双向覆盖 + 编号唯一）
+//   门有效性靠负向输入证明（同 ㉘ 的三条断言思路）：
+//   ① 基线（夹具 = 真源仓的技能体）不报 ㉟；
+//   ② 在规则族模块尾部加一条**未登记**的规则级标签 → 必报「规则未登记」；
+//   ③ 把登记表声明过的某条标签从其模块里删掉 → 必报「登记表失真」。
+test('v18.78.2 ㉟：一致性规则登记表必须自洽（未登记标签 / 标签缺失都要报）', () => {
+  const { d, R } = mkRepo()
+  const cc = join(R, 'scripts', 'consistency-check.mjs')
+  const reg = join(R, 'scripts', '_lib', 'cc-rules', 'rule-registry.mjs')
+  const contentRules = join(R, 'scripts', '_lib', 'cc-rules', 'content-rules.mjs')
+  const repoSurface = join(R, 'scripts', '_lib', 'cc-rules', 'repo-surface-rules.mjs')
+
+  // 防夹具漂移让本用例变空转：登记表与两个被测模块必须在夹具里真实存在
+  for (const p of [reg, contentRules, repoSurface]) assert.ok(existsSync(p), `夹具缺少 ${p}（本用例会空转）`)
+
+  // ① 基线
+  const base = run([cc]).out
+  assert.doesNotMatch(base, /规则未登记|登记表失真|规则编号重号/, '夹具基线不应报 ㉟：' + base.slice(-300))
+
+  // ② 尾部加一条未登记的规则级标签（㊲ 未登记）→ 必红
+  const cleanContent = readFileSync(contentRules, 'utf8')
+  writeFileSync(contentRules, cleanContent + '\n// ㊲ 假规则（注入用）\n')
+  const bad = run([cc]).out
+  assert.match(bad, /\[P1 规则未登记\][^\n]*㊲/, '㉟ 必须抓到「模块里有规则级标签但登记表未登记」：' + bad.slice(-400))
+
+  // ③ 删掉登记表声明过的某条标签（㉟ 自己的标签在 repo-surface-rules.mjs）→ 必红
+  writeFileSync(contentRules, cleanContent)
+  const cleanRs = readFileSync(repoSurface, 'utf8')
+  writeFileSync(repoSurface, cleanRs.replace('// ㉟ 一致性规则登记表自洽', '// （注入测试：标签已移除）一致性规则登记表自洽'))
+  const bad2 = run([cc]).out
+  assert.match(bad2, /\[P1 登记表失真\][^\n]*㉟/, '㉟ 必须抓到「登记表声明了但模块里找不到标签」：' + bad2.slice(-400))
 
   rmSync(d, { recursive: true, force: true })
 })

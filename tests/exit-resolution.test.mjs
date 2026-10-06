@@ -51,6 +51,16 @@ test('guard 常量与 `process.exitCode =` 赋值形态都要认', () => {
   assert.ok(g.resolved.has(10), 'guard 导出的 EXIT_USAGE = 10 应被解析出来')
 })
 
+test('坑④（v18.78.2 B7）：注释与字符串字面量**不得**产出退出码', () => {
+  // 审计 B7 探针：这段文本里**没有任何真实调用**，旧版却返回 [2,7]。
+  const src = '// 历史上本脚本用 process.exit(2) 表示 P0\nconst s = "process.exit(7) 只是文档示例"\n'
+  assert.deepEqual(codes(src), [], '注释/字符串里的 process.exit 必须出局（假红方向）')
+  // 反方向一起钉住（假绿方向）：真代码、模板 `${}` 内的表达式必须仍在
+  assert.deepEqual(codes('process.exit(3)\nconst t = `x ${process.exit(5)}`\n'), [3, 5], '真代码不得被剥掉')
+  // 复核口径：剥离器对「拿不准」的形态按代码处理（宁可漏剥）——未同行闭合的引号整段还原
+  assert.deepEqual(codes('const a = 1 // 半句 " x\nprocess.exit(11)\n'), [11], '未闭合引号不得把后续真代码吃掉')
+})
+
 /** 从 repo-hygiene 源码解析 `EXIT_CONTRACT`（逐脚本）。 */
 function parseContract() {
   const src = readFileSync(join(ROOT, 'scripts', 'repo-hygiene-check.mjs'), 'utf8')

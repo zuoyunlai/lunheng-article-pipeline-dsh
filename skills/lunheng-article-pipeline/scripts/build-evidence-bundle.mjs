@@ -31,7 +31,7 @@
 //   的骨架目录」调用本脚本并断言 exit 0（第 290/310/529 行附近）；按上述 ② 这类骨架必然 exit 10。夹具属测试所有者，
 //   本批未改（授权范围外），需同步给骨架补一个源文件（如 01-任务简报.md 或 final/证据包/数据卡.md）。
 import { readdirSync, copyFileSync, existsSync, mkdirSync, statSync, readFileSync, writeFileSync, rmdirSync } from 'node:fs';
-import { join, basename, relative, resolve } from 'node:path';
+import { join, basename, relative, resolve, dirname } from 'node:path';
 import { countHan } from './_lib/han.mjs';                        // 汉字口径真源
 import { refCardPairRegex, refRegexFirst, refsOf } from './_lib/refs.mjs';   // 引用编号口径真源
 import { TRUST_COMPLIANT_RE } from './_lib/trust.mjs';            // 信任级别口径真源
@@ -40,7 +40,22 @@ import { installExitGuard, requireExistingFile, requireExistingDir } from './_li
 import { parseArgs, USAGE_CODE } from './_lib/cli-args.mjs';   // 参数解析唯一实现（v18.2.6，与 apply-diff 共用）
 import { createHash } from 'node:crypto';                       // v18.12.0（L-15）：证据包清单逐文件 sha256
 import { writeWithSafety } from './_lib/destructive-write.mjs';  // v18.12.0（L-15）：清单写盘走原子写 + 时间戳 .bak
+import { fileURLToPath } from 'node:url';
+import { loadGateSource, deriveGateCounts } from './_lib/mgate-gates/gate-count.mjs';  // M 门项数派生真源（v18.78.2 · 全量审计-v18.78.1 A4）
 installExitGuard();   // fs 类异常 → 10（旧版传目录给 --source 会未捕获 EISDIR → exit 1）
+
+// M 门项数：**从门标签派生**，不手写（v18.78.2 · 全量审计-v18.78.1 A4 修复）。
+//   病灶：本视图的段标题与用法句长期写死「M 门 **16** 项」，而真源 = **25 项**（机检 24 + 人工 1）——
+//   视图是 T4–T9 八个角色当**闸门真源**读的产物，自报项数少 9 项即等于让读者按错的门数理解全表；
+//   而它不在一致性规则 ⑥b 的扫描面内（⑥b 只扫被跟踪的 `skills/**` 与 `docs/**` 的 `.md`，**生成物不算**），
+//   故任何门都不会红。现改为与 ⑥b **同源派生**（共用 `_lib/mgate-gates/gate-count.mjs`）。
+//   边界（如实声明）：派生失败（门模块被裁掉 / 目录改名）时降级为 `?` —— **不猜数字**
+//   （旧版 `m.total || 12` 的 `12` 就是伪分母：报告里没有这个数，却被当成 100% 信任的比例尺）。
+const M_GATE_TOTAL = (() => {
+  try { return deriveGateCounts(loadGateSource(dirname(fileURLToPath(import.meta.url)))).total; }
+  catch { return null; }
+})();
+const M_GATE_LABEL = M_GATE_TOTAL ?? '?';
 
 // v18.2.6 审计修复（追加项 2 / P2，UTF-8 BOM）：pwsh `Set-Content -Encoding UTF8` **默认写 BOM**（Windows 上常见输入），
 //   而 `\uFEFF` 顶在文件首行/首个 JSON 字符前 —— 实测两处静默失真：
@@ -474,7 +489,10 @@ if (wantSummary) {
       const exitText = m.verdict_stale === true && mech !== null
         ? `exit: ${mech}（T8 裁定已过期，原裁定 ${m.exit ?? '?'}；须就本版正文重裁）`
         : `exit: ${m.exit ?? '?'}`;
-      mSummary = `通过 ${m.pass || 0}/${m.total || 12} | P0: ${m.p0 || 0} | P1: ${m.p1 || 0} | P2: ${m.p2 || 0} | LLM 兜底: ${m.soft || m.llm || 0} | ${exitText}`;
+      // v18.78.2（A4）：分母优先取报告自身 `total`；报告缺该字段（旧格式）时用**派生值**兜底，派生也失败才 `?`。
+      //   旧版 `m.total || 12` 会在缺字段时凭空写一个 12 —— 审计实测喂一份不含 `total` 的报告即得「通过 20/12」。
+      const mDenom = m.total ?? M_GATE_TOTAL ?? '?';
+      mSummary = `通过 ${m.pass || 0}/${mDenom} | P0: ${m.p0 || 0} | P1: ${m.p1 || 0} | P2: ${m.p2 || 0} | LLM 兜底: ${m.soft || m.llm || 0} | ${exitText}`;
     } catch (e) {
       mSummary = `（M-Gate-Report-v0.json 解析失败: ${e.message}）`;
     }
@@ -522,7 +540,7 @@ if (wantSummary) {
 
   const summary = `# 审计视图（自动生成，T4/T5/T6/T7/T9/T8 共用）
 
-> **用法**：T4 分析 / T5 写作 / T6 批判 / T7 审计 / T9 审稿 / T8 终检 派发时**先读本视图**，按需跳转全文/数据卡/文献卡/案例卡；不强制重读全部素材——本视图含正文结构、字数、素材卡数量、信任级别分布、M 门 16 项状态、引用闭环、报告存在性。
+> **用法**：T4 分析 / T5 写作 / T6 批判 / T7 审计 / T9 审稿 / T8 终检 派发时**先读本视图**，按需跳转全文/数据卡/文献卡/案例卡；不强制重读全部素材——本视图含正文结构、字数、素材卡数量、信任级别分布、M 门 ${M_GATE_LABEL} 项状态、引用闭环、报告存在性。
 > **视图源**：\`${srcRel}\`　｜　**阶段**：${stageLabel}　｜　生成时间：${new Date().toISOString()}
 > ${src && src.kind === 'draft' ? '⚠️ 源为**草稿快照**：字数/引用闭环仅代表该草稿轮次，**定稿阶段必须重新生成**后引用（`--source final/定稿.md`）。' : src && src.kind === 'final' ? '源为定稿（终态视图）。' : '尚无正文：本视图仅含素材与报告状态，T4 分析（Phase 2）可用；草稿产出后请重新生成本视图。'}
 
@@ -549,7 +567,7 @@ ${figLine}
 - 案例 [Cxx]：${usedC} 个
 ${src ? '' : '\n> 无正文源：三项均为 0（**不是「无引用」**，是尚未有正文可比对）。'}
 
-## 四、M 门 16 项状态
+## 四、M 门 ${M_GATE_LABEL} 项状态
 
 ${mSummary}
 

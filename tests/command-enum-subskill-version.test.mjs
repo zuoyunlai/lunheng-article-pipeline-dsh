@@ -11,6 +11,7 @@ import assert from 'node:assert/strict'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { mkRepo, run } from './_fixtures.mjs'
+import { assertExitBySeverity } from './_scripts-shared.mjs'
 
 const ccPath = (repo) => join(repo, 'skills', 'lunheng-article-pipeline', 'scripts', 'consistency-check.mjs')
 
@@ -29,10 +30,7 @@ test('㉖ 子技能版本漂移：package.json version 改回 1.0.0 → 必须�
   writeFileSync(pkg, readFileSync(pkg, 'utf8').replace(`"version": "${cur}"`, '"version": "0.0.0"'))
   const after = run([ccPath(repo)], { cwd: d })
   {
-    // v18.62.4（§8.1 #12）：本门现按严重度分档（含 [P0 …] → 2；仅 P1 → 1）。
-    //   断言**不得假定环境无 P0**——临时仓常缺版本一致性三文件，P0 参与退出码是**正确**行为。
-    const __p0 = /\[P0[ \-\]]/.test(after.out)
-    assert.equal(after.code, __p0 ? 2 : 1, `注入漂移后应 exit 1，实得 ${after.code}（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）`)
+    assertExitBySeverity(after, `注入漂移后应 exit 1，实得 ${after.code}（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）`)
   }
   assert.match(after.out, /子技能版本漂移/, `漏了 package.json 版本漂移却未点名：\n${after.out.slice(-400)}`)
 })
@@ -47,10 +45,7 @@ test('㉖ 子技能版本缺失：package.json 删掉 version 行 → 必须报 
 
   const after = run([ccPath(repo)], { cwd: d })
   {
-    // v18.62.4（§8.1 #12）：本门现按严重度分档（含 [P0 …] → 2；仅 P1 → 1）。
-    //   断言**不得假定环境无 P0**——临时仓常缺版本一致性三文件，P0 参与退出码是**正确**行为。
-    const __p0 = /\[P0[ \-\]]/.test(after.out)
-    assert.equal(after.code, __p0 ? 2 : 1, '（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
+    assertExitBySeverity(after, '（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
   }
   assert.match(after.out, /子技能版本缺失/, `删了 version 行却未点名缺失：\n${after.out.slice(-400)}`)
 })
@@ -68,10 +63,7 @@ test('㉕ 命令枚举缺项：README 代码块删掉 -stats → 必须报 P1（
 
   const after = run([ccPath(repo)], { cwd: d })
   {
-    // v18.62.4（§8.1 #12）：本门现按严重度分档（含 [P0 …] → 2；仅 P1 → 1）。
-    //   断言**不得假定环境无 P0**——临时仓常缺版本一致性三文件，P0 参与退出码是**正确**行为。
-    const __p0 = /\[P0[ \-\]]/.test(after.out)
-    assert.equal(after.code, __p0 ? 2 : 1, `注入缺项后应 exit 1，实得 ${after.code}（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）`)
+    assertExitBySeverity(after, `注入缺项后应 exit 1，实得 ${after.code}（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）`)
   }
   assert.match(after.out, /命令枚举缺项[\s\S]*-\s*stats/, `漏了 -stats 却未点名：\n${after.out.slice(-400)}`)
 })
@@ -86,10 +78,7 @@ test('㉕ 命令枚举缺项：package.json description 删掉 -stats → 必须
 
   const after = run([ccPath(repo)], { cwd: d })
   {
-    // v18.62.4（§8.1 #12）：本门现按严重度分档（含 [P0 …] → 2；仅 P1 → 1）。
-    //   断言**不得假定环境无 P0**——临时仓常缺版本一致性三文件，P0 参与退出码是**正确**行为。
-    const __p0 = /\[P0[ \-\]]/.test(after.out)
-    assert.equal(after.code, __p0 ? 2 : 1, '（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
+    assertExitBySeverity(after, '（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
   }
   assert.match(after.out, /命令枚举缺项[\s\S]*-\s*stats/, `package.json 枚举漏 -stats 却未点名：\n${after.out.slice(-400)}`)
 })

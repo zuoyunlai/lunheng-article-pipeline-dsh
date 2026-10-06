@@ -1,3 +1,5 @@
+> 版本：v18.78.2（DSH bundle 插件）
+
 # 论衡教训库（references/memory/lessons.md）
 
 > 论衡特定教训（paperwriter-specific lessons，仅论衡技能用）。DSH 原生插件。

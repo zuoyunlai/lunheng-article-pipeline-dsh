@@ -1,5 +1,7 @@
 // 批 5-2 拆分（v18.68.0）：scripts.test.mjs 巨石拆分时抽出的**跨文件共享夹具**。
-// 仅放夹具与薄封装（与 _fixtures.mjs 同旨：不放断言）；单文件独用的夹具留在各自文件里。
+// 仅放夹具与薄封装；单文件独用的夹具留在各自文件里。
+//   （「不放断言」的旧表述在 v18.78.1 修正：`gateOf` 与 `assertExitBySeverity` 都是**薄断言封装**——
+//    抽取的是**判据的唯一定义**，断言仍在调用点逐条写明消息；不抽取等于同一判据散落 15 处。）
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import assert from 'node:assert/strict'
@@ -52,6 +54,15 @@ export function mkTriFixture() {
     + '## 先行者文献\n\n[先01] p\n[先02] q\n\n## AI 使用声明\n\nAI。\n')
   return { d, proj, fin, ev }
 }
+
+/**
+ * 严重度分档退出码守卫（v18.62.4 §8.1 #12 的口径；v18.78.1 全量审计 B13-②：收敛本仓 15 处逐字副本）。
+ * 口径：输出含 `[P0 …]` → 期望 exit 2；仅 P1 → 期望 exit 1。
+ *   断言**不得假定环境无 P0**——临时仓常缺版本一致性三文件，P0 参与退出码是**正确**行为。
+ * ⚠️ 本守卫**不**接受「无 P0 且 exit 0」：那正是「该报却什么都没报」的假绿形态，故恒期望非 0。
+ *   `msg` 由调用方给——各用例的失败文案是**上下文**，不随判据收敛而丢失。
+ */
+export const assertExitBySeverity = (r, msg) => assert.equal(r.code, (/\[P0[ \-\]]/.test(r.out) ? 2 : 1), msg)
 
 export const mform8Of = (fin, ev) =>
   parseJson(run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])).results.find((x) => x.gate.startsWith('M-Form-8'))

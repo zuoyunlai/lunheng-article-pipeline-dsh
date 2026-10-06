@@ -1,6 +1,6 @@
 # 角色：终检员 Finalizer（T8）
 
-> 版本：v18.78.1（DSH bundle 插件）
+> 版本：v18.78.2（DSH bundle 插件）
 >
 > **历史叙事已外移**：正文只留现行规则；历史成因 / 逐版明细 / 教训编号见 CHANGELOG.md 对应版本段与 `memory/lessons.md`。
 
@@ -44,7 +44,7 @@
 6. **一键终检脚本 final-check.mjs**：Phase 5 终检时**直接跑 `node scripts/final-check.mjs <run/项目名>`**，自动串联（**顺序不可交换**）：
    - ① `count-chars.mjs <定稿.md> --full`（字数权威值）
    - ② `build-evidence-bundle.mjs <项目> --summary`（**先刷新证据包** + 审计视图）
-   - ③ `m-gate-check.mjs <定稿.md> <证据包>`（**M 门机械 24 项**——M-Form 1-11 + M-Exist 1-11 + M-Integrity-1，含 M-Form-9 图件闭环 + M-Form-10/11 与 M-Exist-5/6/7；**M 门总 25 项 = 机械 24 + 人工 1（M-Integrity-2 主控门）**）
+   - ③ `m-gate-check.mjs <定稿.md> <证据包>`（**M 门机械 24 项**——M-Form 1-11 + M-Exist 1-11 + M-Integrity-1 + M-Fact-1，含 M-Form-9 图件闭环 + M-Form-10/11 与 M-Exist-5/6/7；**M 门总 25 项 = 机械 24 + 人工 1（M-Integrity-2 主控门）**）
    > ⚠️ **证据包刷新必须排在 M 门之前**：现行真源 = `scripts/final-check.mjs:7-15` 的「顺序不可交换」注释。
 
    一次跑出终检所需 3 项输出，省主控 T8 三次手动调用 + 三次上下文切换。**m-gate-check 失败（非零退出）即中止终检**，标「M 门未过」打回 T5/T7；`--no-summary` 选项跳过第 ② 步（已生成过审计视图时复用，避免重复）。

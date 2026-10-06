@@ -48,12 +48,13 @@ test('readability：长句轰炸会被多指标同时命中，但仍是 P2', asy
   assert.ok(r.hits.some((h) => /长句占比/.test(h)), '长句占比超界必须命中：' + r.hits.join('；'))
 })
 
-test('readability：21 份真实定稿**全部在标定界内**（不误报——本机跑，CI 无 run/ 时跳过）', async () => {
+test('readability：21 份真实定稿**全部在标定界内**（不误报——本机跑，CI 无 run/ 时跳过）', async (t) => {
   const { evaluate, THRESHOLDS } = await import(LIB)
   const { readdirSync, existsSync, readFileSync } = await import('node:fs')
   const { firstEndnoteIndex, bodyStartAfterAbstract } = await import(pathToFileURL(join(SCRIPTS, '_lib', 'sections.mjs')).href)
   const root = 'E:/HERNESS/run'
-  if (!existsSync(root)) return
+  // v18.78.1（A7）：环境不满足必须**可见 skip**——裸 `return` 会被 node:test 记成 pass（CI 上零断言却显示绿）。
+  if (!existsSync(root)) return t.skip('本机无 21 份真实定稿语料（E:/HERNESS/run）——本用例是本地防误报网，缺样本即无判据')
   // ── v18.48.0（反哺 F-BD）：**显式排除受控 A/B 实验产物**（具名、有理由，不是"跳过跑不过的"）──
   // 理由：本用例的阈值标定依据是「**21 份常规交付定稿**」的实测分布；QLT-5 的四份定稿是
   //   **实验操控产物**（分档模型 + 主人授权的多轮修订 + 字数压缩轮），把它们计入 = 把"实验条件"

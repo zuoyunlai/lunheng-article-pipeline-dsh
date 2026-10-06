@@ -25,6 +25,16 @@
 //     L-27/L-28/L-41/L-60/L-61 其实是已修、而 L-14 是真未修）。
 //   把「提到」当「做完」= 复现 18.12.3 的错误；本脚本刻意只报「需人工回核」而不报「已完成」。
 //
+// ⚠️ v18.78.2（全量审计-v18.78.1 B14）：**「被提及」必须分列两个计数**。旧版第 1 步把
+//   「修订记录（梯队记录 + audits/README）」与「CHANGELOG（主档 + archive）」拼成**一个**证据源，
+//   于是 `neverMentioned = 0` 被读成「全部被记录/处理」——而它实际只等于「**被 CHANGELOG 提及过**」。
+//   实测（本仓 v18.11.0 报告 68 个 ID）：仅靠「第N梯队」修订记录时未被提及 2 个；仅靠 CHANGELOG 时
+//   未被提及 11 个；并集未被提及 0 个。对「提了一句但从未结清」的 ID，旧输出**无分辨力**。
+//   修法：输出与 `--json` 都分列 `handledByRecords` / `changelogOnly` 两个计数（后者附 ID 清单），
+//   并把构成写在 ✓ 结论旁边。**判据与退出码不变**（neverMentioned 的算法与旧并集完全等价）——
+//   本批是**可见化**，不是收紧：把「仅被 CHANGELOG 提及」判失败会让所有历史版本段变红，
+//   而它证明的「被提及」本来就不等于「被结清」（语义判定照旧交人工，见上）。
+//
 // 退出码：0 = 两步均无发现；1 = 有发现（列在 stderr）；10 = 参数/路径错；70 = 内部错误。
 //
 // ⚠️ v18.62.4（全量审计-v18.62.3 §8.1 #5）：**`70` 此前只是「文档里的一个码」**——
@@ -94,9 +104,18 @@ try {
   // v18.68.0 拆档：差集证据源 = 主档 + changelog/archive/ 联合（旧版本段的 ID 提及仍算数，防假 P1 差集）
   const changelogText = readChangelogAll(repoRoot);
   const readmeText = existsSync(join(recordsDir, 'README.md')) ? readFileSync(join(recordsDir, 'README.md'), 'utf8') : '';
-  const allRecordText = [...records.map((r) => r.text), changelogText, readmeText].join('\n');
 
   // ── 第 1 步：差集——审计报告里的 ID 必须至少被一处记录提及 ─────────────────────────────────
+  //   v18.78.2（全量审计-v18.78.1 B14）：**「被提及」必须分列两个计数**。病灶：本步旧版把
+  //   「修订记录（主档 + audits/README）+ CHANGELOG（主档 + archive）」拼成一个证据源，
+  //   于是 `neverMentioned = 0` 被读成「全部被记录/处理」，而它实际只等于「**被 CHANGELOG 提及过**」——
+  //   实测（本仓 v18.11.0 报告 68 个 ID）：仅靠「第N梯队」修订记录时未被提及 2 个、仅靠 CHANGELOG 时
+  //   未被提及 11 个、并集未被提及 0 个。对「提了一句但从未结清」的 ID 本步**无分辨力**。
+  //   修法：① 只在**修订记录面**里找 → `被修订记录处理`；② 只在 **CHANGELOG 面**里找 → `仅被 CHANGELOG 提及`；
+  //   ③ 两面都没有 → `neverMentioned`（判据与旧的并集**完全一致**，故退出码不变）。
+  //   ⚠️ **为什么不为「仅被 CHANGELOG 提及」判失败**：CHANGELOG 是**发布留痕**，每个版本段都会写「本版
+  //   修了 L-xx」；把它判负 = 让所有历史段都变红，而它证明的「被提及」本来就不等于「被结清」。
+  //   本版只做**可见化**：读者必须能看到「差集为空」背后的构成，剩下的语义判定照旧交人工（见文件头边界）。
   const auditText = readFileSync(auditPath, 'utf8');
   const idsOf = (text) => [...new Set([...text.matchAll(/\bL-\d{2}\b/g)].map((m) => m[0]))].sort();
   const auditIds = idsOf(auditText);
@@ -104,8 +123,13 @@ try {
     console.error(`审计报告里没找到任何 L-NN 形式的 ID（${relative(repoRoot, auditPath)}）——请确认报告格式`);
     process.exit(10);
   }
-  const mentioned = new Set(idsOf(allRecordText));
-  const neverMentioned = auditIds.filter((id) => !mentioned.has(id));
+  // 修订记录面 = 梯队记录 + `audits/README.md`（它是修订记录目录自己的索引，属记录侧而非发布留痕侧）
+  const recordSideText = [...records.map((r) => r.text), readmeText].join('\n');
+  const mentionedByRecords = new Set(idsOf(recordSideText));
+  const mentionedByChangelog = new Set(idsOf(changelogText));
+  const handledByRecords = auditIds.filter((id) => mentionedByRecords.has(id));
+  const changelogOnly = auditIds.filter((id) => !mentionedByRecords.has(id) && mentionedByChangelog.has(id));
+  const neverMentioned = auditIds.filter((id) => !mentionedByRecords.has(id) && !mentionedByChangelog.has(id));
 
   // ── 第 2 步：反向核验——某梯队登记的「未做」项，其后梯队必须再提到它（否则清单就是陈旧的）────
   // 「未做」标记的识别：视为**块起点**，块延伸到「下一个标题」或「下一个同级加粗行」为止。
@@ -173,8 +197,16 @@ try {
     auditIdCount: auditIds.length,
     recordFiles: records.length,
     step1_neverMentioned: neverMentioned,
+    // v18.78.2（B14）：第 1 步的**分列**——「被修订记录处理」与「仅被 CHANGELOG 提及」不再是同一个数。
+    //   两个计数与 `step1_neverMentioned` 必须满足：handledByRecords + changelogOnly + neverMentioned = 全部 ID。
+    step1_split: {
+      handledByRecords: handledByRecords.length,
+      changelogOnly: changelogOnly.length,
+      changelogOnlyIds: changelogOnly,
+    },
     step2_staleDeferrals: staleDeferrals,
-    boundary: '本脚本只报「需人工回核」的项，**不判「已完成」**——语义那半必须逐条回代码/产物实测',
+    boundary: '本脚本只报「需人工回核」的项，**不判「已完成」**——语义那半必须逐条回代码/产物实测；'
+      + '「仅被 CHANGELOG 提及」只证明被记录过，不等于被结清',
   };
   if (asJson) {
     console.log(JSON.stringify(report, null, 2));
@@ -183,6 +215,14 @@ try {
 
   console.log(`收口批两步检查：审计 ${auditIds.length} 个 ID × ${records.length} 份修订记录`);
   console.log(`  第 1 步 差集：从未被任何记录提及 = ${neverMentioned.length} 个`);
+  // v18.78.2（B14）：分列行。**「从未被任何记录提及 = N」这半句原样保留**（既有用例与主人侧的读法
+  //   都认它），新增的是「0 是怎么来的」——否则 `0` 会被读成「全部被处理」。
+  console.log(
+    `  第 1 步 分列（v18.78.2 B14）：被「第N梯队」修订记录处理 = ${handledByRecords.length} 个` +
+      `；**仅被 CHANGELOG 提及** = ${changelogOnly.length} 个` +
+      `${changelogOnly.length ? `（${changelogOnly.join(' ')}）` : ''}` +
+      `——后者只证明「提过一句」，**不等于已结清**`,
+  );
   console.log(`  第 2 步 反向核验：登记为「未做」但其后无人再提 = ${staleDeferrals.length} 项`);
 
   const problems = [];
@@ -203,6 +243,9 @@ try {
     process.exit(1);
   }
   console.log('\n✓ 两步均无发现（差集为空 + 无陈旧「未做」登记）。' +
+    // v18.78.2（B14）：把「差集为空」的**构成**写在结论旁边——否则这个 ✓ 会被读成「全部被处理」。
+    `\n  ⚠️ 差集为空的构成（v18.78.2 B14）：被修订记录处理 ${handledByRecords.length}/${auditIds.length}，仅被 CHANGELOG 提及 ${changelogOnly.length}，两者皆无 ${neverMentioned.length}` +
+    `${changelogOnly.length ? '——「仅被 CHANGELOG 提及」只证明被记录过，**不等于被结清**' : ''}。` +
     '\n  下一步（本脚本刻意不代劳）：把「已记录」项逐条回代码/产物实测——差集只能证明「被记录」。');
 
 } catch (e) {

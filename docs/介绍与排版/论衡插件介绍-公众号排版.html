@@ -37,7 +37,7 @@
 ├─ T6 批判伙伴 ──── 批判报告（C1-C7 反方攻击）<br>
 ├─ T7 审计员 ───── 审计报告（G0-G14 全项，只审不改）<br>
 ├─ T9 审稿人 ───── 审稿报告（6 维度评分 + 期刊匹配 Top 3，可选）<br>
-└─ T8 终检（主控亲完成）── M 门（M-Form 8 + M-Exist 3 + M-Integrity 2）
+└─ T8 终检（主控亲完成）── M 门（总 25 项 = 机检 24 + 人工 1）
 </div>
 <p style="margin:0 0 20px;">六个主阶段（Phase 0–5）：<strong>定题 → 并行检索 → 分析 → 写作 → 审计 → 终检</strong>，其中写作、审计各含<strong>批判 / 修订回环 / 审稿</strong>等子阶段；中间穿插 <strong>T2.5 / T7.5 两道完整性门</strong>（主控 checkpoint）与 <strong>4 个人在环节点</strong>（定题 / 大纲 / 洞察补充 / 终稿）。T8 终检由主控亲完成（不外包最后一关），T9 同行评审是投稿前的「预演审稿人」（学术/行业分析默认开启）。</p>
 
@@ -51,7 +51,7 @@
 <h3 style="margin:16px 0 8px;font-size:15px;color:#2e7d5b;font-weight:bold;">② 独立审计闭环（G0-G14 + M 门）</h3>
 <p style="margin:0 0 10px;">审计员 <strong>只审不改</strong>、与写手完全分离，执行 G0-G14 全项检查：C 级引用 100% 实测核验、每个数字有来源、过期数据告警、信任级别全量校验、核心论点与先行者对比防重复、文末四节双向 diff 防漏引，以及 <strong>G14 中文 AI 痕迹闸</strong>（8 类检测维度，0-2 类 Pass / 3-4 类 Warning / 5+ 类 Fail，LLM 推理判定零 exec）。</p>
 <p style="margin:0 0 10px;">审计打回 → <strong>独立写手</strong>修订（主控不代笔）→ 复核，<strong>最多 2 轮</strong>（审计阶段独立预算；前序的主人洞察轮与批判反馈轮不计入），仍不过走 Acknowledged Limitations 模式诚实交付。事实类错误（P1-D）由主控 T8 亲修，结构性错误必须重启独立写手。</p>
-<p style="margin:0 0 12px;">终检前主控跑 <strong style="color:#2e7d5b;">M 门 13 项</strong>——LLM 兜底执行的机械化终检（M-Form 8 + M-Exist 3 + M-Integrity 2），对引用完整性、文末四节、临时编号残留、元数据泄漏、过程语言、信任级别、文末白名单、三角验证逐项机械判定，<strong>exit 0 才交付</strong>。</p>
+<p style="margin:0 0 12px;">终检前主控跑 <strong style="color:#2e7d5b;">M 门 25 项</strong>——LLM 兜底执行的机械化终检（机检 24 = M-Form 1-11 + M-Exist 1-11 + M-Integrity-1 + M-Fact-1；人工 1 = M-Integrity-2），对引用完整性、文末四节、临时编号残留、元数据泄漏、过程语言、信任级别、文末白名单、三角验证逐项机械判定，<strong>exit 0 才交付</strong>。</p>
 
 <h3 style="margin:16px 0 8px;font-size:15px;color:#2e7d5b;font-weight:bold;">③ 人在环四节点</h3>
 <p style="margin:0 0 20px;">定题、大纲、洞察补充、终稿四个节点必须主人过目——在「改方向成本最低」的阶段由人把关，避免 AI 一路跑偏后推倒重来。（Phase 3.6 批判是流水线内部动作，非人在环节点。）</p>

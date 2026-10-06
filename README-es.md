@@ -1,6 +1,6 @@
 # Lunheng (lunheng-article-pipeline) — pipeline multiagente para textos largos
 
-> 版本：v18.78.1（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.78.2（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > 🌐 [English](README.md) ｜ [中文](README-zh.md) ｜ **Español**（este archivo）｜ [Português](README-pt.md) ｜ [हिन्दी](README-hi.md)
 
@@ -57,7 +57,9 @@ Fase 3.5 Perspectiva  El humano aporta contexto de primera mano (en el circuito)
 Fase 3.6 Crítica      T6 compañero crítico → informe C1–C7
 Fase 4  Auditoría     T7 auditor → informe G0–G14 y lista de revisión
 Fase 4.2 Revisión     Redactor + notas de revisión (≤2 rondas, redactor independiente)
-Fase 4.5 Revisión     T9 revisión por pares + puerta G14 de huellas de IA (en paralelo); figuras
+Fase 4.5 Figuras       Generación de figuras (SVG) antes de la puerta
+Fase 4.6 Puerta G14    Puerta G14 de huellas de IA (en serie; congela el texto)
+Fase 4.7 Revisión      T9 revisión por pares
 Puerta T7.5           Auditoría más reciente + lista P0/P1 + puerta M exit 0 + aislamiento
 Fase 5  Verificación  T8 (lo ejecuta el coordinador) → texto final, paquete probatorio, notas de entrega
 ```
@@ -115,7 +117,7 @@ La capa patch hace dos cosas: **inserta una fila para este paquete** (`- id: lun
 Las versiones se publican **solo por tag**; `npm publish` local está prohibido (evita las puertas de CI y la procedencia OIDC, y una versión npm nunca se puede sobrescribir).
 
 ```sh
-git tag v18.78.1 && git push origin v18.78.1   # un tag por push (GitHub: >3 tags en un push no dispara workflow)
+git tag v18.78.2 && git push origin v18.78.2   # un tag por push (GitHub: >3 tags en un push no dispara workflow)
 # publish.yml ejecuta: puerta 1 consistencia → puerta 2 empaquetado → puerta 3 higiene → puerta 4 humo del paquete → tests
 #   → tag/versión iguales → guarda de idempotencia → OIDC publish --provenance --tag dsh → auditoría posterior
 ```

@@ -1,4 +1,6 @@
-# 论衡实战案例库Oreferences/case-studies.md）
+> 版本：v18.78.2（DSH bundle 插件）
+
+# 论衡实战案例库（references/case-studies.md）
 
 > 论衡 v2.2.8 起实战案例独立成档。SKILL.md 不重复维护，案例持续追加。
 > 维护原则：每跑完一个深度长文项目，把案例结构化沉淀到这里O项目名/规模/关键产出/教训），便于论衡 agent 在新项目 Phase 0 快速参考同类项目经验。

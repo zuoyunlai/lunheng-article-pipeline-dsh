@@ -2,7 +2,7 @@
 
 > 🌐 [English](README.md) ｜ **中文**（本文件）｜ [Español](README-es.md) ｜ [Português](README-pt.md) ｜ [हिन्दी](README-hi.md)
 
-> 版本：v18.78.1（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.78.2（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > 一个 DeepSeek Harness（DSH）bundle 插件，注册**两个按需加载的 agent 技能**：`lunheng-article-pipeline`（9 角色主流水线）与 `lunheng-commands`（薄壳包装 11 个 `/lunheng-*` 斜杠命令：draft / resume / cite / audit / journal / ppt / history / rollback / status / stats / help；**不引入新角色、不引入新 M 门**，详见 `skills/lunheng-commands/SKILL.md`）。主技能把深度长文的生产——学术论文、行业分析、商业评论、公众号深文——变成**带人在环节点的 9 角色流水线**。
 
@@ -57,7 +57,9 @@ Phase 3.5 洞察补充 主人补充一手语境（人在环）→ 初稿 v2
 Phase 3.6 批判     T6 批判伙伴 → C1–C7 报告
 Phase 4  审计      T7 审计员 → G0–G14 审计报告 + 修订任务书
 Phase 4.2 修订     写手修订 + 修订说明（≤2 轮，独立写手）
-Phase 4.5 审稿     T9 同行评审 + G14 中文 AI 痕迹闸（并行）；配图
+Phase 4.5 配图     主控按模板填 SVG 图落盘（在 G14 终闸之前完成）
+Phase 4.6 G14终闸  G14 中文 AI 痕迹闸（v18.75.0 起串行，不再与 T9 并行；Pass 即冻结正文）
+Phase 4.7 审稿     T9 同行评审
 闸门 T7.5          最新审计 + P0/P1 清单 + M 门 exit 0 + 报告隔离
 Phase 5  终检      T8 终检（主控执行）→ 定稿、证据包、交付说明
 ```
@@ -117,7 +119,7 @@ patch 层做两件事：**插入一行本包自注册行**（`- id: lunheng-arti
 **只推 tag 发布，禁止本地 `npm publish`**（本地直发会绕过 CI 三道门与 OIDC 来源证明，且 npm 版本不可覆盖）。
 
 ```sh
-git tag v18.78.1 && git push origin v18.78.1   # 一次只推 1 个 tag（GitHub：单次 push >3 个 tag 不触发任何 workflow）
+git tag v18.78.2 && git push origin v18.78.2   # 一次只推 1 个 tag（GitHub：单次 push >3 个 tag 不触发任何 workflow）
 # publish.yml 依次跑：门 1 一致性 → 门 2 打包面 → 门 3 机械卫生 → 门 4 打包产物冒烟 → 脚本回归测试
 #   → tag/版本一致校验 → 幂等守卫 → OIDC 发布 --provenance --tag dsh → 发布后审计
 ```

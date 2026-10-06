@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { ROOT, SCRIPTS, run, parseJson, tmp, mkProject, mkRepo, MD, mkSvg, DRAFT_WITH_ENDNOTES, CARD, NPM_UNAVAILABLE, PIPE_SPAWN_BLOCKED, skipWhen, buildDeliveryNoteWithSec6, DELIVERY_NOTE_OTHER_SECTIONS } from '../_fixtures.mjs'
-import { mkProj, DRAFT_OK, cardOk, setupCards, gateOf, mkTriFixture, mform8Of } from '../_scripts-shared.mjs'
+import { mkProj, DRAFT_OK, cardOk, setupCards, gateOf, mkTriFixture, mform8Of, assertExitBySeverity } from '../_scripts-shared.mjs'
 
 
 // v18.34.0：规则 ㉙（G 项主清单口径）——真源 = `_lib/mgate-gates/mexist-gates.mjs` 的 `G_MAIN`。
@@ -75,10 +75,7 @@ test('consistency-check ④b+⑲：占位符残留 / 版本硬编码 / 契约表
   writeFileSync(t7, readFileSync(t7, 'utf8').replaceAll('复核报告', 'X报告'))
   const r = run([join(R, 'scripts', 'consistency-check.mjs')])
   {
-    // v18.62.4（§8.1 #12）：本门现按严重度分档（含 [P0 …] → 2；仅 P1 → 1）。
-    //   断言**不得假定环境无 P0**——临时仓常缺版本一致性三文件，P0 参与退出码是**正确**行为。
-    const __p0 = /\[P0[ \-\]]/.test(r.out)
-    assert.equal(r.code, __p0 ? 2 : 1, '注入后必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
+    assertExitBySeverity(r, '注入后必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
   }
   assert.match(r.out, /占位符残留/, '④b 必须捕获「命令已剥离」残留')
   assert.match(r.out, /版本硬编码/, '⑲ 必须捕获 -v1.md 硬编码')
@@ -94,10 +91,7 @@ test('consistency-check ⑩c：分档工具↔角色映射漂移必须报（注�
     writeFileSync(en, readFileSync(en, 'utf8').replace('| T4 analyst / T5 writer |', '| T4 analyst / T5 writer / T6 critical / T9 reviewer |'))
     const r = run([join(R, 'scripts', 'consistency-check.mjs')])
     {
-      // v18.62.4（§8.1 #12）：本门现按严重度分档（含 [P0 …] → 2；仅 P1 → 1）。
-      //   断言**不得假定环境无 P0**——临时仓常缺版本一致性三文件，P0 参与退出码是**正确**行为。
-      const __p0 = /\[P0[ \-\]]/.test(r.out)
-      assert.equal(r.code, __p0 ? 2 : 1, '映射漂移必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
+      assertExitBySeverity(r, '映射漂移必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
     }
     assert.match(r.out, /分档映射漂移/, '⑩c 必须抓出强推理档行多出 T6/T9')
     assert.match(r.out, /subagent_strong/, '⑩c 报错须点名漂移的工具')
@@ -111,10 +105,7 @@ test('consistency-check ⑩c：分档工具↔角色映射漂移必须报（注�
     writeFileSync(mr, readFileSync(mr, 'utf8').replace("tool: 'subagent_audit'", "toolName: 'subagent_audit'"))
     const r = run([join(R, 'scripts', 'consistency-check.mjs')])
     {
-      // v18.62.4（§8.1 #12）：本门现按严重度分档（含 [P0 …] → 2；仅 P1 → 1）。
-      //   断言**不得假定环境无 P0**——临时仓常缺版本一致性三文件，P0 参与退出码是**正确**行为。
-      const __p0 = /\[P0[ \-\]]/.test(r.out)
-      assert.equal(r.code, __p0 ? 2 : 1, '真源不可派生必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
+      assertExitBySeverity(r, '真源不可派生必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
     }
     assert.match(r.out, /分档真源/, '⑩c 派生失败须按 P0 报（否则整条映射门静默失效）')
     rmSync(d, { recursive: true, force: true })
@@ -132,10 +123,7 @@ test('consistency-check ⑩：随包脚本白名单漏列必须报（v18.0.5 补
   writeFileSync(join(R, 'scripts', 'new-tool.mjs'), '// 新增脚本（未登记白名单）\n')
   const r = run([join(R, 'scripts', 'consistency-check.mjs')])
   {
-    // v18.62.4（§8.1 #12）：本门现按严重度分档（含 [P0 …] → 2；仅 P1 → 1）。
-    //   断言**不得假定环境无 P0**——临时仓常缺版本一致性三文件，P0 参与退出码是**正确**行为。
-    const __p0 = /\[P0[ \-\]]/.test(r.out)
-    assert.equal(r.code, __p0 ? 2 : 1, '白名单漏列必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
+    assertExitBySeverity(r, '白名单漏列必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
   }
   assert.match(r.out, /白名单/, '必须点名白名单不一致')
   rmSync(d, { recursive: true, force: true })

@@ -17,34 +17,51 @@
 // ── 边界（如实）──────────────────────────────────────────────────────
 // 只做**一层**变量内联，不递归、不做流敏感分析。表达式里仍有解不出的标识符时判为 `dynamic`，
 // 由调用方如实标注「未静态可判定」，**不假装核过**。
+//
+// ── v18.78.2（全量审计-v18.78.1 B7 修复）：解析前先剥离注释与字符串字面量 ──────────
+//   病灶（审计 B7 探针）：只含注释 `// 历史上本脚本用 process.exit(2) 表示 P0` 与字符串
+//   `"process.exit(7) 只是文档示例"` 的文本（**没有任何真实调用**）→ 本函数返回 `[2,7,10]`。
+//   规则⑧ 的锋芒（新加表外码 / 声明码不在场）因此可被注释与字符串绕过 —— **假红与假绿两个方向都成立**。
+//   修法：`_lib/source-mask.mjs` 的 `maskNonCode()`（等长屏蔽，注释与字符串内容→空格，换行保留）。
+//   为什么等长：诊断输出里的行号/偏移仍可映射回原文件，不必维护第二套坐标。
+//   **边界（如实）**：剥离器是词法层的启发式（正则字面量判定、模板 `${}` 内按代码扫描），
+//   不保证「剥掉的每一段都确实是注释/字符串」；它对「拿不准」的形态一律**按代码处理**，
+//   代价是注释里的码偶尔仍被计入（假红偏向，比漏检安全）。实测自证：本仓 41 个契约脚本上
+//   `process.exit` 探针**零码丢失**（`verifyMaskConsistency`，见 `_lib/source-mask.mjs` 头注释）。
 
-/** 从 guard 模块源码里解析它导出的数字常量（`export const X = 10`）。 */
+import { maskNonCode } from './source-mask.mjs'
+
+/** 从 guard 模块源码里解析它导出的数字常量（`export const X = 10`）。注释里的同形文本不算（B7）。 */
 export function parseGuardConsts(guardText) {
   const m = new Map()
-  for (const x of guardText.matchAll(/export\s+const\s+([A-Za-z_$][\w$]*)\s*=\s*(\d+)\b/g)) m.set(x[1], Number(x[2]))
+  for (const x of maskNonCode(guardText).matchAll(/export\s+const\s+([A-Za-z_$][\w$]*)\s*=\s*(\d+)\b/g)) m.set(x[1], Number(x[2]))
   return m
 }
 
 /**
  * 解析一个脚本里可能出现的退出码。
- * @param {string} text 脚本源码
+ * @param {string} text 脚本源码（**原件**；本函数内部先剥离注释与字符串字面量再解析，见头注释 B7 段）
  * @param {Map<string,number>} guardConsts guard 导出的常量
- * @returns {{resolved:Set<number>, dynamic:boolean, indirectHits:number, exitArgs:string[]}}
+ * @returns {{resolved:Set<number>, dynamic:boolean, indirectHits:number, exitArgs:string[], masked:string}}
  */
 export function resolveExitCodes(text, guardConsts = new Map()) {
+  // B7：注释与字符串字面量在**词法层**先出局 —— 只含 `// process.exit(2)` 的脚本不得再产出码 2。
+  //   `masked` 一并返回：调用方（如 r08 的 phantom 判据）需要「同一份剥离结果」判「声明码是否在场」，
+  //   否则会出现「解析用了剥离文本、在场判据却用全文」的两套口径（两套口径 = 谁先漂都不知道）。
+  const masked = maskNonCode(text)
   const localConsts = new Map()
-  for (const m of text.matchAll(/const\s+([A-Za-z_$][\w$]*)\s*=\s*(\d+)\b/g)) localConsts.set(m[1], Number(m[2]))
+  for (const m of masked.matchAll(/const\s+([A-Za-z_$][\w$]*)\s*=\s*(\d+)\b/g)) localConsts.set(m[1], Number(m[2]))
 
   // 两种写法都看：`process.exit(N)` / `process.exitCode(N)`（调用）与 `process.exitCode = N`（赋值）
   const exitArgs = [
-    ...[...text.matchAll(/process\.exit(?:Code)?\(([^)]*)\)/g)].map((m) => m[1].trim()),
-    ...[...text.matchAll(/process\.exitCode\s*=\s*([^;\n]+)/g)].map((m) => m[1].trim()),
+    ...[...masked.matchAll(/process\.exit(?:Code)?\(([^)]*)\)/g)].map((m) => m[1].trim()),
+    ...[...masked.matchAll(/process\.exitCode\s*=\s*([^;\n]+)/g)].map((m) => m[1].trim()),
   ]
 
   const collectAssignments = (nm) => {
     const esc = nm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const re = new RegExp(`\\b${esc}\\s*=(?!=)\\s*([^\\n;]+)`, 'g') // 排除 == / === / <= 等比较
-    return [...text.matchAll(re)].map((m) => m[1])
+    return [...masked.matchAll(re)].map((m) => m[1])
   }
 
   const resolved = new Set()
@@ -76,5 +93,5 @@ export function resolveExitCodes(text, guardConsts = new Map()) {
       if (unresolved) dynamic = true
     }
   }
-  return { resolved, dynamic, indirectHits, exitArgs }
+  return { resolved, dynamic, indirectHits, exitArgs, masked }
 }

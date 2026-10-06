@@ -9,12 +9,14 @@
 // 运行：node --test tests/ethics-sanitize.test.mjs
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { pathToFileURL } from 'node:url'
 import { join } from 'node:path'
 import { ROOT } from './_fixtures.mjs'
 
 const MOD = await import(pathToFileURL(join(ROOT, 'lib', 'ethics-sanitize.js')).href)
-const { loadDicts, sanitize, MODES } = MOD
+const { loadDicts, sanitize, summarize, MODES } = MOD
 const SKILL = join(ROOT, 'skills', 'lunheng-article-pipeline')
 const dicts = loadDicts(SKILL)
 
@@ -179,5 +181,62 @@ test('E-17 邮箱限长后仍必须识别合法地址（收紧不得变成漏报
   // 多邮箱同现
   const multi = sanitize('联系 zhangsan@company.cn 或 lisi@mail.com', { mode: 'basic', dicts })
   assert.equal(multi.counts.email, 2, '同段多邮箱必须逐个命中')
+})
+
+// ── E-18 / E-19（v18.78.1 全量审计 · 批 5：B10 词表缓存键与「脱敏虚报替换数」）────────────
+
+test('E-18 词表缓存键必须含 dir：两个 skillRoot 的三词表 mtime 相同时不得互相复用（B10 回归）', () => {
+  // 为什么需要：注释自称「缓存键 = skillRoot + 三文件 mtimeMs 指纹」，而原实现只拼了
+  //   `f + ':' + mtimeMs`——`dir` 从不进指纹。于是同进程内先后对两个 skillRoot 调 loadDicts
+  //   （两次安装 / 另一 profile / 测试替身根）时，只要 mtime 相同（同毫秒整、或都缺失 → 全 MISSING），
+  //   后一个根会**静默复用前一个根的词表**，且 missing/degraded 也跟着来自缓存对象
+  //   → 报 degraded:false、「已脱敏」，消费方无从察觉（实测：R2 拿到 R1 的姓氏表，查「钱」为 false）。
+  const base = mkdtempSync(join(tmpdir(), 'lunheng-dicts-'))
+  const makeRoot = (name, surnames, places) => {
+    const dir = join(base, name, 'references', 'dicts')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, '中文姓氏.txt'), surnames.join('\n') + '\n')
+    writeFileSync(join(dir, '人名排除词.txt'), '# 空表\n')
+    writeFileSync(join(dir, '中国行政区划.txt'), places.join('\n') + '\n')
+    const t = new Date('2026-01-01T00:00:00Z')
+    for (const f of ['中文姓氏.txt', '人名排除词.txt', '中国行政区划.txt']) utimesSync(join(dir, f), t, t)
+    return join(base, name)
+  }
+  try {
+    const r1 = makeRoot('rootA', ['赵'], ['北京市\t北京市'])
+    const r2 = makeRoot('rootB', ['钱', '孙', '李'], ['上海市\t上海市'])
+    const d1 = loadDicts(r1)
+    const d2 = loadDicts(r2)
+    assert.notEqual(d2, d1, '不同 skillRoot 必须得到不同缓存条目——同一对象 = 后一个根静默用错词表（B10）')
+    assert.ok(d2.surnames.has('钱'), `第二个根必须读到自己的姓氏表，实得：${[...d2.surnames].join(',')}`)
+    assert.ok(d2.places.has('上海市'), '第二个根必须读到自己的地名表')
+    assert.ok(d1.surnames.has('赵') && !d1.surnames.has('钱'), '第一个根的词表不得被第二个根污染')
+  } finally {
+    rmSync(base, { recursive: true, force: true })
+  }
+})
+
+test('E-19 strict 省级地名「保持原样」不得计入替换数（脱敏虚报替换数回归）', () => {
+  // 省级粒度不足以识别个体 → strict 下**有意保持原样**（见 E-9）。但原实现无条件 counts.place++，
+  //   并把 `{ from:'北京市', to:'北京市' }` 也 push 进 replacements → summary 报「地名 1」而正文一字未动。
+  //   「替换」的语义是 from ≠ to，虚报会让消费方据 summary 误判处理量。
+  const d = {
+    surnames: new Set(),
+    excludes: new Set(),
+    places: new Map([['北京市', '北京市'], ['浙江省', '浙江省'], ['杭州市', '浙江省']]),
+    missing: [],
+  }
+  const src = '他住在北京市，工作在浙江省杭州市。'
+  const strict = sanitize(src, { mode: 'strict', dicts: d })
+  assert.equal(strict.counts.place, 1, `只有「杭州 → 浙江省某地」是一次真实替换，省级两处不得计数；实得 ${strict.counts.place}`)
+  assert.ok(strict.replacements.every((x) => x.from !== x.to),
+    `replacements 不得含 from===to 的伪替换项：${JSON.stringify(strict.replacements)}`)
+  assert.match(strict.text, /浙江省某地/, '非省级地名仍应泛化到上级（收紧不得变成漏做）')
+  assert.match(strict.text, /北京市/, '省级地名仍应保持原样')
+  assert.match(summarize(strict), /地名 1/, `summary 应如实报 1 处地名替换，实得：${summarize(strict)}`)
+  // 对照：basic 模式下三处都是真实替换（不得因本修复而少计）
+  const basic = sanitize(src, { mode: 'basic', dicts: d })
+  assert.equal(basic.counts.place, 3, '对照：basic 模式三处都真的替换了，必须全部计数')
+  assert.equal(basic.replacements.length, 3, '对照：basic 模式三条都进 replacements')
 })
 

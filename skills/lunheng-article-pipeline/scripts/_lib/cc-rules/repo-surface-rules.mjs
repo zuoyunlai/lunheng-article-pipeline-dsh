@@ -1,9 +1,14 @@
-// ⑧ patch+examples 版本引用 / ⑨ .dsh 双写同步 / ㉑ 五语 README 镜像 / ㉒ 锚点存在 / ㉓ 阈值总表 + 门模块目录 / ㉖ .md BOM 检测
+// ⑧ patch+examples 版本引用 / ⑨ .dsh 双写同步 / ㉑ 五语 README 镜像 / ㉒ 锚点存在 / ㉓ 阈值总表 + 门模块目录 / ㉝ 脚本数外泄 / ㉞ .md BOM 检测 / ㉟ 规则登记表自洽
 // v18.3.1（审计 B2 阶段 3）：从 consistency-check.mjs 按规则族抽离，行为逐字等价（回归测试的
 //   注入验证用例 + 真源仓库自跑兜底）。共享态（errors / 派生源 / 版本真源等）由主脚本构建 ctx 传入。
+// v18.78.2（全量审计 A2）：**本模块两条规则此前用了别处已占用的编号**（㉕ 与 `content-rules.mjs` 的
+//   「㉕ 命令数口径」撞号、㉖ 与「㉖ 子技能版本一致性」撞号）——而后者才是 `consistency-check.mjs`
+//   头清单登记的那两条（本模块这两条**从未进头清单**，正是「清单漏项 → 编号重号」的成因）。
+//   现改为 ㉝/㉞，并由新增的 ㉟ 机械保证「登记表 ↔ 模块标签」双向覆盖 + 编号唯一。
 import { readFileSync, readdirSync, statSync, existsSync, writeFileSync, copyFileSync, openSync, readSync, closeSync } from 'node:fs'
-import { join, relative, dirname } from 'node:path'
+import { join, relative, dirname, basename } from 'node:path'
 import { pathKey } from '../destructive-write.mjs'   // v18.12.0（L-53）：镜像自比护栏的路径归一真源
+import { RULE_REGISTRY, RULE_MAIN, RULE_COUNTS } from './rule-registry.mjs'   // v18.78.2（A2）：规则登记表 = 主规则清单唯一真源
 
 // ⑧ cordis.patch.yml + examples/ 版本引用（v2.5.2-dsh.5 审计新增：防安装文档指向未发布版本）
 export function runRepoSurfaceRules(ctx) {
@@ -207,7 +212,9 @@ if (gateModMissing) {
   errors.push('[P0 派生源失效] scripts/_lib/mgate-gates/ 门模块目录不存在——B2 阶段 1 拆分被回退或目录被误删，M 门项数派生将失真，请恢复');
 }
 
-// ㉕ 脚本数次级数字外泄扫描（v18.9.0 实战反哺补丁 / 2026-09-23）
+// ㉝ 脚本数次级数字外泄扫描（v18.9.0 实战反哺补丁 / 2026-09-23）
+//   **v18.78.2（全量审计 A2）：编号由 ㉕ 改为 ㉝**——原编号与 `content-rules.mjs` 的「㉕ 命令数口径」撞号，
+//   而后者才是 `consistency-check.mjs` 头清单登记的那一条（本规则从未进头清单 = 「清单漏项」的同族）。
 //   背景：v18.8.x 实战改 SKILL.md 白名单「15 → 16」时，consistency-check 只查 SKILL.md 那一行
 //   （白名单字段），**SECURITY.md / DSH-集成方案.md / AGENTS.md / docs/审计与修订记录/* 等次级文档里
 //   散落的脚本数字不查**——如 SECURITY.md line 29「15 个 .mjs」、DSH-集成方案.md line 4「15 个门禁脚本」、
@@ -224,7 +231,7 @@ if (gateModMissing) {
   const skillContent = skillText || readFileSync(skillPath, 'utf8');
   const wlLine = skillContent.split('\n').find((l) => /随包脚本白名单/.test(l));
   if (!wlLine) {
-    errors.push('[P0 白名单失效] SKILL.md 未找到「随包脚本白名单」行 — 规则 ㉕ 失效即静默放行');
+    errors.push('[P0 白名单失效] SKILL.md 未找到「随包脚本白名单」行 — 规则 ㉝ 失效即静默放行');
   } else {
     // 数字：行内第一个 N 个
     const numMatch = wlLine.match(/(\d+)\s*个/);
@@ -281,7 +288,8 @@ if (gateModMissing) {
   }
 }
 
-// ㉖ 全仓库 .md BOM 检测（v18.9.0 反哺 / 审计 B+1 增补 / 教训 #2026-09-24）
+// ㉞ 全仓库 .md BOM 检测（v18.9.0 反哺 / 审计 B+1 增补 / 教训 #2026-09-24）
+//   **v18.78.2（全量审计 A2）：编号由 ㉖ 改为 ㉞**——原编号与 `content-rules.mjs` 的「㉖ 子技能版本一致性」撞号。
 //   · 背景：`edit` 工具在含 UTF-8 BOM（EF BB BF）的 .md 文件上做行 1 字符串替换时，
 //     会静默注入 `\ufeff` 到新行首；v18.9.0 apply 时波及 95 个文件（仓库 50 + 镜像 45）。
 //   · 教训：纯靠人眼 `read` 看不到 BOM（首字节被 read 工具吞掉），必须字节级扫描；
@@ -295,7 +303,7 @@ if (gateModMissing) {
 //   `join(REPO_ROOT, '..', '.dsh', 'skills', …)`。**两条口径指向不同目录**：
 //     本机实测 `<仓库根>/.dsh/...` → 指向**仓库内的** .dsh（**不存在**）
 //     而 ⑨ 的 `<仓库根>/../.dsh/...` → 指向**工作区级**的 .dsh（**存在，就是真镜像**）
-//   → 于是**规则 ㉖ 的镜像半在这一布局下被 `continue` 静默跳过**：仓库侧 BOM 扫得到、镜像侧从不扫。
+//   → 于是**规则 ㉞ 的镜像半在这一布局下被 `continue` 静默跳过**：仓库侧 BOM 扫得到、镜像侧从不扫。
 //   而按本规则自己的背景（`:286`），v18.9.0 那次 BOM 事故**波及 95 个文件 = 仓库 50 + 镜像 45**
 //   —— **镜像恰是重灾区**，却正是被静默跳过的半边。这与「门比被它守的东西更不可靠」是同一种病。
 //   修法：**不再另写路径**，复用 ⑨ 已带自比护栏的 `dshSkillDir`（单一真源）。
@@ -324,6 +332,79 @@ for (const baseDir of [REPO_ROOT, dshSkillDir]) {
             errors.push(`[P1 BOM 污染] ${rel} 首 3 字节为 UTF-8 BOM（EF BB BF）——edit 工具静默注入残留，须二进制剔除前 3 字节`);
           }
         } finally { closeSync(fd); }
+      }
+    }
+  }
+}
+
+// ㉟ 一致性规则登记表自洽（v18.78.2 · 全量审计-v18.78.1 **A2**）
+//   为什么立它：A2 的注入实证——把 `glossary.md` 的「31 类主规则」改成「99 类主规则」，本脚本仍 **exit 0**；
+//     而「规则数」这一事实在 v18.2.6 / v18.18.0 / v18.22.1 / v18.78.0 **四次**被审计抓到不一致（加规则忘改数字）。
+//   修法：主规则清单的**唯一真源 = `_lib/cc-rules/rule-registry.mjs`（登记表）**，计数由其派生；
+//     文档（脚本头注释 / glossary / quick-facts）**只许指向它、不再写数字**——不写就不会漂。
+//   本规则把两件事机械化：
+//     ① **编号唯一**：同一编号不得被两个模块占用（v18.78.2 实测 ㉕/㉖ 各被两个模块占用 → 已改 ㉝/㉞）；
+//     ② **双向覆盖**：登记表每个 id 必须在其 `module` 声明的模块里有**规则级标签**；
+//        模块里出现的规则级标签（无字母后缀）必须都在登记表里 ——「加了规则忘登记」「标签被删」即报。
+//   判据（规则级标签的形态，**刻意收窄**）：注释行以 `// ` 起（允许行首缩进）后**紧跟**编号
+//     （或 `// ── ` 装饰后紧跟编号），编号后是空白或 `：`。**内层枚举**（`//   ① …`，即 `// ` 后还有空格）
+//     **不算**规则级标签——实测这正是本仓的写法分野，故不必靠「语义」区分（也就不会因为内层枚举误报）。
+//   边界（如实声明）：
+//     · 只认**无字母后缀**的编号；子规则（②a/③b/④b/⑥b/⑥c/⑩b/⑩c/⑩d…）刻意不登记（理由见登记表头注释）。
+//     · 跳过每个模块的**第 1 行**（模块头注释按惯例罗列多个编号，不是规则级标签）。
+//     · 本检查**不判断规则是否真的在跑**——那由各规则自己与 A6 的真源存在性负责。
+{
+  const modDir = join(ROOT, 'scripts', '_lib', 'cc-rules')
+  const mainScript = join(ROOT, 'scripts', 'consistency-check.mjs')
+  const LABEL_RE = /^\s*\/\/ (?:── )?([①-⑳㉑-㉟㊱-㊿])([a-z]?)[\s：]/
+  // 扫描面 = 主脚本 + 全部规则族模块（①-⑦/㉔ 的实装在主脚本里，只扫 `_lib/cc-rules/` 会漏掉它们——
+  //   首版即踩此坑，由 ㉟ 自己的「登记表失真」报错当场抓出：8 条规则被误判为「模块里找不到标签」）。
+  const scanList = [
+    ...(existsSync(mainScript) ? [mainScript] : []),
+    ...(existsSync(modDir) ? readdirSync(modDir).filter((x) => x.endsWith('.mjs')).map((f) => join(modDir, f)) : []),
+  ]
+  if (!existsSync(modDir) || !existsSync(mainScript)) {
+    errors.push('[P0 规则失效] ㉟ 的真源（scripts/consistency-check.mjs 与 scripts/_lib/cc-rules/）不完整——登记表自洽检查无法运行，**不得读成通过**')
+  } else {
+    const found = new Map()   // id → Set<模块文件名>
+    for (const p of scanList) {
+      const f = basename(p)
+      readFileSync(p, 'utf8').split('\n').forEach((l, i) => {
+        if (i === 0) return                      // 模块头注释：按惯例罗列多个编号
+        const m = l.match(LABEL_RE)
+        if (!m || m[2]) return                   // 带字母后缀 = 子规则，刻意不进登记表
+        if (!found.has(m[1])) found.set(m[1], new Set())
+        found.get(m[1]).add(f)
+      })
+    }
+    const registered = new Set(RULE_MAIN)
+    const dup = [...found].filter(([, mods]) => mods.size > 1).map(([id, mods]) => `${id}（${[...mods].join(' / ')}）`)
+    if (dup.length) {
+      errors.push(`[P1 规则编号重号] ${dup.join('、')}——同一编号被多个模块占用；编号是文档与脚本互指的锚点，重号即失去唯一所指。**两种成因**：① 真重号（改编号并同步登记表）；② **内层枚举**被写成了规则级标签形态（「// 编号空格」起头）——内层枚举请改用「// · 编号空格」或「// 三空格编号空格」（登记表 = scripts/_lib/cc-rules/rule-registry.mjs）`)
+    }
+    const noLabel = RULE_REGISTRY.filter((r) => !(found.get(r.id) || new Set()).has(r.module)).map((r) => `${r.id}→${r.module}`)
+    if (noLabel.length) {
+      errors.push(`[P1 登记表失真] ${noLabel.join('、')}——登记表声明该规则实装在此模块，但模块内找不到它的**规则级标签**（形如 \`// <编号> …\`）。修法二选一：补标签，或改登记表的 \`module\``)
+    }
+    const unregistered = [...found.keys()].filter((id) => !registered.has(id))
+    if (unregistered.length) {
+      errors.push(`[P1 规则未登记] ${unregistered.join('、')}——模块里有规则级标签却不在登记表里（「加规则忘登记」正是四次计数漂移的成因）。修法：在 scripts/_lib/cc-rules/rule-registry.mjs 补一行（id / module / what）`)
+    }
+    if (!dup.length && !noLabel.length && !unregistered.length && found.size !== RULE_COUNTS.main) {
+      errors.push(`[P1 规则计数派生不一致] 登记表主规则 ${RULE_COUNTS.main} 条，而模块里实测到 ${found.size} 个规则级标签——两者必须相等（登记表内重复登记 id 也会触发本条）`)
+    }
+    // （五）`docs/quick-facts.md` 的「N 类主规则」= **唯一受门约束的手写副本**（其余文档只许指向登记表）。
+    //   为什么留这一个副本：该卡的全仓定位就是「把所有硬数字集中到一处」（用户文档只引本卡），
+    //   故对它采用「写数字 + 有门」而非「不写数字」；A2 的注入实证正是改这个数字而门不报。
+    //   ⚠️ 本行注释刻意**不写成 `// ⑤ …`**——那正是规则级标签形态，会被 ㉟ 自己当成「⑤ 重号」报出
+    //   （首版即踩：㉟ 首次运行就报了 `⑤（consistency-check.mjs / repo-surface-rules.mjs）`）。
+    const qfPath = join(REPO_ROOT, 'docs', 'quick-facts.md')
+    if (existsSync(qfPath)) {
+      const m = readFileSync(qfPath, 'utf8').match(/(\d+)\s*类主规则/)
+      if (m && Number(m[1]) !== RULE_COUNTS.main) {
+        errors.push(`[P1 规则数口径漂移] docs/quick-facts.md 写「${m[1]} 类主规则」，登记表派生值 = ${RULE_COUNTS.main}`)
+      } else if (!m) {
+        errors.push('[P2 规则数口径] docs/quick-facts.md 未见「N 类主规则」——该卡是全仓硬数字汇总点，规则数请写「N 类主规则（真源 = rule-registry.mjs）」')
       }
     }
   }

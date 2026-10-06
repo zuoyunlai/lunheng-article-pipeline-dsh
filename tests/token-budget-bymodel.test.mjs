@@ -23,16 +23,18 @@ test('token-budget --by-model：单独使用即算一个模式（不得因缺 --
   assert.notEqual(r.code, 10, '--by-model 是合法模式：' + r.out.slice(-300))
 })
 
-test('token-budget --by-model：输出含两段表 + M/步口径（本机有缓存时）', () => {
-  if (!hasCache) return   // CI 无投影缓存 → 该断言无用例价值
+test('token-budget --by-model：输出含两段表 + M/步口径（本机有缓存时）', (t) => {
+  // v18.78.1（A7）：环境不满足必须**可见 skip**——裸 `return` 会被 node:test 记成 pass（CI 上零断言却显示绿）。
+  if (!hasCache) return t.skip('本机无 session_projcache 投影缓存（CI）——byModel 两段表无数据可判')
   const r = run([TB, '--roles', '--by-model'])
   assert.match(r.out, /## 四、按模型/, '必须有「按模型」段')
   assert.match(r.out, /## 五、按角色 × 模型/, '必须有「按角色×模型」段')
   assert.match(r.out, /观测性，非受控 A\/B/, '标题必须如实标注它不是受控 A/B')
 })
 
-test('token-budget --by-model --json：必须有 byModel / byRoleModel 两个数组', () => {
-  if (!hasCache) return
+test('token-budget --by-model --json：必须有 byModel / byRoleModel 两个数组', (t) => {
+  // v18.78.1（A7）：同上——环境不满足必须**可见 skip**，不得让裸 `return` 记成 pass。
+  if (!hasCache) return t.skip('本机无 session_projcache 投影缓存（CI）——byModel/byRoleModel 契约无数据可判')
   const j = parseJson(run([TB, '--roles', '--by-model', '--json']))
   assert.ok(Array.isArray(j.byModel), 'byModel 必须是数组')
   assert.ok(Array.isArray(j.byRoleModel), 'byRoleModel 必须是数组')

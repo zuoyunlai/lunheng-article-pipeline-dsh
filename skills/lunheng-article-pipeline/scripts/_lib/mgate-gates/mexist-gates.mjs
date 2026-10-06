@@ -12,6 +12,33 @@ import { createHash } from 'node:crypto'   // v18.12.0（L-15）：M-Exist-2 复
 import { refsOf, dataCardIds, expandRefRanges } from '../refs.mjs'
 import { latestReport, reportByNumber, tableCells, isSeparatorRow, walkMd, sectionRange } from '../mgate-helpers.mjs'
 
+// ── v18.78.2（全量审计-v18.78.1 A5）：**N/A ≠ 通过** ────────────────────────────────────────
+//   病灶（审计实测 + 本次复核）：M-Exist-4/5/6/7/8/9 的「N/A 未检」分支记 `pass: true, severity: '通过'`，
+//   而同族 M-Exist-10（:1309）/ M-Exist-11（:1645/:1657）早已改 `pass: 'SKIP'`（→ exit 3）。
+//   后果：`rm audits/审计报告-*.md` / `rm audits/审稿报告-*.md` / `rm final/交付说明.md` /
+//   `rm analysis/批判报告-*.md` 即可把 6 道**实检**门退回「通过」，退出码无任何信号
+//   （无 SKIP、无 P0/P1）——正是本仓 ⑩/⑳ 明文禁止的「规则失效即静默放行」。
+//   处置 ①（本处）：6 处统一改 `pass: 'SKIP', severity: 'SKIP'` —— exit 3 = **需人工复核，不得当通过**
+//   （exit 契约见 m-gate-check.mjs 头部：0 通过 / 1 P1 / 2 P0 / 3 仅 P2·soft·SKIP）。
+//   处置 ②（本处）：补一条**只升不降**的升档，防「删文件成为通行手段」——当下游阶段产物已证明
+//   Phase 4 发生过（`final/定稿.md` 在场 ⇒ Phase 5 已开始 ⇒ T7.5 闸门「审计报告 + M 门全 exit 0」
+//   必已通过 ⇒ **审计报告必然存在过**）而报告却不在，那就不是「阶段未到」而是**被删/改名/移出** → 判 **P1**。
+//   **为什么这三项刻意不升档**（如实声明边界，防假红）：
+//     · M-Exist-6 —— T9 按 `references/_shared/文类档案.md` 本就可选（`academic-cn/-hum/-case` 必选、其余默认不选），
+//       「无审稿报告」在合法配置下是常态；
+//     · M-Exist-8 —— 轻量档（2000-3000 字）**一律跳过** Phase 3.6；
+//     · M-Exist-7 —— T8 先写 `final/定稿.md` 再写 `final/交付说明.md`，定稿在场而交付说明缺席是**正常中间态**。
+function phase4Proven(draftPath) {
+  try { return existsSync(join(dirname(dirname(draftPath)), 'final', '定稿.md')); } catch { return false; }
+}
+/** 「审计报告缺席」的如实结论：阶段未到 → SKIP（未检、可见）；阶段已到 → P1（报告被移出）。 */
+function auditAbsentResult(draftPath, gate, what) {
+  if (phase4Proven(draftPath)) {
+    return { gate, pass: false, severity: 'P1', detail: `阶段已到却**缺 ${what}**：final/定稿.md 在场（Phase 5 已开始 ⇒ T7.5 闸门必已通过 ⇒ 该报告必然存在过）→ 缺它只能是被删/改名/移出，**不得读成 N/A**` };
+  }
+  return { gate, pass: 'SKIP', severity: 'SKIP', detail: `N/A 且**未检**：尚未进入 Phase 4（无 ${what}）——**不得读成通过**（exit 3 需人工复核）` };
+}
+
 // === M-Exist-1 文末四节双向对比（v2.5.2-dsh.5 脚本化 + 严重度评级）===
 export function mExist1(ctx) {
   const { firstIdx, bodyProse, endnote, refRe, norm, THRESHOLDS, results, draftPath } = ctx;
@@ -202,7 +229,7 @@ try {
     ? readdirSync(join(projectDir2, 'drafts')).filter((f) => /^修订说明-.*\.md$/.test(f)) : [];
 
   if (!audit) {
-    results.push({ gate: 'M-Exist-4 审计条目闭环', pass: true, detail: 'N/A：尚无审计报告（未进入 Phase 4）', severity: '通过' });
+    results.push(auditAbsentResult(draftPath, 'M-Exist-4 审计条目闭环', '审计报告'));
   } else {
     const text = readFileSync(audit.path, 'utf8');
     const lines = text.split('\n');
@@ -347,7 +374,7 @@ try {
   const hasAudit5 = !!latestReport(auditsDir5, '审计报告');
   const tplPath5 = join(skillRoot, 'references', 'templates', '闸门记录-template.md');
   if (!hasAudit5) {
-    results.push({ gate: 'M-Exist-5 阶段闸门记录表', pass: true, detail: 'N/A：尚无审计报告（未进入 Phase 4，闸门记录留待 T7.5）', severity: '通过' });
+    results.push(auditAbsentResult(draftPath, 'M-Exist-5 阶段闸门记录表', '审计报告'));
   } else if (!auditsDir5) {
     results.push({ gate: 'M-Exist-5 阶段闸门记录表', pass: false, detail: '找不到 audits/ 目录，无法定位闸门记录', severity: 'ERROR' });
   } else {
@@ -696,7 +723,8 @@ try {
   const auditsDir6 = auditsDirOf();
   const latest6 = latestReport(auditsDir6, '审稿报告');
   if (!latest6) {
-    results.push({ gate: 'M-Exist-6 审稿报告与期刊匹配', pass: true, detail: 'N/A：无审稿报告（T9 未启用或未到 Phase 4.5）', severity: '通过' });
+    // v18.78.2（A5）：未检 ≠ 通过；**刻意不升 P1**（T9 按文类档案本就可选，升档即假红——理由见文件头「A5」段）。
+    results.push({ gate: 'M-Exist-6 审稿报告与期刊匹配', pass: 'SKIP', detail: 'N/A 且**未检**：无审稿报告（T9 未启用或未到 Phase 4.7）——**不得读成通过**（exit 3 需人工复核）', severity: 'SKIP' });
   } else {
     const rt = readFileSync(latest6.path, 'utf8');
     const findings6 = [];
@@ -991,7 +1019,8 @@ try {
     ['终检结论', /终检结论/], ['投稿就绪', /投稿就绪/], ['主人决策记录', /主人决策记录/],
   ];
   if (!existsSync(ddPath)) {
-    results.push({ gate: 'M-Exist-7 交付说明字段齐备', pass: true, detail: 'N/A：尚无 final/交付说明.md（T8 尚未开始交付）', severity: '通过' });
+    // v18.78.2（A5）：未检 ≠ 通过；**刻意不升 P1**（T8 先写定稿再写交付说明，此为正常中间态——理由见文件头「A5」段）。
+    results.push({ gate: 'M-Exist-7 交付说明字段齐备', pass: 'SKIP', detail: 'N/A 且**未检**：尚无 final/交付说明.md（T8 未开始交付，或正处于「定稿已写、交付说明未写」的中间态）——**不得读成通过**（exit 3 需人工复核）', severity: 'SKIP' });
   } else {
     const dt = readFileSync(ddPath, 'utf8');
     const dl = dt.split('\n');
@@ -1107,7 +1136,8 @@ try {
   const revDirs = [join(projDir8c, 'analysis'), join(projDir8c, 'audits'), dirname(draftPath)];
   const latestRevPath = revDirs.map((d) => latestReport(d, '批判报告')).find(Boolean) || null;
   if (!latestRevPath) {
-    results.push({ gate: 'M-Exist-8 批判报告覆盖', pass: true, detail: 'N/A：无批判报告（轻量档跳过 Phase 3.6 或尚未到该阶段）', severity: '通过' });
+    // v18.78.2（A5）：未检 ≠ 通过；**刻意不升 P1**（轻量档一律跳过 Phase 3.6——理由见文件头「A5」段）。
+    results.push({ gate: 'M-Exist-8 批判报告覆盖', pass: 'SKIP', detail: 'N/A 且**未检**：无批判报告（轻量档跳过 Phase 3.6 或尚未到该阶段）——**不得读成通过**（exit 3 需人工复核）', severity: 'SKIP' });
   } else {
     const rt8 = readFileSync(latestRevPath.path, 'utf8');
     const rl8 = rt8.split('\n');
@@ -1178,7 +1208,7 @@ try {
 
 // === M-Exist-9 审计报告 G 项覆盖（v2.5.2-dsh.17 新增）===
 export function mExist9(ctx) {
-  const { auditsDirOf, results } = ctx;
+  const { draftPath, auditsDirOf, results } = ctx;
 // 依据：07 卡把「审计报告里的 G0-G14 检查项是否全覆盖」列为**验收标准**，quickref 要求
 //   「必查项逐条执行，缺一不可」——**但没有任何脚本核过覆盖**。实测风险：审计报告只写了
 //   G1-G7，G11（时效）/G12（信任级别）/G14（中文 AI 痕迹）整段缺席，报告读起来仍像「全项检查」。
@@ -1190,7 +1220,7 @@ try {
   const auditsDir9 = auditsDirOf();
   const latest9 = latestReport(auditsDir9, '审计报告');
   if (!latest9) {
-    results.push({ gate: 'M-Exist-9 审计报告 G 项覆盖', pass: true, detail: 'N/A：尚无审计报告（未进入 Phase 4）', severity: '通过' });
+    results.push(auditAbsentResult(draftPath, 'M-Exist-9 审计报告 G 项覆盖', '审计报告'));
   } else {
     const at9 = readFileSync(latest9.path, 'utf8');
     const G_MAIN = ['G0', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9', 'G10', 'G11', 'G12', 'G13', 'G14'];

@@ -13,9 +13,17 @@
  *      （排除 `http(s):` / `mailto:` / `#锚点`）。
  *      **边界**：裸文件名（如 `` `m-gate-check.mjs` ``）**不解析**——它在文档里是「脚本名」而不是路径
  *      （本包的约定是 `node scripts/<名>.mjs`），强行解析只会制造假断链；目录引用（以 `/` 结尾）同理。
- *   ② **解析顺序**：技能根 → **引用所在文件的目录**（相对引用）→ 仓库根（`lib/`、`cordis.patch.yml`、
- *      `docs/…` 这类包级路径）→ 技能根的 `scripts/` 与 `references/`（本包文档大量省略这两个前缀）。
- *      任一命中即算「在盘」。
+ *   ② **解析顺序分两条通道**（v18.78.2 · 全量审计 A3 修复——旧版对**所有**引用一律试五个候选根）：
+ *      · **Markdown 链接 `[..](href)`**：**只按「引用所在文件的目录」解析**（CommonMark 口径——读者点它时
+ *        由**渲染器**按该文件自身位置解析，GitHub / npm 页面同理）。旧版用五候选根放行了**实测 7 条真实 404**：
+ *        `SKILL.md` 的 `_shared/DSH-集成方案.md`（链接文字写的是 `references/_shared/…`，href 少一层）、
+ *        两个**任务简报模板**的 `_shared/文类档案.md`（模板会被**逐字复制进每份任务简报**）、
+ *        `references/_shared/期刊数据库.md` 的 `../scripts/journal-fit.mjs`、`references/pipeline-readme.md`
+ *        与 `references/_shared/DSH-集成方案.md` 的 `examples/workflow/…`、`SKILL.md` 的 `docs/usage.md`
+ *        （后三者少一层目录）——门却打印「✓ 无未归类断链」。
+ *      · **反引号 code span 里的裸路径**：技能根 → **引用所在文件的目录** → 仓库根（`lib/`、
+ *        `cordis.patch.yml`、`docs/…` 这类包级路径）→ 技能根的 `scripts/` 与 `references/`
+ *        （本包文档大量省略这两个前缀）——**这才是五候选根的真实用途**。任一命中即算「在盘」。
  *   ③ **未命中不等于断链**——必须再分类，只有**归类不了的**才算断链：
  *      · **运行期产物**（`final/ drafts/ audits/ analysis/ literature/ data/ cases/ case-studies/ memory/ run/`）：
  *        它们在**用户的项目目录** `run/<项目>/` 下生成，永不随包 → 放行；
@@ -95,7 +103,9 @@ export const SUSPECT = new Map([
   // v18.62.4（全量审计-v18.62.3 §8.3 #37）：**去掉会腐烂的 `:308-315` 行号**。
   //   病灶：该引用当年指 `consistency-check.mjs` 的 `repoTargets`，随后续批次插入内容已漂到 `:425`
   //   ——**注释在说谎**，且没有门会发现（规则 ⑪ 只禁 `lib/**.js:LINE` 形态的**发布面**引用，
-  //   管不到仓库脚本注释里的互指）。实测全库同类引用共 9 处，这条是唯一已确认腐烂的。
+  //   管不到仓库脚本注释里的互指）。**实测数（v18.78.2 · 全量审计 B8 复核）：全库同类引用 20 处 / 16 个文件**
+  //   ——已由规则 ⑪' 的**脚本注释面棘轮**覆盖（数字真源 = `scripts/_lib/lib-line-refs.mjs` 的
+  //   `SCRIPT_COMMENT_REF_BASELINE`；本行旧文写的「9 处」是当年的实测，现按「数字只写真源指针」收敛）。
   //   修法：**按符号名定位**（`repoTargets` 可直接 grep；改名时能连带发现），不再写行号——
   //   位置会漂，名字不会。
   ['skills/README.md', '`consistency-check.mjs` 的**内部登记名**（其 `repoTargets` 把它解析为 `skills/lunheng-article-pipeline/README.md`，磁盘上确无 `skills/README.md`）；引用处用的是脚本标签，属命名口径不一致而非文件缺失。建议脚本与文档统一为真实路径'],
@@ -117,11 +127,12 @@ function walkMd(dir, out = []) {
  */
 export function scan() {
   const files = walkMd(SKILL_ROOT)
-  /** token → Set<引用它的文件（相对技能根）> */
+  /** token → Map<`${from}\u0000${kind}`, {from, kind}>（同一 token 可能**既是 code span 又是 md 链接**，
+   *  两者判定通道不同，故按「引用点」而不是按「token」记账）。 */
   const refs = new Map()
-  const add = (token, from) => {
-    if (!refs.has(token)) refs.set(token, new Set())
-    refs.get(token).add(from)
+  const add = (token, from, kind) => {
+    if (!refs.has(token)) refs.set(token, new Map())
+    refs.get(token).set(from + '\u0000' + kind, { from, kind })
   }
   for (const abs of files) {
     const from = relative(SKILL_ROOT, abs).split(sep).join('/')
@@ -129,14 +140,14 @@ export function scan() {
     // 反引号 code span（单行）：只取「像路径」的 token（含 `/` + 扩展名白名单 + 不是命令行/占位符/通配符）
     for (const m of text.matchAll(/`([^`\n]+)`/g)) {
       const t = m[1].trim()
-      if (t.includes('/') && EXT_RE.test(t) && !NOT_A_PATH_RE.test(t)) add(t, from)
+      if (t.includes('/') && EXT_RE.test(t) && !NOT_A_PATH_RE.test(t)) add(t, from, 'code')
     }
     // markdown 链接目标
     for (const m of text.matchAll(/\[[^\]]*\]\(([^)\s]+)\)/g)) {
       const t = m[1].trim()
       if (/^(?:https?:|mailto:|#)/i.test(t)) continue
       if (!EXT_RE.test(t) || NOT_A_PATH_RE.test(t)) continue
-      add(t, from)
+      add(t, from, 'md')
     }
   }
 
@@ -149,38 +160,50 @@ export function scan() {
   const usedCross = new Set()
   const usedSuspect = new Set()
 
-  for (const [token, sources] of [...refs].sort((a, b) => a[0].localeCompare(b[0]))) {
-    const from = [...sources][0]
+  const clsSeen = new Set()
+  const pushOnce = (arr, key, item) => {
+    if (clsSeen.has(key)) return
+    clsSeen.add(key)
+    arr.push(item)
+  }
+  for (const [token, insts] of [...refs].sort((a, b) => a[0].localeCompare(b[0]))) {
     const raw = token.split('#')[0]
     if (!raw) continue
-    const candidates = [
-      resolve(SKILL_ROOT, raw),                        // ① 技能根
-      resolve(dirname(join(SKILL_ROOT, from)), raw),    // ② 引用所在文件的目录（相对引用）
-      resolve(REPO_ROOT, raw),                          // ③ 仓库根（包级路径）
-      resolve(SKILL_ROOT, 'scripts', raw),              // ④ 省略 `scripts/` 前缀的写法
-      resolve(SKILL_ROOT, 'references', raw),           // ⑤ 省略 `references/` 前缀的写法
-    ]
-    if (candidates.some((c) => existsSync(c))) continue
+    for (const { from, kind } of insts.values()) {
+      // ② 两条通道（v18.78.2 · 全量审计 A3）：Markdown 链接只按**引用所在文件的目录**解析（渲染器口径）；
+      //   反引号裸路径才试五个候选根（本包文档大量省略 `scripts/`、`references/` 前缀，那才是它的用途）。
+      const candidates = kind === 'md'
+        ? [resolve(dirname(join(SKILL_ROOT, from)), raw)]
+        : [
+            resolve(SKILL_ROOT, raw),                        // ① 技能根
+            resolve(dirname(join(SKILL_ROOT, from)), raw),    // ② 引用所在文件的目录（相对引用）
+            resolve(REPO_ROOT, raw),                          // ③ 仓库根（包级路径）
+            resolve(SKILL_ROOT, 'scripts', raw),              // ④ 省略 `scripts/` 前缀的写法
+            resolve(SKILL_ROOT, 'references', raw),           // ⑤ 省略 `references/` 前缀的写法
+          ]
+      if (candidates.some((c) => existsSync(c))) continue
+      const key = token + '\u0000' + from
+      const head = raw.split('/')[0]
+      // 跨技能（前缀白名单）
+      const crossPrefix = CROSS_SKILL_PREFIXES.find(([pre]) => raw.startsWith(pre))
+      if (crossPrefix) { pushOnce(crossSkill, key, [token, from, crossPrefix[1]]); usedCross.add(crossPrefix[0]); continue }
+      if (CROSS_SKILL_EXACT.has(raw)) { pushOnce(crossSkill, key, [token, from, CROSS_SKILL_EXACT.get(raw)]); usedCross.add(raw); continue }
+      // 墓碑（整串或按文件名后缀匹配）
+      const tombKey = [...TOMBSTONES.keys()].find((k) => raw === k || raw.endsWith('/' + k))
+      if (tombKey) { pushOnce(tomb, key, [token, from, TOMBSTONES.get(tombKey)]); usedTomb.add(tombKey); continue }
+      // 存疑
+      if (SUSPECT.has(raw)) { pushOnce(suspect, key, [token, from, SUSPECT.get(raw)]); usedSuspect.add(raw); continue }
+      // 运行期产物（首段命中，且**不是**以本包顶层目录名伪装的真实路径）
+      if (RUNTIME_ROOTS.has(head)) { pushOnce(runtime, key, [token, from]); continue }
 
-    const head = raw.split('/')[0]
-    // 跨技能（前缀白名单）
-    const crossPrefix = CROSS_SKILL_PREFIXES.find(([pre]) => raw.startsWith(pre))
-    if (crossPrefix) { crossSkill.push([token, from, crossPrefix[1]]); usedCross.add(crossPrefix[0]); continue }
-    if (CROSS_SKILL_EXACT.has(raw)) { crossSkill.push([token, from, CROSS_SKILL_EXACT.get(raw)]); usedCross.add(raw); continue }
-    // 墓碑（整串或按文件名后缀匹配）
-    const tombKey = [...TOMBSTONES.keys()].find((k) => raw === k || raw.endsWith('/' + k))
-    if (tombKey) { tomb.push([token, from, TOMBSTONES.get(tombKey)]); usedTomb.add(tombKey); continue }
-    // 存疑
-    if (SUSPECT.has(raw)) { suspect.push([token, from, SUSPECT.get(raw)]); usedSuspect.add(raw); continue }
-    // 运行期产物（首段命中，且**不是**以本包顶层目录名伪装的真实路径）
-    if (RUNTIME_ROOTS.has(head)) { runtime.push([token, from]); continue }
-
-    broken.push([token, from, candidates])
+      pushOnce(broken, key, [token, from, candidates, kind])
+    }
   }
 
   return {
     files: files.length,
     refs: refs.size,
+    instances: [...refs.values()].reduce((n, m) => n + m.size, 0),
     broken,
     runtime,
     crossSkill,
@@ -198,8 +221,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const wantJson = process.argv.includes('--json')
   const r = scan()
   console.log(`\n=== 技能目录断链穷举（link-check）· ${SKILL_ROOT} ===`)
-  console.log(`扫描 ${r.files} 个 .md，提取到 ${r.refs} 条路径型引用\n`)
-  console.log(`· 在盘（技能根/相对/仓库根/省略前缀四种解析）：${r.refs - r.broken.length - r.runtime.length - r.crossSkill.length - r.tomb.length - r.suspect.length} 条`)
+  console.log(`扫描 ${r.files} 个 .md，提取到 ${r.refs} 个路径 token（${r.instances} 处引用点）\n`)
+  console.log(`· 在盘（Markdown 链接按「文件目录」/ 反引号裸路径按五候选根）：${r.instances - r.broken.length - r.runtime.length - r.crossSkill.length - r.tomb.length - r.suspect.length} 条`)
   console.log(`· 运行期产物（run/ final/ drafts/ audits/ analysis/ literature/ data/ cases/ case-studies/ memory/）：${r.runtime.length} 条`)
   console.log(`· 跨技能资源引用（属主 = dsh-plugin-guide / DSH 官方仓库）：${r.crossSkill.length} 条`)
   for (const [t, from, why] of r.crossSkill) console.log(`    - ${t}  ← ${from}（${why}）`)
@@ -212,12 +235,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   if (r.staleSuspect.length) console.log(`⚠ 存疑白名单未触发（可清理）：${r.staleSuspect.join(', ')}`)
   if (r.staleRuntime.length) console.log(`⚠ 运行期根未被任何引用命中：${r.staleRuntime.join(', ')}`)
 
-  if (wantJson) console.log('\n' + JSON.stringify({ files: r.files, refs: r.refs, broken: r.broken.map(([t, f]) => ({ token: t, from: f })) }, null, 2))
+  if (wantJson) console.log('\n' + JSON.stringify({ files: r.files, refs: r.refs, instances: r.instances, broken: r.broken.map(([t, f, , k]) => ({ token: t, from: f, kind: k })) }, null, 2))
 
   if (r.broken.length) {
     console.log(`\n✗ 未归类断链：${r.broken.length} 条（既不在盘，也不属于运行期产物 / 跨技能资源 / 墓碑 / 存疑任一类）`)
-    for (const [t, from, cands] of r.broken) {
-      console.log(`  - ${from} 引用了 \`${t}\`，但以下位置均不存在：`)
+    for (const [t, from, cands, kind] of r.broken) {
+      console.log(`  - ${from} 引用了 \`${t}\`（${kind === 'md' ? 'Markdown 链接：只按文件目录解析' : '反引号裸路径：五候选根解析'}），但以下位置均不存在：`)
       for (const c of cands) console.log(`      ${c}`)
     }
     console.log('\n修法三选一：① 改文档指向真实文件；② 若是有意删除，登记进本脚本的 TOMBSTONES 并写明版本与理由；③ 若是跨技能资源，登记进 CROSS_SKILL_* 并写明属主。')

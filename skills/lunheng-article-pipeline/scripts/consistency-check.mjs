@@ -1,19 +1,26 @@
 // 论衡插件一致性自检脚本（DSH）— 发布/commit 前运行
 // 用法：node scripts/consistency-check.mjs
-// 覆盖 31 类主规则 + 5 个子规则（编号规则见下；子规则 = ④b 占位符残留 / ⑥b M 门项数 /
-//   ⑥c 非 DSH 工具名 / ⑩b 脚本计数 / ⑩c 分档映射）——演进：.5 为 9 类，.13 加 ⑩-⑭，
+// 覆盖的**主规则清单与条数 = 单一真源 `_lib/cc-rules/rule-registry.mjs` 的 `RULE_REGISTRY`**
+//   （v18.78.2 · 全量审计-v18.78.1 **A2**：本处此前手写「N 类主规则 + M 个子规则」，在 v18.2.6 / v18.18.0 /
+//    v18.22.1 / v18.78.0 **四次**被审计抓到数字互不相等；A2 的注入实证更狠——把 `glossary.md` 的
+//    「31 类主规则」改成「99 类」，本脚本仍 exit 0。**现本处不再写任何数字**：不写就不会漂。
+//    规则 **㉟** 机械保证「登记表 ↔ 各模块规则级标签」双向覆盖 + 编号唯一。）
+//   编号规则见下；子规则 = ④b 占位符残留 / ⑥b M 门项数 /
+//   ⑥c 非 DSH 工具名 / ⑩b 脚本计数 / ⑩c 分档映射 / ⑩d 产物 version）——演进：.5 为 9 类，.13 加 ⑩-⑭，
 //   .15 加 ⑮-⑰，.16 加 ⑱，.17 加 ④b + ⑲ + ⑳，18.0.2 加 ⑩b，18.0.3 加 ⑩c，18.2.6 加 ㉒，18.3.1 加 ㉓，
 //   18.12.3 加 ㉔，18.18.0 加 ㉕（由 ⑳ 改名——⑳ 原为同号两义，见下 ㉕），本次审计加 ㉖ + ㉕ 扩枚举对账，
 //   **18.22.1 加 ㉘ + 回填 ㉗**（㉗ 自 18.12.0 实装起一直未进本清单；计数 26 → 28），
 //   **18.34.0 加 ㉙**（G 项主清单口径；计数 28 → 29——㉙ 是 ⑥b **刻意豁免**掉的那块盲区）。
 //   **18.78.0 加 ㉜**（CHANGELOG 新段位 ↔ introduction.md §实战验证段对账；计数 30 → 31——
 //     v18.78.0 文档全量审计 §7.1 立项，动机为 introduction 实战段对账滞后）。
-//   注：旧「24 类」本身少算 1（㉕ 加入时未 +1），本次一并校正为 26。
-//   **本处两个数字（24 类 / 5 个子规则）不做机械门**——改规则时**手工同步**即可：
-//   边界如实声明：脚本无法可靠地从自身文本里数「规则数」（正文里到处是「①-㉕」的引用），
-//   所以这里只做**人工同步 + 注释留痕**，不做派生（v18.2.6 审计修复：旧文写「21 类 + 4 个子规则」，
-//   实测子规则是 5 个——⑥c 从未被列入清单，属「清单漏项」而非规则缺失；
-//   v18.18.0 审计修复：旧文写「23 类」而清单已到 ㉔ = 24 类，属「加规则忘改数字」，本次一并校正）。
+//   （v18.78.2 · A2 收口）旧版本此处写过「注：旧『24 类』本身少算 1…校正为 26」与
+//   「**本处两个数字不做机械门**——改规则时手工同步即可」，并如实声明「脚本无法可靠地从自身文本里数规则数
+//   （正文里到处是『①-㉕』的引用），故只做人工同步 + 注释留痕」。**这段自我豁免正是四次复发的机制**：
+//   人工同步在「加规则」这个高频动作上必然漏。现处置为「**把规则清单上提为代码登记表**」
+//   （`_lib/cc-rules/rule-registry.mjs`）+ 规则 ㉟ 双向对账 + 编号唯一——原来的两难（文本里数不准 vs
+//   手工同步会漏）由「登记表 + 标签双向覆盖」同时解掉：数不准的问题变成「标签必须存在才登记得上」。
+//   子规则的计数口径**不再声明**：实测带后缀的标签有十余个（②a-②c / ③a-③d / ④b / ⑥b / ⑥c / ⑩b-⑩d），
+//   而本处曾声明「5 个子规则」——同一类手写漂移，故一并删除，只登记**无后缀主规则**。
 //   ① 跨文件版本一致性（package.json ↔ SKILL.md frontmatter ↔ 版本头行 ↔ 仓库级文档）
 //   ② 双头版本行 / M-Gate-Report 文件名漂移
 //   ③ 悬空引用（版本一致性检查旧名 / scripts/*.mjs 悬空 / 角色卡索引缺失）
@@ -87,6 +94,16 @@
 //      ③ 段位号 ≤ introduction.md 最新提及版本号 → 不报；④ 主人 review 可加 `WAIVER=实战滞后` 跳过。
 //      **为什么需要这条**：实战案例段与 README Verification status 表「事实互引」（v18.78.0 落地）
 //      但 introduction 的更新速度经常落后——CI 必须兜住。
+//   ⑩d 产物 `version` 不得写死（v18.62.4 · 全量审计-v18.62.3 §8.3 #39）——子规则，实装于 `script-rules.mjs`
+//   ㉝ 脚本数次级数字外泄扫描（v18.9.0；**v18.78.2 由重号 ㉕ 改**——与「㉕ 命令数口径」撞号）
+//   ㉞ 全仓库 .md BOM 检测（v18.9.0；**v18.78.2 由重号 ㉖ 改**——与「㉖ 子技能版本一致性」撞号）
+//   ㊱ 模板示例 ↔ 机检契约对照（v18.60.1；**v18.78.2 由重号 ㉚ 改**——与「㉚ lib 禁版本字面量」撞号）
+//   ㉟ 一致性规则登记表自洽（v18.78.2 · A2 新立）——真源 = `_lib/cc-rules/rule-registry.mjs`：
+//      ① **编号唯一**（同号不得跨模块复用）；② **双向覆盖**（登记表 id ↔ 其声明模块里的规则级标签）。
+//      **为什么立它**：本处「N 类主规则」四次被审计抓到不一致（加规则忘改数字），且 ㉟ 首次运行即抓出
+//      三对实测重号（㉕/㉖/㉚）——人工同步的失效是系统性的。
+//      **边界**：只认**无字母后缀**的规则级标签（「// 编号空格」形态，跳过模块第 1 行）；内层枚举若写成
+//      同形会被当成标签（现库内两处已改为 `// · 编号`），详见 ㉟ 的实装注释。
 // 退出码 0 = 通过；1 = 有漂移（列在 stderr）
 // (重写用法：node scripts/consistency-check.mjs [--fix]
 //   --fix：自动修复可逆的简单漂移（P2 级，如「（检查）」占位符替换）
@@ -102,6 +119,8 @@ import { runDocsVersionRules } from './_lib/cc-rules/docs-version-rules.mjs';
 import { runContentRules } from './_lib/cc-rules/content-rules.mjs';
 import { runMgateDocRules } from './_lib/cc-rules/mgate-doc-rules.mjs';
 import { runRepoSurfaceRules } from './_lib/cc-rules/repo-surface-rules.mjs';  // 规则族模块（v18.3.1 审计 B2 阶段 3）   // 退出码硬化（v18.0.5）
+import { loadGateSource, deriveGateCounts } from './_lib/mgate-gates/gate-count.mjs';  // M 门项数派生真源（v18.78.2 · 全量审计 A4：与审计视图共用同一实现）
+import { requireTruthSource } from './_lib/cc-rules/truth-source.mjs';  // 真源缺失即 P0（v18.78.2 · 全量审计 A6）
 installExitGuard();
 // v18.0.5（第三方审计 P2）：未知参数此前被静默忽略（`--nope` → exit 0「自检通过」），
 //   拼错 `--fix` 会静默走**只读模式**（想自动修却没修，且无提示）。现在显式拒绝。
@@ -200,22 +219,11 @@ const docsActive = (() => {
 // M 门口径派生真源（v2.5.2-dsh.16）：规则 ⑥b 的数字全部从 m-gate-check.mjs 的 gate 标签算出，规则自身不会过期
 //   v18.3.1（审计 B2 阶段 1）：M-Exist 门族 + M-Integrity-1 已抽离到 `_lib/mgate-gates/`——
 //   派生源改为「主脚本 + 门模块」拼接（缺目录的 P0 在文末规则区报，此处仅记标志）。
-const gateModDir = join(ROOT, 'scripts', '_lib', 'mgate-gates');
-const gateModMissing = !existsSync(gateModDir);
-let gateSrc = readFileSync(join(ROOT, 'scripts', 'm-gate-check.mjs'), 'utf8');
-if (!gateModMissing) {
-  for (const f of readdirSync(gateModDir).filter((x) => x.endsWith('.mjs'))) {
-    gateSrc += '\n' + readFileSync(join(gateModDir, f), 'utf8');
-  }
-}
-const GATE_DERIVED = (() => {
-  const grab = (pre) => new Set([...gateSrc.matchAll(new RegExp(`gate:\\s*'(M-${pre}-\\d+)`, 'g'))].map((m) => m[1])).size;
-  const form = grab('Form'), exist = grab('Exist'), integ = grab('Integrity'), fact = grab('Fact');
-  // v18.25.0（QLT-2）：新增 **M-Fact** 族（跨节事实一致性）。派生口径不变——四族相加 = 机械项数，
-  //   再 + M-Integrity-2（主控 T7.5 人工门）= 总数。**加族必须同批改三处**：本派生、⑳ 的语族清单
-  //   （`mgate-doc-rules.mjs` 的 kinds）、`M-Gate-Algorithm.md` 的同名节（节头括注 + ### 子节编号 1..N）。
-  return { form, exist, integ, fact, mech: form + exist + integ + fact, total: form + exist + integ + fact + 1 };
-})();
+//   v18.78.2（全量审计-v18.78.1 A4）：拼接与派生**抽到 `_lib/mgate-gates/gate-count.mjs`**，
+//     因为审计视图 `build-evidence-bundle.mjs` 也在报「M 门 N 项」却**手写 16**（真源 25）——
+//     同一数字两处实现必然漂移，故这里改为与视图共用一个派生（口径逐字未变）。
+const { src: gateSrc, modMissing: gateModMissing } = loadGateSource(join(ROOT, 'scripts'));
+const GATE_DERIVED = deriveGateCounts(gateSrc);
 // ⑥b 的口径检查（skills/** 与 docs/** 共用；由调用方传 rel 以便定位）
 function checkGateCounts(text, rel) {
   const { form, exist, integ, fact, mech, total } = GATE_DERIVED;
@@ -489,6 +497,8 @@ for (const f of files) {
   const rel = relative(ROOT, f).replaceAll('\\', '/');
   const text = readFileSync(f, 'utf8');
 
+  // ② 版本/报告名一致性（双头版本行 / M-Gate-Report 文件名与形状）——**规则级标签，勿删**
+  //   子规则：②a 双头版本行 / ②b 文件名与标识漂移 / ②c 形状白名单（见下方各段）
   // ②a 双头版本行（同一文件出现 ≥2 个版本头）
   const verCount = text.split('\n').filter((l) => VER_HEADER_RE.test(l)).length;
   if (verCount > 1) errors.push(`[P0-1d 双头版本行 x${verCount}] ${rel}`);
@@ -530,6 +540,8 @@ for (const f of files) {
     }
   }
 
+  // ③ 悬空引用（版本一致性检查旧名 / scripts/*.mjs 悬空 / 角色卡索引缺失）——**规则级标签，勿删**
+  //   子规则：③a 旧机制名残留 / ③b scripts 悬空 / ③c 角色卡索引缺失 / ③d 见下方各段
   // ③a 悬空引用：旧名「版本一致性检查-v2.3.0.md」残留（独立性重构后该旧机制已删除，发现即清理）
   if (text.includes('版本一致性检查-v2.3.0.md')) {
     errors.push(`[P0-1a 悬空引用「版本一致性检查-v2.3.0.md」] ${rel}`);
@@ -664,7 +676,12 @@ runRepoSurfaceRules(ctx);
 (() => {
   const skillPath = join(ROOT, 'SKILL.md');
   const readmePath = join(ROOT, 'references', 'pipeline-readme.md');
-  if (!existsSync(skillPath) || !existsSync(readmePath)) return;   // 夹具仓可能只放其一 → 不臆断
+  // v18.78.2（全量审计 A6）：旧实现 `if (!existsSync(...)) return` —— **静默返回**，真源缺失时 ㉔ 整条失效
+  //   而退出码无任何信号（审计把 ㉔/㉕ 并列为「规则失效即静默放行」的同族）。现改 `[P0 规则失效]`。
+  //   边界变更（如实声明）：旧注释的理由是「夹具仓可能只放其一 → 不臆断」。实测 `mkRepo()` 的**非 full**
+  //   分支整目录复制 `skills/`，两文件都在；若将来出现只放其一的夹具，正确做法是**补齐夹具**，
+  //   而不是把门恢复成静默——两文件在真源仓里是常驻体，缺任一都意味着部署被裁坏。
+  if (!requireTruthSource([skillPath, readmePath], '㉔ Phase 序列自洽', errors, 'SKILL.md + references/pipeline-readme.md')) return;
   const skillText = readFileSync(skillPath, 'utf8');
   const seqLine = skillText.split('\n').find((l) => /^-\s*Phase：/.test(l.trim()));
   if (!seqLine) {

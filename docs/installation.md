@@ -9,7 +9,7 @@
 #    ⚠️ **务必钉版本**：不写 `@<版本>` 时，装到哪个版本取决于本机包管理器**当时**的解析状态。
 #    实测过一次：同一条命令装到 **18.15.0**，而 registry 上的 `latest` 已是 18.20.4 —— 差了五个小版本，
 #    且按下面流程走下去**没有任何一步能让人察觉**。版本真源只有一处：`npm view lunheng-article-pipeline version`。
-dsh plugin --profile <profile> add lunheng-article-pipeline@18.78.1
+dsh plugin --profile <profile> add lunheng-article-pipeline@18.78.2
 
 # 1b) **核对装到的版本**（钉了版本也值得跑一次——它读的是 profile 里**实际落盘**的 package.json）
 node -e "console.log(require('<DSH_HOME>/profiles/<profile>/node_modules/lunheng-article-pipeline/package.json').version)"
@@ -90,7 +90,7 @@ dsh --profile <profile>
 
 - 不设任何 `LUNHENG_*`：三档行**不装载**，派发用内置 `subagent`（继承会话模型，安全默认）；设了 `off` 同样不装载。
 - 模型在挂载期用 `!!js` 求值一次，改环境变量后**必须重启 dsh** 才生效。
-- **v2.5.2-dsh.4 修订：未设 `LUNHENG_*_PROVIDER` 的档不覆盖模型（继承父会话）——任何模型配置都能安全装预设**；设了 PROVIDER 未设 MODEL 才用档位默认模型（retrieval=deepseek-v4-flash / strong·audit=deepseek-v4-pro）。
+- **v2.5.2-dsh.4 修订：两个字段各自独立**（`cordis.patch.yml` 三行 `agentOptions` 只做 `Object.assign({}, p ? {provider:p} : {}, m ? {model:m} : {})`）——**只设 PROVIDER = 只换 provider，模型仍继承父会话**；只设 MODEL 同理只换模型。**实现里不存在「档位默认模型」**（未设即无 `model` 键；`references/_shared/模型路由.md` 明禁写死厂商默认值）——任何模型配置都能安全装预设。
 - provider 名须是你 dsh 已注册的 LLM provider（查 `settings.yaml` 的 `agent-default-model.provider`）。
 - 完整说明见 `examples/preset/README.md`。
 

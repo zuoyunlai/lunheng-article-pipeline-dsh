@@ -116,3 +116,79 @@ test('B-1 补：包内 lib/ 与 cordis.patch.yml 仍在受保护根内（回归�
     assert.ok(await guard(exec('write', { file_path: p })), `${label} 必须被拦——受保护根 = 技能体 + lib/ + patch + 仓库级 scripts/`)
   }
 })
+
+// ── v18.78.1 全量审计 · 批 5（代码面）：B9 / P3 数字键 / P3 路径归一平台门 ────────────────────
+// 与 runApply 同形，但额外回收 `logger.warn`——B9 的「无候选 → 必须 warn」断言需要看到告警本身。
+async function runApplyLogged() {
+  const mod = await import(pathToFileURL(ENTRY).href)
+  const guards = []
+  const warns = []
+  const ctx = {
+    get: (n) => (n === 'tools'
+      ? { register: () => () => {}, guard: (fn) => { guards.push(fn); return () => {} } }
+      : undefined),
+    effect: (fn) => fn(),
+    skills: { register: () => () => {} },
+    logger: { info: () => {}, warn: (m) => warns.push(String(m)) },
+  }
+  mod.apply(ctx)
+  await settle()
+  return { guard: guards[0], warns }
+}
+
+test('B9 载荷键与「值本身是绝对路径」解耦：{input|patch|diff|payload} 的值直接是受保护路径时必须被拦', async () => {
+  const guard = await runApply()
+  assert.ok(await guard(exec('write', { file_path: LIB_INDEX })), '对照基线：file_path + 绝对路径必须被拦')
+  // 修前：载荷键分支命中后直接落到分支尾，紧随其后的「顶层 + 绝对路径」兜底被 `else` 串**结构性跳过**
+  //   → 这四种形态只 warn 不判（`input` 更因同时在 CONTENT_KEYS 里连 warn 都被抑制）。
+  for (const key of ['input', 'patch', 'diff', 'payload', 'patchText', 'diffText']) {
+    const reason = await guard(exec('apply_patch', { [key]: LIB_INDEX }))
+    assert.ok(reason, `载荷键 "${key}" 的值就是受保护文件的绝对路径（未含补丁语法），必须被拦（B9 回归）`)
+    assert.match(reason, /机制文件写保护/)
+  }
+  // 对照：同键名 + **补丁语法**（修前就能拦）不得因解耦而回归
+  assert.ok(await guard(exec('apply_patch', { input: `*** Update File: ${LIB_INDEX}\n@@\n-x\n+y\n` })),
+    '对照：载荷键 + 补丁文本路径必须仍被拦')
+  // 对照（不得误伤）：载荷键 + **受保护根之外**的绝对路径必须放行——不得退化成「值像绝对路径就否决」
+  assert.equal(await guard(exec('apply_patch', { input: join(PACKAGE_ROOT, 'README.md') })), undefined,
+    '载荷键的值是包外/非机制路径的绝对路径时必须放行（guard 契约：宁松勿误伤）')
+})
+
+test('B9 双重身份：参数只有 {input: …} 且收不到候选时仍必须 warn（input 同时在 CONTENT_KEYS 与 PAYLOAD_KEYS）', async () => {
+  const { guard, warns } = await runApplyLogged()
+  // ① `input` 是载荷键：可能把路径藏在文本里，故「只剩 input 一个键」**不能**当作「纯内容参数」而抑制告警
+  warns.length = 0
+  assert.equal(await guard(exec('write', { input: '这是一段正文，不含任何路径' })), undefined, '无候选 → 不否决（「宁松勿误伤」不变）')
+  assert.equal(warns.length, 1, `{input: …} 收不到候选路径时必须 warn 留痕（修前被 allContent 判据抑制）；实得 warns=${JSON.stringify(warns)}`)
+  // ② 对照：真正的「纯内容键」仍不得产生噪音（降噪边界不变）
+  warns.length = 0
+  assert.equal(await guard(exec('write', { content: '这是一段正文' })), undefined)
+  assert.equal(warns.length, 0, `纯内容键（content）不得产生告警噪音，实得 ${JSON.stringify(warns)}`)
+  warns.length = 0
+  assert.equal(await guard(exec('write', { text: '正文', arguments: '正文' })), undefined)
+  assert.equal(warns.length, 0, `text/arguments 不得产生告警噪音，实得 ${JSON.stringify(warns)}`)
+})
+
+test('P3 数字键位参 + **相对**路径：与键名形态同等判定（修前静默放行、且不进任何兜底）', async () => {
+  const guard = await runApply()
+  // exec() 的会话工作区 = PACKAGE_ROOT，相对路径按它解析（与 fs 工具同源）
+  assert.ok(await guard(exec('write', { 0: join('lib', 'index.js') })),
+    '数字键 + 相对路径必须被解析后判定——修前只收 isAbsolute(v) 的值，此处静默放行（P3 回归）')
+  assert.ok(await guard(exec('write', { 1: join('skills', 'lunheng-article-pipeline', 'SKILL.md') })),
+    '数字键（非 0）+ 相对路径同样必须被拦')
+  assert.ok(await guard(exec('write', { targetPath: join('lib', 'index.js') })), '对照：键名形态修前就能拦，不得回归')
+  // 不误伤：解析结果落在受保护根之外的相对路径仍放行
+  assert.equal(await guard(exec('write', { 0: 'README.md' })), undefined,
+    '数字键 + 相对路径解析到包外/非机制路径（README.md 不在受保护根内）必须放行——不得退化成「有键就否决」')
+})
+
+test('P3 路径归一平台门：canonicalPath 的大小写归一**仅在 Windows** 生效（POSIX 不得无条件 lower）', {
+  skip: process.platform === 'win32' ? 'Windows 路径本就大小写不敏感（大小写归一是正确行为）；本用例只在 POSIX 上判定' : false,
+}, async () => {
+  const { canonicalPath } = await import(pathToFileURL(join(PACKAGE_ROOT, 'lib', 'guard.js')).href)
+  // 用一个必然不存在的根，避免 realpath 把 /tmp 这类符号链接解析成别的路径
+  const p = '/nonexistent-lunheng-probe/Lunheng/Guard.js'
+  assert.equal(canonicalPath(p, '/'), p,
+    'POSIX 路径大小写敏感：无条件 toLowerCase 会把「与被保护根仅差大小写的真实路径」误判为命中（假否决）；' +
+    '对照实现 = lib/run-path-fence.mjs 的 norm()（process.platform === "win32" ? … : s）')
+})

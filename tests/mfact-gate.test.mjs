@@ -96,7 +96,7 @@ test('M-Fact-1：术语近形对 → **P2 候选**（判级归 T7，不得升 P1
   rmSync(c.d, { recursive: true, force: true })
 })
 
-test('M-Fact-1：真源仓库三份 golden 定稿实测不误报（只在项目存在时跑）', () => {
+test('M-Fact-1：真源仓库三份 golden 定稿实测不误报（只在项目存在时跑）', (t) => {
   const roots = [
     'E:/HERNESS/run/共锁-自愿性理论的第四象限',
     'E:/HERNESS/run/ai-content-farm-retractions',
@@ -104,7 +104,8 @@ test('M-Fact-1：真源仓库三份 golden 定稿实测不误报（只在项目�
   ].filter((p) => {
     try { readFileSync(join(p, 'final', '定稿.md')); return true } catch { return false }
   })
-  if (roots.length === 0) return   // 无本地项目（CI）→ 跳过：本用例是**本地防误报网**，不依赖仓库夹具
+  // v18.78.1（A7）：环境不满足必须**可见 skip**——裸 `return` 会被 node:test 记成 pass（CI 上零断言却显示绿）。
+  if (roots.length === 0) return t.skip('本机无三份 golden 定稿（E:/HERNESS/run/共锁-… 等）——本用例是本地防误报网，不依赖仓库夹具')
   for (const p of roots) {
     const rep = join(tmp(), 'r.json')
     run([M, join(p, 'final', '定稿.md'), join(p, 'final', '证据包'), '--report', rep], { timeout: 180000 })

@@ -2,7 +2,7 @@
 
 > 🌐 **English** (this file) ｜ [中文](README-zh.md) ｜ [Español](README-es.md) ｜ [Português](README-pt.md) ｜ [हिन्दी](README-hi.md)
 
-> 版本：v18.78.1（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.78.2（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > A DeepSeek Harness (DSH) bundle that registers **two on-demand agent skills**:
 > - `lunheng-article-pipeline` — the main 9-role pipeline (T1–T9, see below).
@@ -62,7 +62,9 @@ Phase 3.5 Insight     Human supplies first-hand context (in the loop) → draft 
 Phase 3.6 Critique    T6 critical companion → C1–C7 report
 Phase 4  Audit        T7 auditor → G0–G14 audit report and revision task list
 Phase 4.2 Revision    Writer revision + revision notes (≤2 rounds, independent writer)
-Phase 4.5 Review      T9 peer review + G14 Chinese AI-trace gate (in parallel); figures
+Phase 4.5 Figures     Figure generation (SVG) before the gate
+Phase 4.6 G14 gate    G14 Chinese AI-trace gate (serial; Pass freezes the body)
+Phase 4.7 Review      T9 peer review
 Gate T7.5             Latest audit + P0/P1 list + M-gate exit 0 + report isolation
 Phase 5  Finalize     T8 finalizer (run by the coordinator) → final draft, evidence bundle, delivery notes
 ```
@@ -120,7 +122,7 @@ The patch layer does two things: it **inserts one row for this package** (`- id:
 Releases are **tag-only**; a local `npm publish` is forbidden (it would bypass the CI gates and OIDC provenance, and a published npm version can never be overwritten).
 
 ```sh
-git tag v18.78.1 && git push origin v18.78.1   # push one tag at a time (GitHub: >3 tags in one push triggers no workflow)
+git tag v18.78.2 && git push origin v18.78.2   # push one tag at a time (GitHub: >3 tags in one push triggers no workflow)
 # publish.yml then runs gate 1 consistency → gate 2 packaging surface → gate 3 hygiene → gate 4 pack smoke → script tests
 #   → tag/version equality → idempotency guard → OIDC publish --provenance --tag dsh → post-publish audit
 ```

@@ -278,3 +278,21 @@ test('基线：ctx.on 注册的工具监听器**至少**包含 tools/post-execut
   const postHandlers = listeners['tools/post-execute'] || []
   assert.ok(postHandlers.length >= 1, `ctx.on('tools/post-execute') 必须至少 1 个监听器——H2 注册入口；当前 ${postHandlers.length}（请检查 lib/index.js 的 ctx.on('tools/post-execute', ...) 是否还在）`)
 })
+
+test('H2 工具名大小写（P3 回归）：Read / READ / WEB_SEARCH / Subagent 变体必须同样触发脱敏', async () => {
+  // 为什么需要：判定写的是 `/^(read|web_|subagent)/.test(name)` 而 `name` 未 lower——宿主若传
+  //   `Read` / `READ` / `WEB_SEARCH` / `Subagent`，四个全部被判成「非材料类工具」，**静默漏脱敏**
+  //   （探针实测四者 ethicsSanitized 全为 no；对照同包 lib/guard.js 的写工具名判定早已
+  //   `.toLowerCase()`，同一形态在写保护面被修过、在脱敏面漏了）。材料类文本不会被脱敏 = 敏感原文
+  //   一路照原样进下游，属「静默漏做」而非「少做」。
+  const base = await driveH2({ name: 'read', text: '受访者张三的手机是13800138000' })
+  assert.ok(base.decision.ethicsSanitized, '对照基线：小写 read 必须触发 H2（否则后续断言失去意义）')
+  for (const name of ['Read', 'READ', 'WEB_SEARCH', 'Subagent']) {
+    const { decision } = await driveH2({ name, text: '受访者张三的手机是13800138000' })
+    assert.ok(decision.ethicsSanitized, `工具名 "${name}" 必须与小写同形触发脱敏（P3 大小写回归）`)
+    assert.ok(decision.ethicsSanitized.counts.phone >= 1, `"${name}" 的标记计数应含手机号，实得 ${JSON.stringify(decision.ethicsSanitized.counts)}`)
+  }
+  // 对照（不得误伤）：非材料类工具的大小写变体仍不得触发
+  const w = await driveH2({ name: 'Write', text: '受访者张三的手机是13800138000' })
+  assert.equal(w.decision.ethicsSanitized, undefined, 'Write 不是材料类工具，不得触发脱敏')
+})

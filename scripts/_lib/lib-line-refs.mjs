@@ -55,3 +55,76 @@ export const HISTORICAL_DOC_PATTERNS = [
 export function isHistoricalDoc(rel) {
   return HISTORICAL_DOC_PATTERNS.some((re) => re.test(rel))
 }
+
+// ── v18.78.2（全量审计-v18.78.1 B8）：`.mjs`/`.js` **注释文本**里的同类行号引用 ────────────────
+//   病灶（审计 B8）：本模块只被 ⑪ 用在 `.md`/`.html` 上。`scripts/link-check.mjs` 的 SUSPECT 注释
+//   **自陈**：「规则 ⑪ 只禁 `lib/**.js:LINE` 形态的**发布面**引用，管不到仓库脚本注释里的互指。
+//   实测全库同类引用共 9 处，这条是唯一已确认腐烂的」—— 即「看起来可核验、实际随改动漂移」的行号
+//   引用在**脚本注释里**成片存在，而它们一条门都没有。
+//   修法：把 `.mjs`/`.js` 的**注释文本**纳入扫描面。两个判据合成一条：
+//     · `findLibLineRefs`（既有）——注释里引 `lib/**.js:LINE`；
+//     · `findScriptLineRefs`（本次新增）——注释里引 `<任意名>.mjs|.js:LINE`。
+//     **只扫注释**由 `_lib/source-mask.mjs` 的 `extractComments()` 保证：代码里的正则/字符串
+//     （例如本模块自己的 `LIB_LINE_REF`、用例里的正负例字符串）不会被误判成引用。
+//   **口径（与 `.md` 面刻意不同，理由如下）**：
+//     · `.md` 面是**硬零**（有则判失败）——文档里的行号引用没有任何正当理由。
+//     · `.mjs/.js` 注释面是**棘轮**（`SCRIPT_COMMENT_REF_BASELINE` 逐文件登记上限）。
+//       为什么不能硬零：实测 20 处里，多数是**规则的自我描述与夹具**（如本模块头注释引
+//       `lib/tools.js:18` 作为「反面教材原文」——改它等于篡改引文），其余落在本批**不可改**的
+//       `lib/**` 与跨簇在改的 `tests/**`／`skills/**` 上。硬零会让门**永久红**，而永久红的门等于没有门
+//       （判据同 ⑦b 对本机绝对路径的两档强度）。
+//     · 棘轮的作用是**拦住新增**：新写一行会漂的注释引用当即被判失败；已登记的 20 处逐文件可见、
+//       并随其自然消亡而被要求下调（note 里点名「基线内已无命中」的文件）。
+//   **边界（如实）**：① 只认 `<name>.mjs|.js:LINE` 与 `lib/**.js:LINE` 两种形态——`lib/**.mjs:LINE`
+//     不在其中（本仓 `lib/` 只有 `.js`；若将来出现 `.mjs`，需在此加一条形态并重跑门）；
+//     ② 只判存在性，不判对错（对错无法静态判——正因如此政策才要求符号引用）；
+//     ③ 引用是否「真腐烂」由人工裁决，门只负责**不新增**与**可见**（同 r07b 的棘轮语义）。
+/** `.mjs|.js:LINE` 形态的裸行号引用（与 `LIB_LINE_REF` 同一条 lookbehind：排掉上游包路径）。 */
+const SCRIPT_LINE_REF = /(?<![\w./-])([\w.-]+\.(?:mjs|js)):(\d+)/g
+
+/** 找出文本里所有 `<脚本名>.mjs|.js:LINE` 形态的引用。 */
+export function findScriptLineRefs(text) {
+  const out = []
+  for (const m of text.matchAll(SCRIPT_LINE_REF)) {
+    out.push({ raw: m[0], file: m[1], line: Number(m[2]) })
+  }
+  return out
+}
+
+/** `.mjs/.js` 注释面里**允许**存在的登记上限（棘轮，按文件计；口径见上方 B8 段）。
+ *
+ *  三类命中（2026-10-06 扩面时实测，**全库 16 个文件 / 20 处**）：
+ *    · **规则自我描述**（豁免，见 `SCRIPT_COMMENT_REF_EXEMPT`）：实现本体与夹具里的反面教材；
+ *    · **本批不可改的 lib/**：`lib/guard.js` / `lib/index.js` / `lib/tools.js` 各 1 处（互指）；
+ *    · **跨目录的真引用**：`scripts/**`（4 处，本批范围**可修**——改成符号引用即可，
+ *      但其中 2 个文件正被并发修订簇占用，故本批**只登记不改**，清单见交付回报）、
+ *      `skills/**`（6 处）、`tests/**`（4 处）——这些引用**当前都还指得准**，所以它们是**漂移风险**，
+ *      不是「已腐烂」。棘轮拦的是它们**继续增加**或**指错而不改**。 */
+export const SCRIPT_COMMENT_REF_BASELINE = new Map([
+  ['lib/guard.js', 1],                                              // lib/index.js:192
+  ['lib/index.js', 1],                                              // lib/guard.js:265
+  ['lib/tools.js', 1],                                              // lib/ethics-sanitize.js:269
+  ['scripts/_lib/exit-namespace.mjs', 1],                            // model-routing.mjs:20
+  ['scripts/_lib/hygiene/r08d-headers.mjs', 1],                      // model-routing.mjs:20
+  ['scripts/bump-version.mjs', 2],                                   // content-rules.mjs:395 / :401
+  ['skills/lunheng-article-pipeline/scripts/_lib/mgate-gates/mexist-gates.mjs', 2], // handoff-check.mjs:537 / mexist-gates.mjs:15
+  ['skills/lunheng-article-pipeline/scripts/_lib/sections.mjs', 2],  // count-chars.mjs:63 / m-gate-check.mjs:215
+  ['skills/lunheng-article-pipeline/scripts/_lib/trust.mjs', 1],     // m-gate-check.mjs:480
+  ['skills/lunheng-article-pipeline/scripts/build-evidence-bundle.mjs', 1], // m-gate-check.mjs:57
+  ['skills/lunheng-article-pipeline/scripts/final-check.mjs', 1],    // lib/tools.js:199
+  ['skills/lunheng-article-pipeline/scripts/m-gate-check.mjs', 2],   // final-check.mjs:175 / mform-gates.mjs:946
+  ['tests/docs-facts.test.mjs', 1],                                  // lib/index.js:40
+  ['tests/ethics-render.test.mjs', 1],                               // lib/tools.js:388
+  ['tests/mexist11-argument.test.mjs', 1],                           // mexist-gates.mjs:15
+  ['tests/scripts/token-budget.test.mjs', 1],                        // token-budget.mjs:167
+])
+
+/** 扫描器**自身的定义与夹具**必然写着示例引用——那不是「会漂移的引用」，而是引文。
+ *  与 ⑦b 的 `LOCAL_PATH_EXEMPT` 同判据（`_lib/local-path-scan.mjs` / `tests/local-path-scan.test.mjs`）。
+ *  **边界（如实）**：这三个文件里若真写了一条指向别处的行号引用，本规则会漏（缓解：它们**都不随包**，
+ *  体积小、用途单一，且 ⑪ 的 `.md` 面仍覆盖文档）。 */
+export const SCRIPT_COMMENT_REF_EXEMPT = new Set([
+  'scripts/_lib/lib-line-refs.mjs',
+  'scripts/_lib/hygiene/r11-lib-line-refs.mjs',
+  'tests/lib-line-refs.test.mjs',
+])

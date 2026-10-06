@@ -27,9 +27,9 @@
 
 ## 审计 G0-G14 + M 门
 
-G0 覆盖度 / G0.5 视角一致性 / G1 分级核验（C 级 100% web_search 实测）/ G2 数据溯源 / G2.5 案例核验 / G3 逻辑 / G4 格式 / G4-2 文末四节 / G5 规范 / G6 论据自标 / G7 原创性 / G8 成品度 / G9 时序 / G10 一致性 / G11 时效 / G12 信任级别一致性 / G13 AI 使用披露 / G14 中文 AI 痕迹闸（8 类检测维度，与 T6 并行）。
+G0 覆盖度 / G0.5 视角一致性 / G1 分级核验（C 级 100% web_search 实测）/ G2 数据溯源 / G2.5 案例核验 / G3 逻辑 / G4 格式 / G4-2 文末四节 / G5 规范 / G6 论据自标 / G7 原创性 / G8 成品度 / G9 时序 / G10 一致性 / G11 时效 / G12 信任级别一致性 / G13 AI 使用披露 / G14 中文 AI 痕迹闸（8 类检测维度；Phase 4.6 串行）。
 
-终检前主控跑 **M 门**（`references/_shared/M-Gate-Algorithm.md`）：M-Form 11 项 + M-Exist 11 项 + M-Integrity 2 项，LLM 兜底执行，产出 `final/M-Gate-Report.json`，exit 0 才交付。
+终检前主控跑 **M 门**（`references/_shared/M-Gate-Algorithm.md`）：**总 25 项 = 机检 24 项（M-Form 11 项 + M-Exist 11 项 + M-Integrity-1 + M-Fact-1）+ 人工 1 项（M-Integrity-2）**，LLM 兜底执行，产出 `final/M-Gate-Report.json`，exit 0 才交付。
 
 ## 原创性保证
 

@@ -11,29 +11,85 @@
 //      ③ **常驻集合计上限**：SKILL.md + AGENTS.md 的**合计**另有上限——防止「瘦 SKILL、肥 AGENTS」把固定开销换个口袋。
 //    边界（如实）：本规则管的是**字节量**（代理指标，≠ 真实 token 数，不区分中英）；`target`（长期目标）只作
 //      报告用，**不判失败**——本版是棘轮，不是瘦身令（瘦身需要主人拍板口径，见 CHANGELOG `## 18.1.0`）。
+//
+// ── v18.78.2（全量审计-v18.78.1 两条 P2 修复）──────────────────────────────────────
+//    B1（棘轮只升不降）——病灶：`target` **只在超限报错文案里被读**，从不参与判定 →
+//      「一次显式抬升 = 永久豁免」，实测 26 条超其自述长期目标 >20%、8 条余量 <1 KB、
+//      合计余量 91.3 KB 无人监测（旧 note 只报登记数与常驻集，读者看不到棘轮离极限还有多远）。
+//      修法（三条，都是**可见性**而非新判据——本版刻意不改判定，避免与棘轮语义打架）：
+//        ① `target` 进 note：`超自述长期目标 >20% 的 N 个` + TOP5 点名（含 实测/target 比例）；
+//        ② note 增「**合计上限 / 实测 / 余量**」三项（回答「语料还能涨多少」）；
+//        ③ **下调建议**：某文件比**上次提交**（`HEAD` 的 blob 大小）缩小 >1.5 KB 时，建议把上限降到
+//           「实测 + 1.5 KB 向上取整到整 KB」——**只提示、不自动改**（自动收紧会与「抬升必须在同一
+//           diff 里显式发生」的棘轮语义打架：门自己改数值 = 数值变化不进 review）。
+//      为什么用 `git ls-tree HEAD` 判「上次」：本仓的棘轮上限就是**上次提交时**按公式定的，
+//        与 HEAD 比才语义一致（与工作树比等于恒 0）。**边界（如实）**：未跟踪文件 / HEAD 上不存在
+//        的文件不产出建议；`git` 不可用时本段整体跳过并在 note 里说明（不静默）。
+//    B4（覆盖面窄）——病灶：未登记检查只 `walkMd(技能目录)`，`DOC_BUDGET` 键全为 `skills/**`。
+//      而 `docs/*.md`（`introduction` 33.4 KB / `troubleshooting` 31.8 KB）与根级
+//      `README*.md` / `CONTRIBUTING.md` / `SECURITY.md` 同样是**公开发布面的长文**，却一条上限都没有
+//      ——「文档防膨胀」这一政策在仓库级文档上等于不存在。修法：覆盖面扩为**三面**（技能目录 / `docs/` /
+//      仓库根**仅根级** .md），新增文件一并登记（上限 = 当前字节向上取整到整 KB，与既有公式同形）。
+//      **排除面（显式写明，不是静默跳过）**：
+//        · `CHANGELOG.md`（171→176 KB）——**append-only 留痕**：每版一段、只增不减，给它设上限等于
+//          要求改写历史（与 `_lib/lib-line-refs.mjs` 的历史归档豁免同判据）。故**既不登记、也不进覆盖面**；
+//          它的形状由 ⑬（版本段结构）管、节奏由发布纪律管。
+//        · `docs/审计与修订记录/**`、`docs/验证记录/**`——历史归档（记录的是「当时」的状态，
+//          拿今天的口径去限它同样是错的；同 `isHistoricalDoc` 判据）。
+//        · `docs/介绍与排版/*.html`（18.2 KB）——**排版物料**，非随会话载入的文本；本门是 `.md` 词预算门
+//          （`walkMd` 只认 `.md`）。如实登记该边界：它的膨胀目前无门（要不要登记须主人定口径）。
 import { existsSync, statSync, readdirSync } from 'node:fs'
-import { join, relative, sep } from 'node:path'
+import { join } from 'node:path'
 import { kb, walkMd, toRepoPosix } from './_shared.mjs'
 
 const DOC_BUDGET_MIN = 12 * 1024
+/** 「建议下调上限」的触发阈值：比上次提交缩小超过这么多字节即在 note 里点名（只提示）。 */
+const SHRINK_SUGGEST_BYTES = 1536
+/** 覆盖面扩面（B4）：`docs/` 下的历史归档目录按既有豁免口径排除。 */
+const DOCS_HISTORICAL = [/^docs\/审计与修订记录\//, /^docs\/验证记录\//]
+/** 覆盖面扩面（B4）：仓库根**仅根级** .md 中按「留痕」口径排除的面（理由见文件头）。 */
+const ROOT_TOP_EXCLUDE = new Set(['CHANGELOG.md'])
 
 export function run(ctx) {
-  const { fail, note, ROOT, DOC_BUDGET, ALWAYS_RESIDENT, ALWAYS_LIMIT } = ctx
+  const { fail, note, ROOT, DOC_BUDGET, ALWAYS_RESIDENT, ALWAYS_LIMIT, git } = ctx
   const budgetBad = []
+  const lowHeadroom = []
+  const overTarget20 = []
+  const shrinkSuggest = []
   let docOver = 0
+  let overTargetAny = 0
   let residentTotal = 0
+  let sumLimit = 0
+  let sumActual = 0
+  // 「上次提交」的字节数：一次 `git ls-tree -r -l HEAD` 拿全量 blob 大小（**一次子进程**，不做 N 次 git show）。
+  //   取不到（非 git 环境 / 无 HEAD）时整段跳过并如实标注，不静默当作「无不一致」。
+  const headSizes = new Map()
+  let headAvailable = false
+  try {
+    const ls = git(['ls-tree', '-r', '-l', 'HEAD'])
+    if (ls.status === 0 && ls.stdout) {
+      headAvailable = true
+      for (const m of ls.stdout.matchAll(/^\d+\s+\w+\s+[0-9a-f]+\s+(\d+)\t(.+)$/gm)) {
+        headSizes.set(m[2].trim(), Number(m[1]))
+      }
+    }
+  } catch { /* headAvailable 保持 false */ }
   // v18.62.4（全量审计-v18.62.3 §8.3 #36）：**第 4 项不再被静默丢弃**。
-  //   实测（运行时解析 DOC_BUDGET 字面量）：35 条里 **34 条 3 元、1 条 4 元** ——
-  //   `references/_shared/外部检索源接入面.md` 是唯一的 4 元项：`[上限, 目标, 较新理由, 更早理由]`，
-  //   而本行旧版只解构 `[limit, target, why]` → **那份更早的抬升理由被无声吃掉**。
-  //   「数组多一项、解构少一项」最坏之处是**它不报错**：数据在源码里、读者以为它在生效。
-  //   修法：显式接收第 4 项，并把两段理由**都**带进超限报错文案（多一条理由 = 多一条
-  //   「为什么必须增长」的上下文，正是这条报错要回答的问题）。⚠️ 只改**本循环的解构与文案**，不动数据形状。
+  //   ⚠️ **v18.78.2（全量审计-v18.78.1 P3 复核）：本注释原文的实测句已不成立**——原文写
+  //   「实测 35 条里 34 条 3 元、1 条 4 元（`references/_shared/外部检索源接入面.md` 是唯一的 4 元项）」，
+  //   而本次复核：`DOC_BUDGET` **48 条全为 3 元**、`grep '更早：'` **0 命中** → `whyOlder` 分支
+  //   **当前永不执行**（原注释是「当时的实测」，随数据形状变化已成假陈述——「注释与实现脱节」那一族，
+  //   与 B1/B3 同源：数据在源码里，读者以为它在生效）。
+  //   该分支**保留**（将来补写更早理由时不被静默吃掉、也不报错），但注释不得再声称库里存在 4 元条目。
+  //   解构与文案的原始理由（仍然成立）：显式接收第 4 项，并把两段理由**都**带进超限报错文案——
+  //   多一条理由 = 多一条「为什么必须增长」的上下文，正是这条报错要回答的问题。只改解构与文案，不动数据形状。
   for (const [rel, [limit, target, why, whyOlder]] of Object.entries(DOC_BUDGET)) {
     const whyAll = whyOlder ? `${why}｜更早：${whyOlder}` : why
     const abs = join(ROOT, rel)
     if (!existsSync(abs)) { fail('doc-budget', `词预算表登记了不存在的文件：${rel}（表已过期，请删除该行）`); continue }
     const size = statSync(abs).size
+    sumLimit += limit
+    sumActual += size
     if (ALWAYS_RESIDENT.includes(rel)) residentTotal += size
     const pct = ((size / limit) * 100).toFixed(0)
     if (size > limit) {
@@ -49,18 +105,52 @@ export function run(ctx) {
       // 余量 < 256 B：下一次改动几乎必然撞上限——提前在 note 里点名（上限按整 KB 取，故余量恒在 0–1023 B）
       budgetBad.push(`${rel} 余量仅 ${limit - size} B`)
     }
-  }
-  // 覆盖：技能目录内 ≥ 阈值的 .md 必须登记（否则新胖文档可无声进入上下文成本）
-  const unregistered = []
-  const skillAbs = join(ROOT, 'skills', 'lunheng-article-pipeline')
-  if (existsSync(skillAbs)) {
-    for (const f of walkMd(skillAbs)) {
-      const rel = toRepoPosix(f, ROOT)
-      if (statSync(f).size >= DOC_BUDGET_MIN && !DOC_BUDGET[rel]) unregistered.push(`${rel}（${kb(statSync(f).size)}）`)
+    // B1：棘轮的「另一半」——长期目标与实际余量。**不判失败**，只让它们可见（本版不改判定）。
+    if (target > 0) {
+      const ratio = size / target
+      if (size > target) overTargetAny++
+      if (ratio > 1.2) overTarget20.push({ rel, pct: Math.round(ratio * 100) })
+    }
+    if (limit - size < 1024) lowHeadroom.push(`${rel} ${limit - size} B`)
+    const headSize = headSizes.get(rel)
+    if (headAvailable && headSize !== undefined && headSize - size > SHRINK_SUGGEST_BYTES) {
+      const suggestion = Math.ceil((size + SHRINK_SUGGEST_BYTES) / 1024) * 1024
+      // 只在**建议值小于当前上限**时提示，否则这条「下调建议」会变成抬高建议（自相矛盾）。
+      //   出现「建议值 ≥ 上限」说明该条的上限早已低于公式值（另一次漂移），本段不猜、不提示——
+      //   `limit - size` 那一半（合计余量 / 余量 <1 KB）已经把这种状态显示得很清楚。
+      if (suggestion < limit) {
+        shrinkSuggest.push(
+          `${rel}: HEAD ${headSize} B → 实测 ${size} B（−${headSize - size} B，已超 ${SHRINK_SUGGEST_BYTES} B 阈值）` +
+            `——建议把上限 ${limit} B 下调到 **${suggestion} B**（= 实测 + 1.5 KB 向上取整到整 KB；长期目标 ${target} B）`,
+        )
+      }
     }
   }
+  // 覆盖：三面（技能目录 / docs/ 排除历史归档 / 仓库根仅根级）内所有 ≥ 阈值的 .md 必须登记
+  //   （否则新胖文档可无声进入上下文成本或公开交付面）。B4 扩面，排除面见文件头。
+  const unregistered = []
+  const checkCover = (rel, abs) => {
+    if (statSync(abs).size >= DOC_BUDGET_MIN && !DOC_BUDGET[rel]) unregistered.push(`${rel}（${kb(statSync(abs).size)}）`)
+  }
+  const skillAbs = join(ROOT, 'skills', 'lunheng-article-pipeline')
+  if (existsSync(skillAbs)) {
+    for (const f of walkMd(skillAbs)) checkCover(toRepoPosix(f, ROOT), f)
+  }
+  const docsAbs = join(ROOT, 'docs')
+  if (existsSync(docsAbs)) {
+    for (const f of walkMd(docsAbs)) {
+      const rel = toRepoPosix(f, ROOT)
+      if (DOCS_HISTORICAL.some((re) => re.test(rel))) continue
+      checkCover(rel, f)
+    }
+  }
+  // 仓库根：**只扫根级**（`readdirSync` 非递归）——递归会把 skills/ docs/ node_modules 全卷进来。
+  for (const e of readdirSync(ROOT, { withFileTypes: true })) {
+    if (!e.isFile() || !e.name.endsWith('.md') || ROOT_TOP_EXCLUDE.has(e.name)) continue
+    checkCover(e.name, join(ROOT, e.name))
+  }
   if (unregistered.length) {
-    fail('doc-budget', `技能目录内 ≥${kb(DOC_BUDGET_MIN)} 的文档未登记词预算：${unregistered.join('；')}——请在 DOC_BUDGET 加一行（含上限与理由）`)
+    fail('doc-budget', `以下 ≥${kb(DOC_BUDGET_MIN)} 的文档未登记词预算：${unregistered.join('；')}——请在 DOC_BUDGET 加一行（含上限与理由）`)
   }
   if (residentTotal > ALWAYS_LIMIT) {
     fail(
@@ -70,8 +160,34 @@ export function run(ctx) {
     )
   }
   note(
-    `⑨ 词预算：登记 ${Object.keys(DOC_BUDGET).length} 个文档（≥${kb(DOC_BUDGET_MIN)} 全覆盖，未登记 ${unregistered.length} 个）` +
+    `⑨ 词预算：登记 ${Object.keys(DOC_BUDGET).length} 个文档（≥${kb(DOC_BUDGET_MIN)} 全覆盖 = 技能目录 + docs/ + 仓库根根级，未登记 ${unregistered.length} 个；` +
+      `排除面见规则头：CHANGELOG.md（append-only 留痕）/ docs 历史归档 / docs/介绍与排版 的 .html（非 .md 物料））` +
       `；常驻集合计 ${kb(residentTotal)}/${kb(ALWAYS_LIMIT)}（SKILL.md + AGENTS.md）` +
       (docOver ? `；❗ 超限 ${docOver} 个` : budgetBad.length ? `；⚠️ 接近上限：${budgetBad.join('、')}` : '，均在预算内'),
   )
+  // B1②③：棘轮的另一半（合计余量 / 超长期目标 / 建议下调）——**只报告，不判失败**。
+  //   为什么不做 38 条全量逐条打印：其中 35 条已超其自述长期目标，逐条打印是噪声（B2 的教训是
+  //   「管膨胀的门自己别膨胀」）；本行按**可行动**筛选：合计三项 + 超目标 >20% 的 TOP5 + 余量 <1 KB 全体
+  //   + 建议下调全体。target 数值因此在这三处都是**可见的**，不再只活在超限报错文案里。
+  const top20 = [...overTarget20].sort((a, b) => b.pct - a.pct).slice(0, 5)
+  // 余量 <1 KB 的条目会有十几条（**首次登记**的条目按公式天然只留 ≤1 KB，见规则头），故只点名最紧的 5 条。
+  const tight = [...lowHeadroom].sort((a, b) => Number(a.split(' ').pop()) - Number(b.split(' ').pop())).slice(0, 5)
+  note(
+    `⑨ 棘轮另半（v18.78.2 B1）：合计上限 ${kb(sumLimit)} / 实测 ${kb(sumActual)} / **余量 ${kb(sumLimit - sumActual)}**` +
+      `（${((sumActual / sumLimit) * 100).toFixed(1)}% 用了合计上限）；超自述长期目标的 ${overTargetAny} 个（其中 >20% 的 ${overTarget20.length} 个` +
+      (top20.length ? `，TOP：${top20.map((x) => `${x.rel.split('/').pop()} ${x.pct}%`).join('、')}` : '') +
+      `）；**余量 <1 KB 的 ${lowHeadroom.length} 个**（最紧 5 个：${tight.join('、') || '无'}；另 ${Math.max(0, lowHeadroom.length - tight.length)} 个同类，` +
+      `本次新登记的条目按公式天然只留 ≤1 KB，逐条列出属噪声——任一条的余量 = 上限 − 实测，可直接复算）`,
+  )
+  if (shrinkSuggest.length) {
+    note(
+      `⑨ 建议下调上限（v18.78.2 B1③ · **只提示不自动改**：数值变化必须走显式 review，见规则头）：${shrinkSuggest.join('；')}`,
+    )
+  } else {
+    note(
+      `⑨ 下调建议（v18.78.2 B1③）：${headAvailable
+        ? `无——没有「比 HEAD 缩小 >${SHRINK_SUGGEST_BYTES} B」的已登记文件（已比对 ${headSizes.size} 个 blob 的大小）`
+        : '**未判定**：HEAD 的 blob 大小拿不到（非 git 环境或无提交）——不得读作「无建议」'}`,
+    )
+  }
 }

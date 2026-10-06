@@ -1,3 +1,5 @@
+> 版本：v18.78.2（DSH bundle 插件）
+
 # AGENTS.md — 论文流水线操作手册
 
 > **DSH 说明**：本手册为 DSH 原生手册。所用 DSH 工具：subagent / list_agents / send_message / web_search / web_fetch / todo_write / pwsh / edit / write 等；结构性差异见 `SKILL.md` 的「🔧 DSH 环境说明」章节。

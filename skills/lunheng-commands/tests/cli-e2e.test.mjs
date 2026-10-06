@@ -127,13 +127,14 @@ test('pending-cli E2E：`--run-dir ../escape` → exit 10（词法层拒绝）',
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
 
-test('pending-cli E2E：run/ 内 junction 指向工作区外 → exit 10（物理层拒绝，v18.67.0 回归）', { skip: process.platform !== 'win32' && '非 Windows 无免权限 junction' }, () => {
+test('pending-cli E2E：run/ 内 junction 指向工作区外 → exit 10（物理层拒绝，v18.67.0 回归）', { skip: process.platform !== 'win32' && '非 Windows 无免权限 junction' }, (t) => {
   const { d } = mkWorkspace()
   try {
     const outside = mkdtempSync(join(tmpdir(), 'lh-cli-outside-'))
     const link = join(d, 'run', 'escape')
     const mk = spawnSync('cmd', ['/c', 'mklink', '/J', link, outside], { stdio: 'ignore' })
-    if (mk.status !== 0) return // 环境不允许创建 junction → 本用例不判负
+    // v18.78.1（A7）：环境不允许建 junction 时必须**可见 skip**——裸 `return` 会被 node:test 记成 pass。
+    if (mk.status !== 0) return t.skip('本环境不允许创建 junction（mklink /J 失败）——物理层拒绝无链接可测')
     const r = cli(PENDING, ['--run-dir', 'run\\escape'], { cwd: d })
     assert.equal(r.code, 10, 'junction 指向工作区外必须被物理层拒绝（isPathInsideRunDir）')
     rmSync(outside, { recursive: true, force: true })

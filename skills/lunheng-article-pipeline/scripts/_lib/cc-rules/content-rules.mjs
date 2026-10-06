@@ -7,6 +7,8 @@ import { readFileSync, readdirSync, statSync, existsSync, writeFileSync, copyFil
 import { join, relative, dirname } from 'node:path'
 // v18.22.2 CTX-3：slug 单一真源（与 ref-get.mjs 共用）
 import { anchorSlugsOf } from '../anchor-slug.mjs'
+// v18.78.2（全量审计 A6）：派生型规则的「真源缺失 ⇒ 整条失效」处置——缺失即 P0，不静默跳过
+import { requireTruthSource } from './truth-source.mjs'
 
 // ⑲ 交接契约表真源（v18.6.0 上提为模块级常量并 export）：原内联在 runContentRules 函数体内，
 //    handoff-check.mjs 需 import 派生「角色 → 必需产物」；数组是纯静态清单、不依赖 ctx，上提后行为不变。
@@ -255,7 +257,10 @@ for (const f of active) {
 //    `-cite` 的 3 种模式（默认/-auto/-manual）与 `-h` 别名不计入命令数（口径已在 command-routing.md 定案）。
 {
   const rcPath = join(REPO_ROOT, 'skills', 'lunheng-commands', 'scripts', 'route-command.mjs');
-  if (existsSync(rcPath)) {
+  // v18.78.2（全量审计 A6）：旧实现 `if (existsSync(rcPath)) {…}` **没有 else** —— 真源被改名/移出/按需裁剪时，
+  //   本规则**整条静默失效**且脚本照旧报「0 处漂移」。审计的反事实实验：把 route-command.mjs 改名后，
+  //   盘上仍留着的「本技能提供 99 个 /lunheng 命令」漂移**无人报**，exit 0。现改 `[P0 规则失效]`。
+  if (requireTruthSource(rcPath, '㉕ 命令数口径', errors, 'skills/lunheng-commands/scripts/route-command.mjs')) {
     const rcSrc = readFileSync(rcPath, 'utf8');
     const keys = [...rcSrc.matchAll(/^\s*'(-[A-Za-z0-9]+)':\s*\{\s*phase:/gm)].map((m) => m[1]);
     const phases = new Set();
@@ -544,7 +549,10 @@ const HISTORY_TOKEN_RE = /此前|曾经|旧版|已删|已移除|已作废|历史
           const rel = relative(ROOT, f).replaceAll('\\', '/');
           readFileSync(f, 'utf8').split('\n').forEach((l, i) => {
             if (HISTQ.test(l)) return;
-            // ① 计数声明：G0-G14 匹配点前后一个**窄窗口**内的「N 项|N 个|N 主项」
+            // · ① 计数声明：G0-G14 匹配点前后一个**窄窗口**内的「N 项|N 个|N 主项」
+            //   （v18.78.2：本行与下一条原写作 `// ① …` / `// ② …`——那是**内层枚举**形态，却与规则级标签
+            //    同形，被新增的 ㉟「编号唯一」当成 content-rules 里的「① 重号」报出。现改用 `// · <编号>`，
+            //    与本仓既有的内层枚举写法（`//   ① …`，`// ` 后留空格）一致地**避开规则级标签形态**。）
             const era = /G0\s*[-–]\s*G14/.exec(l);
             if (era) {
               const win = l.slice(Math.max(0, era.index - 10), era.index + 45);
@@ -565,7 +573,7 @@ const HISTORY_TOKEN_RE = /此前|曾经|旧版|已删|已移除|已作废|历史
                 }
               }
             }
-            // ② T7 派发话术的 G 清单必须列全。
+            // · ② T7 派发话术的 G 清单必须列全。
             //   ⚠️ 定位必须精确到**清单行**：第一版按「含 审计报告-vN.md + G0」定位，实测对三处**散文提及**误报
             //   （`AGENTS.md:22` 的「audits/审计报告-vN.md（G0-G14 全项检查）」、`06 卡:109` 的「输出 G0-G14 检查项结论」、
             //   `M-Gate-Algorithm.md:1106` 的「检查对象：… 对 G0-G14 十五个主项的覆盖」）——那三处**本来就不该列全 G 项**。
@@ -587,7 +595,10 @@ const HISTORY_TOKEN_RE = /此前|曾经|旧版|已删|已移除|已作废|历史
     }
   }
 
-  // ㉚ 模板示例 ↔ 机检契约对照（v18.60.1，主人授权反哺 v2 §4.1 / §7.1 #9）
+  // ㊱ 模板示例 ↔ 机检契约对照（v18.60.1，主人授权反哺 v2 §4.1 / §7.1 #9）
+  //   **v18.78.2（全量审计 A2 的连带发现）：编号由 ㉚ 改为 ㊱**——原编号与 `script-rules.mjs` 的
+  //   「㉚ lib/** 代码面禁当前版本字面量」撞号。该重号是新增规则 ㉟（登记表自洽）**首次运行即抓出**的，
+  //   此前四条审计报告都没有报到它（因为本规则从未进 `consistency-check.mjs` 头清单）。
   //   为什么立它（实测依据）：论衡实测项目-夫妻收入差异家庭权力 出现 **7 类格式返工**——数据卡信任级别行 /
   //   批判报告 C 节标题 / AI 声明下划线签名栏 / AI 声明区间写法 / 交付说明字段起点 / 审稿 6 维表 /
   //   期刊表三百分比——**无一例外**都是「**模板说的**」与「**脚本认的**」不一致（正是 `机检硬格式.md`
