@@ -12,7 +12,7 @@
 ## 职责
 - **M 门 25 项全复核**（**24 项**：M-Form 1-11 + M-Exist 1-11 + M-Integrity-1 + M-Fact-1 = 机械 24；人工 1 = M-Integrity-2）：读 `_shared/M-Gate-Algorithm.md`（**按需读，v18.78.0 反哺 F9**：该文件 ≈97 KB，先 `node scripts/ref-get.mjs references/_shared/M-Gate-Algorithm.md --list` 取**锚点 + 字节数**，再按锚点只取所需节；别整读），机械项先跑 `scripts/m-gate-check.mjs`（**24 项**，逐项 gate 标签见 `_shared/M-Gate-Algorithm-appendix.md` §1.2），**LLM 另复核 2 项（不计入 24 项机械计数）**：**M-Form-8**（承重墙超载）+ **M-Integrity-2**（交付说明 12 字段人工核 + 占位符扫描）。逐项产出 `final/M-Gate-Report.json`，**exit 0 才返回**
 - **终检必查 15 项**：交付边界（论文 vs 操作员报告隔离）/ G13 术语泄露 / G14 中文 AI 痕迹 / 内部编号残留 / 破折号计数 / 字数终审（`scripts/count-chars.mjs` 权威值）/ 反方论证密度 / 结论呼应引言 / 数据时效标注 / 二级转引标注 / [图N] 占位齐全 / AI 使用声明 / 参考文献编号闭环 / sha256 指纹填**实值**（权威 = `final/证据包/manifest.json`；主人不参与回填）/ 交付说明
-  > **补 3 项必查**（均有机械门）：
+  > **补 5 项必查**（均有机械门）：
   > ① **文末五节顺序**（不只成员资格）——须为 `参考文献 → 数据来源 → 案例来源 → 先行者文献 → AI 使用声明`（M-Form-7 已加顺序断言，判 P1）；
   > ② **文末节内容纯净**——非书目条目行不得含角色名 / 平台动作 / 版本注记 / 内部术语（M-Form-4 已加文末二级扫描，判 P0）；
   > ③ **M 门 exit 双字段**——`final/M-Gate-Report.json` 须同时含 `script_exit_raw`（脚本原值，**禁止修改**）与 `exit`（T8 裁定值）；两者不同时必须附 `_t8_llm_review`（证伪证据四件套）与 `_t8_conclusion`，否则视为伪造（详见 `M-Gate-Algorithm.md` §执行模型）。
@@ -21,6 +21,8 @@
   > 脚本会自行校验：缺 `true_p0`/`true_p1`、命中**硬 P0 红线**、或裁定值 ≠ 机械值而四件套不足三项 → **拒绝并 exit 30**（报告保持机械值）；
   > 通过后写 `exit`=裁定值 + 保留 `script_exit_raw` + `verdict_stale:false` + `_t8_adjudicated_at/_by`，且**进程退出码 = 裁定值**。
   > **判据**：`exit 30` 是「裁定无效」而非「稿件不合格」——**不得**读成内容失败去触发 T5 修订轮。
+  > ⑤ **裁定书齐备**（v18.79.0 · 反哺-v18.78.2 §七 T0-8）：`audits/t8-conclusion.json` **必须在盘**——它是裁定的**书面依据**，含 `true_p0 / true_p1 / verdict / note / llm_review` 五要素（`note` 载正文 sha256；`llm_review` 须含**证伪四件套**）。**坑位 = T8（主控亲执行）**，其余角色只读；普通 `--report` 复跑会**保留**既有裁定段（不清除），要改只有 `--adjudicate` 一条路。
+  > ⑥ **别用「报告文件哈希」做下游互锁**（v18.79.0 · 反哺-v18.78.2 §七 T0-9①）：`final/M-Gate-Report.json` 每次**非裁定复跑**都会变（顶层 `generatedAt` 每跑必更新），**判定本身不变**。凡需要「这份报告是不是那一份」的互锁，请用**内容级指纹** `verdict_scope.draft_sha256`（＋ `exit` ＋ `_t8_concluded_at`），**不要**用文件 sha256。
 - **字数终审压缩**：若 T5 产物超字数软档（主人目标 ±2%），T8 亲自做外科压缩（删重复段 / 压缩反方每派至 ≤150 字 / 砍与主线弱关联段），**每删一段跑一次 count-chars**，不靠估算
 - **证据包自动生成**：跑 `scripts/build-evidence-bundle.mjs <项目名>` 自动收集 文献卡/数据卡/案例卡/先行者清单/大纲/批判报告/审计报告/复核报告/修订说明/status/任务简报 到 `final/证据包/`，不再手工复制
 - **AI 使用声明填实**：按 `templates/AI-使用声明-template.md` 三版本（学术/出版/公众）取对应版本填实
