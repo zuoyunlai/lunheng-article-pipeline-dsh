@@ -366,7 +366,14 @@ if (dataCard) {
       mform6Detail = '**未核**（数据卡 0 条条目 → 信任级别无可核对对象；空卡情形见 M-Exist-3 / M-Integrity-1）';
       mform6Severity = 'P2';
     } else {
-      mform6Detail = `${uniqueDataIds.length} 条数据卡均标独立信任级别段`;
+      // v18.79.0（反哺-v18.78.2 §三·1）：**detail 的口径必须写对，否则读者会以为「有两条缺字段」**。
+      //   实测 test-v18-78-2-县中塌陷：本项报「**29** 条数据卡均标独立信任级别段」，而数据卡实有
+      //   **31** 条（`^- \*\*信任级别\*\*` = 31、`^### \[D\d+\]` = 31）——差别的原因是
+      //   `uniqueDataIds = dataCardIds(text)` 取的是**正文引用的 [Dxx] 集合**（29 个），不是数据卡全部条目。
+      //   判定本身正确（它要核的是「正文引到的那几条有没有信任级别」），**错的只是措辞**：
+      //   旧措辞把「正文引用集」说成「数据卡」，与 M-Exist-3 / M-Integrity-1 报的「卡内 31 条」并列时自相矛盾。
+      mform6Detail = `正文引用的 ${uniqueDataIds.length} 个 [Dxx] 均在数据卡中带独立信任级别段`
+        + '（核对对象 = 正文引用集，非数据卡全部条目；全卡条数见 M-Exist-3 / M-Integrity-1）';
       mform6Severity = '通过';
     }
   } else if (trustLevelMiss.length > 0) {

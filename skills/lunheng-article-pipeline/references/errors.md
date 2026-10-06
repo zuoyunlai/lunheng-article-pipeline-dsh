@@ -244,6 +244,26 @@ M-Form-3 failed: temp_id pattern detected in output
 3. **跨语言**：本文档为中文版，英文版（如需）单建 `errors.md`
 4. **定期审计**：每月一次扫描所有错误信息，确保仍「友好」
 
+## 七、零信息失败的自诊断三步（宿主/额度墙；v18.79.0 反哺-v18.78.2 §七 T0-3）
+
+> **触发场景**：DSH 的 `subagent` 失败时**只回**「failed before it finished / no closing message」——**零错误文本**。
+> **为什么必须先诊断再重派**：本项目连撞两次，**对外表现完全同形**而**真实原因完全不同**——
+> ① `429 RATE_LIMIT：已达到 Token Plan 用量上限`（配额墙，可确认性重试 1 次）；
+> ② `402 ACCOUNT_QUOTA：Insufficient Balance`（额度墙，须请示主人 / 暂停派发）。
+> 只按「落盘校验 → 续接 → 重派」三段式处理，**第一次会白跑一轮、第二次也会**。
+
+**三步（全部只读）**：
+
+1. **定位会话日志**：`$DSH_HOME/sessions/<workspace>/<session-id>/session.v<N>.jsonl.zstd`
+   （`<N>` **不得写死** —— 宿主版本会漂移，本项目实测为 `v4`；口径与 `scripts/token-cost.mjs` 的 `liveLogPath()` 同源）。
+2. **逐帧解压**：该文件是**多帧 zstd**（帧头 `28 B5 2F FD`）——**只解首帧会误判「日志空」**
+   （实测单帧只得 264 B，而真实内容 160 KB）。按帧头切分后逐帧 `zstdDecompressSync`。
+3. **取原文**：在 `assistant/attempt` / `llm/retry` 事件里取 `finish.reason` 的 `failure.code` 与 `message`，
+   **原文透传、不推断**（错误码决定处置：`429` → 可确认性重试 1 次；`402` → 请示主人 / 暂停派发）。
+
+**判据一句话**：**「如实上报错误」这条铁律的前提是拿得到原文** —— 拿不到就不要用「大概是配额问题」顶替。
+（完整的三段式重派流程见 `AGENTS.md` §关键规则「子代理失败三段式处理」。）
+
 ---
 
 **错误信息友好化指南结束**

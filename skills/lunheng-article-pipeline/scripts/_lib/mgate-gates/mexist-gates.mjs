@@ -7,7 +7,7 @@
 //   result 顺序调用：mExist1 → M-Form-10/11（仍在主脚本）→ mExist4..mExist10 → mExist2 → mExist3。
 //   每个门函数只读 ctx 共享态并往 ctx.results 推结果；模块不持有跨门可变态。
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs'
-import { basename, join, dirname } from 'node:path'
+import { basename, join, dirname, relative } from 'node:path'
 import { createHash } from 'node:crypto'   // v18.12.0（L-15）：M-Exist-2 复算证据包清单的 sha256
 import { refsOf, dataCardIds, expandRefRanges } from '../refs.mjs'
 import { latestReport, reportByNumber, tableCells, isSeparatorRow, walkMd, sectionRange } from '../mgate-helpers.mjs'
@@ -238,9 +238,35 @@ try {
     //   被误判为「本报告结论=打回」→ 强索修订任务书 → 假 P1（实战：T7 第 2 轮通过报告仍被报
     //   「结论为打回但缺修订任务书」）。修法：只在**结论行**（含「结论/判定/verdict」的行，
     //   含其紧邻的加粗行）里判；无结论行时回退前 30 行。复核轮结论含「通过」即压过叙述性「打回」。
-    const conclIdx = lines.map((l, i) => (/结论|判定|verdict/i.test(l) ? i : -1)).filter((i) => i >= 0);
-    const scope4 = conclIdx.length ? conclIdx.map((i) => lines[i]) : lines.slice(0, 30);
-    const hasPass = scope4.some((l) => /复核通过|通过\s*[✅）)]|结论[：:]\s*[✅]?\s*通过|判定[：:]\s*[✅]?\s*通过/.test(l));
+    //   ⚠️ v18.79.0（反哺-v18.78.2 §二 F-h **假阴性修复**）：上面这套「结论行」判据有个**未设防的反向通道**，
+    //   实测把一份**确为打回的审计报告**读成「结论非打回（无需任务书）」（test-v18-78-2-县中塌陷：
+    //   `## 五、结论` 首行明写「打回修订 ❌」，而 M-Exist-4 detail 报「结论非打回」）：
+    //     · **通道 ①「全文扫」**：scope4 取的是**全文所有**含「结论/判定/verdict」的行 —— G 项逐条表里
+    //       每行都可能有「结论」二字，其中 `MC-Exist-12 … **结论：通过（人工核）**` 这种**子项**结论
+    //       被当成了报告总判定 → `hasPass = true` → `isReject` 被短路。
+    //     · **通道 ②「裸 `通过）`」**：`通过\s*[✅）)]` 无语境，被 §五 内的**叙述性**文字命中
+    //       （「本轮未核（**不得读作通过）**」）→ 同一个短路。
+    //   **为什么必须修**：`isReject` 一旦为 false，`## 修订任务书` 的六列契约**从此不再被校验** ——
+    //   一份「打回但无任务书」的报告会静默通过本门，直到 T8 才由人眼发现（假阴性把缺陷放行到下游）。
+    //   修法（两条同批，缺一不可；可由 `审计报告-template.md` §五 的 `<通过 ✅ / 打回修订 ❌>` 形态保证可达）：
+    //     ① 有「结论节」（`## 五、结论` / `## 结论` / `## 总判定` …）时，**判定面收到该节内**；
+    //     ② `hasPass` 只认**结论位**的「通过」（`结论/判定/verdict` + 冒号 + 可选加粗/✅ + 通过）
+    //        或固定的「复核通过」，**不再接受**「任意位置的 `通过 + 右括号`」。
+    const conclHeadRe = /^#{2,4}\s*(?:[一二三四五六七八九十\d]+\s*[、.．]\s*)?(?:总体)?(?:结论|总判定|裁定|verdict)/i;
+    const conclHeadIdx = lines.findIndex((l) => conclHeadRe.test(l));
+    const scope4 = (() => {
+      if (conclHeadIdx !== -1) {
+        const out = [];
+        for (let i = conclHeadIdx + 1; i < lines.length; i++) {
+          if (/^#{2,4}\s/.test(lines[i])) break;
+          out.push(lines[i]);
+        }
+        if (out.some((l) => l.trim())) return out;   // 结论节存在且非空 → 总判定只在这里
+      }
+      const cIdx = lines.map((l, i) => (/结论|判定|verdict/i.test(l) ? i : -1)).filter((i) => i >= 0);
+      return cIdx.length ? cIdx.map((i) => lines[i]) : lines.slice(0, 30);
+    })();
+    const hasPass = scope4.some((l) => /复核通过|(?:结论|判定|verdict)\s*\**\s*[：:=]\s*\**\s*(?:✅\s*)?\**\s*通过/.test(l));
     const isReject = !hasPass && scope4.some((l) => /打回|必须修改清单|未通过/.test(l));
     const hIdx = lines.findIndex((l) => /^#{2,4}\s*修订任务书/.test(l));
     const rows = [];
@@ -253,8 +279,18 @@ try {
         // 单元格切列：`protect: true` 保护**转义竖线 `\|`** 与**行内代码块内的竖线**（验收标准可能写正则 `a|b|c`）
         const cells = tableCells(l, { protect: true });
         if (isSeparatorRow(cells)) continue;   // 分隔行
+        // v18.79.0（反哺-v18.78.2 §二 F-h **连带修复**）：**列数变了 = 任务书表结束**。
+        //   `## 修订任务书` 段内往往不止一张表（07 卡要求「表尾给合计并对账」，报告还会附
+        //   「压缩清单（序 / 位置 / 现文 / 压缩后 / 估 Δ）」等第二张表）。旧实现一旦设了 `header`，
+        //   就把**该段内后续所有 `|` 行**都当任务书行 —— 第二张表的表头行与数据行被当成条目。
+        //   这条判据此前从未跑到过（`isReject` 恒 false）。修好 F-h 后实测立刻暴露：
+        //   「序」「C-A」「C-B」被当成审计编号 → 硬报「怎么改/验收标准列空缺」+「复核报告未覆盖 5 个编号」→ **合规报告被判 P0**。
+        //   判据：Markdown 表列数固定；列数与表头不等 → 该表已结束（**break 而非重置**：重置会让 `header` 变 null，
+        //   反而触发「缺修订任务书段或表头」的假 P1；任务书就是本节第一张带「编号」列的表）。
         if (!header && cells.some((c) => c.includes('编号'))) { header = cells; continue; }
-        if (header) rows.push(cells);
+        if (!header) continue;
+        if (cells.length !== header.length) break;
+        rows.push(cells);
       }
     }
     const colOf = (kw) => (header || []).findIndex((h) => kw.test(h));
@@ -268,8 +304,16 @@ try {
         findings.push(`修订任务书缺必需列（现表头：${header.join(' / ')}）——需含 编号/严重度/改哪里/怎么改/验收标准/关闭状态`);
       } else {
         const ids = [];
+        // v18.79.0（反哺-v18.78.2 §二 F-h **连带修复**）：**汇总行不是条目**。
+        //   07 卡 §修订任务书 要求「表尾给合计并对账」，故任务书末行常写
+        //   `| **合计** | — | 净增 +12 ≤ 17 ✔ | — |` —— 它的「改哪里 / 怎么改 / 验收标准」列本就是破折号。
+        //   这条判据此前**不存在，也从未暴露**：因为 `isReject` 永远为 false（F-h 假阴性），下面的六列校验
+        //   **从来没跑到过**。修好 F-h 后它立刻暴露——实测 test-v18-78-2-县中塌陷 的 11 行任务书里，
+        //   「合计」行被当作条目 → 连报 3 条硬问题 → **整份合规报告被判 P0**（门一修好就误杀合规产物）。
+        //   判据：编号列归一后是「合计/总计/小计/汇总/破折号/省略号/点号」→ 跳过（既不入 `ids`，也不做六列与关闭状态检查）。
+        const AGG_ROW_RE = /^(?:合计|总计|小计|汇总|—+|-+|–+|\u2026+|\.+)$/;
         for (const r of rows) {
-          if (!r[iId] || /^\.+$/.test(r[iId])) continue;
+          if (!r[iId] || AGG_ROW_RE.test(String(r[iId]).replace(/[`*\s]/g, ''))) continue;
           const id = r[iId].replace(/[`*]/g, '').trim();
           ids.push(id);
           if (!/^P[012][-\u2011]?[0-9A-Da-d]+/.test(id)) soft.push(`编号「${id}」不符合 P0-n / P1-n 约定`);
@@ -417,7 +461,15 @@ try {
     for (const gateId of ['T2.5', 'T7.5']) {
       const fp = join(auditsDir5, `闸门记录-${gateId}.md`);
       if (!existsSync(fp)) {
-        findings5.push(`缺 audits/闸门记录-${gateId}.md（${gateId === 'T2.5' ? 'T2 数据检索 → T4 前' : 'T7 审计 → T8 终检前'}的闸门无落盘留痕）`);
+        // v18.79.0（反哺-v18.78.2 §二 F-g）：**归属提示**（只进 detail，不改判定）。
+        //   实测：T7 首跑（报告未落盘）本项 = SKIP；审计报告落盘后复跑 = P1「缺 audits/闸门记录-T7.5.md」
+        //   —— 同一份稿件、同一套脚本，仅因 T7 落盘就多出一项 P1，而 **detail 不会告诉 T7 这不是他的活**：
+        //   `audits/闸门记录-T2.5.md` 行 5 逐字写明「产出者：**主控（T0）**，判定当场写（不得事后补写）」，
+        //   T7 代写就是伪造人工闸门留痕（07 卡最小权限）。不给归属，T7 极易误以为「我漏交了产物」而补交一份形式件。
+        //   判据：**门的 detail 必须写明「该件的既定产出者是谁」**，否则「报告后激活」的 P1 会被读成收报方的缺项。
+        findings5.push(`缺 audits/闸门记录-${gateId}.md（${gateId === 'T2.5' ? 'T2 数据检索 → T4 前' : 'T7 审计 → T8 终检前'}的闸门无落盘留痕）`
+          + '——**归属提示**：该件的既定产出者 = **主控（T0）**、判定当场写（见 `audits/闸门记录-T2.5.md` 行 5；'
+          + '形制照 `references/templates/闸门记录-template.md`），**不属审计员 T7 的交付物**，T7 不得代写（代写即伪造人工闸门留痕）');
         continue;
       }
       const ls5 = readFileSync(fp, 'utf8').split('\n');
@@ -1540,6 +1592,24 @@ if (files.length === 0 && isDraftStageAudit) {
               + (staleFwd.length ? `构建时存在、现已缺失：${staleFwd.slice(0, 3).join(', ')}（包内那份是**孤儿副本**，M 门可能核到它）` : '');
           }
         } catch { /* 陈旧检测是附加项，失败不影响清单复算结论 */ }
+        // ④ v18.79.0（反哺-v18.78.2 §二 F-a）：**包源是否就是本次被审正文**（软提示，只进 detail）。
+        //   实测病灶（test-v18-78-2-县中塌陷）：`manifest.auditTarget` = `drafts/初稿-v2.md`，而本次被审对象
+        //   是 `drafts/初稿-v3.md`，且包内 3 份素材副本（案例卡/文献卡/先行者清单）逐 hash 落后于源
+        //   —— 本项却**全绿通过**：② 只核「清单指向的那份正文自生成后有没有变」（v2 没变 → 无信号），
+        //   ③ 只核「构建时缺失的源集合有没有变」（源一直在 → 无信号），**都不核「包 ↔ 本次被审对象」**。
+        //   后果：一个**陈旧到指向上一版正文**的证据包可以全绿通过 M 门，并成为 G 项机检 / 审计 / 终检的**共同输入**。
+        //   与 ③ 同档：新鲜度属「时点」问题，故只做**可见**（P2 文案进 detail），**不翻 severity**；
+        //   是否重跑 `build-evidence-bundle.mjs` 由主控/ T7 按可见信号决定。
+        try {
+          const proj = dirname(dirname(evDir));
+          const relDraft = relative(proj, draftPath).replaceAll('\\', '/');
+          const mfTarget = String(mf.auditTarget || '').replaceAll('\\', '/');
+          if (mfTarget && relDraft && !relDraft.startsWith('..') && mfTarget !== relDraft) {
+            manifestStale = (manifestStale ? `${manifestStale}；` : '')
+              + `包源 ≠ 本次被审正文：manifest.auditTarget = \`${mfTarget}\`，本次被审 = \`${relDraft}\``
+              + '（**本包是另一版正文的证据**，其素材副本可能同样落后）';
+          }
+        } catch { /* 相对路径算不出（异盘/软链）→ 略过该提示，不影响其余判定 */ }
       }
     } catch (e) {
       manifestProblem = `清单无法解析（${e.message}）——请重跑 build-evidence-bundle.mjs 重生成`;

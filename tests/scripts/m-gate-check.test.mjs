@@ -1489,6 +1489,60 @@ test('v18.72.0 一致性钉：文类档案.md「文献下限」列 == GENRE_MIN_
   assert.deepEqual(docMap, { ...GENRE_MIN_L }, '文类档案.md 的文献下限列必须与脚本 GENRE_MIN_L 逐项一致')
 })
 
+test('v18.79.0（反哺-v18.78.2 §二 F-h）：M-Exist-4 的「打回」判定不得被叙述性「通过」短路', () => {
+  // 病灶（实测 test-v18-78-2-县中塌陷）：审计报告 `## 五、结论` 首行明写「打回修订 ❌」，
+  //   而 M-Exist-4 报「结论非打回（无需任务书）」→ `## 修订任务书` 的六列契约**从此不再被校验**。
+  //   两条短路通道：① scope4 取**全文**含「结论/判定/verdict」的行 → G 项表里
+  //   `MC-Exist-12 … **结论：通过（人工核）**` 这种**子项**结论被当成总判定；
+  //   ② `通过\s*[✅）)]` 无语境 → 被「本轮未核（**不得读作通过）**」命中。
+  // 本用例同时钉住「修 ① 不得把合规的**通过**报告判成打回」这条反向风险。
+  const { d, fin, ev, aud } = mkProject({ audits: true })
+  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n')
+  const item = () => parseJson(run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev]))
+    .results.find((x) => x.gate.startsWith('M-Exist-4'))
+  const AUD2 = join(aud, '审计报告-v1.md')
+  const REV2 = join(aud, '复核报告-v1.md')
+  const HEAD2 = '| 编号 | 严重度 | 改哪里 | 怎么改 | 验收标准 | 关闭状态 |\n|---|---|---|---|---|---|\n'
+
+  // ① 打回报告：结论节写「打回修订 ❌」，同节内另有叙述性「不得读作通过）」与子项结论「结论：通过（人工核）」
+  writeFileSync(AUD2, [
+    '# 审计报告 v1', '',
+    '## 二、G 项逐条检查', '',
+    '| G 项 | 判定 | 实据 |', '|---|---|---|',
+    '| MC-Exist-12 | SKIP | 未检，由 T7 人工核 → **结论：通过（人工核）** |', '',
+    '## 五、结论', '',
+    '- **结论**：**打回修订 ❌**　｜　**判定**：**打回修订 ❌**（P1 = 1）',
+    '- **机读口径提示**：G14 报告未产出，本轮未核（**不得读作通过）**', '',
+  ].join('\n'))
+  rmSync(REV2, { force: true })
+  let it = item()
+  assert.equal(it.pass, false, '打回报告不得被判「结论非打回」：' + it.detail)
+  assert.match(it.detail, /打回/, '应进入打回分支并校验任务书：' + it.detail)
+  assert.doesNotMatch(it.detail, /结论非打回/, '叙述性「通过」不得短路打回判定')
+
+  // ② 补上六列任务书（并附**段内第二张表**：压缩清单）→ 应通过；
+  //    第二张表的「序 / C-A」不得被当成审计编号（否则硬报列空缺 + 复核未覆盖 → 合规报告被判 P0）
+  writeFileSync(AUD2, [
+    '# 审计报告 v1', '', '## 五、结论', '', '- **判定**：**打回修订 ❌**', '',
+    '## 修订任务书', '', HEAD2 + '| P1-1 | P1 | 初稿.md §三 | 补 [L01] 支撑该论点 | 该段含 [L01] | 待复核 |', '',
+    '**压缩清单（P1-3 的等量对冲来源）**：', '',
+    '| 序 | 位置 | 现文 | 压缩后 | 估 Δ |', '|---|---|---|---|---|',
+    '| C-A | 行 33 | 甲 | 乙 | −6 |', '',
+  ].join('\n'))
+  writeFileSync(REV2, '# 复核报告 v1\n\nP1-1 ✓已关闭（修订说明 §2）\n')
+  it = item()
+  assert.equal(it.pass, true, '六列齐备 + 复核覆盖应通过：' + it.detail)
+  assert.doesNotMatch(it.detail, /C-A|「序」/, '段内第二张表（压缩清单）不得混入任务书条目：' + it.detail)
+
+  // ③ 反向保护：模板形态（`审计报告-template.md` §五 的 `- **判定**：通过 ✅`）必须被认作通过
+  writeFileSync(AUD2, '# 审计报告 v1\n\n## 五、结论\n\n- **判定**：通过 ✅\n- **P0 / P1 条数**：0 / 0\n')
+  rmSync(REV2, { force: true })
+  it = item()
+  assert.equal(it.pass, true, '模板形态「判定：通过 ✅」必须被认作通过：' + it.detail)
+  assert.match(it.detail, /结论非打回/)
+  rmSync(d, { recursive: true, force: true })
+})
+
 test('v18.78.2 A5：审计报告缺席的两种结论（阶段未到 → SKIP；阶段已到 → P1）', () => {
   // 审计实测的病灶：M-Exist-4/5/6/7/8/9 六处「N/A 未检」分支记 `pass: true, severity: '通过'`，
   //   于是 `rm audits/审计报告-*.md` / `rm final/交付说明.md` 即可把这 6 道**实检**门退回「通过」，

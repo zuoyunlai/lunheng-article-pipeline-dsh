@@ -173,6 +173,26 @@ test('g-audit-check G2.5：来源段**恰好 1 条** → P1；两条以上 → P
   rmSync(many.d, { recursive: true, force: true })
 })
 
+test('g-audit-check G2.5：**缩进加粗子项**形态的来源条目必须被数出（反哺-v18.78.2 §二 F-b 假阴性）', () => {
+  // 病灶：段结束判据旧为 `/^\s*[-*]\s+\*\*/`（允许前导空白）→ 紧跟 `- **来源谱系**：` 之后的第一行
+  //   `  - **① 独立媒体（自采）** — …` 直接 break → `countSources` **恒为 0**。
+  //   实测 test-v18-78-2-县中塌陷：7/7 张卡全为 0，G2.5 只报 7 条 P2「未能数出条目」，
+  //   而**本门唯一的 P1 判据（来源段内恰好 1 条）永不触发** → 真正的单源卡一张都抓不到。
+  // 两侧都钉：① ≥2 条 → PASS；② **恰 1 条** → 必须 P1（这是旧实现永远到不了的判据）。
+  const two = mkFixture({ 案例卡: '# 案例卡\n\n### [C01] 甲\n- **时间窗口**：2024-01-01 ~ 2024-02-01\n- **检索截止**：2026-09-19\n- **来源谱系**（独立来源计数 **2**）:\n  - **① 独立媒体（自采）** — `[媒]` 某报：<https://a.example/1>\n  - **② 独立媒体（党报）** — `[媒]` 某网：<https://b.example/2>\n- **多方说法**:\n  - 甲说：…\n' })
+  let j = parseJson(run([G, two.draft, '--cards', two.cards, '--brief', two.brief]))
+  assert.equal(g25(j).severity, 'PASS',
+    '缩进加粗子项 ≥2 条须数得出（旧实现 break 在第一行 → count=0 → P2）：' + JSON.stringify(g25(j).evidence.issues))
+  assert.deepEqual(g25(j).evidence.issues, [], '不得残留「未能数出条目」P2（零缩进字段行才是段结束）')
+  rmSync(two.d, { recursive: true, force: true })
+
+  const one = mkFixture({ 案例卡: '# 案例卡\n\n### [C01] 甲\n- **时间窗口**：2024-01-01 ~ 2024-02-01\n- **检索截止**：2026-09-19\n- **来源谱系**（独立来源计数 **1**）:\n  - **① 独立媒体（自采）** — `[媒]` 某报：<https://a.example/1>\n- **多方说法**:\n  - 甲说：…\n' })
+  j = parseJson(run([G, one.draft, '--cards', one.cards, '--brief', one.brief]))
+  assert.equal(g25(j).severity, 'P1',
+    '缩进加粗子项**恰好 1 条**必须判 P1——这正是旧实现永不触发的判据（假阴性）：' + JSON.stringify(g25(j).evidence.issues))
+  rmSync(one.d, { recursive: true, force: true })
+})
+
 test('g-audit-check G2.5：素材卡**索引段**的行首 [Cxx] 不得被当成条目（围栏掩码）', () => {
   const card = '# 案例卡\n\n## 📇 索引段\n\n```\n[C01] 甲 ｜ 支撑 S1 ｜ 🟢已落地\n[C02] 乙 ｜ 支撑 S2 ｜ 🟢已落地\n```\n\n### [C01] 甲\n- **时间窗口**：2024-01-01 ~ 2024-02-01\n- **检索截止**：2026-09-19\n- **来源谱系**：\n  - 甲源 <https://a.example/1>\n  - 乙源 <https://b.example/2>\n'
   const f = mkFixture({ 案例卡: card })

@@ -117,14 +117,26 @@ if (hasDirLayout) {
 // === --project 模式（v18.0.0 新增，P2-1）===
 // 背景：交付说明的「成本指标」字段此前**结构性填不上** —— `--sessions` 需要精确 session id，
 //   而主控在会话内**拿不到**（subagent 返回的是 agent id，不是 session id）。
-// 现规则：从项目日志（agents-log.md / status.md / 01-任务简报.md / audits/审计视图-v0.md）
-//   用 UUID 正则提取所有会话 ID，与 `--sessions` 传入者合并去重。
+// 现规则：从项目日志（agents-log.md / status.md / 01-任务简报.md / audits/审计视图-v0.md
+//   / **model-routing.md** / **audits/闸门记录-*.md**）用 UUID 正则提取所有会话 ID，与 `--sessions` 传入者合并去重。
 //   子代理交接报告里常见的 `session-<uuid>` 形态会被自动提取。
+//   v18.79.0（反哺-v18.78.2 §七 T0-2 邻接缺陷）：后两项是**补进来的** —— 实测 test-v18-78-2-县中塌陷 的
+//     `agents-log.md` / `status.md` **一个 UUID 都没有**（子代理 session id 实际记在 `model-routing.md` 的 16 处
+//     与 `audits/闸门记录-T7.5.md` 的 1 处），于是 `--project` 直接 exit 10「未提取到会话 ID」，
+//     「本项目 token 成本」这一**强制实测字段**仍结构性填不上。
+//   判据：**提取面必须覆盖「本项目实际记 id 的地方」**，而不是「我们以为主控会记 id 的地方」。
+//   多提取到的非会话 UUID 只会落进「无用量记录」行，不影响判定（exit 只由「有没有命中」决定）。
 if (opt.project) {
   const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
-  const cand = ['agents-log.md', 'status.md', '01-任务简报.md', join('audits', '审计视图-v0.md')].map((f) =>
+  const cand = ['agents-log.md', 'status.md', '01-任务简报.md', join('audits', '审计视图-v0.md'), 'model-routing.md'].map((f) =>
     join(opt.project, f),
   );
+  // `audits/闸门记录-*.md`：文件名带闸门号（T2.5/T7.5/…），只能枚举目录；`audits/` 不存在属合法形态（Phase ≤4 早期）。
+  try {
+    for (const n of readdirSync(join(opt.project, 'audits'))) {
+      if (/^闸门记录-.*\.md$/.test(n)) cand.push(join(opt.project, 'audits', n));
+    }
+  } catch { /* 目录不存在 → 该面为空即可 */ }
   const found = new Set(opt.ids || []);
   const srcFiles = [];
   for (const p of cand) {
@@ -197,13 +209,33 @@ if (opt.tree && !opt.ids) {
 // 实测缺口（本机 2026-09-28）：`storages/session_projcache/` **停在 09-21**（185 个文件），而实验期
 //   （09-28）实际跑了 **500 个会话** → `--project` 抽到了 UUID 却 `matchedSessionCount: 0` / **exit 10**。
 //   即：**投影缓存是"某次投影的产物"，不是会话真源**；真源是
-//   `$DSH_HOME/sessions/<workspace>/<id>/session.v3.jsonl.zstd`（每行一条事件，**多帧 zstd**）。
+//   `$DSH_HOME/sessions/<workspace>/<id>/session.v<N>.jsonl.zstd`（每行一条事件，**多帧 zstd**）。
+//   ⚠️ v18.79.0（反哺-v18.78.2 §七 T0-2 **真因修复**）：上面那个 `<N>` **不得写死**。
+//   本函数 v18.48.0 实装时写死 `session.v3.jsonl.zstd`，而宿主 2026-10 起落盘为 **`session.v4.jsonl.zstd`**
+//   → 回落**静默失效**，读数与「缓存里根本没有这个会话」完全同形（实测本机 test-v18-78-2-县中塌陷：
+//   26 个会话在盘、`--sessions <真实 uuid>` → `matchedSessionCount=0` / `matchedFromLiveStore=0` / exit 10）。
+//   判据：会话日志的**版本号属宿主契约、会随宿主升级漂移**；本脚本只依赖「`session.v` 前缀 + `.jsonl.zstd` 后缀」，
+//   取版本号最大者。**不得**据「文件名没命中」推断「没有用量数据」——那是把环境漂移误报成数据缺失。
 // 本节**只做补充**（不替换缓存口径）：对缓存未命中的 id 回落活存储，逐帧解压后累加
 //   `assistant/message.data.usage`，适配成与投影缓存**同形**的记录 → 下游消费代码零改动。
 // **判据：成本读数的"会话集真源"必须可回答"这个会话的用量从哪读到"——缓存读不到就回落真源，而不是报 0。**
 const liveStoreRoot = join(opt.dshHome, 'sessions');
 const liveCache = {};
 const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
+/** 会话日志文件名解析（**不写死版本号**，理由见上方 v18.79.0 注）：取 `session.v<N>.jsonl.zstd` 中 N 最大者。 */
+const liveLogPath = (dir) => {
+  let best = null;
+  let bestV = -1;
+  try {
+    for (const n of readdirSync(dir)) {
+      const m = /^session\.v(\d+)\.jsonl\.zstd$/.exec(n);
+      if (!m) continue;
+      const v = Number(m[1]);
+      if (v > bestV) { bestV = v; best = n }
+    }
+  } catch { return null }
+  return best ? join(dir, best) : null;
+};
 const readLiveUsage = (id) => {
   if (!existsSync(liveStoreRoot)) return null;
   let dir = null;
@@ -212,8 +244,8 @@ const readLiveUsage = (id) => {
     if (existsSync(cand) && statSync(cand).isDirectory()) { dir = cand; break }
   }
   if (!dir) return null;
-  const f = join(dir, 'session.v3.jsonl.zstd');
-  if (!existsSync(f)) return null;
+  const f = liveLogPath(dir);
+  if (!f) return null;
   let buf;
   try { buf = readFileSync(f) } catch { return null }
   const offs = [];

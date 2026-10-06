@@ -28,7 +28,7 @@
 //   ⚠️ v18.0.2 修：旧版此处用 `3`，与 M 门约定（`3` = 仅 P2·soft·SKIP，**可放行但需复核**）撞码——
 //      按 M 门文档读 `3` 的调用方会把「本脚本需要人工决定」误读成「只是 P2，可继续」。现改用独立码 `4`。
 // 只读：**从不写** settings.yaml / 环境变量 / 任何配置文件；**从不读取或发送 API Key**（远端一律不探测）。
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import os from 'node:os';
 import { installExitGuard } from './_lib/exit-guard.mjs';   // 退出码硬化（v18.0.5）
@@ -55,13 +55,57 @@ try {
   }
   throw e;
 }
+// ── 配置真源解析（v18.79.0 · 反哺-v18.78.2 §七 T0-1）：settings.yaml **或** profile 的 cordis.patch.yml ──
+// 病灶实测（本机 2026-10-06）：bundle 部署下**模型与 Provider 目录不在 settings.yaml**，而在 profile 的
+//   `cordis.patch.yml`（`- id: llm-pi-ai` 的 `config.providers` + `- id: agent-default-model` 的
+//   `config.provider/model`）→ 旧版一律 `读不到 settings.yaml` 并退出，而这与「路径敲错」**同形**：
+//   主控会去查路径、以为是包坏了，实际是**部署形态不同**。
+// 三条判据（缺一不可）：
+//   ① **DSH_HOME 不存在 = 路径错**（真正的用法/路径错，保持既有退出码语义）；
+//   ② **DSH_HOME 在、两处配置都不在 = 部署形态不受支持**——这是「形态」不是「路径」，故走**独立码
+//      `4`（需人工决定）**，并给出可执行的两条出路（手工填 `model-routing.md` / 先配 provider 目录）；
+//      **刻意不用 `0`**：本脚本 `0` 的语义是「三档都有主选」，用它表示「不支持」= 假 OK。
+//   ③ **cordis 形态下模型清单不可探测**——该文件只登记 provider（`apiKeyEnv`/`baseURL`），**不含 `models:`
+//      列表**（清单由 provider API 决定）⇒ 候选池为空 ⇒ 既有「没有可用模型」分支给出**形态专属**指引。
 const settingsPath = join(DSH_HOME, 'settings.yaml');
+const cordisCandidates = [join(DSH_HOME, 'cordis.patch.yml')];
+try {
+  const pdir = join(DSH_HOME, 'profiles');
+  if (existsSync(pdir)) for (const d of readdirSync(pdir)) cordisCandidates.push(join(pdir, d, 'cordis.patch.yml'));
+} catch { /* profiles/ 不存在属合法形态 */ }
+const cordisPath = cordisCandidates.find((p) => existsSync(p));
+const hasSettings = existsSync(settingsPath);
+const sourceKind = hasSettings ? 'settings.yaml' : (cordisPath ? 'cordis.patch.yml' : null);
+const configPath = hasSettings ? settingsPath : cordisPath;
 
-if (!existsSync(settingsPath)) {
-  console.error(`读不到 settings.yaml：${settingsPath}`);
-  console.error('用 --dsh-home <path> 指定 DSH_HOME；若你只用 DSH 内置通道（模型目录不在 settings.yaml），请手工指定模型——本脚本不猜。');
-  process.exit(10);   // v18.12.0（L-67 同族收口）：配置/路径错 → 10
+if (configPath === null || configPath === undefined) {
+  if (!existsSync(DSH_HOME)) {
+    console.error(`DSH_HOME 不存在：${DSH_HOME}`);
+    console.error('用 --dsh-home <path> 指定 DSH_HOME；本脚本不猜。');
+    process.exit(10);   // v18.12.0（L-67 同族收口）：路径错 → 10
+  }
+  console.error(`本部署形态不受支持：既没有 ${settingsPath}，也没有 profile 的 cordis.patch.yml（已试：${cordisCandidates.join(' / ')}）。`);
+  console.error('⚠️ 这是**部署形态问题，不是路径错**——bundle 部署常把模型/Provider 目录放在 profile 的 `cordis.patch.yml`（也可能两处皆无）。');
+  console.error('处置（二选一）：① 按 `references/_shared/模型路由.md` §三 **手工填** `run/<项目>/model-routing.md`');
+  console.error('  （Phase 0 的「模型策略」默认 = ① 继承会话模型，本步可整档留空即继承）；② 先在该 profile 配上 provider 目录再重跑本脚本。');
+  process.exit(4);   // v18.0.2：独立码 4 = 需人工决定（**不得**用 0 —— 0 的语义是「三档都有主选」）
 }
+
+/** cordis.patch.yml 形态：取 `- id: agent-default-model` 块内的 provider/model（该文件是 loader patch 数组，非 settings 形态）。 */
+const parseCordisDefault = (text) => {
+  const lines = text.split(/\r?\n/);
+  const i = lines.findIndex((l) => /^\s*-\s*id:\s*agent-default-model\s*$/.test(l));
+  if (i === -1) return null;
+  const baseIndent = lines[i].match(/^\s*/)[0].length;
+  const out = {};
+  for (let j = i + 1; j < lines.length; j++) {
+    if (/^\s*-\s*id:/.test(lines[j])) break;                          // 下一个 patch 条目
+    if (lines[j].trim() && lines[j].match(/^\s*/)[0].length <= baseIndent) break;
+    const m = lines[j].match(/^\s*(provider|model)\s*:\s*(.+?)\s*$/);
+    if (m) out[m[1]] = m[2].replace(/^['"]|['"]$/g, '');
+  }
+  return Object.keys(out).length ? { provider: out.provider || null, model: out.model || null } : null;
+};
 
 // ── 零依赖 YAML 扫描：provider → { models[], baseURL, displayName, local } + agent-default-model ──
 const parse = (text) => {
@@ -110,11 +154,22 @@ const parse = (text) => {
   return { providers, defaultModel };
 };
 
-const { providers, defaultModel } = parse(readFileSync(settingsPath, 'utf8'));
+const parsedCfg = parse(readFileSync(configPath, 'utf8'));
+const providers = parsedCfg.providers;
+// cordis 形态的默认模型走专属解析（该文件的行形态是 `- id: agent-default-model`，不是 `agent-default-model:`）
+const defaultModel = parsedCfg.defaultModel || (sourceKind === 'cordis.patch.yml' ? parseCordisDefault(readFileSync(configPath, 'utf8')) : null);
 if (providers.size === 0) {
-  console.error(`settings.yaml 未解析到任何 provider 目录：${settingsPath}`);
-  process.exit(10);   // v18.12.0（L-67 同族收口）：配置错 → 10
+  console.error(`${sourceKind} 未解析到任何 provider 目录：${configPath}`);
+  if (sourceKind === 'cordis.patch.yml') {
+    console.error('（cordis.patch.yml 的 provider 目录写在 `- id: llm-pi-ai` 的 `config.providers` 下；该文件缺失或结构变更都会走到这里。）');
+    console.error('处置：按 `references/_shared/模型路由.md` §三 手工填 `model-routing.md`（Phase 0 模型策略默认 = ① 继承）。');
+    process.exit(4);   // 部署形态/结构不匹配 → 需人工决定（非「路径错」）
+  }
+  process.exit(10);   // v18.12.0（L-67 同族收口）：settings.yaml 在却解析不出 provider = 配置错 → 10
 }
+// 候选池的诚实边界（进 out.deployment，供 Phase 0 的「模型策略」判断）：cordis 形态**没有 models 清单**
+const cordisNoModelList = sourceKind === 'cordis.patch.yml'
+  && [...providers.values()].every((p) => (p.models || []).length === 0);
 
 // ── 本地 provider 可达性探测（默认开启；仅回环地址，零外发）──
 const localProbe = {};
@@ -170,7 +225,15 @@ for (const [, p] of providers) {
 }
 const usable = inventory.filter((c) => c.reachable);
 if (usable.length === 0) {
-  console.error('没有可用模型（本地不可达且无远端候选）——请检查 settings.yaml 的 provider 配置。');
+  if (cordisNoModelList) {
+    console.error(`没有可探测的模型清单：真源 = profile 的 cordis.patch.yml（${configPath}）——该文件**只登记 provider**（apiKeyEnv / baseURL），不含 \`models:\` 列表。`);
+    console.error(`· 本部署已配置的 provider（${providers.size} 个）：${[...providers.keys()].join(' / ')}${defaultModel ? `；默认模型 = ${defaultModel.provider || '?'} / ${defaultModel.model || '?'}` : ''}`);
+    console.error('· **这不是错误，是部署形态的边界**：模型清单由 provider API 决定，本脚本**刻意不猜**。');
+    console.error('· 处置：Phase 0 的「模型策略」默认取 **① 继承会话模型**（零配置、与宿主一致）；');
+    console.error('  需要 ② 同平台分档 / ③ 跨平台分档时，按 `references/_shared/模型路由.md` §三 手工填 `run/<项目>/model-routing.md`（每档给 `LUNHENG_*_MODEL` + 跨平台再加 `_PROVIDER`）。');
+  } else {
+    console.error('没有可用模型（本地不可达且无远端候选）——请检查 settings.yaml 的 provider 配置。');
+  }
   process.exit(4); // v18.0.2：独立码 4（旧版 3 与 M 门「仅 P2 可放行」撞码）
 }
 
@@ -256,7 +319,14 @@ const envOf = (r) => {
     : [`$env:${P}_MODEL = '${r.pick}'`];
 };
 const out = {
-  dshHome: DSH_HOME, settings: settingsPath,
+  dshHome: DSH_HOME, settings: configPath,
+  // v18.79.0（T0-1）：**真源与部署形态必须显式落盘**——调用方（Phase 0「模型策略」）要能分辨
+  //   「读的是 settings.yaml 还是 profile 的 cordis.patch.yml」，以及「候选池是否完整」。
+  source: configPath,
+  sourceKind,                                            // 'settings.yaml' | 'cordis.patch.yml'
+  deployment: cordisNoModelList
+    ? { kind: 'cordis-patch', modelListProbeable: false, providers: [...providers.keys()], note: 'cordis.patch.yml 只登记 provider（无 models 清单）→ 候选池不完整；Phase 0「模型策略」默认 ① 继承会话模型，②/③ 须手工填 model-routing.md' }
+    : { kind: 'settings-yaml', modelListProbeable: true, providers: [...providers.keys()] },
   defaultModel: defaultModel || null,
   localProbe: noProbe ? '（--no-probe：未探测本地）' : localProbe,
   inventory,

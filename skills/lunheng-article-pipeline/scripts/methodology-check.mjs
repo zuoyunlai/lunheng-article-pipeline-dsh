@@ -99,7 +99,16 @@ const METHOD_PARAM_KEYWORDS = {
   },
   '抽样方式': { phrases: ['抽样', '随机', '分层', '聚类', '便利抽样', '目的抽样', '滚雪球', 'sampling', 'stratified', 'cluster'] },
   '变量定义': { phrases: ['变量', '因变量', '自变量', '协变量', '中介变量', '调节变量', '操作性定义', 'variable', 'covariate'] },
-  '统计模型': { phrases: ['回归', 'OLS', 'logit', 'probit', '中介', '调节', '结构方程', 'SEM', 'PLS', '倾向得分', 'PSM', 'DID', 'RDD', '工具变量', 'regression'] },
+  // ⚠️ v18.79.0（反哺-v18.78.2 §六 F-j）：**项名必须在自己的 phrases 里**。
+  //   病灶：本键名「统计模型」，而 15 个词元**全部是回归族方法名**、不含「统计模型」四字 →
+  //   一份**不做统计推断**的稿子按规范写明「不建立统计模型」（01 卡与审计任务书 P1-3 的标准措辞）
+  //   **永远无法命中**，而 `required = 4` → 该项恒缺、`pass` 恒 false。
+  //   实测（test-v18-78-2-县中塌陷 `drafts/初稿-v4.md` 行 35 原文含「不建立统计模型、不报效应量」）：
+  //   修前 `foundCount = 3 / P1`，而任务书的 [逐字] 锚点恰是 `foundCount ≥ 4 / pass = true` → **锚点在正文侧不可达**。
+  //   判据：本项的语义是「**方法节有没有交代清楚这些适用参数**」——**明写「不适用/不建立」也是交代**
+  //   （与 M-Exist-11 的「有没有报」**刻意不同向**：那里写「不报」就是没报，见下方 F-k）。
+  //   故此处**不加否定剥离**，只补上项名本身。修后同一份稿：`foundCount = 4 / PASS`。
+  '统计模型': { phrases: ['统计模型', '回归', 'OLS', 'logit', 'probit', '中介', '调节', '结构方程', 'SEM', 'PLS', '倾向得分', 'PSM', 'DID', 'RDD', '工具变量', 'regression'] },
   '超参数': { phrases: ['学习率', 'learning rate', 'epoch', 'batch size', 'batch_size', '正则化', '正则', 'dropout', '超参数', 'hyperparameter', 'λ', 'alpha'] },
   '随机种子': { phrases: ['random seed', '种子', '随机数', 'rng'] },
   // 单字母 `R` 已移除：改为**无歧义**的语言/软件名（`R 语言` / `RStudio`），并保留其余具名软件
@@ -124,11 +133,35 @@ const STAT_KEYWORDS = {
   '效应量': ['效应量', 'effect size', "Cohen's d", "Cohen's d", 'd =', 'd=', 'r =', 'r=', 'η²', 'eta squared', 'ω²', 'OR =', 'OR=', 'odds ratio', 'RR =', 'RR=', 'β =', 'β=', 'β 系数'],
   '置信区间/p 值': ['95% CI', '95%CI', '置信区间', 'p <', 'p<', 'p =', 'p=', 'P <', 'P<', 'P =', 'P=', 'p-value', 'p值', 'significance'],
 };
+// ⚠️ v18.79.0（反哺-v18.78.2 §六 F-k）：**否定语境不得被读成「已报」**（假阴性）。
+//   病灶实测：`'效应量'` 等是**裸子串**匹配 → 写手照规范在方法节声明「**不报效应量**」，
+//   本项 `found` 反而**多出一项**（同一把尺子：v3 = `found []` → v4 只加了一句「不报效应量」→ `found ['效应量']`）。
+//   方向恰是**最坏的那一侧**：本项存在的意义就是抓「不报效应量」（脚本自陈「最常见问题是不报效应量」），
+//   而它在**写手最规范的那一刻**失效 —— 越合规越被读成已报。
+//   判据：命中位置前若是**否定 + 报告动词**（`不/未/无/非/没有` + `报/报告/估计/给出/列出/呈现/计算/采用/使用/作/做/涉及/纳入/提供`）
+//   ＋ ≤3 个非标点字符，则该次出现记入 `statNegated`、**不计入 found**。
+//   边界（如实）：只做**近距否定**（否定短语与词元之间 ≤3 字）——「本文不打算在任何小节报告效应量」这类
+//   **长距否定**仍会被读成已报，归 T7 目视；反向的「不**显著**的效应量」已由**动词白名单**排除（"显著"不在表内），
+//   不会把「报了但不显著」误判成没报。**与 M-Form-12 的方向差异是刻意的**（那里「不适用」算交代，这里「不报」就是没报）。
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const NEG_REPORT_VERB = '(?:报告|报|估计|给出|列出|呈现|计算|采用|使用|作|做|涉及|纳入|提供)';
+const NEG_PREFIX = `(?:不|未|无|非|没有)(?:再|会|拟|打算|单独|另行)?${NEG_REPORT_VERB}[^，。；、\\s]{0,3}`;
+/** 该词元在方法节里有没有**非否定**的出现。 */
+const hasPositiveStatHit = (k) => {
+  const total = methodBody.split(k).length - 1;
+  if (total === 0) return false;
+  const negated = [...methodBody.matchAll(new RegExp(NEG_PREFIX + escapeRe(k), 'g'))].length;
+  return total > negated;
+};
 const statFound = [];
 const statMissing = [];
+const statNegated = [];   // 只有否定式提及、无正向出现的项（供 note 与 T7 读：这是「声明不报」而非「漏检」）
 for (const [item, keywords] of Object.entries(STAT_KEYWORDS)) {
-  if (keywords.some((k) => methodBody.includes(k))) statFound.push(item);
-  else statMissing.push(item);
+  if (keywords.some((k) => hasPositiveStatHit(k))) statFound.push(item);
+  else {
+    statMissing.push(item);
+    if (keywords.some((k) => methodBody.includes(k))) statNegated.push(item);
+  }
 }
 // 三项齐全才算合规；缺任一项 = P1（最常见问题是不报效应量）
 const mExist11Pass = statMissing.length === 0;
@@ -239,7 +272,10 @@ const result = {
       severity: effMExist11Severity,
       found: statFound,
       missing: statMissing,
-      note: naNote || '三项齐全：检验类型声明 / 效应量 / 置信区间或 p 值',
+      // v18.79.0（F-k）：把「声明不报」与「漏检」分开呈现——两者都算 missing，但**成因不同**（T7 读 note 即可分辨）
+      negatedOnly: statNegated,
+      note: naNote || ('三项齐全：检验类型声明 / 效应量 / 置信区间或 p 值'
+        + (statNegated.length ? `（⚠️ ${statNegated.join(' / ')} 只有**否定式声明**、无正向报告，已按「未报」计入 missing）` : '')),
     },
     'M-Exist-12': {
       name: '结果-方法闭环',

@@ -78,6 +78,65 @@ test('model-routing.mjs：按本机 settings.yaml 给档位建议，且跨 provi
 //   现改为行为断言：**造一个「所有档位都没有候选」的 settings.yaml**，断言脚本真按 `4` 退出
 //   （= 「需人工决定」自有码，不是 M 门的 1/2/3）；并保留「用法/配置错必须 10」的行为对照，
 //   这两条一起钉住「3 与 1 都不再用」这个事实。头注释与契约行的一致性由仓库门 ⑧d 机械钉住。
+// v18.79.0（反哺-v18.78.2 §七 T0-1）：**bundle 部署的第二真源** ───────────────────────────────
+// 病灶实测（本机 2026-10-06）：bundle 部署的模型/Provider 目录**不在 settings.yaml**，而在 profile 的
+//   `cordis.patch.yml`（`- id: llm-pi-ai` 的 `config.providers` + `- id: agent-default-model` 的
+//   `config.provider/model`）→ 旧版一律「读不到 settings.yaml」并退出，**与「路径敲错」同形**：
+//   主控会去查路径、以为包坏了，实际只是**部署形态不同**（Phase 0「模型自检」因此退化为手工填表）。
+// 本用例钉住三件事：① 回落 cordis 并**报出 provider 名与默认模型**；② 出口是 **4（需人工决定）不是 10**
+//   ——「形态不支持」≠「路径错」；③ **DSH_HOME 不存在仍必须是 10**（真路径错不得被放宽）。
+//   ⚠️ 刻意**不钉「0」**：本脚本 `0` 的语义是「三档都有主选」，用它表示「不支持」= 假 OK。
+test('v18.79.0（T0-1）：无 settings.yaml 时回落 profile 的 cordis.patch.yml，且「形态不支持」用 4 而非 10', () => {
+  const d = tmp('lunheng-mr2-')
+  const home = join(d, 'dsh-home')
+  mkdirSync(join(home, 'profiles', 'desktop'), { recursive: true })
+  // 形态照抄本机真实 profile：providers 只有 apiKeyEnv / baseURL，**没有 models 清单**
+  writeFileSync(join(home, 'profiles', 'desktop', 'cordis.patch.yml'), [
+    '- id: llm-pi-ai',
+    '  name: "@deepseek-ai/dsh-llm-pi-ai"',
+    '  config:',
+    '    providers:',
+    '      platform-a:',
+    '        apiKeyEnv: A_KEY',
+    '      platform-b:',
+    '        apiKeyEnv: B_KEY',
+    '        baseURL: https://api.b.example/v4',
+    '- id: agent-default-model',
+    '  name: "@deepseek-ai/dsh-agent-default-model"',
+    '  config:',
+    '    provider: platform-a',
+    '    model: a-flash',
+    '    reasoningEffort: high',
+    '- id: other-plugin',
+    '  disabled: true',
+    '',
+  ].join('\n'), 'utf8')
+
+  const r = run([join(SCRIPTS, 'model-routing.mjs'), '--dsh-home', home, '--json', '--no-probe'])
+  const both = r.out + r.err
+  assert.equal(r.code, 4, '「部署形态不支持」应 exit 4（需人工决定），实得 ' + r.code + '：' + both.slice(0, 300))
+  assert.notEqual(r.code, 10, '不得报 10——“形态不支持”与“路径敲错”必须分开（否则主控会去查路径、以为包坏了）')
+  assert.notEqual(r.code, 0, '不得用 0 = 假 OK（0 的语义是「三档都有主选」）')
+  assert.match(both, /cordis\.patch\.yml/, '须点名第二真源：' + both.slice(0, 300))
+  assert.match(both, /platform-a/, '须报出已配置的 provider 名（Phase 0「模型策略」据此判断能否 ②/③ 分档）')
+  assert.match(both, /platform-b/, '另一个 provider 亦须出现')
+  assert.match(both, /a-flash|platform-a \/ a-flash|默认模型/, '须报出 agent-default-model（= 选项 ① 继承的实际值）')
+  assert.match(both, /模型策略|手工填/, '须给出可执行处置（手工填 model-routing.md / 走模型策略 ①）')
+
+  // 反向保护：home 存在但**两处配置都没有** → 仍是「形态不支持」的 4，不是 10
+  const bare = join(d, 'bare-home')
+  mkdirSync(bare, { recursive: true })
+  const r2 = run([join(SCRIPTS, 'model-routing.mjs'), '--dsh-home', bare, '--json', '--no-probe'])
+  assert.equal(r2.code, 4, '两处配置皆无 = 形态不支持 → 4：' + (r2.out + r2.err).slice(0, 200))
+  assert.match(r2.out + r2.err, /本部署形态不受支持/)
+
+  // 反向保护：**DSH_HOME 不存在** = 真路径错 → 仍 10（不得被上面两条放宽）
+  const r3 = run([join(SCRIPTS, 'model-routing.mjs'), '--dsh-home', join(d, 'nope-home'), '--json'])
+  assert.equal(r3.code, 10, 'DSH_HOME 不存在仍是路径错 → 10：' + (r3.out + r3.err).slice(0, 200))
+
+  rmSync(d, { recursive: true, force: true })
+})
+
 test('model-routing：无可用模型时 exit 4、配置错时 exit 10（行为，旧版是 3 与 1）', () => {
   const d = tmp('lunheng-mr-')
   const home = join(d, 'dsh-home')

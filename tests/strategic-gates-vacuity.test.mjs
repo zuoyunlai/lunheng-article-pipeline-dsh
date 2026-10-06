@@ -112,6 +112,45 @@ test('#19 真阳性侧：方法节写了 `R 语言` / `Python` / `GPU` → 必�
   }
 })
 
+// ── v18.79.0（反哺-v18.78.2 §六 F-j / F-k）：methodology-check 的**两个反向失效** ──────────
+//   · F-j：`'统计模型'` 键的 phrases **不含项名自己** → 一份不做统计推断的稿子按规范写
+//     「不建立统计模型」**永不命中**，而 required = 4 → 该项恒缺（审计任务书的 [逐字] 锚点
+//     `foundCount ≥ 4` 在正文侧**不可达**）。
+//   · F-k：`'效应量'` 一类是**裸子串**匹配 → 写手声明「**不报效应量**」反而使该项**命中**
+//     （越合规越被读成「已报」），而本项存在的意义正是抓「不报效应量」。
+// 两侧都钉：声明不适用要**看得见**（F-j），声明不报**不得**冒充已报（F-k），而真报了必须仍被识别。
+test('v18.79.0 F-j：方法节写「不建立统计模型」（无回归族词）→ 「统计模型」项必须被识别', () => {
+  const { d, p } = mkDraft('讨论正文。', '样本量 n = 320，采用分层抽样，变量为因变量。识别策略不取统计推断，不建立统计模型。')
+  try {
+    const j = jsonOf(MC, p)
+    assert.ok(
+      j.checks['M-Form-12'].found.includes('统计模型'),
+      '项名必须在自己的 phrases 里（否则规范要求的措辞永不命中）：' + JSON.stringify(j.checks['M-Form-12']),
+    )
+    assert.ok(j.checks['M-Form-12'].foundCount >= 4, '四项齐备应达 required=4：' + JSON.stringify(j.checks['M-Form-12']))
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
+test('v18.79.0 F-k：方法节写「不报效应量」→ **不得**算作「已报」（且真报仍须识别）', () => {
+  // ① 否定式声明 → found 不含「效应量」，只进 negatedOnly
+  const neg = mkDraft('讨论正文。', '采用一致性检验，不建立统计模型、不报效应量、不报告置信区间。')
+  try {
+    const j = jsonOf(MC, neg.p)
+    const m = j.checks['M-Exist-11']
+    assert.ok(!m.found.includes('效应量'), '「声明不报」不得被读成「已报」（旧实现此处 found 多一项）：' + JSON.stringify(m))
+    assert.ok((m.negatedOnly || []).includes('效应量'), '否定式提及须记入 negatedOnly，让 T7 区分「声明不报」与「漏检」：' + JSON.stringify(m))
+  } finally { rmSync(neg.d, { recursive: true, force: true }) }
+
+  // ② 反向保护：真报了必须识别；「不**显著**的效应量」是**已报**（否定动词白名单不得误伤）
+  for (const body of ['采用 OLS 回归，效应量为 0.35，95% CI 见附表。', '报告了效应量，但不显著的效应量仍如实列出。']) {
+    const pos = mkDraft('讨论正文。', body)
+    try {
+      const m = jsonOf(MC, pos.p).checks['M-Exist-11']
+      assert.ok(m.found.includes('效应量'), `真报了效应量必须识别。输入=${body}｜${JSON.stringify(m)}`)
+    } finally { rmSync(pos.d, { recursive: true, force: true }) }
+  }
+})
+
 // ── #20 / #21 双向 ──────────────────────────────────────────────────────────
 test('#21 假阳性侧：方法写 `logit`、结果写 `Logit` → **不得**判「未回链」（旧实现丢 `i` 旗标）', () => {
   const { d, p } = mkDraft('讨论正文。', '采用 logit 模型。样本量 n = 320，分层抽样，变量为因变量。')
