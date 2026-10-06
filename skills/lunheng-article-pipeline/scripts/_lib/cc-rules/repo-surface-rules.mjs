@@ -243,7 +243,7 @@ if (gateModMissing) {
     const scriptSeg = tailIdx >= 0 ? head.slice(0, tailIdx) : head;
     const truthSet = new Set([...scriptSeg.matchAll(/([A-Za-z][A-Za-z0-9_-]*)\s*\//g)].map((m) => m[1].replace(/\/$/, '')).filter(Boolean));
     if (!truthNum || truthSet.size === 0) {
-      errors.push('[P0 白名单失效] SKILL.md 白名单行未抓到数字或脚本清单 — 规则 ㉕ 失效');
+      errors.push('[P0 白名单失效] SKILL.md 白名单行未抓到数字或脚本清单 — 规则 ㉝ 失效');
     } else {
       // 2) 扫描次级文档：SKILL.md 全文（豁免白名单行）/ SECURITY.md / AGENTS.md / references/_shared/*.md / docs/审计与修订记录/*.md
       // docs/ 下临时扫描令牌豁免历史审计报告目录（一次性快照，按当时版本数字写定）——
