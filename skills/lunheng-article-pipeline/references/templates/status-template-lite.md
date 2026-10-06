@@ -11,7 +11,7 @@
 ## 当前状态
 
 - 🔄 In Progress / ✅ Done / ❌ Failed
-- 角色: T1 / T2 / T3 案例 / T4 分析 / T5 写手 / T6 批判 / T7 审计 / T9 审稿（v18.75.0 起按文类档案启用：`academic-*` 必选，其余默认不选）/ T8 终检（独立角色，主控执行）
+- 角色: T1 / T2 / T3 案例 / T4 分析 / T5 写手 / T6 批判 / T7 审计 / T9 审稿（v18.75.0 起按文类档案启用：`academic-cn`/`-hum`/`-case` 必选，其余默认不选；v18.77.0 P-3 由通配 `academic-*` 收口为特指）/ T8 终检（独立角色，主控执行）
 - 启动时间: YYYY-MM-DD HH:MM
 - 当前模型: deepseek-v4-pro（或 LUNHENG_* 分档）
 - **审计视图刷新时间（v18.2.5 新增硬检查项）**: YYYY-MM-DD HH:MM ｜ 视图源: <final/定稿.md ｜ drafts/初稿-vN.md ｜ 素材阶段>

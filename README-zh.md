@@ -2,7 +2,7 @@
 
 > 🌐 [English](README.md) ｜ **中文**（本文件）｜ [Español](README-es.md) ｜ [Português](README-pt.md) ｜ [हिन्दी](README-hi.md)
 
-> 版本：v18.78.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.78.1（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > 一个 DeepSeek Harness（DSH）bundle 插件，注册**两个按需加载的 agent 技能**：`lunheng-article-pipeline`（9 角色主流水线）与 `lunheng-commands`（薄壳包装 11 个 `/lunheng-*` 斜杠命令：draft / resume / cite / audit / journal / ppt / history / rollback / status / stats / help；**不引入新角色、不引入新 M 门**，详见 `skills/lunheng-commands/SKILL.md`）。主技能把深度长文的生产——学术论文、行业分析、商业评论、公众号深文——变成**带人在环节点的 9 角色流水线**。
 
@@ -62,7 +62,9 @@ Phase 4.5 审稿     T9 同行评审 + G14 中文 AI 痕迹闸（并行）；配
 Phase 5  终检      T8 终检（主控执行）→ 定稿、证据包、交付说明
 ```
 
-**三角证据底座**（`[L]` + `[D]` + `[C]`）——每条论断都要能映射到文献、数据与（事件类论断）案例证据。**独立审计**——审计员不改稿，只报告。**四道人在环节点**——Phase 0 / 2.5 / 3.5 / 5。
+**三角证据底座**（**同义「三角验证」**；与英文 README L70 "Triangular evidence base" 同义；单一术语真源 = `skills/lunheng-article-pipeline/references/glossary.md` §十二.1）（`[L]` + `[D]` + `[C]`）——每条论断都要能映射到文献、数据与（事件类论断）案例证据。**独立审计**——审计员不改稿，只报告。**四道人在环节点**——Phase 0 / 2.5 / 3.5 / 5。
+
+> **实战案例互引（v18.78.0 §7.2 双文档互引落地）**：本仓库实战案例的事实表（**字数 / 资源 / 审计结果 / 关键结论**）见英文 [`README.md` 顶部 Verification status 表](../lunheng-article-pipeline-dsh/README.md#verification-status)（**单一真源**）；v2.x 与 v18.x 期间的深入剖析见 [`docs/introduction.md` §实战验证](../lunheng-article-pipeline-dsh/docs/introduction.md) 与 [`skills/lunheng-article-pipeline/references/case-studies.md`](../lunheng-article-pipeline-dsh/skills/lunheng-article-pipeline/references/case-studies.md)。**新主人口径**（v18.78.0 §7.2 立项）：硬数字（版本 / 角色 / 阶段 / 闸门 / 脚本 / 命令 / 退出码族）单一真源 = [`docs/quick-facts.md`](../lunheng-article-pipeline-dsh/docs/quick-facts.md)。
 
 ## Repository layout
 
@@ -115,7 +117,7 @@ patch 层做两件事：**插入一行本包自注册行**（`- id: lunheng-arti
 **只推 tag 发布，禁止本地 `npm publish`**（本地直发会绕过 CI 三道门与 OIDC 来源证明，且 npm 版本不可覆盖）。
 
 ```sh
-git tag v18.78.0 && git push origin v18.78.0   # 一次只推 1 个 tag（GitHub：单次 push >3 个 tag 不触发任何 workflow）
+git tag v18.78.1 && git push origin v18.78.1   # 一次只推 1 个 tag（GitHub：单次 push >3 个 tag 不触发任何 workflow）
 # publish.yml 依次跑：门 1 一致性 → 门 2 打包面 → 门 3 机械卫生 → 门 4 打包产物冒烟 → 脚本回归测试
 #   → tag/版本一致校验 → 幂等守卫 → OIDC 发布 --provenance --tag dsh → 发布后审计
 ```

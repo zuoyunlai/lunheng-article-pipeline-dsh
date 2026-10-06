@@ -13,8 +13,8 @@
 | 3 写作 | T5 写手 | `drafts/初稿-v1.md` |
 | 3.6 批判 | T6 批判伙伴（C1-C7 反方攻击，轻量档可跳过） | `analysis/批判报告-vN.md` |
 | 4 审计 | T7 审计员（G0-G14，只审不改） | `audits/审计报告-vN.md` |
-| 4.2 修订 | 写手修订 ≤2 轮（独立写手执行） | `修订说明` + `v2/v3` |
-| 4.5 审稿 | T9 同行评审（可选，学术/行业分析默认开）+ G14 中文 AI 痕迹闸 | `audits/审稿报告-vN.md` + `G14-检测报告-vN.md` |
+| 4.2 修订（A 轨 ≤2 轮 + B 轨 至多 +1 + G 环 1-2 轮） | 写手修订 ≤2 轮（独立写手执行）；G14 终闸 Warning/Fail 触发 G 环独立修订；详见 `references/glossary.md` §修订回环三环制 | `修订说明` + `v2/v3` |
+| 4.5 审稿 | T9 同行评审（启用按 `references/_shared/文类档案.md`：`academic-cn`/`-hum`/`-case` 必选不可关；`lit-review` 可选；其余默认不选）+ G14 中文 AI 痕迹闸 | `audits/审稿报告-vN.md` + `G14-检测报告-vN.md` |
 | 5 终检 | 主控 M 门终检（T7.5 完整性门通过后；M-Form 11 / M-Exist 11 / M-Integrity 2 / M-Fact 1） | `final/定稿.md` + 图件 + 证据包 + 交付说明 |
 
 ## 项目目录结构

@@ -1,6 +1,6 @@
 # 论衡（lunheng-article-pipeline）— 多 Agent 深度长文流水线
 
-> **DSH 原生插件（v18.78.0）**：本仓库为 DSH bundle 技能包（`package.json` 的 `main` → `lib/index.js` 注册本技能 + `dsh.bundle.patch` → `cordis.patch.yml` 叠加三档 subagent 工具）；结构性差异见 `SKILL.md` 的「🔧 DSH 环境说明」章节。
+> **DSH 原生插件（v18.78.1）**：本仓库为 DSH bundle 技能包（`package.json` 的 `main` → `lib/index.js` 注册本技能 + `dsh.bundle.patch` → `cordis.patch.yml` 叠加三档 subagent 工具）；结构性差异见 `SKILL.md` 的「🔧 DSH 环境说明」章节。
 
 把一篇深度文章 / 论文的生产拆成 **9 个独立角色 T1-T9 + 6 个阶段**（v2.5.2-dsh.8 语义定案：T1-T9 互不可替代；Phase 1 为 T1 文献 ∥ T2 数据 ∥ T3 案例 三检索员三方真并行互不干涉，T3 任何量级必 spawn 含 0 条空卡协议；T6 批判伙伴 + T7 审计 + **T8 终检独立角色由主控 T0 亲执行** + T9 同行评审T9 启用按 `_shared/文类档案.md`，v2.3.0 角色编号重构 + v2.4.0 加 T9），用 DSH 的 `subagent` 子代理编排，产出有**证据底座、反方论证、独立审计、人工核验节点**的交付物。
 
@@ -119,7 +119,7 @@ Phase 3.6 批判      T6 批判伙伴 → 批判报告 C1-C7（轻量档可跳�
 Phase 4 审计        T7 审计员 → 审计报告（G0-G14）
 Phase 4 审计打回    写手交修订说明 + 修订稿（A 轨审计打回 ≤2 轮，独立写手执行；B 轨主控触发轮**至多 +1 深化轮**，G14 终闸另走独立的 **G 环**，三环制见 QUICKSTART）
 Phase 4.6 G14终闸  G14 中文 AI 痕迹闸终闸（**唯一一次 spawn**；**v18.75.0 起串行，不再与 T9 并行**）→ **Pass → 冻结正文；Warning/Fail → G 环修订后重跑**
-Phase 4.7 审稿      T9 同行评审（**v18.75.0 起按文类档案启用**：`academic-*` 必选、`lit-review` 可选、其余默认不选）→ 审稿报告 + 期刊匹配 Top 3
+Phase 4.7 审稿      T9 同行评审（**v18.75.0 起按文类档案启用**：`academic-cn`/`-hum`/`-case` 必选、`lit-review` 可选、其余默认不选；v18.77.0 P-3 由通配 `academic-*` 收口为特指）→ 审稿报告 + 期刊匹配 Top 3
 [🔒 T7.5 完整性门]   审计报告最新版 + P0/P1 清单 + M 门全 exit 0 + 隔离
 Phase 4.5 配图      仅当 Phase 2.5 拍板有图位：主控按 `图表-SVG-template.md` 填图落盘 `final/图件/`（**在 G14 终闸之前完成**，使终闸审的是含图的版本）
 Phase 5 终检        T8 终检（独立角色，主控 T0 亲执行 M 门）→ 终稿 + 证据包 + 交付说明（含 AI 使用披露）

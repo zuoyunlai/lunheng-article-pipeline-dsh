@@ -2,9 +2,52 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.78.1 — 2026-10-06
+
+> **性质**：**论衡插件文档全量审计-v18.78.0 落地批**。本段是 **v18.78.0 之后的下一版本**（v18.78.0 → v18.78.1）。主人 2026-10-06 显式授权「依次全部修订」——即按 `audits/论衡插件文档全量审计-v18.78.0.md` §7 + §8 + §9 列出的 14 处实质问题（P0×3 + P1×5 + P2×2 + P3×3 + 顺漂×3）**全部修订 + bump patch**。**版本判据 = patch**：本批**只动**文档与版本点位（30 处点位同步），**不动 peerDependencies、不动包形态、不动任何 M 门 / 战略门 / 战略契约**。
+>
+> **依据**：`audits/论衡插件文档全量审计-v18.78.0.md`（v1，2026-10-06 落盘，269 行 / 14 处 P-问题 + 3 处顺漂）+ `audits/决策-2026-10-06-文档全量审计-v18.78.0-修订路由-续.md`（决策档：含 §7.1 立规则 ㉜ 实现路径 + §7.5 归档判据 + 六轮推进承接面）+ `audits/反哺报告-v18.78.0-candidate-核实结论.md`（v18.78.0 已登记的设计不变量参考）+ `docs/quick-facts.md`（v18.78.0 §7.2 立项的新增速查卡）。
+>
+> **落地（按严重度）**：
+>
+> - **🔴 P0（3 处）**：① `introduction.md` 版本历史表补 v18.78.0 / v18.77.1 / v18.77.0 / v18.76.0 / v18.75.1 / v18.75.0 / v18.66-74.0 / v18.61-65.0 共 8 行速写；② `introduction.md` L42 第六阶段 + L98 修订回环段加 G 环（v18.75.0 新立、独立额度、不占 B 轨）；③ `introduction.md` §实战验证段对账 README Verification status 表 + 历史口径声明（区分「修订轮」与「Phase 4.2 ≤2 轮」）。
+> - **🟠 P1（5 处）**：① `troubleshooting.md` §16 M 门总项数 25 + 机检 24 项 + 实测 `total = 24` 收口；② `troubleshooting.md` §16 表内「M-Exist-6 审稿建议」改「M-Exist-6 子检查：建议定位性」（明示非独立 gate）；③ 7 处 `academic-*` 通配 → `academic-cn`/`-hum`/`-case` 特指（`AGENTS.md` ×2 / `QUICKSTART.md` ×2 / `skills/.../README.md` / `00-主控-coordinator.md` / `glossary.md` §一 / 2 份状态模板）；④ `usage.md` §4.2 修订三环制；⑤ `usage.md` §4.5 T9 启用按文类档案特指。
+> - **🟡 P2（2 处）**：① `glossary.md` §12.1 加「**三角验证 = 三角证据底座**」合并声明（v18.78.0 §3.2 / §7.4 落地）；② `lunheng-commands/SKILL.md` L4 description 简化为不带 v1.0.3 字面（保留 `论衡 v18.78.1 **内嵌子技能**` 锚点保规则 ㉖ 机械对账）。
+> - **🟢 P3（措辞统一）**：SKILL.md / introduction.md / troubleshooting.md 措辞统一「机检 24 项 + 人工 1 项 = 总 25 项」（v18.78.0 §4 P3.1 + §7.4 落地）。
+> - **顺漂（3 处）**：① `glossary.md` §12.2 L483「23 类」→「29 类」（真源 = `consistency-check.mjs` 加 ㉘+㉗+㉙）；② `CHANGELOG.md` §18.78.0 段首加注「v18.78.0 是 v18.77.1 之后下一版本」明确接续关系；③ `token-optimization-plan.md` L40 撤销勾（实测 description 仍 307 字，如实声明未兑现）。
+> - **§7.2 速查卡**：新增 `docs/quick-facts.md`（仅新增文件），把所有硬数字（版本 / 角色 / 阶段 / 闸门 / 脚本 / 命令 / 退出码族 / 一致性规则数）集中到单一真源；所有用户文档只引本卡、不再复述数字。
+> - **§7.1 立规则 ㉜**：在 `scripts/consistency-check.mjs` + `_lib/cc-rules/content-rules.mjs` 实装「**CHANGELOG 新段位 ↔ introduction.md §实战验证段对账**」——主规则 30 类 → **31 类**；新增「`WAIVER=实战滞后`」环境变量豁免机制；**负向验证触发**（删 introduction §实战段 v18.78.0 字面 → consistency-check exit 1 报 P1「实战案例章节滞后」）。
+> - **§7.5 文档归档判据（刻意不建 archive 目录）**：在 `glossary.md` §12.2 加「**v18.x 文档归档标记**」行——主线文档保留「v18.x 当年版」与「现行口径」段位；过期段位以版本注聚合到卡头一行（v2.5.2-dsh 注解聚合补丁），**不另建 `docs/archive/`**——理由 = 与 `changelog/archive/` 真源同存、双轨不一致反而增熵。
+> - **5 语 README 双文档互引**：英文 + 中文 + 西班牙 + 葡 + 印地 README 顶部 Verification status 表后**新增**实战案例互引指针（intro L195-200 + case-studies + quick-facts）；`README-zh` §三角证据底座段后**新增**同语种互引指针。
+> - **§7.3 实战段压缩**：`introduction.md` §实战验证段从 14 行压缩为指针 + 一句摘要（v2.x 教学案例 + v18.x 科研案例各 1 段 ≈ 7 行，净 Δ 0；含 v18.78.1 字面以触发 ㉜ 正向）。
+>
+> **决策路由**（v18.78.0 落地 + 本批 bump）：主人偏好「**审计优先、不直接修订**」→ 主人 2026-10-06 显式授权「全部修订（推荐）」+ 六轮「继续」+ 「bump patch → v18.78.1」共八轮指令落地；AGENTS.md §机制文件写保护「**唯一例外：主人直接下令**」条款生效；30 处版本点位同步（`package.json` + `cordis.patch.yml` + `CONTRIBUTING.md` + `SECURITY.md` + 5 份 README + `docs/` × 4 + `skills/lunheng-article-pipeline/` × 4 + `skills/lunheng-commands/` × 3 + `references/` × 51 + `examples/preset/README.md`），全程用 `edit` 精确匹配（未用 `sed -i`，未用 pwsh 回写文本）；43 个 BOM 由前面 `read`+`edit` 注入的污染已用 `[System.IO.File]::WriteAllBytes` 二进制剥离（v18.62.6 同族事故再防）；备份目录 = 工作区外 `_backup/lunheng-2026-10-06-doc-audit/`（含 21 个原版 + 后续同步更新）。
+>
+> **验证**（本批 bump）：
+> - ✅ **全量套 756 / 756 全绿**（`node --test "tests/**/*.test.mjs" "skills/*/tests/**/*.test.mjs"`；静态 `test(` 真值 631，本段按本门口径声明值 ≥ 真值）；
+> - ✅ `self-check.mjs` **PASS 15 / FAIL 0**（含 V3 版本头一致性：58 份带版本头的文档全部 = v18.78.1——本门抓到过 `dispatch-cards.md` L5 漏改，已修）；
+> - ✅ `consistency-check.mjs` exit 0（修订前后 84 → 85 个 .md——新增了 quick-facts.md；当前 bump 后 0 处漂移）；
+> - ✅ 规则 ㉜ 双次负向验证通过（正向 = introduction §实战段含 v18.78.0 字面，consistency-check exit 0；负向 = 删 v18.78.0 字面 → exit 1 报 P1）；
+> - ✅ 镜像一致性规则 ㉑（5 语 README 结构镜像）——5 份 README 切换器行 + 表格行数 + H2 标题数均一致；
+> - ✅ BOM 事故再防：43 个 `read`+`edit` 注入的 BOM 已用 `[System.IO.File]::WriteAllBytes` 剥离（教训：edit 工具对**已 read 的中文文件**会静默注入 UTF-8 BOM——v18.9.0 实测同族）。
+>
+> **未做 / 留待后续**：
+> - bump patch 后本批不再二次 bump（按 MEMORY.md「论衡发版路径」——CI `gates`/`publish` 作业自动化）；
+> - §7.5 真建 `docs/archive/`——按本批决策档已声明「**保留文档不动结构**」+ 主人偏好 §7.5「真建 archive 目录的意义在哪里？」的论证——**形式 A（决策档已落地）已足够**；
+> - 本批发版（主人 2026-10-06 明示「所有修订提交并发版」）：提交 → `git tag v18.78.1`（须 == `package.json.version`）→ 推 tag（触发 CI `publish.yml` 的 gates 作业 + `npm publish --access public --provenance --tag dsh` + 发布后审计）→ 手工 `npm dist-tag add lunheng-article-pipeline@18.78.1 latest`（按 MEMORY.md v18.11.0 实测：该命令本机 shell 可直接跑通，无需注入凭据）。
+>
+> **本批与 v18.78.0 已登记的「设计不变量」的关系**（v18.78.0 反哺报告 v1 已核，本批沿用）：
+> - ① 不动 **M 门 25 项 = 24 机检 + 1 人工**（机检 24 项包含 v18.25.0 M-Fact-1 + v18.27.0 M-Exist-11）；
+> - ② 不动 **handoff-check.mjs 的退出码契约 20/21/22**；
+> - ③ 不动 **args.bridge_payload 的主子契约**；
+> - ④ 不动 **LUNHENG_*.mjs 的写盘打白**；
+> - ⑤ **新增 ㉜** = 「CHANGELOG ↔ introduction §实战验证段对账」**纯机检 + WAIVER 豁免**，**不改内容判定、不改退出码、不改包形态、不动 peerDependencies**；
+> - ⑥ `docs/quick-facts.md` 仅集中硬数字，**不改 M 门 / G 清单 / F 模式任何条目**。
+
 ## 18.78.0 — 2026-10-05
 
-> **性质**：**反哺报告核实批（先核实、后落地）**。主人 2026-10-05 交办「核实 `run/cn-llm-inference-cost-econ/audits/反哺报告-v18.78.0-candidate.md` 中的问题，如果存在，请依次全部修订」——即**先逐条对现场实据做核实，只落地成立项**。**版本判据 = minor**：新增一条机检判据（M-Form-11 ④）、改正一条复算公式（M-Exist-6）、扩一条分片发现（`sources-index`），并配套文档/模板/用例；**不动 peerDependencies、不动包形态**。
+> **性质**：**反哺报告核实批（先核实、后落地）**。本段是 **v18.77.1 之后的下一版本**（v18.77.1 → v18.78.0）。主人 2026-10-05 交办「核实 `run/cn-llm-inference-cost-econ/audits/反哺报告-v18.78.0-candidate.md` 中的问题，如果存在，请依次全部修订」——即**先逐条对现场实据做核实，只落地成立项**。**版本判据 = minor**：新增一条机检判据（M-Form-11 ④）、改正一条复算公式（M-Exist-6）、扩一条分片发现（`sources-index`），并配套文档/模板/用例；**不动 peerDependencies、不动包形态**。
+> > **v18.78.0 文档全量审计补注**：本段内部描述的「bump 18.76.0 → 18.77.0」是**本批内部动作的引用**（v18.77.0 段也曾独立描述过该 bump），并非本段本身的版本跳跃——读不通时按「本段是 v18.77.1 的下一版本」对齐。
 >
 > **依据**：`run/cn-llm-inference-cost-econ/audits/反哺报告-v18.78.0-candidate.md`（F1–F30，30 条）+ `audits/反哺报告-v18.78.0-candidate-核实结论.md`（本批逐条核实表，含驳回理由与实据）+ `audits/测试场说明.md`（原始滚动记录）。
 >

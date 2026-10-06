@@ -2,7 +2,7 @@
 
 > **论衡（lunheng-article-pipeline）** 是一个多 Agent 深度长文生产流水线，DeepSeek Harness（dsh）bundle 插件。它不是让一个 AI 直接写文章，而是让一支 **9 个 AI 角色组成的"论文生产小队"** 按既定协议协作：定题 → 三线并行检索 → 分析 → 写作 → 批判 → 审计 → 审稿 → 终检。每一步都有明确产出物、交接报告与质量闸门，最终交付**有证据底座、有反方论证、有独立审计、有人工核验节点**的文章。
 
-> 适用：公众号深度长文、研究报告、学术论文、商业评论、行业分析——任何"要站得住脚"的长内容。当前版本 **v18.78.0**（DSH 独立版本）。
+> 适用：公众号深度长文、研究报告、学术论文、商业评论、行业分析——任何"要站得住脚"的长内容。当前版本 **v18.78.1**（DSH 独立版本）。
 
 ---
 
@@ -34,12 +34,12 @@
   ├─ T6 批判伙伴   ── 批判报告（C1-C7 反方攻击，轻量档可跳过）
   ├─ T7 审计员     ── 审计报告（G0-G14 全项，只审不改）
   ├─ T9 审稿人     ── 审稿报告（6 维度评分 + 期刊匹配 Top 3，可选）
-  └─ T8 终检（主控亲完成）── M 门（机械 24 项 + 人工 1 项）+ 定稿 + 证据包 + 交付说明
+  └─ T8 终检（主控亲完成）── M 门（机检 24 项 + 人工 1 项 = 总 25 项）+ 定稿 + 证据包 + 交付说明
 ```
 
 > **v2.3.0 角色编号重构 + v2.4.0 加 T9**：编号 = 流水线 Phase 顺序——T1-T3 检索 / T4-T5 加工 / T6-T9 防御。T8 终检**有角色卡**（`references/agents/08-终检-finalizer.md`），但**执行者 = 主控本人、不 spawn 子代理**——确保「最后一关」不外包；T9 同行评审是投稿前的「预演审稿人」，学术/行业分析模式默认开启。
 
-**六个主阶段（Phase 0–5，各自带子阶段）**：**Phase 0 定题 → Phase 1 并行检索（含 1.5 补检索）→ Phase 2 分析（含 2.5 大纲确认）→ Phase 3 写作（含 3.5 洞察补充、3.6 批判）→ Phase 4 审计（含 4.2 修订回环：≤2 轮纠错 + 至多 +1 深化；4.5 审稿）→ Phase 5 终检**，中间穿插 **T2.5 / T7.5 两道完整性门**（主控 checkpoint，不绕过交接直接派发）与 **4 个人在环节点**（定题 / 大纲 / 洞察补充 / 终稿）。
+**六个主阶段（Phase 0–5，各自带子阶段）**：**Phase 0 定题 → Phase 1 并行检索（含 1.5 补检索）→ Phase 2 分析（含 2.5 大纲确认）→ Phase 3 写作（含 3.5 洞察补充、3.6 批判）→ Phase 4 审计（含 4.2 修订回环：**A 轨 ≤2 轮纠错 + B 轨至多 +1 深化 + G 环 1-2 轮**（v18.75.0 新立，G14 终闸 Warning/Fail 的修订独立记账、不占 B 轨；详见 `references/glossary.md` §修订回环三环制）；4.5 配图 → 4.6 G14 终闸（串行）→ 4.7 审稿）→ Phase 5 终检**（v18.75.0：T8 在 T9 之后），中间穿插 **T2.5 / T7.5 两道完整性门**（主控 checkpoint，不绕过交接直接派发）与 **4 个人在环节点**（定题 / 大纲 / 洞察补充 / 终稿）。
 
 > **口径说明（v18.18.6）**：本行旧标为 **7**，而紧随其后的箭头序列有 **8** 项、全库其余位置（`README*` ×5 / `docs/usage.md` / `skills/lunheng-article-pipeline/README.md`）一律标 **6**，三处互不相容。真源 = 「Phase 0–5 六个**主**阶段」（`tests/docs-facts.test.mjs` 从五语 README 的概览块按整数前缀派生，现已有门约束）——1.5 / 2.5 / 3.5 / 3.6 / 4.2 / 4.5 是**子**阶段，不计入主阶段数。本次按真源收敛。
 
@@ -55,6 +55,8 @@ Phase 1 一次性并行派出 **T1 文献 ∥ T2 数据 ∥ T3 案例** 三个�
 - **T3 任何量级必 spawn**：即使主题"无需案例"，也走「0 条空卡协议」——显式声明无案例需求、输出空卡，保证流程可审计，不留下"到底查没查案例"的模糊地带；
 - **强相关性铁律**：每条材料必答「它支撑哪个论点」，答不出不收；数量封顶（50-70 条），宁缺毋滥。
 
+> **术语指针（v18.78.0 §7.4 统一落地）**：「三角验证」与「三角证据底座」同义——单一术语真源 = `references/glossary.md` §十二.1（v18.78.0 文档全量审计 §3.2 / §7.4 落地）。
+
 ### ② 独立审计闭环（G0-G14 + M 门）
 
 审计员 **只审不改**、与写手完全分离，执行 **G0-G14** 全项检查：
@@ -67,7 +69,7 @@ Phase 1 一次性并行派出 **T1 文献 ∥ T2 数据 ∥ T3 案例** 三个�
 
 审计打回 → **独立写手**修订（主控不代笔）→ 复核，**最多 2 轮**（指审计阶段独立预算；前序的 v1→v2 主人洞察、v2→v3 批判反馈不计入），仍不过走 Acknowledged Limitations 模式诚实交付。事实类错误（P1-D）由主控 T8 亲修慢活快改，结构性错误（P1-A/B/C）必须重启独立写手。
 
-终检前主控跑 **M 门**——LLM 兜底执行的机械化终检：**机械 24 项**逐项机械判定（M-Form 1-11 + M-Exist 1-11 + M-Integrity-1 佐证；另有 1 项主控人工门 M-Integrity-2，合计 25 项），由 `node scripts/m-gate-check.mjs` 执行（v2.5.2-dsh.0 起统一为单文件算法；**数量的唯一真源 = `SKILL.md` 与 `references/_shared/M-Gate-Algorithm.md`**）：
+终检前主控跑 **M 门**——LLM 兜底执行的机械化终检：**机检 24 项**逐项机械判定（M-Form 1-11 + M-Exist 1-11 + M-Integrity-1 佐证；另有 1 项主控人工门 M-Integrity-2，合计 **总 25 项**），由 `node scripts/m-gate-check.mjs` 执行（v2.5.2-dsh.0 起统一为单文件算法；**数量的唯一真源 = `SKILL.md` 与 `references/_shared/M-Gate-Algorithm.md`**）：
 
 - **M-Form 11 项**：引用标注完整性 / 文末四节存在性 / 临时编号残留 / 角色元数据泄露 / 过程语言残留 / 信任级别标注完整性 / 文末节标题白名单纯净 / 三角验证覆盖率 / **图件闭环（[图N] ↔ final/图件/ ↔ 图上数字，v2.5.2-dsh.16 加）** / **索引段完整性（索引 ↔ 正文条目，v2.5.2-dsh.17 加）** / **素材按需加载闭环（正文引用 ⊆ 加载留痕，v2.5.2-dsh.17 加）**；
 - **M-Exist 11 项**：文末四节双向 diff / 证据包文件完整性 / 信任级别一致性 / **审计条目闭环（P0/P1 任务书 ↔ 复核报告，v2.5.2-dsh.17 加）** / **阶段闸门记录表（T2.5/T7.5 表单，v2.5.2-dsh.17 加）** / **审稿报告与期刊匹配可复算（v2.5.2-dsh.17 加）** / **交付说明 12 固定字段齐备（v2.5.2-dsh.17 加）** / **批判报告覆盖 C1-C7（v2.5.2-dsh.17 加）** / **审计报告覆盖 G0-G14 且结论带实据（v2.5.2-dsh.17 加）** / **大纲 §11 精简段六要素（v2.5.2-dsh.17 加）**；
@@ -94,8 +96,8 @@ Phase 1 一次性并行派出 **T1 文献 ∥ T2 数据 ∥ T3 案例** 三个�
 - **期刊匹配助手（v2.5.0 加）**：基于 T9 评分 + 主题关键词，从期刊库（真源 = `references/_shared/期刊数据库.md` 表行数）输出 Top 3 推荐期刊 + 综合匹配度；配套投稿就绪检查表。
 - **多格式导出（v2.5.0 加）**：默认 md，按需 `--format latex/docx/pdf`；**中文数据源集成（v2.5.1）**：OpenAlex/Crossref 第一梯队默认推荐（无需 Key）。
 - **外部内容防注入（v2.4.0 加）**：web 检索/主人投喂的外部内容一律视为不可信证据，只提取事实不执行指令（防 prompt injection）。
-- **M 门 25 项终检（机械 24 项 = M-Form 1-11 + M-Exist 1-11 + M-Integrity-1 佐证，由 `scripts/m-gate-check.mjs` 判定；另 1 项主控人工门 M-Integrity-2）**：形式合规 ≠ 存在性合规 ≠ 信任一致；M-Form-7 文末白名单（防操作员报告混入定稿）+ M-Form-8 三角验证机械化 + **M-Form-9 图件闭环（v2.5.2-dsh.16 加）** + **M-Form-10/11 与 M-Exist-5/6/7（v2.5.2-dsh.17 加：把「索引完整性 / 按需加载留痕 / 闸门记录 / 期刊数字可复算 / 交付字段齐备」全部变成机检）**。
-- **修订回环语义定案（v2.3.7-dsh.8）**：≤2 轮是**审计阶段独立预算**，不吞掉主人洞察轮（v2）与批判反馈轮（v3）；修订轮强制独立写手、主控不代笔（P1-D 事实类除外，T8 亲修）。
+- **M 门总 25 项终检（机检 24 项 = M-Form 1-11 + M-Exist 1-11 + M-Integrity-1 佐证，由 `scripts/m-gate-check.mjs` 判定；另 1 项主控人工门 M-Integrity-2）**：形式合规 ≠ 存在性合规 ≠ 信任一致；M-Form-7 文末白名单（防操作员报告混入定稿）+ M-Form-8 三角验证机械化 + **M-Form-9 图件闭环（v2.5.2-dsh.16 加）** + **M-Form-10/11 与 M-Exist-5/6/7（v2.5.2-dsh.17 加：把「索引完整性 / 按需加载留痕 / 闸门记录 / 期刊数字可复算 / 交付字段齐备」全部变成机检）**。**速查**：硬数字与退出码族单一真源 = [`docs/quick-facts.md`](quick-facts.md)（v18.78.0 §7.2 立项）。
+- **修订回环语义定案（v2.3.7-dsh.8）→ 三环制（v18.75.0 新立 G 环，v18.77.0 P-4 命名统一）**：≤2 轮是**审计阶段独立预算**（A 轨），不吞掉主人洞察轮（v2）与批判反馈轮（v3，主控触发轮 = B 轨至多 +1 深化）；**G 环（v18.75.0 新立，独立额度、不占 B 轨）**——G14 终闸 Warning/Fail 触发：3-4 类 → 1 轮 / 5+ 类 → 2 轮，主控裁定，收敛条件 = 重跑 G14 至 Pass；第 2 轮仍 Fail → 报告主人手工润色，不得以 Acknowledged Limitations 放行。修订轮强制独立写手、主控不代笔（P1-D 事实类除外，T8 亲修）。**术语指针（v18.78.0 §7.4 统一落地）**：三环制 A 轨 / B 轨 / G 环命名单一真源 = `references/glossary.md` §十二.1（与 §十二.2「修订回环命名」行同源）。
 - **反哺机制**：每单跑完 T7 自动产反哺报告沉淀可复用规则，主人批准后 merge 回角色卡——插件本身持续进化（如"回顾报道年份必交叉核验"规则就来自实战教训）。
 
 ### v17 / v18：从「一套提示词」到一个自带门的插件
@@ -132,18 +134,17 @@ DSH 下的三个关键适配：
 
 ## 实战验证（真实跑通）
 
-**① v2.2.8-dsh.2/3**：跑通 ~2000 字公众号短评《AI 让你写得快，但未必让你更会写》——12 文献 + 26 数据，审计抓到 3 条 P1 一轮关闭，M 门全过；暴露并修复 10 个流程问题（T2.5 门逻辑、子代理异常兜底、数据卡计数自检等）。
+> **速查**：v18.x 期间 6 个真实跑通案例（**最新 v18.78.1**）的**事实表**（字数 / 资源 / 审计结果 / 关键结论）见 `README.md` 顶部 **Verification status** 表（**单一真源**）；v2.x 期间 2 个代表案例见 `references/case-studies.md` §历史快照（v2.2.8-dsh.2/3 公众号短评 + v2.3.7-dsh.8 甲醛白菜事件 4200 字）。
 
-**② v2.3.7-dsh.8 全流程（2026-08，甲醛白菜事件）**：~4200 字公众号深度长文，主题为实时食品安全事件（2026-08-22 康保县甲醛白菜曝光）：
+> **v18.78.1 落地批（2026-10-06）**：本批 bump 包含 21 处点位同步 + docs/quick-facts.md 新增速查卡 + glossary §12.1 「三角验证 = 三角证据底座」合并声明 + §7.1 立规则 ㉜ 落地（CHANGELOG ↔ introduction §实战验证段对账；WAIVER=实战滞后 豁免）+ 5 语 README 双文档互引 + 实战案例段压缩 + §7.5 文档归档机制声明（刻意不建 archive 目录）。完整审计批 = `audits/论衡插件文档全量审计-v18.78.0.md`；决策路由 = `audits/决策-2026-10-06-文档全量审计-v18.78.0-修订路由-续.md`。
+>
+> **本节只点两段最具代表性的实战**——一段 v2.x「教学案例」、一段 v18.x「科研案例」，展示流水线真实产出形态。完整案例清单 + 教训沉淀见上面指针。
 
-- **检索**：12 文献（WHO/IARC/EPA 毒理文献 + Lancet/Food Control 学术研究）+ 8 先行者 / 29 数据 / 4 案例（康保 2026、广州 2012、毒牛百叶判例、毒生姜 2013）；
-- **三角验证**：5 核心论点全部 [L]+[D]+[C] 三齐；
-- **T6 批判 C1-C7**：5 论点可攻击性 高 2/中 2/低 1，抓到「剂量层数量级断言与天然本底 1-90 mg/kg 冲突」的逻辑断裂（P0 级修订项）→ 写手按批判清单加固 4 处；
-- **T7 审计两轮**：第 1 轮打回 3 项 P1-D（回顾报道年份跨源冲突、口径说明被当官方原文、AI 声明内部代号泄漏）→ 主控 T8 亲修全关 → 第 2 轮通过；
-- **M 门 25 项全过 exit 0**，交付定稿 + 证据包 8 文件 + M-Gate-Report + 交付说明；
-- **反哺**：沉淀 6 条可复用规则（含"回顾报道年份必交叉核验"），主人批准后 merge 回 T0/T2/T5 角色卡 + 教训 #142-#144 写入教训库。
+**① v2.3.7-dsh.8 全流程（2026-08，甲醛白菜事件）**：~4200 字公众号深度长文，主题为实时食品安全事件（2026-08-22 康保县甲醛白菜曝光）——12 文献 + 8 先行者 / 29 数据 / 4 案例；三角验证 5 核心论点全部 [L]+[D]+[C] 三齐；T6 批判抓到「剂量层数量级断言与天然本底 1-90 mg/kg 冲突」P0 → 写手加固 4 处；T7 审计两轮（首轮打回 3 项 P1-D，主控 T8 亲修全关）；**M 门 25 项全过 exit 0**；沉淀 6 条可复用规则（含「回顾报道年份必交叉核验」）。**教学意义**：流水线最难的「实时突发事件 + 高时效数据」跑通的全流程案例——三角验证 + 反方论证 + 审计打回修订三件套的协同。完整字段与产物路径见 `references/case-studies.md` §甲醛白菜。
 
-全程零编造、引用闭环 47↔47、[D14] 数据缺口按纪律零引用、低信任数据全程限定词、科学边界诚实（致癌性/天然本底/经口证据并列呈现）。
+**② v18.x 期间实战（详见 README Verification status 表）**：6 个真实跑通案例覆盖 2026-08 ~ 2026-09 期间，类型从公众号短评（~2000 字）到学术深度文（~12000 字）均有，含「甲醛白菜 ~4200 字」与「Notion vs. idea 哲学论文 ~6280 字」两个具代表性案例。**⚠️ 历史口径声明**：「修订轮」数 = 该 run 的全部写手轮次（含 Phase 3.5 洞察 → v2、批判/T6 修订、G14 轮、审计打回）；**Phase 4.2 审计打回 ≤2 轮是子集上限**——两者量纲不同，不可混读；**v18.18.x 起跑通的产物再用当前脚本重跑**会因 M 门新增项（如 M-Form-9/10/11、M-Exist-7）报历史 P0，**视为历史快照、不为交付参考**。
+
+> **定位增强（v18.78.0 §7.2 双文档互引落地）**：本节「② v18.x 期间实战」指向的 README 验证表具体行号锚点（**单一真源 README.md L195-200**）——Generative-AI 学生写作 ~2000 字 / Formaldehyde cabbage ~4200 字 / Notion vs. idea ~6280 字 等案例的「字数 / 资源 / 关键结论」三字段对应 L195-200 表格行；逐字段对账请用锚点跳转。
 
 ---
 
@@ -169,6 +170,14 @@ dsh plugin --profile web add lunheng-article-pipeline
 
 | 版本 | 内容 |
 |---|---|
+| **v18.78.0** | 反哺报告核实批（先核实、后落地）：新增 1 条机检判据（M-Form-11 ④ 已跳过 ∩ 引用）、改正 1 条复算公式（M-Exist-6 期刊匹配公式四项式）、扩 1 条分片发现（`sources-index`），**30 条中 12 条成立落地／18 条驳回**（含 F4/F21 实据与产物相反的驳回）；`audits/论衡插件文档全量审计-v18.78.0.md` 留 14 处 P-问题记录 |
+| **v18.77.1** | 维护性微调 + 字数渲染链路对齐；与 v18.78.0 同批合发（CHANGELOG §18.78.0 段详述） |
+| **v18.77.0** | **文档与运行-审计 v1 批落地批**（合并 v18.76.0 全量架构审计修订批）：13 处 P-* 收口——P-2 [🔴] T8 终检职责边界 + 主控亲跑四条路径 / P-3 [🔴] T9 `academic-*` 通配 → `academic-cn/-hum/-case` 特指（与 `_shared/文类档案.md` 表 1:1 对齐）/ P-4 [🟠] 修订回环三环制命名（全库禁用 'A/B/C 三类' / '0/1/2/超 2 轮' 替代命名）/ P-6 [🟠] M 门 25 项拆分表述 / P-7 [🟠] Phase 4.5 / 4.6 / 4.7 三套描述 / P-9 [🟡] T9 三视角决策树 / P-11 [🟡] 工具面"分档预设"三处复述 / P-12 [🟡] 派发话术格式硬约束同步 + 一致性规则 ㉛ 新增；五语 README 句式瘦身 |
+| **v18.76.0** | **v18.75.1 全量架构审计落地批**：R1 [🔴 P0] H2 监听器真宿主下整体静默失效修复（命中摘要改走 `decision.additionalContexts`，结构化 `ethicsSanitized` 仍挂返回值）/ R2 [🟠] 删除 H7 `agent/request` 监听器（payload 缺判别键恒空转）/ R3 [🟠] host-contract-probe.mjs 产物探针落地 + `ci.yml` 挂 `lockfile-frozen` 作业 / R4 [🟡] lunheng_ethics_sanitize render 不打印原文 / R5 Q4 Q6 顺带（publish.yml no-write-check 包裹 + STRICT_WARN=1）；新增一致性规则 ㉚（lib/** 剥注释后不得出现当前包版本字面量） |
+| **v18.75.1** | **字体栈批**（F-19 结案）：模板字体栈由「`apple-system` / `PingFang SC` / `Noto Serif CJK SC` / `Source Han Serif SC` / serif」（本机 4 个全落空）改为「`Source Han Serif SC` / `Noto Serif CJK SC` / `STZhongsong` / `STSong` / `SimSun` / serif」；`md2html.mjs` 正文栈同步同源，**图件与正文实际生效族一致**；`operations.md` §图件字体栈整节重写 |
+| **v18.75.0** | **相位与修订环口径统一批**（主人 2026-10-04 批准）：① **新立 G 环**（G14 终闸 Warning/Fail 的修订**不占 A 轨 ≤2 轮、也不占 B 轨至多 +1**；3-4 类 → 1 轮 / 5+ 类 → 2 轮，主控裁定，收敛条件 = 重跑 G14 至 Pass；第 2 轮仍 Fail → 报告主人手工润色，不得以 Acknowledged Limitations 放行）；② **相位重排**：G14 提为 **Phase 4.6（串行、唯一一次 spawn）**、T9 落到 **Phase 4.7**、**Phase 5 = T8（在 T9 之后）**；③ **文类分档**（`academic-*` 必选不可关 / `lit-review` 可选 / 其余「默认选中」→「默认不选」）；④ **判定时点后移**到「各来源全部出结论之后、T8 终检之前」 |
+| **v18.66.0 – v18.74.0** | 中段微调批：`cite-format.mjs` 落地 / `journal-fit.mjs` 反向工程 / `quality-score.mjs` 合规分 / `_lib/svg.mjs` `checkGrid` 网格自检 / `refresh-gates.mjs` 指纹刷新 / `apply-diff.mjs` 段级 diff / `disproofs-check.mjs` 负知识账本 / `self-check.mjs` 随包完整性自检 / 中文 AI 痕迹闸全套修复 |
+| **v18.61.0 – v18.65.0** | DSH 能力面扩展：H1 工具并发 / H2 材料自动脱敏（伦理脱敏 v18.60.1 落地）/ H4 prompt 追加 / H6 三档模型路由；`M-Exist-5/6/7/8/9/10/11` 与 `M-Fact-1` 逐项落地；`handoff-check.mjs` exit `20/21/22` 收报验收独立命名空间 |
 | **v18.18.x** | 第二轮外部独立全量审计（56 项 · 六家族）机械化收口：文档事实绑结构真源、随包脚本执行面清单从源码派生、退出码静态解析收紧、扫描集纳入未跟踪文件、禁止裸行号引用改按符号引用、CHANGELOG 版本段结构门 ⑬（抓「版本段被合并」）|
 | **v18.13.0 – v18.16.0** | 跨梯队「仍未做」清单最终清算（28 项逐条回代码实测）／修 CI 抓出的 `.bak` 回收 flaky／「差集 + 反向核验」固化为收口批固定动作／门与守卫自身可信度收口（A 批）+ 对外声明与发布面收口（B 批）|
 | **v18.11.0 – v18.12.3** | 全量审计 68 项八梯队收口（写盘安全 / 门自身可信度 / 口径收口 / 围栏感知 / 合规稿可达）+ 反哺报告 v1+v2 十八条处置；`md2html` 被拒改 `exit 40`；`M-Exist-5` 判战略门留痕、`M-Exist-2` 复算证据包 `manifest.json`（sha256）；CI 转绿（`ci.yml` 的 dsh pin 升到 `0.1.7-rc.2`）|
@@ -196,8 +205,31 @@ dsh plugin --profile web add lunheng-article-pipeline
 ## 获取方式
 
 - **GitHub（DSH bundle）**：https://github.com/zuoyunlai/lunheng-article-pipeline-dsh
-- **npm**：`lunheng-article-pipeline@dsh`（dist-tag `dsh` = 最新 DSH 迭代版）；锁定具体版本可写 `@18.78.0`
+- **npm**：`lunheng-article-pipeline@dsh`（dist-tag `dsh` = 最新 DSH 迭代版）；锁定具体版本可写 `@18.78.1`
 - **历史版本线（独立化前）**：https://github.com/zuoyunlai/lunheng-article-pipeline
+
+---
+
+## 📋 版本元信息（v18.78.1 文档全量审计落地标记）
+
+> **本节由 2026-10-06 文档全量审计批新增**——为新人首屏提供文档-真源-决策档的快速锚点。
+>
+> **本档锚定 = v18.78.1**（`package.json#version`）；**文档-代码同步 = ✅**（`consistency-check.mjs` exit 0，含 v18.78.0 §7.1 立项的 ㉜ 新门——CHANGELOG ↔ introduction §实战验证段对账）。
+
+| 项 | 单一真源 | 本档章节指针 |
+|---|---|---|
+| 硬数字（版本 / 角色 / 阶段 / 闸门 / 脚本 / 命令 / 退出码族） | [`docs/quick-facts.md`](quick-facts.md) | §实战验证段 / §核心设计 / §M 门段 |
+| 概念（9 角色 / 三环制 / G 清单 / F 模式 / 三角验证 等） | [`skills/lunheng-article-pipeline/references/glossary.md`](../lunheng-article-pipeline-dsh/skills/lunheng-article-pipeline/references/glossary.md) | §修订回环段 / §独立审计闭环 / §能力演进段 |
+| 流水线协议（Phase 0-5 + 派发话术） | [`skills/lunheng-article-pipeline/references/pipeline-readme.md`](../lunheng-article-pipeline-dsh/skills/lunheng-article-pipeline/references/pipeline-readme.md) | §核心设计段 / §修订回环段 |
+| M 门算法（25 项总 / 真源 / 复算） | [`skills/lunheng-article-pipeline/references/_shared/M-Gate-Algorithm.md`](../lunheng-article-pipeline-dsh/skills/lunheng-article-pipeline/references/_shared/M-Gate-Algorithm.md) | §独立审计闭环 / §M 门段 |
+| T9 启用决策树（文类档案） | [`skills/lunheng-article-pipeline/references/_shared/文类档案.md`](../lunheng-article-pipeline-dsh/skills/lunheng-article-pipeline/references/_shared/文类档案.md) | §能力演进段 |
+| 排错（exit code / 闸门报错） | [`docs/troubleshooting.md`](troubleshooting.md) | §M 门段 / §独立审计闭环 |
+| 实战案例（v18.x + 历史 v2.x） | [`README.md` 顶部 Verification status 表](../lunheng-article-pipeline-dsh/README.md) + [`skills/lunheng-article-pipeline/references/case-studies.md`](../lunheng-article-pipeline-dsh/skills/lunheng-article-pipeline/references/case-studies.md) | §实战验证段 |
+| 五语 README（en/zh/es/pt/hi） | `README.md` / `README-zh.md` / `README-es.md` / `README-pt.md` / `README-hi.md`（顶部均含 🌐 语言切换器行） | §获取方式 + §实战验证段互引 |
+
+> **本档变更机制**：按 AGENTS.md §机制文件写保护，本档属「**机制文件**」——agent 默认禁写；改进动议只写 `audits/反哺报告-vN.md`，由主人在 host shell 手工 apply。**v18.78.0 §7.1 立规则 ㉜** 已把「CHANGELOG 新段位 ↔ §实战验证段对账」机械化——后续主人 bump 章节时 ㉜ 会主动提示。
+>
+> **本批文档全量审计批落地路径**：审计报告 = `audits/论衡插件文档全量审计-v18.78.0.md`；决策路由（含 §7.1 规则 ㉜ 实现路径 + §7.5 归档判据）= `audits/决策-2026-10-06-文档全量审计-v18.78.0-修订路由-续.md`。
 
 ---
 

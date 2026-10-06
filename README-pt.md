@@ -1,6 +1,6 @@
 # Lunheng (lunheng-article-pipeline) — pipeline multiagente para textos longos
 
-> 版本：v18.78.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.78.1（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > 🌐 [English](README.md) ｜ [中文](README-zh.md) ｜ [Español](README-es.md) ｜ **Português**（este arquivo）｜ [हिन्दी](README-hi.md)
 
@@ -115,7 +115,7 @@ A camada patch faz duas coisas: **insere uma linha para este pacote** (`- id: lu
 As versões são publicadas **apenas por tag**; `npm publish` local é proibido (contorna os portões de CI e a proveniência OIDC, e uma versão npm nunca pode ser sobrescrita).
 
 ```sh
-git tag v18.78.0 && git push origin v18.78.0   # uma tag por push (GitHub: >3 tags em um push não dispara workflow)
+git tag v18.78.1 && git push origin v18.78.1   # uma tag por push (GitHub: >3 tags em um push não dispara workflow)
 # publish.yml executa: portão 1 consistência → portão 2 empacotamento → portão 3 higiene → portão 4 teste de fumaça do pacote → testes
 #   → tag/versão iguais → guarda de idempotência → OIDC publish --provenance --tag dsh → auditoria posterior
 ```
@@ -195,6 +195,8 @@ O coordenador deve divulgar esses envios e obter consentimento explícito na fas
 | Artigo sobre noção e ideia (2026-09) | ~6280 caracteres, 18 fontes + 15 dados, 0 casos | 2 rodadas de auditoria, 23/30 revisão menor, P0 real = 0 |
 
 > **Como ler esta tabela (dois critérios que se confundem facilmente)**: ① «rodadas de revisão» conta **todas as passagens do redator naquela execução** (fase 3.5 → v2, correções da crítica T6, rodadas G14, laço de auditoria), enquanto o limite da própria pipeline (**≤2 rodadas**) vale **apenas para o laço de auditoria da fase 4.2** — os dois números não medem a mesma coisa; ② os resultados são **valores históricos registrados no momento de cada execução, com a versão de scripts daquela época** — não são reproduzíveis com os scripts atuais. Reexecutar hoje os scripts do pacote sobre os projetos arquivados devolve, por exemplo, o artigo do repolho com formaldeído em `exit 2` com 5 P0 (M-Form-6/10, M-Exist-7/9, M-Integrity-1): três desses portões foram acrescentados **depois** daquela execução. Leia a tabela como «o que a pipeline produziu então», não como «o conjunto de portões atual aprova estes projetos».
+
+> **Referências cruzadas (lote de auditoria documental v18.78.0 §7.2)**: análise aprofundada dos 6 casos representativos desta tabela em [`docs/introduction.md` §实战验证](../lunheng-article-pipeline-dsh/docs/introduction.md) (caso do repolho chinês com formaldeído ~4200 caracteres v2.3.7-dsh.8 + 6 casos do período v18.x); campos completos e caminhos de produtos para casos v2.x em [`references/case-studies.md`](../lunheng-article-pipeline-dsh/skills/lunheng-article-pipeline/references/case-studies.md) §instantâneo histórico. **Cartão rápido para novatos (lote v18.78.0 §7.2)**: números concretos (versão / papéis / fases / portas / scripts / comandos / família de códigos de saída) fonte única = [`docs/quick-facts.md`](../lunheng-article-pipeline-dsh/docs/quick-facts.md).
 
 Portões locais (**somente fontes do repositório** — o pacote npm **não inclui** `scripts/` nem `tests/`, portanto os comandos abaixo não rodam numa instalação a partir do pacote; dentro do pacote você pode rodar o conjunto equivalente no tarball recém-baixado via `pack-smoke`): `node skills/lunheng-article-pipeline/scripts/consistency-check.mjs`, `node scripts/plugin-surface-check.mjs`, `node scripts/repo-hygiene-check.mjs`, `node scripts/pack-smoke.mjs`, `node --test "tests/**/*.test.mjs"`.
 

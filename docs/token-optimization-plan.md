@@ -37,7 +37,7 @@
 
 ## 修订状态记录
 - [x] 2026-09-08：本计划文档创建；
-- [x] 2026-09-08：SKILL.md frontmatter description 压缩（技能目录/加载即时减负）；
+- [ ] 2026-09-08：SKILL.md frontmatter description 压缩（技能目录/加载即时减负）——**v18.78.0 文档全量审计如实撤销勾**：实测 SKILL.md L4 description 仍 307 字（远超 120 字目标），未兑现；待未来批按 description ≤120 字硬约束落地；
 - [x] 2026-09-08：P1-1 技能本体拆分——SKILL.md 重写为「入口精简版」（保留全部 H2 锚点与核心规则，机制细节移引 references），33.0KB → 16.9KB（≈−49%），consistency exit 0；
 - [x] 2026-09-08：P1-3 + P2-4 + P2-5 落地——pipeline-readme 新增「共享读取纪律」：审计视图优先（禁全文通读）、交接回报 ≤10 行、v1 后修订轮默认段级 diff；
 - [ ] token 实测一轮并回填分布；

@@ -632,6 +632,49 @@ const HISTORY_TOKEN_RE = /此前|曾经|旧版|已删|已移除|已作废|历史
       }
     }
   }
+
+  // ㉜ CHANGELOG 新段位 ↔ introduction.md §实战验证段对账（v18.78.0 文档全量审计 §7.1 立项）
+  //   动机：introduction.md §实战验证是新人首屏对账表（README Verification status 之外的详解入口）；
+  //   README 表格由 commit 同步，但 introduction §实战验证段需主控人工 update——CHANGELOG 新段位的
+  //   实测产物（含 audit-report §P-*）经常遗漏（v18.78.0 实测 introduction 实战段仅含 v2.3.7-dsh.8
+  //   一例 v2.x 案例，README 已列 6 个 v18.x）。CI 必须兜住。
+  //   判据：CHANGELOG.md 出现新段（`## X.Y.Z — YYYY-MM-DD` 形态）且段位号 > introduction.md
+  //   §实战验证段最新提及版本号 + 距离 ≥ 1 段 → **P1**（实战案例章节滞后）。
+  //   边界：① 仅新段位触发，不动子段；② 仅对 introduction.md §实战验证段对账；
+  //   ③ 段位号 ≤ introduction.md 最新提及版本号 → 不报；④ 主人 review 可加 `WAIVER=实战滞后` 跳过。
+  if (!process.env.WAIVER || !process.env.WAIVER.includes('实战滞后')) {
+    const changelogPath = join(REPO_ROOT, 'CHANGELOG.md');
+    const introPath = join(REPO_ROOT, 'docs', 'introduction.md');
+    if (existsSync(changelogPath) && existsSync(introPath)) {
+      const cl = readFileSync(changelogPath, 'utf8');
+      const intro = readFileSync(introPath, 'utf8');
+      // 解析 CHANGELOG.md 所有 `## X.Y.Z — YYYY-MM-DD` 段位号（取最近 10 段，避免对账全 81 段）
+      const clSegments = [...cl.matchAll(/^##\s+(\d+\.\d+\.\d+)\s+—/gm)]
+        .map((m) => m[1])
+        .slice(-10);
+      // 解析 introduction.md §实战验证段最新提及版本号
+      // 段起点：「## 实战验证（真实跑通）」；段内出现 vX.Y.Z 字面
+      const introPracSeg = intro.match(/## 实战验证[\s\S]*?(?=\n## |\n# |$)/);
+      if (introPracSeg) {
+        const introVersions = [...introPracSeg[0].matchAll(/\bv(\d+\.\d+\.\d+)\b/g)].map((m) => m[1]);
+        // 取 introduction §实战验证段中最新版本号（按字典序 = semver 序）
+        const latestIntro = introVersions.sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).pop();
+        // 任意 CHANGELOG 段 > latestIntro + 距离 ≥ 1 段 → P1
+        const drifting = clSegments.filter((v) => {
+          const cmp = v.localeCompare(latestIntro, undefined, { numeric: true });
+          return cmp > 0;
+        });
+        if (drifting.length > 0) {
+          errors.push(
+            '[P1 实战案例章节滞后] docs/introduction.md §实战验证段最新提及 v'
+            + latestIntro + '，但 CHANGELOG.md 已新增 ' + drifting.length + ' 个段位（最新：'
+            + drifting.join(', ') + '）——实战案例章节需主控人工 update（v18.78.0 文档全量审计 §7.1 立项；'
+            + '豁免：WAIVER=实战滞后）',
+          );
+        }
+      }
+    }
+  }
 }
 
 }

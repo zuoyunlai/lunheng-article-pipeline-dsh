@@ -2,7 +2,7 @@
 
 > 🌐 **English** (this file) ｜ [中文](README-zh.md) ｜ [Español](README-es.md) ｜ [Português](README-pt.md) ｜ [हिन्दी](README-hi.md)
 
-> 版本：v18.78.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.78.1（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > A DeepSeek Harness (DSH) bundle that registers **two on-demand agent skills**:
 > - `lunheng-article-pipeline` — the main 9-role pipeline (T1–T9, see below).
@@ -120,7 +120,7 @@ The patch layer does two things: it **inserts one row for this package** (`- id:
 Releases are **tag-only**; a local `npm publish` is forbidden (it would bypass the CI gates and OIDC provenance, and a published npm version can never be overwritten).
 
 ```sh
-git tag v18.78.0 && git push origin v18.78.0   # push one tag at a time (GitHub: >3 tags in one push triggers no workflow)
+git tag v18.78.1 && git push origin v18.78.1   # push one tag at a time (GitHub: >3 tags in one push triggers no workflow)
 # publish.yml then runs gate 1 consistency → gate 2 packaging surface → gate 3 hygiene → gate 4 pack smoke → script tests
 #   → tag/version equality → idempotency guard → OIDC publish --provenance --tag dsh → post-publish audit
 ```
@@ -198,6 +198,10 @@ The coordinator must disclose these and obtain explicit consent at Phase 0. For 
 | Generative-AI student writing commentary (2026-08) | ~2000 chars, 12 sources + 26 data | Three-way parallel retrieval; M-gate exit 0 |
 | Formaldehyde cabbage article (2026-08) | ~4200 chars, 12 sources + 29 data + 4 cases | M-gate exit 0; 6 back-feed rules merged |
 | Notion vs. idea philosophy paper (2026-09) | ~6280 chars, 18 sources + 15 data, 0 cases | 2 audit rounds, 23/30 minor revision, M-gate true P0 = 0 |
+
+> **本表互引**：本表 6 案例的代表性深入剖析见 [`docs/introduction.md` §实战验证](../lunheng-article-pipeline-dsh/docs/introduction.md)（**甲醛白菜事件 ~4200 字 v2.3.7-dsh.8** 全流程详解 + v18.x 期间 6 案例一览）；v2.x 完整字段与产物路径见 [`references/case-studies.md`](../lunheng-article-pipeline-dsh/skills/lunheng-article-pipeline/references/case-studies.md) §历史快照。
+>
+> **新主人口径（v18.78.0 §7.2 立项）**：硬数字（版本 / 角色 / 阶段 / 闸门 / 脚本 / 命令 / 退出码族）单一真源 = [`docs/quick-facts.md`](../lunheng-article-pipeline-dsh/docs/quick-facts.md)，本表不再复述。
 
 > **How to read this table (two calibers that are easy to mix up)**: ① "revision rounds" counts **all writer passes in that run** (Phase 3.5 → v2, critique/T6 fixes, G14 rounds, audit loop) — the pipeline's own cap of **≤2 rounds** applies to the **Phase 4.2 audit loop alone**, so the two numbers measure different things; ② the outcomes are **historical values recorded at the time of each run, with that run's script version** — they are not reproducible with the current scripts. Re-running the packaged scripts on the archived projects today yields e.g. the formaldehyde cabbage article at `exit 2` with 5 P0 (M-Form-6/10, M-Exist-7/9, M-Integrity-1): three of those gates were added **after** that run. Read this table as "what the pipeline produced then", not as "the current gate set passes these projects".
 
