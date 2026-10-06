@@ -190,4 +190,29 @@ export function run(ctx) {
         : '**未判定**：HEAD 的 blob 大小拿不到（非 git 环境或无提交）——不得读作「无建议」'}`,
     )
   }
+  // ── B3 **类级**（v18.78.2 · 复核报告 §四-3 收口）：理由必须记录**产生当前上限的那次抬升** ──────────
+  //   病灶：B3 原只修了审计**点名的那一条**（05 写手卡），**类未扫**——复核报告以独立口径实测
+  //   「9/48 条理由未记录当前上限值」；本方以更严口径（只认 `N B` 与整 KB 的 `N KB` 两种写法）复算为
+  //   **12/48**（差异 3 条为写法宽容度：字数判定表 / 数据卡-template / 主人确认-template）。
+  //   这里把它**机械化**：逐条判「理由文本里是否出现当前上限值」，未出现即 note 点名。
+  //   **为什么只 note 不 fail**：它们是**历史欠账**（当时的抬升没写理由），判失败会让门永久红、逼人删门；
+  //   对症修法是「下次抬升该条时同批补写实测→上限数值链」（B3 原话），故本条提供**可见性 + 自愈**
+  //   （补一条少一条），并把口径（只认 B / 整 KB）写进文案，避免读者把「没写 KB」误读成「没写」。
+  const whyMissingLimit = Object.entries(DOC_BUDGET)
+    // DOC_BUDGET 条目形状 = `[limit, target, why]`（可选第 4 项 whyOlder）——**注意下标**：
+    //   首版误写成 `[, limit, , why, whyOlder]`（整体右移一位：limit 取到了 target、why 取到 undefined），
+    //   于是恒判「未记录」→ note 报 48/48（与独立复算的 12/48 不符而暴露）。
+    .filter(([, [limit, , why, whyOlder]]) => {
+      const text = `${why || ''}${whyOlder ? '\n' + whyOlder : ''}`
+      const kbInt = Math.round(limit / 1024)
+      return !new RegExp(`(^|[^0-9])${limit}\\s*B`).test(text) && !new RegExp(`(^|[^0-9])${kbInt}\\s*KB`).test(text)
+    })
+    .map(([rel]) => rel)   // DOC_BUDGET 的键本就是「仓库 posix 相对路径」，**不要再过 toRepoPosix**（它要绝对路径）
+  if (whyMissingLimit.length) {
+    note(
+      `⑨ 理由数值链缺口（v18.78.2 B3 **类级** · 复核报告 §四-3）：${whyMissingLimit.length}/${Object.keys(DOC_BUDGET).length} 条登记项的`
+        + '**理由未记录当前上限值**（口径：出现 `N B` 或整 KB 的 `N KB` 即算记录）——下次抬升该条时请同批补写「实测 A B → 上限 B B」。'
+        + `本轮点名（前 6）：${whyMissingLimit.slice(0, 6).join('、')}${whyMissingLimit.length > 6 ? ' …' : ''}`,
+    )
+  }
 }

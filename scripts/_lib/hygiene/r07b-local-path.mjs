@@ -29,11 +29,13 @@ export function run(ctx) {
   let shippedPathHits = 0
   let ratchetBreaches = 0
   const baselineSeen = new Set()
+  const actualByPath = new Map()   // v18.78.2：登记项实计（供「静默余量」提示；棘轮只报「超」不报「松」）
   for (const p of scanSet.filter(isText)) {
     if (LOCAL_PATH_EXEMPT.has(p)) continue
     const abs = join(ROOT, p)
     if (!existsSync(abs)) continue
     const hits = scanLocalPaths(readFileSync(abs, 'utf8'))
+    if (hits.length) actualByPath.set(p, hits.length)
     if (!hits.length) continue
     if (packedSet.has(p)) {
       shippedPathHits++
@@ -54,12 +56,27 @@ export function run(ctx) {
     }
   }
   if (shippedPathHits > 5) fail('localpath', `发布物本机绝对路径另有 ${shippedPathHits - 5} 处未逐条列出`)
-  const staleBaseline = Object.keys(LOCAL_PATH_BASELINE).filter((p) => !baselineSeen.has(p))
+  // ── v18.78.2（**复核报告 §八 · P3-localpath 收口**）：把「已无命中」拆成**两种成因**并给**对症建议** ──
+  //   病灶（原实现）：`staleBaseline` 把「**文件不在树内**」与「在树内但 0 命中」混成一个桶，
+  //   且统一建议「把上限改小」——对**不存在**的文件，改小上限毫无意义（正确动作是**删条目**，
+  //   若确属「本地留痕/按约定未跟踪」，则须在注释里写明并**接受新 checkout 上恒 stale**）。
+  //   同时补审计点名的另一半：`0 < 实计 < cap` 的**静默余量**此前没有任何提示——棘轮只报「超」不报「松」，
+  //   于是上限一旦抬高就永不下调（B1③ 的「下调建议」只覆盖「比 HEAD 缩小 >1.5 KB」那一类）。
+  //   两处都**只 note 不 fail**：它们是欠账/宽松，判失败会让门永久红，而对症修法是「删条目 / 下调上限」。
+  const keys = Object.keys(LOCAL_PATH_BASELINE)
+  const missingEntries = keys.filter((p) => !existsSync(join(ROOT, p)))
+  const zeroHitEntries = keys.filter((p) => !missingEntries.includes(p) && !baselineSeen.has(p))
+  const headroomEntries = keys
+    .map((p) => [p, LOCAL_PATH_BASELINE[p], actualByPath.get(p) ?? 0])
+    .filter(([, cap, actual]) => actual > 0 && actual < cap)
+    .map(([p, cap, actual]) => `${p}（${actual}/${cap}）`)
   note(
     (packKnown
       ? `⑦b 本机绝对路径：发布物 ${shippedPathHits} 处（须为 0）`
       : `⑦b 本机绝对路径：**发布物档 UNKNOWN**（⑥ 的 npm pack 清单未取得——**不得**读作「0 处合格」）`) +
-      `／非随包树棘轮 ${baselineSeen.size}/${Object.keys(LOCAL_PATH_BASELINE).length} 个已登记文件在基线内` +
-      `${staleBaseline.length ? `；⚠️ 基线内 ${staleBaseline.length} 个文件已无命中，可把上限改小（${staleBaseline.slice(0, 3).join(' / ')}…）` : ''}`,
+      `／非随包树棘轮 ${baselineSeen.size}/${keys.length} 个已登记文件在基线内` +
+      `${missingEntries.length ? `；⚠️ **${missingEntries.length} 个登记项指向的文件不在树内**（条目陈旧：删除该条；若确属本地留痕请注明理由并接受新 checkout 上恒 stale）：${missingEntries.slice(0, 3).join(' / ')}${missingEntries.length > 3 ? ' …' : ''}` : ''}` +
+      `${zeroHitEntries.length ? `；${zeroHitEntries.length} 个登记项在树内但**已无命中**，可把上限改小：${zeroHitEntries.slice(0, 3).join(' / ')}${zeroHitEntries.length > 3 ? ' …' : ''}` : ''}` +
+      `${headroomEntries.length ? `；${headroomEntries.length} 个登记项有**静默余量**（实计/上限，可下调以收紧棘轮）：${headroomEntries.slice(0, 3).join(' / ')}${headroomEntries.length > 3 ? ' …' : ''}` : ''}`,
   )
 }
