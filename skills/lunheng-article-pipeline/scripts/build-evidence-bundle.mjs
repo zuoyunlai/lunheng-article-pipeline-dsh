@@ -51,9 +51,23 @@ installExitGuard();   // fs 类异常 → 10（旧版传目录给 --source 会�
 //   故任何门都不会红。现改为与 ⑥b **同源派生**（共用 `_lib/mgate-gates/gate-count.mjs`）。
 //   边界（如实声明）：派生失败（门模块被裁掉 / 目录改名）时降级为 `?` —— **不猜数字**
 //   （旧版 `m.total || 12` 的 `12` 就是伪分母：报告里没有这个数，却被当成 100% 信任的比例尺）。
+//   ⚠️ **v18.80.0（全量审计-v18.79.1 P3-补 · 实测抓到）**：本块从 A4 落地起就有**一个调用形态错**——
+//   `loadGateSource()` 返回的是 `{src, modMissing}` **对象**，而 `deriveGateCounts()` 要的是**源码字符串**；
+//   直接传对象会在 `gateSrc.matchAll` 处抛 `TypeError`，随即被**本块的 catch 静默吞掉** → 恒返回 null
+//   → `M_GATE_LABEL` 恒为 **`?``**。也就是说 A4 的「派生」在**实跑路径上从未生效过**，只是「不再写死 16」
+//   而已（比硬编码好，但仍不是真派生）。而它**没有任何门会红**：生成物不在一致性扫描面内（见上文），
+//   而 `?` 又被本块的注释解释成「派生失败的合法降级」——**缺陷伪装成特性**。
+//   修法两件：① 取 `.src`；② **catch 不再静默**——把原始错误写进 stderr，让「派生失败」与
+//   「调用形态写错」在输出上可分辨（这正是本仓「不静的降级」纪律：降级可以，但要看得见）。
 const M_GATE_TOTAL = (() => {
-  try { return deriveGateCounts(loadGateSource(dirname(fileURLToPath(import.meta.url)))).total; }
-  catch { return null; }
+  try {
+    const { src } = loadGateSource(dirname(fileURLToPath(import.meta.url)))
+    return deriveGateCounts(src).total
+  } catch (e) {
+    // 降级仍允许（门模块被裁掉/目录改名时确实该降级），但**必须留下可诊断的痕迹**
+    console.error(`⚠ M 门项数派生失败，本视图的分母降级为 ? —— 原始错误：${e && e.message ? e.message : String(e)}`)
+    return null
+  }
 })();
 const M_GATE_LABEL = M_GATE_TOTAL ?? '?';
 
