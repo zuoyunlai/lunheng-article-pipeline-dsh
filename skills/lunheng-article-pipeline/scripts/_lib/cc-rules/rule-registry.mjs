@@ -57,6 +57,7 @@ export const RULE_REGISTRY = Object.freeze([
   { id: '㉞', module: 'repo-surface-rules.mjs', what: '全仓库 .md BOM 检测（**v18.78.2 由重号 ㉖ 改**）' },
   { id: '㉟', module: 'repo-surface-rules.mjs', what: '本登记表自洽（登记项 ↔ 模块规则级标签双向覆盖 + 编号唯一）' },
   { id: '㊱', module: 'content-rules.mjs', what: '模板示例 ↔ 机检契约对照（**v18.78.2 由重号 ㉚ 改**）' },
+  { id: '㊲', module: 'repo-surface-rules.mjs', what: '速查卡硬数字派生（版本 ↔ `package.json` / 角色数 ↔ `agents/` 编号卡 / 随包脚本数 ↔ `scripts/*.mjs` 实测；**v18.80.0 新立**）' },
 ])
 
 /** 全部主规则 id（登记表顺序）。 */

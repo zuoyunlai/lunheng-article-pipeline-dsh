@@ -337,6 +337,19 @@ for (const baseDir of [REPO_ROOT, dshSkillDir]) {
   }
 }
 
+// ㊲ 速查卡硬数字派生（v18.80.0 · 全量审计-v18.79.1 **P3-9**）
+//   病灶：`docs/quick-facts.md` 自称「新人第一眼硬数字的**单一真源**」「改这里 = 改主文档真源」，
+//   但只有三条派生门（规则数 ㉟ / 命令数 ㉕ / M 门项数 ⑥b），其余硬数字全是**手写无门**。本批实测后果：
+//   本卡**标题**与「当前版本」行停在 v18.78.1 而真源已 v18.80.0——**连漏两版无人发现**，因为标题那处
+//   **不在 bump 脚本的替换面内**（该脚本只认「当前版本 **vX.Y.Z**」与「@X.Y.Z」两种字面形态）。
+//   本条把「有唯一可派生真源」的三项钉住：版本（↔ `package.json#version`）/ 角色数（↔ `references/agents/`
+//   的 01–09 编号卡个数）/ 随包脚本数（↔ `scripts/*.mjs` 顶层实测个数）。**为什么只这三项**：其余各项
+//   （Phase 数 / G 清单 / 退出码族）的真源是散文或表格，派生不出机检值——本卡头注释自己也承认这一边界。
+//   ⚠️ 实现陷阱（本批首版即踩，两条都留档）：① 注释里的**内层枚举**若写成行首 `// ① …`，会被本规则族
+//   自己的 ㉟ 当成**规则级标签**而报「① 重号」——内层枚举必须写成 `// · ① …`；② 角色卡正则若用
+//   `/^0(\d)-/`，`00-主控-coordinator.md` 与 `00-主控-扩展职责.md` 会各贡献编号，**去重后仍多算 1**
+//   （实测派生值 10 ≠ 卡上 9），故必须用 `/^0([1-9])-/` 只认 01–09。实装见下方「（五）quick-facts」段之后。
+//
 // ㉟ 一致性规则登记表自洽（v18.78.2 · 全量审计-v18.78.1 **A2**）
 //   为什么立它：A2 的注入实证——把 `glossary.md` 的「31 类主规则」改成「99 类主规则」，本脚本仍 **exit 0**；
 //     而「规则数」这一事实在 v18.2.6 / v18.18.0 / v18.22.1 / v18.78.0 **四次**被审计抓到不一致（加规则忘改数字）。
@@ -400,11 +413,59 @@ for (const baseDir of [REPO_ROOT, dshSkillDir]) {
     //   （首版即踩：㉟ 首次运行就报了 `⑤（consistency-check.mjs / repo-surface-rules.mjs）`）。
     const qfPath = join(REPO_ROOT, 'docs', 'quick-facts.md')
     if (existsSync(qfPath)) {
-      const m = readFileSync(qfPath, 'utf8').match(/(\d+)\s*类主规则/)
+      const qfText = readFileSync(qfPath, 'utf8')
+      const m = qfText.match(/(\d+)\s*类主规则/)
       if (m && Number(m[1]) !== RULE_COUNTS.main) {
         errors.push(`[P1 规则数口径漂移] docs/quick-facts.md 写「${m[1]} 类主规则」，登记表派生值 = ${RULE_COUNTS.main}`)
       } else if (!m) {
         errors.push('[P2 规则数口径] docs/quick-facts.md 未见「N 类主规则」——该卡是全仓硬数字汇总点，规则数请写「N 类主规则（真源 = rule-registry.mjs）」')
+      }
+      // ══ v18.80.0（全量审计-v18.79.1 P3-9）：速查卡**其余硬数字**也必须有门 ══════════════════════
+      //   病灶（本批实测）：本卡自称「新人第一眼硬数字的**单一真源**」「改这里 = 改主文档真源」，
+      //   但**只有规则数 / 命令数 / M 门项数**三条派生门（分别是 ㉟ / ㉕ / ⑥b），其余全是手写：
+      //     · 标题与「当前版本」行停在 **v18.78.1**，而 bump 后真源已是 v18.80.0（**两版未跟**）；
+      //     · 「角色数 9」「随包脚本 31」无门——改一处漏一处不会有任何信号。
+      //   本条把这三项钉到真源（判据全用**派生**，不写字面量）：
+      //     · ① 版本：本卡标题的 `（vX.Y.Z）` 与「当前版本」行的值 == `package.json#version`；
+      //     · ② 角色数：`references/agents/` 下 `0N-*.md`（N=1..9）的**不同编号个数** —— 与卡上的「N 个独立角色」比；
+      //     · ③ 随包脚本数：`scripts/*.mjs` 顶层实测个数 —— 与卡上的「N 个」比。
+      //   为什么选这三项而不是全卡：其余各项（Phase 数 / G 清单 / 退出码族）的真源是**散文或表格**，
+      //   派生不出机检值；本卡自己的头注释也承认「consistency-check 不一定全机覆盖，主控人工复核」。
+      //   本条只吃「有唯一可派生真源」的那几项——够把最贵的漂移面（版本）关掉。
+      const pkgVerForCard = pkgVer
+      // · ① 标题 + 「当前版本」行
+      const titleVer = qfText.match(/^#\s*论衡速查卡（v(\d+\.\d+\.\d+)）/m)?.[1]
+      if (!titleVer) {
+        errors.push('[P2 速查卡版本口径] docs/quick-facts.md 标题未见 `# 论衡速查卡（vX.Y.Z）` 形态——本卡是硬数字汇总点，标题须自述版本且受门约束')
+      } else if (titleVer !== pkgVerForCard) {
+        errors.push(`[P1 速查卡版本漂移] docs/quick-facts.md **标题**写 v${titleVer}，package.json = ${pkgVerForCard}——标题那处**不在 bump 脚本的替换面内**，历来靠人工，实测漏过两版`)
+      }
+      const curVerRow = qfText.match(/\|\s*当前版本\s*\|\s*\*\*v(\d+\.\d+\.\d+)\*\*/)
+      if (curVerRow && curVerRow[1] !== pkgVerForCard) {
+        errors.push(`[P1 速查卡版本漂移] docs/quick-facts.md「当前版本」行写 v${curVerRow[1]}，package.json = ${pkgVerForCard}`)
+      }
+      // · ② 角色数（派生 = agents/ 下 0N-*.md 的不同编号个数）
+      const agentsDir = join(ROOT, 'references', 'agents')
+      if (existsSync(agentsDir)) {
+        const nums = new Set()
+        for (const f of readdirSync(agentsDir)) {
+          const mm = /^0([1-9])-/.exec(f)
+          if (mm) nums.add(Number(mm[1]))
+        }
+        const roles = nums.size
+        const cardRoles = qfText.match(/(\d+)\s*个独立角色/)
+        if (cardRoles && Number(cardRoles[1]) !== roles) {
+          errors.push(`[P1 速查卡角色数漂移] docs/quick-facts.md 写「${cardRoles[1]} 个独立角色」，而 references/agents/ 下实测 01–09 共 ${roles} 张编号卡（派生值 = ${roles}）`)
+        }
+      }
+      // · ③ 随包脚本数（派生 = scripts/*.mjs 顶层个数）
+      const scriptsDir = join(ROOT, 'scripts')
+      if (existsSync(scriptsDir)) {
+        const nScripts = readdirSync(scriptsDir).filter((f) => f.endsWith('.mjs')).length
+        const cardScripts = qfText.match(/\*\*(\d+)\s*个\*\*（`_lib\/` 子目录为共享库非入口/)
+        if (cardScripts && Number(cardScripts[1]) !== nScripts) {
+          errors.push(`[P1 速查卡脚本数漂移] docs/quick-facts.md 写随包脚本「${cardScripts[1]} 个」，而 scripts/*.mjs 顶层实测 ${nScripts} 个`)
+        }
       }
     }
   }

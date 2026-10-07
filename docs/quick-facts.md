@@ -1,4 +1,4 @@
-# 论衡速查卡（v18.78.1）
+# 论衡速查卡（v18.80.0）
 
 > **定位**：新人「第一眼需要知道的硬数字」**单一真源**——所有用户文档**只引本卡**、不在自己文档里复述数字。本卡是 `audit-report-v18.78.0.md` §7.2 立项的落地产物。
 >
@@ -12,8 +12,8 @@
 
 | 项 | 值 | 真源 |
 |---|---|---|
-| 当前版本 | **v18.78.1** | `package.json#version` |
-| 引擎锚定（子技能 `lunheng-commands`） | **v18.78.1**（规则 ㉖ 机械对账） | `skills/lunheng-commands/SKILL.md` description + L8 |
+| 当前版本 | **v18.80.0** | `package.json#version` |
+| 引擎锚定（子技能 `lunheng-commands`） | **v18.80.0**（规则 ㉖ 机械对账） | `skills/lunheng-commands/SKILL.md` description + L8 |
 
 ## 角色与 Phase
 
@@ -52,7 +52,7 @@
 | 随包脚本（`skills/.../scripts/*.mjs` 顶层） | **31 个**（`_lib/` 子目录为共享库非入口，不计） | `SKILL.md` §执行能力边界「随包脚本白名单」行；`tests/scripts/list*.test.mjs` 派生命令（v18.18.0 审计修订：`P-5` 关闭「31 vs 35」误报） |
 | `/lunheng` 斜杠命令数 | **11 个**（-draft/-resume/-cite/-audit/-journal/-ppt/-history/-rollback/-status/-stats/-help） | `skills/lunheng-commands/scripts/route-command.mjs` COMMANDS 表；`consistency-check.mjs` 规则 ㉕ 机械对账 |
 | `cordis.patch.yml` 行数 | **4 行**（1 自注册 + 3 分档）+ **6 处 `!!js`**（3 disabled + 3 agentOptions） | `cordis.patch.yml` 实测 |
-| `consistency-check.mjs` 主规则 | **36 类主规则**（v18.78.2 实测；**子规则计数不再声明**——带字母后缀的标签实测十余个，旧文写的「5 个子规则」本身就是同一类手写漂移；本卡这个数字由规则 ㉟ 机械对账，其余文档只许指向登记表） | 真源 = `skills/lunheng-article-pipeline/scripts/_lib/cc-rules/rule-registry.mjs` 的 `RULE_REGISTRY`（§五 各模块按 `// <编号> ` 形态登记规则级标签） |
+| `consistency-check.mjs` 主规则 | **37 类主规则**（v18.80.0 实测：㊲ 速查卡硬数字派生新立；**子规则计数不再声明**——带字母后缀的标签实测十余个，旧文写的「5 个子规则」本身就是同一类手写漂移；本卡这个数字由规则 ㉟ 机械对账，其余文档只许指向登记表） | 真源 = `skills/lunheng-article-pipeline/scripts/_lib/cc-rules/rule-registry.mjs` 的 `RULE_REGISTRY`（§五 各模块按 `// <编号> ` 形态登记规则级标签） |
 | DSH 原生只读工具 | **4 个**（`lunheng_m_gate` / `lunheng_char_count` / `lunheng_handoff_check` / `lunheng_ethics_sanitize`；v18.60.1 加伦理脱敏） | `SKILL.md` §DSH 原生能力接缝 |
 
 ## 退出码族（按 §真源排序）

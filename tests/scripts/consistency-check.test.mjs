@@ -468,11 +468,21 @@ test('v18.78.2 ㉟：一致性规则登记表必须自洽（未登记标签 / �
   const base = run([cc]).out
   assert.doesNotMatch(base, /规则未登记|登记表失真|规则编号重号/, '夹具基线不应报 ㉟：' + base.slice(-300))
 
-  // ② 尾部加一条未登记的规则级标签（㊲ 未登记）→ 必红
+  // ② 尾部加一条未登记的规则级标签 → 必红
+  //   ⚠️ v18.80.0 口径更正（治的是**号源耦合**，不只是换个号）：本行原写死注入 `㊲`（当时它确实未登记）。
+  //   每当登记表新增一条规则、而新号正好等于这个写死的号时，本用例就从「未登记」变成「重号」变红——
+  //   那不是门坏了，是**夹具与真源号源耦合**。实测 v18.80.0 新立 ㊲ 时即如此。
+  //   现改为**从登记表派生一个它必然未占用的号**（取「最后一号 + 1」），夹具从此不再随真源增号而失效。
+  const regSrc = readFileSync(reg, 'utf8')
+  const usedIds = [...regSrc.matchAll(/id:\s*'([^']+)'/g)].map((m) => m[1])
+  const CIRCLE = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚㉛㉜㉝㉞㉟㊱㊲㊳㊴㊵㊶㊷㊸㊹㊺㊻㊼㊽㊾㊿'
+  const probeId = CIRCLE.split('').find((c) => !usedIds.includes(c))
+  assert.ok(probeId, '㊿ 已用尽——请扩展 rule-registry 的编号空间与本用例的 CIRCLE 串')
   const cleanContent = readFileSync(contentRules, 'utf8')
-  writeFileSync(contentRules, cleanContent + '\n// ㊲ 假规则（注入用）\n')
+  writeFileSync(contentRules, cleanContent + `\n// ${probeId} 假规则（注入用）\n`)
   const bad = run([cc]).out
-  assert.match(bad, /\[P1 规则未登记\][^\n]*㊲/, '㉟ 必须抓到「模块里有规则级标签但登记表未登记」：' + bad.slice(-400))
+  assert.match(bad, new RegExp(`\\[P1 规则未登记\\][^\\n]*${probeId}`),
+    `㉟ 必须抓到「模块里有规则级标签但登记表未登记」（注入号 ${probeId}，取自登记表未占用者）：` + bad.slice(-400))
 
   // ③ 删掉登记表声明过的某条标签（㉟ 自己的标签在 repo-surface-rules.mjs）→ 必红
   writeFileSync(contentRules, cleanContent)
