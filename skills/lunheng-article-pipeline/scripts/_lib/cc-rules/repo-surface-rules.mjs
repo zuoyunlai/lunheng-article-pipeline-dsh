@@ -467,6 +467,22 @@ for (const baseDir of [REPO_ROOT, dshSkillDir]) {
           errors.push(`[P1 速查卡脚本数漂移] docs/quick-facts.md 写随包脚本「${cardScripts[1]} 个」，而 scripts/*.mjs 顶层实测 ${nScripts} 个`)
         }
       }
+      // · ④ 词预算登记条数（v18.80.0 补）：卡上写「**N 条**」，真源 = 仓库根 `DOC_BUDGET` 的键数。
+      //   为什么值得加：该卡这一行的用途正是让新人知道「有多少文档在被棘轮管着」；条数变了而卡不跟，
+      //   就会重演本批实测到的「版本连漏两版」那类漂移。读真源的方式与 r09 同法（从门源码里数键）。
+      const rhPath = join(REPO_ROOT, 'scripts', 'repo-hygiene-check.mjs')
+      if (existsSync(rhPath)) {
+        const block = readFileSync(rhPath, 'utf8').match(/const DOC_BUDGET\s*=\s*\{[\s\S]*?\n\}/)
+        if (block) {
+          const nBudget = [...block[0].matchAll(/^\s*'[^']+':\s*\[/gm)].length
+          const cardBudget = qfText.match(/\|\s*\*\*词预算登记数\*\*\s*\|\s*\*\*(\d+)\s*条\*\*/)
+          if (cardBudget && Number(cardBudget[1]) !== nBudget) {
+            errors.push(`[P1 速查卡词预算条数漂移] docs/quick-facts.md 写「${cardBudget[1]} 条」，而 repo-hygiene-check.mjs 的 DOC_BUDGET 实测 ${nBudget} 条`)
+          } else if (!cardBudget) {
+            errors.push('[P2 速查卡词预算条数] docs/quick-facts.md 未见「词预算登记数 | **N 条**」行——该行是常驻面 / 词预算的唯一入口数字，请补齐')
+          }
+        }
+      }
     }
   }
 }

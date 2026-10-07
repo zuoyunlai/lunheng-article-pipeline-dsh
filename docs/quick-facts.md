@@ -54,6 +54,8 @@
 | `cordis.patch.yml` 行数 | **4 行**（1 自注册 + 3 分档）+ **6 处 `!!js`**（3 disabled + 3 agentOptions） | `cordis.patch.yml` 实测 |
 | `consistency-check.mjs` 主规则 | **37 类主规则**（v18.80.0 实测：㊲ 速查卡硬数字派生新立；**子规则计数不再声明**——带字母后缀的标签实测十余个，旧文写的「5 个子规则」本身就是同一类手写漂移；本卡这个数字由规则 ㉟ 机械对账，其余文档只许指向登记表） | 真源 = `skills/lunheng-article-pipeline/scripts/_lib/cc-rules/rule-registry.mjs` 的 `RULE_REGISTRY`（§五 各模块按 `// <编号> ` 形态登记规则级标签） |
 | DSH 原生只读工具 | **4 个**（`lunheng_m_gate` / `lunheng_char_count` / `lunheng_handoff_check` / `lunheng_ethics_sanitize`；v18.60.1 加伦理脱敏） | `SKILL.md` §DSH 原生能力接缝 |
+| **常驻上下文面**（每会话固定开销） | `SKILL.md` + `AGENTS.md` 合计上限 **71 KB**（v18.80.0 实测 ≈ 70.4 KB）；逐文件上限 52.0 / 21.0 KB | `scripts/repo-hygiene-check.mjs` 的 `ALWAYS_LIMIT` + `DOC_BUDGET`（规则 ⑨） |
+| **词预算登记数** | **48 条**（≥12 KB 的 `.md` 逐文件棘轮；v18.80.0 实测合计上限 ≈ 1446 KB / 实测 ≈ 1371 KB） | 同规则 ⑨；报告逐轮打印「越线 N 条 / 余量 <1 KB N 条 / 建议下调」三段 |
 
 ## 退出码族（按 §真源排序）
 
