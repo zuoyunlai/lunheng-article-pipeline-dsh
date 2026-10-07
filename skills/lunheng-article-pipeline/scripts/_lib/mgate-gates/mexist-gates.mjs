@@ -131,7 +131,12 @@ if (firstIdx === -1) {
     + `——本门只对白名单编号（[Lxx]/[Dxx]/[Cxx]/[C-主xx]/[先NN]）做双向对账，该编号**游离于闭环之外**；`
     + `修法：改用标准编号、或改用扩展编号 [脚注-N]（须双向闭环）、或由主控申报豁免。`
     + `（P2 提示：形态黑名单有假阳性可能——行业/AI 类稿件里的「术语-数字」形态请人工确认后再改）`;
-  const mExist1Hard = leaked.length + orphan2.length + nonStd.length > 0;
+  // v18.80.1（全量审查修订批 · B9）：**扩展编号未双向闭环 = 引用不可信**，须与漏引/硬孤儿同档（P1）。
+  //   旧实现把 `extLeaked`/`extOrphan` 排除在 `pass` 与 `severity` 之外 → 该缺陷只在 detail 里可见、
+  //   **退出码信号为 0**（与同仓「未检 ≠ 通过」纪律相反）。
+  //   另：旧式 `pass: !mExist1Hard || (leaked+hardOrphans)===0` 在 `nonStd`/`orphan2` 的取值域上
+  //   **等价于** `(leaked+hardOrphans)===0`，本批改写为显式三项求和（语义更直白，并纳入 extUnclosed）。
+  const extUnclosed = extLeaked.length + extOrphan.length;
   // v18.8.x 实战反哺补丁（2026.09.22 数字社交-关系重构项目）：**[先NN] 孤儿一律软处理**——
   //   实战规律：先行者清单是「差异对照工件」而非「引用闭环目标」，其条目与文献卡 [Lxx] 大量
   //   **同篇双列**（实测：[先01]=[L07] 邱泽奇、[先02]=[L08] 边燕杰、[先03]=[L06] 项飙——正文
@@ -175,7 +180,7 @@ if (firstIdx === -1) {
     : '';
   results.push({
     gate: 'M-Exist-1 引用双向对比',
-    pass: !mExist1Hard || (leaked.length + hardOrphans.length) === 0,
+    pass: (leaked.length + hardOrphans.length + extUnclosed) === 0,
     detail: [
       mExist1Hint,
       `漏引 ${leaked.length} / 硬孤儿 ${hardOrphans.length}（[先NN] 对照孤儿 ${xianOrphans.length} 个已软处理）`,
@@ -192,7 +197,8 @@ if (firstIdx === -1) {
     //   仅剩软项时 pass=true（对照孤儿不再拉 exit）——留痕走 detail，不再无条件阻断交付。
     severity: (leaked.length + hardOrphans.length) > 0
       ? (((leaked.length + hardOrphans.length) > THRESHOLDS.exist1ClosureP0) ? 'P0' : 'P1')
-      : ((nonStd.length > 0 || extUsed > 0 || xianOrphans.length > 0) ? 'P2' : '通过'),
+      : (extUnclosed > 0 ? 'P1'
+        : ((nonStd.length > 0 || extUsed > 0 || xianOrphans.length > 0) ? 'P2' : '通过')),
   });
 }
 

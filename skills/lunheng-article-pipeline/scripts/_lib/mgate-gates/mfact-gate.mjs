@@ -222,7 +222,17 @@ export function mFact1(ctx) {
           if (!a.years.some((y) => allowed.has(y))) bad.push(`${id}(素材: ${[...allowed].sort().join('/')})`);
         }
         if (bad.length) {
-          const core = /摘要|结论|结语/.test(sectionOf(text.indexOf(a.sentence.slice(0, 12))));
+          // v18.80.1（全量审查修订批 · B10）：节归属改用**断言自身的行号**换算绝对偏移，
+          //   不再用 `text.indexOf(句首 12 字)` 反查——句首前缀在全文重复时（摘要与正文同句式），
+          //   会把**正文**里的年份冲突误判成「落在摘要/结论/结语」→ 升 P0（exit 2 阻塞交付）。
+          const lineOffset = (() => {
+            const ls = text.split('\n');
+            let off = 0;
+            const upto = Math.max(1, Math.min(Number(a.line) || 1, ls.length + 1));
+            for (let i = 0; i < upto - 1; i++) off += ls[i].length + 1;
+            return off;
+          })();
+          const core = /摘要|结论|结语/.test(sectionOf(lineOffset));
           materialChecked.conflicts.push({
             line: a.line, ids: a.ids, years: a.years, bad, severity: core ? 'P0' : 'P1',
             sentence: a.sentence.slice(0, 80),
@@ -268,7 +278,14 @@ export function mFact1(ctx) {
     //   实测触发面很常见：中文里**正常的「的」插入**（「经济增长」/「经济的增长」）即命中近形对
     //   → 一份干净终稿拿不到 exit 0，只能走 T8 裁定。
     //   现：`worst === 'P2'` 时 `pass: true`（与 P0/P1 一致地「相对档位」），P2 仍如实出现在
-    //   `severity`、`p2` 桶与 `aliasPairs` 里 → 人读可见、机器可见，但**不再冒充硬失败**。
+    //   `severity` 与 `aliasPairs` 里 → 人读可见、全量 JSON 可见，但**不再冒充硬失败**。
+    // v18.80.1（全量审查修订批 · B8 **更正断言，不改行为**）：旧文写「P2 仍出现在 **`p2` 桶**里」是**错的**
+    //   ——`m-gate-check.mjs` 的 `fail` 只从 `pass === false` 的集合里筛（`results.filter((r) => r.pass === false)`），
+    //   其后 `p2` 又只在 `hard` 里数 `severity === 'P2'`，故 **`pass: true` 的 P2 项永不进 `p2` 桶、也不进 `--summary`**。
+    //   **本批刻意不改 `pass`**：改成 `false` 会重新引入 v18.62.4 P2-7 修掉的缺陷（中文里正常的「的」插入
+    //   即命中近形对 → 一份干净终稿拿不到 exit 0，只能走 T8 裁定）。该「P2-only 不进桶」是本仓**三处同形**
+    //   的既存边界（另见 `mform-gates.mjs` 数据卡 0 条 → P2、`mexist-gates.mjs` `vacuous3` → P2）；
+    //   要改必须三处同批 + 同批改 `m-gate-check.mjs` 头注释「3 = 仅 P2…需 LLM 复核」的契约文字（属主人裁定面）。
     pass: worst === '通过' || worst === 'P2',
     detail: parts.length
       ? parts.join(' ｜ ') + `（容差 ${tol * 100}%；**术语项为 P2 软提示，判级归 T7，不阻断交付**；正文↔素材核对仅覆盖**年份**字段，计数/编号对应与跨句断言未覆盖）`

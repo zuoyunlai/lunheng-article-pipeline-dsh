@@ -2,6 +2,53 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.80.1 — 2026-10-07
+
+> **性质**：**《论衡插件-全量审查-口径逻辑与冗余-v18.80.0》修订批的前三批**。该审查在「8 门全绿 + 794 用例全绿」的快照上独立复核，产出「口径不一致 / 逻辑错误 / 重复与冗余」三类共 40 余条，报告落盘于工作区根 `论衡插件-全量审查-口径逻辑与冗余-v18.80.0.md`。本段是 **v18.80.0 之后的下一版本**（v18.80.0 → v18.80.1）。
+> **授权（如实标注）**：主人 2026-10-07 直接指令「请按审查报告依次全部修订」。依 `AGENTS.md` §机制文件写保护，**主人直接指令 = 授权**；已按其五步安全流程执行：**改前备份**（`<DSH_HOME>/_backup/lunheng-auditfix-2026-10-07-190519`，244 文件）→ 改中 `edit` 精确匹配（未用 `sed -i`）→ 改后逐文件 `node --check` + 重跑八门 + 全量套 → 全程可回滚 → 本段即如实标注。
+> **版本判据 = patch**：本批**全部是既有明文的机械修复**（实现与判据对齐）+ 新增反向断言用例；**不新增包形态、不新增脚本入口、不改 peerDependencies、不改 M/G 门项数**。
+> **风险判据（为什么敢标 patch）**：报告三条最重的「口径」全部是**同一事实两处写法**（非设计变更）；两处**语义反转**（`--adjudicate` 的红线集合收窄、交接门 B2 披露判据收紧）已在交付说明标注为**待主人复核**项。
+
+> **落地——按报告批次**：
+
+> **第 0 批 · 13 处逻辑修复（9 脚本，全部「一行到三行」级）**
+> - **B1** `mform-gates.mjs`：`## 已跳过` 段边界 `/^#{2,4}\s/` → `/^##\s/`（与姊妹段同口径）——旧式被 `###` 子节截断 ⇒ **F3/F26 硬检查变空转**。
+> - **B2** `m-gate-check.mjs`：`HARD_RED_LINE_RE` 加标签边界 + 新增 `NON_ADJUDICABLE_SEVERITIES`（排除 `LLM 兜底`/`ERROR`）——旧式无边界 ⇒ `M-Exist-10/11` 被误当红线、`--adjudicate` 一律 exit 30。
+> - **B3** `handoff-check.mjs`：`SEG_RE` 补 `(?:\d+\.\s*)?` **与** §6 括注——**缺任一处，本包自己的模板仍被判「六要素全缺」**（门拒绝自己发的模板）。
+> - **B4** 文末节判据四处统一走 `sections.titleMatches`（含 mForm7 的**顺序映射**——首轮只改成员资格会把一次修复变成新的静默放行）。
+> - **B5** `mintegrity-gate.mjs`：脚本跳过档 `P1` → `ERROR`（旧式会被 `final-check` 读成「P1 残留」并**触发一轮付费修订**；exit 70 此前构造上不可达）。
+> - **B7** `fix-gates.mjs`：占位符判据与字段名改**与门同源**（旧式对**门已判通过**的交付说明下「必须改」的修法）。
+> - **B8** `mfact-gate.mjs`：「P2 进 `p2` 桶」这条**断言更正**（`pass:true` 的 P2 永不进桶/`--summary`）——**刻意不改 `pass`**，改回 false 会重新引入 v18.62.4 P2-7 修掉的缺陷。
+> - **B9** `mexist-gates.mjs`：扩展编号未双向闭环并入 `pass`/severity（旧式只在 detail 可见、**退出码信号为 0**）。
+> - **B10** `mfact-gate.mjs`：节归属改用**断言自身行号**换算偏移（旧式 `indexOf(句首 12 字)` 在前缀重复时把正文冲突升成摘要 P0）。
+> - **B11** `sections.mjs`：`maskFences` 闭合栅栏补 `[ \t]*$`（CommonMark §4.5）——旧式让内层 ` ```js ` 提前闭合 ⇒ 围栏内 `## 参考文献` 被提升为真文末节（正文区 356 vs 378）。
+> - **B12** `refresh-gates.mjs`：指纹替换改**按行**（旧式按值全局 `split` 会改写非语境行里同值的 manifest 条目 sha256，且 `count` 虚高）。
+> - **F5** `handoff-check.mjs`：`B2` 披露判据由裸子串 `/AI 使用|披露/` 改**段判据**（旧式把「披露」二字写进「已知问题」行即满足**硬**要求）。
+> - 回归网 `tests/batch20-auditfix-v18-80-1.test.mjs`（11 条 → 后增至 13 条）。
+
+> **第 1 批 · 口径收口（6 组 / 19 文件）**
+> - **A1** 速查卡三个 KB 数全部改错为对，并**进而改为不复述实测值**（实测合计随每次文档改动变化，复述即漂）；规则 **㊲ 新增 ⑤**：常驻上限 ↔ `ALWAYS_LIMIT`、词预算合计上限 ↔ `DOC_BUDGET` 之和，并以**否定形态判据**禁止卡上出现 `实测 ≈ N KB`。**负向注入实测**：`72.0→71.0` 与「写回实测值」两次注入均 exit 1。
+> - **A2** `g-audit-check.mjs`：字数候选下界 `lo * 0.85` → **`lo * 0.9`**（与 `字数判定表` §二「不足 >10%」及 `apply-*-cycle` 的 `floor` 同阈值；旧注释误把 0.85 归于两份真源）。
+> - **A3/A7** `M-Gate-Algorithm.md:163` 补 `M-Fact-1`；appendix `§1.2` **两处「逐字」标签失真**修正、`§1.3` 退出码表**补 `30`**、判定式**补 `errors > 0 → 70` 分支**。
+> - **A4** 五语 README + `skills/README.md` + `QUICKSTART`（**第三套**四档时长）+ `DSH-集成方案` 全部改为与 `SKILL.md` §边界「**不给小时区间**」同口径。
+> - **A6** 三份 T1/T2/T5 **逐字照抄**的活模板：`M-Exist-3 信任级别一致性` → **`引用闭环`**；并修 `任务简报-template.md` 的半机械替换破碎句。
+> - **A9** `docs/installation.md` 部署开关 5 键 → **8 键**（补 `ethicsHook` / `hookRewriteContent` / `hookMaxBlockChars`）。
+> - 副产物：`introduction.md` 的「M-Exist 11 项」实列 10 项、「25 项里 23 项」、`glossary.md` 的「23 门」。
+
+> **第 3 批 · 结构重构（核心三项）**
+> - **preset ↔ 包根 patch 装载语义同源**：`examples/preset/agent-tiered/cordis.yml` 三行补**行级 `disabled` 门控**（与包根逐字同源）+ 三档 `agentOptions` 补 kill switch——此前**行本身照旧插入** ⇒ `LUNHENG_TIERING=off` 一键退路在 preset 路径上失效。
+> - **路径归一转补 win32 平台门**：`lunheng-stats.mjs` 的 `rpNorm` 由**无条件 `toLowerCase()`** 改为与真源 `run-path-fence.norm()` 同口径（旧式在 POSIX 下把「仅差大小写的**真实目录**」判为包含）。
+> - **H2 监听器口径重整（报告 §B14 三处同批）**：`byType` 排除 `person`（候选合计被印进「替换」括号，实测出现过「替换 7 处（person=27）」）；聚合**移出 `textChanged` 门控**（旧式使 `personLow` 恒 0，v18.80.0 P1-2 的信号永不出现）；**低置信候选不再单独触发注入**（实测 9.5 KB 技术表格 61 候选/真名 0 个）；合并两处逐语句相同的聚合分支。
+
+> **新增反向断言门（报告第 2 批）**
+> - 规则 **㉝** 扫描面**存在性自证**：三处扫描根由 `REPO_ROOT` 改 `ROOT` 基准（仓库布局下原本**静默收窄**到只覆盖 `SECURITY.md + docs/`）；`真实项目` 移出量词表（项目数 ≠ 脚本数）。
+> - `docs/quick-facts.md` **进 `package.json#files`**（被 6 份随包文档标为「硬数字单一真源」却漏在包外 ⇒ 装包后 6 处 404）。
+> - `lib/tools.js` 新增 **`TOOL_FACE_FLAG_GAPS`**（显式登记工具面覆盖不到的脚本旗标）；`maintainers.md` §五 + `SKILL.md` + `installation.md` 修正「**仓库级 ≠ 不随包**」的口径互斥。
+> - 回归网 `tests/batch21-seam-gates-v18-80-1.test.mjs`（3 条）、`tests/batch22-structural-v18-80-1.test.mjs`（3 条）+ `tests/h2-h5-listeners.test.mjs` 增 2 条**行为级**用例。
+
+> **验证（本批终态，主审实跑）**：全量套 **815 / 815 全绿**（实测 815 tests / 814 pass / 0 fail / 1 skip；改动前 794 tests / 793 pass / 0 fail / 1 skip）；八门全绿 —— `consistency-check`（0 处漂移）/ `plugin-surface-check` / `repo-hygiene-check`（①–⑮ 全绿）/ `link-check` / `pack-smoke`（181 文件）/ `closeout-verify` / `host-contract-probe`（15/15）/ `no-write-check`（5 步全绿、仓库 502 文件哈希未变）。**词预算：本批全程未抬高任何棘轮上限**——两次临界（`M-Gate-Algorithm.md` −59 B、`maintainers.md` −82 B）均按规则 ⑨ 选**先瘦身**，`docs/installation.md` 亦压在 12.0 KB 登记线内（12278 B）。
+> **未落地（如实登记，留独立批）**：① `DOC_BUDGET` 理由外移（52 KB 版本沿革占 `repo-hygiene-check.mjs` 42%——报告自述「不宜与缺陷修复同批」）；② 棘轮止血（25 条未交代「为什么必须超过长期目标」）；③ `规范-机械门对照表.md` 沿革列度量（需**换度量 + 重新标定阈值**，属门口径变更、须主人裁定）；④ 零风险删除 6 条（<1 KB）；⑤ `lib/**` 文案门。
+
 ## 18.80.0 — 2026-10-07
 
 > **性质**：**全量审计-v18.79.1（基线 v18.79.0 · `d2a75768`）的修订批**——审计报告见 `audits/全量审计报告-v18.79.1-2026-10-07.md`（2 条 P1 + 6 条 P2 + 9 条 P3）。本段是 **v18.79.0 之后的下一版本**（v18.79.0 → v18.80.0）。

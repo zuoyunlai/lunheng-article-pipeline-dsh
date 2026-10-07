@@ -167,14 +167,21 @@ for (const [label, rel] of CARD_FILES) {
 //     报「✅ 未发现可机械修复项」——**两个工具对同一份产物给出相反结论**。
 //   根因：本类旧判据只「列出缺失的字段标题」，只管**字段在不在**，不管**字段正文里有没有 `<…>`**；
 //     而 M-Exist-7 的失败形态有两种（字段缺失 / 字段含占位符）。
-//   判据与门**同源**：占位符正则照抄 `mexist-gates.mjs` 的 `/<[^>]{1,60}>/`（两处必须同形，否则
-//     本工具又会生成「照修了还是红」的假修法）。
+//   判据与门**同源**：占位符判据 = `mexist-gates.mjs` 的 `raw7NoCode` 那条（**同一正则 + 同一前置剥离**
+//     `raw.replace(/`[^`]*`/g, '')` + 只认紧凑记号）——见下方 `PH_RE`。两处必须同形，否则
+//     本工具又会生成「照修了还是红」的假修法。**v18.80.1（全量审查修订批 · B7）更正**：本条注释
+//     原写「照抄 `mexist-gates.mjs` 的 `/<[^>]{1,60}>/`」，而门侧早在 v18.73.0 F-11 已收紧为
+//     「先剥行内代码 + 紧凑记号」→ 本文件停在旧宽式，两工具对同一产物结论相反（实测：门判
+//     `pass=true / 通过`，本工具却报「字段正文含尖括号占位符」并给出「必须改」的修法）。
 {
   const p = join(projectDir, 'final', '交付说明.md')
   if (existsSync(p)) {
     const txt = readFileSync(p, 'utf8')
+    // v18.80.1（全量审查修订批 · B7）：字段名与门同源——旧写 `'建议 merge 的反哺清单'`（要求标题
+    //   **包含整串**），而 `mexist-gates.mjs` 的 `FIELD_KEYWORDS` 认的是 `/反哺清单|待 merge|待merge/` →
+    //   `## 7. 反哺清单` 这种被门接受的标题在本工具里报「缺固定字段」，主控据此改一个**不必改**的标题。
     const REQ = ['路径', '图件清单', '遗留风险', '人工核验项', '数据溯源', '成本指标',
-      '建议 merge 的反哺清单', 'AI 使用披露', '证据包指纹', '投稿就绪检查表', '主人决策记录', '终检结论']
+      '反哺清单', 'AI 使用披露', '证据包指纹', '投稿就绪检查表', '主人决策记录', '终检结论']
     const titles = h2Headings(txt).map((h) => h.title)
     const missing = REQ.filter((r) => !titles.some((t) => t.includes(r)))
     if (missing.length) {
@@ -183,11 +190,13 @@ for (const [label, rel] of CARD_FILES) {
         `⚠️ 追加段（如字数统计）只能放在 §12 之后，不得插在 12 节序列中间。`)
     }
     // ② 字段正文含 `<…>` 模板占位符（M-Exist-7 的第二种失败形态）
+    // v18.80.1（B7）：判据与门同源（同正则 + 同「先剥行内代码」前置）。
+    const PH_RE = /<(?=\S)[\u4e00-\u9fa5A-Za-z0-9._%…][\u4e00-\u9fa5A-Za-z0-9._%… \-]{0,38}(?<=\S)>/
     const phFields = []
     for (const h of h2Headings(txt)) {
       if (!REQ.some((r) => h.title.includes(r))) continue
       const body7 = sectionBody(txt, h.title) ?? ''
-      const hits = [...new Set([...body7.matchAll(/<[^>]{1,60}>/g)].map((m) => m[0]))]
+      const hits = [...new Set([...body7.replace(/`[^`]*`/g, '').matchAll(new RegExp(PH_RE.source, 'g'))].map((m) => m[0]))]
       if (hits.length) phFields.push(`${h.title}：${hits.slice(0, 4).join(' ')}`)
     }
     if (phFields.length) {

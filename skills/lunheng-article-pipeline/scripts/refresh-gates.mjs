@@ -188,12 +188,23 @@ for (const t of targets) {
     }
     continue;
   }
-  // 逐字符替换：仅替换被判定的旧指纹（各出现处）
+  // v18.80.1（全量审查修订批 · B12）：**按行替换**。旧实现按值 `text.split(oldSha).join(sha)` 全局替换，
+  //   而候选是在「命中模式 ② 含正文语境词」的行上收集的（见 :154-161）→ **收集面与替换面不一致**：
+  //   `final/交付说明.md` 的证据包清单里与正文旧指纹**同值**的条目也会被静默改写
+  //   （正是 :92-99 声明要防的「误伤 manifest 条目 sha256」），且 `count` 随之上报虚高。
   let n = 0;
-  for (const oldSha of olds) {
-    const parts = text.split(oldSha);
-    n += parts.length - 1;
-    text = parts.join(sha);
+  {
+    const lines = text.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      if (!CONTEXT_RE.test(lines[i])) continue;
+      for (const oldSha of olds) {
+        if (!lines[i].includes(oldSha)) continue;
+        const parts = lines[i].split(oldSha);
+        n += parts.length - 1;
+        lines[i] = parts.join(sha);
+      }
+    }
+    if (n > 0) text = lines.join('\n');
   }
   if (!dryRun) writeWithSafety(abs, text, { source: 'refresh-gates.mjs' });
   replaced += n;

@@ -75,3 +75,49 @@ test('㊲-d 规则 ㊲ 自身必须已登记（㉟ 双向覆盖不得漏项）',
   const r = run([cc(join(process.cwd()))])
   assert.equal(r.code, 0, `真源仓一致性自检必须通过：\n${r.stdout}${r.stderr}`)
 })
+
+// ── ㊲-e 真源存在性自证（v18.80.1 · 报告 §C2 外移的**护栏**） ──
+//   病灶（本批实测）：④⑤ 两条门此前嵌在 `if (block)` / `if (alwaysLimit && block)` 里——
+//   **把 `DOC_BUDGET` 搬走或改名，两条门就静默消失、0 报错**，而速查卡的条数 / KB 数从此无人对账。
+//   而「搬走 DOC_BUDGET」正是报告 §C2 建议的重构方向（v18.80.1 已实际执行），故这条护栏必须有机检。
+test('㊲-e 真源派生失败必须报 P0（防「搬走数据 → 两条门静默消失」）', () => {
+  const { d, repo } = mkRepo({
+    extraFiles: [
+      'CONTRIBUTING.md',
+      join('scripts', 'repo-hygiene-check.mjs'),
+      join('scripts', '_lib', 'doc-budget-reasons.mjs'),
+    ],
+  })
+  try {
+    mkdirSync(join(repo, 'docs'), { recursive: true })
+    writeFileSync(join(repo, QF_REL), readFileSync(join(process.cwd(), QF_REL), 'utf8'))
+
+    // 正对照：两份真源齐备时**不得**报「规则失效」（证明本用例不是恒真）
+    const ok = run([cc(repo)])
+    assert.ok(!/规则失效/.test(ok.stdout + ok.stderr),
+      `真源齐备时不得报「规则失效」：\n${ok.stdout}${ok.stderr}`)
+
+    // 负例 1：`DOC_BUDGET` 块缺失（= 外移了数据但读取面没跟进）
+    //   ⚠️ 必须精确命中**声明那一行**（`export const DOC_BUDGET = {`）：模块头注释里另有一处
+    //   `` `const DOC_BUDGET = {` `` 的**字面提及**（用于说明形态契约）——用不带 `export ` 的串去替换，
+    //   会先命中那句注释、而真声明毫发无伤（本用例首版即如此，于是「注入成功」却测不到东西）。
+    const bp = join(repo, 'scripts', '_lib', 'doc-budget-reasons.mjs')
+    const bOrig = readFileSync(bp, 'utf8')
+    assert.ok(bOrig.includes('export const DOC_BUDGET = {'), '夹具前提：真声明形如 `export const DOC_BUDGET = {`')
+    writeFileSync(bp, bOrig.replace('export const DOC_BUDGET = {', 'export const DOC_BUDGET_MOVED_AWAY = {'))
+    const r1 = run([cc(repo)])
+    assert.notEqual(r1.code, 0, '真源缺失必须非 0（旧行为：exit 0 / 静默）')
+    assert.match(r1.stdout + r1.stderr, /\[P0 规则失效\]/, '必须报「P0 规则失效」而不是静默跳过')
+    assert.match(r1.stdout + r1.stderr, /doc-budget-reasons/, '须点名缺失的真源文件，便于定位')
+    writeFileSync(bp, bOrig)
+
+    // 负例 2：`ALWAYS_LIMIT` 缺失（常驻上限的另一个真源）
+    const rp = join(repo, 'scripts', 'repo-hygiene-check.mjs')
+    const rOrig = readFileSync(rp, 'utf8')
+    writeFileSync(rp, rOrig.replace(/const ALWAYS_LIMIT = \d+/, 'const ALWAYS_LIMIT_MOVED_AWAY = 1'))
+    const r2 = run([cc(repo)])
+    assert.notEqual(r2.code, 0, 'ALWAYS_LIMIT 缺失必须非 0')
+    assert.match(r2.stdout + r2.stderr, /ALWAYS_LIMIT/, '须点名 `ALWAYS_LIMIT`')
+    writeFileSync(rp, rOrig)
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})

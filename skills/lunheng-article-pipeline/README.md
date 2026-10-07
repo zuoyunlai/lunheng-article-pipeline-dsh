@@ -1,8 +1,8 @@
-> 版本：v18.80.0（DSH bundle 插件）
+> 版本：v18.80.1（DSH bundle 插件）
 
 # 论衡（lunheng-article-pipeline）— 多 Agent 深度长文流水线
 
-> **DSH 原生插件（v18.80.0）**：本仓库为 DSH bundle 技能包（`package.json` 的 `main` → `lib/index.js` 注册本技能 + `dsh.bundle.patch` → `cordis.patch.yml` 叠加三档 subagent 工具）；结构性差异见 `SKILL.md` 的「🔧 DSH 环境说明」章节。
+> **DSH 原生插件（v18.80.1）**：本仓库为 DSH bundle 技能包（`package.json` 的 `main` → `lib/index.js` 注册本技能 + `dsh.bundle.patch` → `cordis.patch.yml` 叠加三档 subagent 工具）；结构性差异见 `SKILL.md` 的「🔧 DSH 环境说明」章节。
 
 把一篇深度文章 / 论文的生产拆成 **9 个独立角色 T1-T9 + 6 个阶段**（v2.5.2-dsh.8 语义定案：T1-T9 互不可替代；Phase 1 为 T1 文献 ∥ T2 数据 ∥ T3 案例 三检索员三方真并行互不干涉，T3 任何量级必 spawn 含 0 条空卡协议；T6 批判伙伴 + T7 审计 + **T8 终检独立角色由主控 T0 亲执行** + T9 同行评审T9 启用按 `_shared/文类档案.md`，v2.3.0 角色编号重构 + v2.4.0 加 T9），用 DSH 的 `subagent` 子代理编排，产出有**证据底座、反方论证、独立审计、人工核验节点**的交付物。
 
@@ -13,7 +13,7 @@
 ## 何时使用 + 🌐 语言与定位声明（v2.1.1 新增）
 
 **何时使用**：
-- 主人要一篇「有深度、要站得住脚」的长文（>2000 字），且愿意等 1-3 小时
+- 主人要一篇「有深度、要站得住脚」的长文（>2000 字），且愿意等数小时（**不给小时区间**，见 `SKILL.md` §边界）
 - 主题涉及事实/数据/多方观点，需要证据底座而非纯观点输出
 - 需要「人在环」把关：大纲确认后再写，终稿人工审
 

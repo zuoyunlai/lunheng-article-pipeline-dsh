@@ -2,7 +2,7 @@
 
 > 🌐 **English** (this file) ｜ [中文](README-zh.md) ｜ [Español](README-es.md) ｜ [Português](README-pt.md) ｜ [हिन्दी](README-hi.md)
 
-> 版本：v18.80.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.80.1（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > A DeepSeek Harness (DSH) bundle that registers **two on-demand agent skills**:
 > - `lunheng-article-pipeline` — the main 9-role pipeline (T1–T9, see below).
@@ -19,7 +19,7 @@ The nine roles are independent and interchangeable with nothing else: T1 literat
 
 ## When to use it
 
-- You need a long-form piece (over 2000 characters) that has to hold up under scrutiny, and you can wait 1–3 hours.
+- You need a long-form piece (over 2000 characters) that has to hold up under scrutiny, and you can wait several hours (the pipeline deliberately gives **no hour range** — see `skills/lunheng-article-pipeline/SKILL.md` §边界).
 - The topic involves facts, figures, or multiple viewpoints, so it needs an evidence base rather than opinion only.
 - You want human checkpoints: confirm the outline before drafting, and review the final draft.
 
@@ -122,7 +122,7 @@ The patch layer does two things: it **inserts one row for this package** (`- id:
 Releases are **tag-only**; a local `npm publish` is forbidden (it would bypass the CI gates and OIDC provenance, and a published npm version can never be overwritten).
 
 ```sh
-git tag v18.80.0 && git push origin v18.80.0   # push one tag at a time (GitHub: >3 tags in one push triggers no workflow)
+git tag v18.80.1 && git push origin v18.80.1   # push one tag at a time (GitHub: >3 tags in one push triggers no workflow)
 # publish.yml then runs gate 1 consistency → gate 2 packaging surface → gate 3 hygiene → gate 4 pack smoke → script tests
 #   → tag/version equality → idempotency guard → OIDC publish --provenance --tag dsh → post-publish audit
 ```

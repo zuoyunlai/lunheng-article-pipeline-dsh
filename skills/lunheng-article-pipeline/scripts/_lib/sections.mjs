@@ -70,7 +70,10 @@ export const maskFences = (text) => {
     const m = /^ {0,3}(`{3,}|~{3,})/.exec(s.slice(i, lineEnd))
     if (!m) { i = nl === -1 ? s.length : nl + 1; continue }
     const mark = m[1]
-    const closer = new RegExp('^ {0,3}' + (mark[0] === '`' ? '`' : '~') + '{' + mark.length + ',}')
+    // v18.80.1（全量审查修订批 · B11）：闭合栅栏**其后只允许空白**（CommonMark §4.5）。
+    //   旧式无该约束 → 嵌套示例里的 ` ```js ` 这种**内层开栏**被当成闭合 → 围栏内的 `## 参考文献`
+    //   被提升为**真**文末节 → `count-chars` 正文区被截断（实测 356 vs 378，只差内层那一行）。
+    const closer = new RegExp('^ {0,3}' + (mark[0] === '`' ? '`' : '~') + '{' + mark.length + ',}[ \\t]*$')
     blank(i, lineEnd)                                  // 起栏行本身
     let j = nl === -1 ? s.length : nl + 1
     while (j < s.length) {

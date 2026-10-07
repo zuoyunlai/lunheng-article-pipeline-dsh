@@ -1,6 +1,6 @@
 # लुन्हेंग (lunheng-article-pipeline) — बहु-एजेंट दीर्घ-लेख पाइपलाइन
 
-> 版本：v18.80.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.80.1（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > 🌐 [English](README.md) ｜ [中文](README-zh.md) ｜ [Español](README-es.md) ｜ [Português](README-pt.md) ｜ **हिन्दी**（यह फ़ाइल）
 
@@ -14,7 +14,7 @@
 
 ## When to use it
 
-- आपको ऐसा दीर्घ लेख चाहिए (2000 अक्षरों से अधिक) जो परीक्षण में टिके, और आप 1–3 घंटे प्रतीक्षा कर सकते हैं।
+- आपको ऐसा दीर्घ लेख चाहिए (2000 अक्षरों से अधिक) जो परीक्षण में टिके, और आप कई घंटे प्रतीक्षा कर सकते हैं (कोई घंटा-सीमा नहीं; देखें `skills/lunheng-article-pipeline/SKILL.md` §边界)।
 - विषय में तथ्य, आँकड़े या अनेक दृष्टिकोण हैं, अतः मत-मात्र नहीं बल्कि प्रमाण-आधार चाहिए।
 - आप मानव जाँच-बिंदु चाहते हैं: लिखने से पहले रूपरेखा की पुष्टि, और अंतिम प्रारूप की समीक्षा।
 
@@ -117,7 +117,7 @@ patch परत दो काम करती है: **इस पैकेज �
 संस्करण **केवल tag से** प्रकाशित होते हैं; स्थानीय `npm publish` वर्जित है (यह CI द्वारों और OIDC provenance को दरकिनार करता है, और npm संस्करण कभी अधिलेखित नहीं हो सकता)।
 
 ```sh
-git tag v18.80.0 && git push origin v18.80.0   # एक बार में एक ही tag (GitHub: >3 tag एक push में कोई workflow नहीं चलाता)
+git tag v18.80.1 && git push origin v18.80.1   # एक बार में एक ही tag (GitHub: >3 tag एक push में कोई workflow नहीं चलाता)
 # publish.yml क्रम: द्वार 1 सुसंगति → द्वार 2 पैकेजिंग → द्वार 3 स्वच्छता → द्वार 4 पैकेज स्मोक → स्क्रिप्ट परीक्षण
 #   → tag/संस्करण समानता → idempotency गार्ड → OIDC publish --provenance --tag dsh → प्रकाशन-पश्चात लेखा-परीक्षा
 ```

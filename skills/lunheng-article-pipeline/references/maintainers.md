@@ -1,6 +1,6 @@
 # 维护者手册（maintainers.md）
 
-> 版本：v18.80.0｜**读者**：维护者/主人。**本文件不进任何运行期读清单**（角色/主控不读）；它承接 v18.8.0 文档瘦身从 SKILL.md 迁出的维护者向元信息（rank 考证 / guard 缺口 / 更正史）。改本文件不受「同一事实多处漂移」约束——运行期事实仍以 SKILL.md 为唯一真源，此处是背景与考证。
+> 版本：v18.80.1｜**读者**：维护者/主人。**本文件不进任何运行期读清单**（角色/主控不读）；它承接 v18.8.0 文档瘦身从 SKILL.md 迁出的维护者向元信息（rank 考证 / guard 缺口 / 更正史）。改本文件不受「同一事实多处漂移」约束——运行期事实仍以 SKILL.md 为唯一真源，此处是背景与考证。
 
 ## 一、技能来源 rank 考证（v18.0.0 对齐官方；v18.0.5 修两处官方事实）
 
@@ -61,11 +61,11 @@
 ## 五、仓库级资源与技能体的边界（**L-25 定案**，v18.12.2）
 
 > **主人 2026-09-25 定案**：「`docs/`、`examples/` 如果作为独立插件不影响用户使用，**可以不进技能目录**」。
-> 即**保持现状**（它们是仓库级资料，不随包），但**运行期文档不得把它们当「运行期读物」引用**——bundle 部署下技能体只有 `skills/lunheng-article-pipeline/**`，`docs/` 与 `examples/` **不在盘**（本机镜像实测两目录均不存在）。
+> 即**保持现状**（它们是仓库级资料、**不在技能目录内**），但**运行期文档不得把它们当「运行期读物」引用**——纯技能目录部署/镜像下技能体只有 `skills/lunheng-article-pipeline/**`，`docs/` 与 `examples/` **读不到**（⚠️ 但它们**随包**：`files` 含它们——「不随包」是错的措辞）。
 
-**判据（改文档时照此办）**：运行期角色（T1-T9 / T0）读到的每一处引用，要么指向**技能目录内**的文件，要么**显式标注「仓库级 / 不随包」并同时给出运行期可用的那一条判据**——不许只给一个部署下取不到的路径。
+**判据（改文档时照此办）**：运行期角色（T1-T9 / T0）读到的每一处引用，要么指向**技能目录内**的文件，要么**显式标注「仓库级 / 不在技能目录内」并给出运行期替代**——不许只给一个部署下取不到的路径。
 
-**已知仓库级资源清单**（引用时必须带「仓库级 / 不随包」字样）：
+**已知仓库级资源清单**（须带「仓库级」字样；⚠️**仓库级 ≠ 不随包**——本表含**随包**项）：
 
 | 仓库级路径 | 是什么 | 运行期替代 |
 |---|---|---|
@@ -75,15 +75,15 @@
 | `docs/introduction.md` 等用户文档 | 人类入口 | 无需运行期替代（角色不读） |
 | 根 `scripts/`（`repo-hygiene-check` / `plugin-surface-check` / `link-check` / `pack-smoke`） | 仓库门 | 运行期不调用；改动后由维护者跑 |
 
-> ⚠️ 反面参照：**官方文档路径**（`docs/subsystems/*.md`、`docs/cookbook/*.md`、`references/official-docs/**`）**不属于本表**——属主是 `dsh-plugin-guide` 技能与 DSH 官方仓库，已由 `link-check` 的 `CROSS_SKILL_*` 前缀白名单登记，引用时写属主前缀即可。
+> ⚠️ 反面参照：**官方文档路径**（`docs/subsystems/*.md`、`docs/cookbook/*.md`、`references/official-docs/**`）**不属于本表**——属主是 `dsh-plugin-guide` 与 DSH 官方仓库，已由 `link-check` 的 `CROSS_SKILL_*` 白名单登记，写属主前缀即可。
 
 ## 六、CI `loader-smoke` 的上游缺陷（**v18.12.1 已修**，记录成因防复发）
 
 - **现状**：`ci.yml` 的 `loader-smoke` **全绿**。此前**每次必红**（`publish.yml` 的 `gates` 不含它，故不影响发布，但仓面 CI 徽章一直红）。
-- **成因（三步都验过）**：① 该 job 走的官方 `dsh-plugin-guide verify` 的 `pack / install / dump-config` **全过**，只倒在自己的 `headless-smoke`；② 错误是 `dsh: user patch-layer watching requires the Cordis HMR service`（栈顶 `dsh-app-boot/lib/index.js:1112`）——是 **DSH 启动失败**，与本包代码无关；③ 根因：`dsh plugin … add` 生成的 profile manifest 写 `"dsh": { "profile": { "patchReload": "live" } }`（`DEFAULT_PROFILE_PATCH_RELOAD = "live"`，注释「Custom profiles retain the historical live patch-file behavior」），而 `profile-boot` 在 `patchReload === "live"` 时调 `watchUserPatches()`，该函数拿不到 `ctx.get('hmr')` 就抛错 → headless 必红。本机用 `dsh plugin --profile smoke add @deepseek-ai/dsh-base` 复现了同一 manifest 形态。
+- **成因（三步都验过）**：① 该 job 走的官方 `dsh-plugin-guide verify` 的 `pack / install / dump-config` **全过**，只倒在自己的 `headless-smoke`；② 错误是 `dsh: user patch-layer watching requires the Cordis HMR service`（栈顶 `dsh-app-boot/lib/index.js:1112`）——是 **DSH 启动失败**，与本包代码无关；③ 根因：`dsh plugin … add` 生成的 profile manifest 写 `"dsh": { "profile": { "patchReload": "live" } }`（`DEFAULT_PROFILE_PATCH_RELOAD = "live"`），而 `profile-boot` 在 `patchReload === "live"` 时调 `watchUserPatches()`，该函数拿不到 `ctx.get('hmr')` 就抛错 → headless 必红。本机用 `dsh plugin --profile smoke add @deepseek-ai/dsh-base` 复现了同一 manifest 形态。
 - **修法（v18.12.0 采取的是 ③）**：把 `ci.yml` 里 pin 的 dsh 由 **0.1.5-rc.2 → 0.1.7-rc.2**。**逐版核对过 `@deepseek-ai/dsh-app-boot`**：0.1.5-rc.2 与 rc.3 都仍有 `DEFAULT_PROFILE_PATCH_RELOAD = "live"` 与那条 HMR 守卫；**0.1.7-rc.2 里两者都已不存在**，且内置 `headless` profile（`bundles: ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-headless"]` + `headless-runner`）。改后 CI 全绿（`loader-smoke in 50s ✓`）。
 - **另两条处方（未采用，留给上游）**：① profile manifest 的 `dsh.profile.patchReload` 设 `"startup"`（需改 profile 生成侧，本包够不到）；② 上游把「`patchReload === "live"` 且无 HMR」改为降级而非抛错。
-- **教训（判据级）**：本 job 红了**四个版本周期**而无人修，原因是「它在发布门之外」+「报错栈指向 dsh 自己」→ 容易被读成「环境问题，与我无关」。可行判据：**CI 里任何一个 job 长期必红，本身就是缺陷**——要么修到绿，要么删掉并在文档写明「为什么不跑这一层」；把红当常态会让真正的红失去信息量。
+- **教训（判据级）**：本 job 红了**四个版本周期**而无人修，原因是「它在发布门之外」+「报错栈指向 dsh 自己」→ 容易被读成「环境问题，与我无关」。可行判据：**CI 里任何一个 job 长期必红，本身就是缺陷**——要么修到绿，要么删掉并写明「为什么不跑这一层」。
 
 ## 七、**收口批固定动作：差集 + 反向核验**（v18.15.0 定案，主人指示「固化为固定动作」）
 

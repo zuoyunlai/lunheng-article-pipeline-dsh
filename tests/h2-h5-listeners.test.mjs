@@ -163,6 +163,32 @@ test('H2 标记**不含原文**：additionalContexts 里不得出现被脱敏的
   assert.match(marker, /phone=1/, '标记应保留**计数**（可复核又无原文）')
 })
 
+// ── v18.80.1（全量审查修订批 · 报告 §B14）：H2 标记的两个口径（**行为级**，非源码钉） ──
+//   为什么必须行为级：本批实测这三处缺陷都会「改一半就好」——只改计数口径，标记反而更频繁地
+//   打印一个被 `person=` 污染的假替换数；只收紧注入条件，又把唯一的量化信号一起掐掉。
+test('H2 ① 标记的「替换」括号不得含 `person=`（它 = high + low，是候选合计数）', async () => {
+  const { decision } = await driveH2({ text: '受访者张三的手机是13800138000。' })
+  const marker = decision.additionalContexts
+    .map((m) => m.content.map((b) => b.text).join('')).join('\n')
+  assert.match(marker, /命中替换 \d+ 处/, '标记须含替换计数')
+  assert.ok(!/\bperson=/.test(marker),
+    `标记不得把 \`person\`（= personHigh + personLow 的候选合计）印进「替换」括号——`
+    + `实测本会话出现过「命中替换 7 处（phone=4 / person=27 / personHigh=2 / place=1）」：27 个候选被读成 27 处替换。实际：${marker}`)
+  assert.match(marker, /personHigh=/, '`personHigh` 须保留——它才是替换数的真值分项')
+})
+
+test('H2 ③ 低置信候选**不得单独**触发标记注入（候选数仍在结构化字段里，不丢信息）', async () => {
+  // 病灶（实测）：姓氏正则对技术文本精度极低（9.5 KB 技术表格报 61 个候选、真名 0 个），
+  //   而旧条件含 `lowCandidates > 0` ⇒ 几乎每次中文材料读取都注入一行 ~190 字符、信息量近零的标记。
+  const { decision } = await driveH2({ text: '本节列出各阶段的时间与成本明细，参见下文明细。' })
+  const es = decision.ethicsSanitized
+  assert.ok(es, '须有 ethicsSanitized 结构化字段')
+  assert.equal(es.replacements, 0, `夹具不得产生真替换（否则测不到「单独」这一面），实际 ${es.replacements}`)
+  assert.ok(es.counts.personLow >= 0, 'counts.personLow 必须存在（候选数的唯一载体）')
+  assert.ok(!decision.additionalContexts || decision.additionalContexts.length === 0,
+    '无真替换 / 无超限跳过 / 无词表缺失时**不得注入**标记（低置信候选只通知结构化字段与工具面）')
+})
+
 test('H2 必须调用 next() 且**只调一次**（不截断下游、也不重复驱动下游）', async () => {
   let calls = 0
   let sawExec = null

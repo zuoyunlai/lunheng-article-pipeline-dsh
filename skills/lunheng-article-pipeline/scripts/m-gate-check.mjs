@@ -36,7 +36,7 @@ import { refsOf, dataCardIds } from './_lib/refs.mjs';                 // 引用
 import { countHan } from './_lib/han.mjs';                              // 汉字口径真源（v18.3.0 方案：M-Form-8 裸断言段）
 import { TRUST_COMPLIANT_RE, TRUST_LOOSE_RE } from './_lib/trust.mjs'; // 信任级别口径真源
 import { splitCard } from './_lib/cards.mjs';                          // 卡片切块口径真源
-import { ENDNOTE_SECTIONS, h2Headings, firstEndnoteIndex, sectionBody } from './_lib/sections.mjs'; // 文末节/正文区边界真源（v18.2.6：与 count-chars 同源）
+import { ENDNOTE_SECTIONS, h2Headings, firstEndnoteIndex, sectionBody, titleMatches } from './_lib/sections.mjs'; // 文末节/正文区边界真源（v18.2.6：与 count-chars 同源；v18.80.1 加 titleMatches）
 import { analyzeSvg, svgTextNumbers, figureNoOf, figurePlaceholders } from './_lib/svg.mjs'; // SVG 图件口径真源
 import { installExitGuard, requireExistingFile, requireExistingDir } from './_lib/exit-guard.mjs'; // 退出码硬化（v18.0.5）
 import { writeReport } from './_lib/destructive-write.mjs';   // 报告写盘守卫（v18.12.0，全量审计 L-50）
@@ -326,7 +326,10 @@ const norm = (r) => r.replace(/(?:-v| v)\d+\]/, ']');
 //   会把「`##` 空行 + 下一行文本」也读成二级标题；且 CRLF 文件会把 `\r` 带进标题。
 const h2Matches = h2Headings(text);
 const h2s = h2Matches.map((m) => m.title);
-const firstIdx = h2s.findIndex((t) => WHITELIST.some((w) => t === w || t.startsWith(w)));
+// v18.80.1（全量审查修订批 · B4）：`firstIdx` 改走 `titleMatches`（剥离「五、」「4.1」等排版前缀），
+//   与 `firstEndnoteIndex` 同口径——旧用裸 `startsWith` 会让「`## 五、参考文献`」式**合法排版**被判
+//   「文末无任何白名单节」→ M-Form-7 P0（且是红线）。三处（此处 + mForm2 + mForm7）必须同口径。
+const firstIdx = h2s.findIndex((t) => WHITELIST.some((w) => titleMatches(t, w)));
 // v18.2.6：文末节起点改走共享 `firstEndnoteIndex`（与 WHITELIST 前缀口径一致；无文末节 → -1）
 const firstEndnoteAt = firstEndnoteIndex(text);
 const firstEnd = firstEndnoteAt >= 0 ? firstEndnoteAt : (firstIdx >= 0 ? h2Matches[firstIdx].index : -1);
@@ -450,9 +453,16 @@ const p2 = hard.filter((r) => r.severity === 'P2').length;
 //     一行红线判定都没有）→ 四条最关键的缺陷仍可被一纸 `_t8_conclusion` 放行。
 //     现落到两处：① 本处收集 `hard_red_line_hits` 写进报告；② 落盘时**拒绝采纳**既有 T8 裁定值
 //     （见下方 `if (sameDraft && redLineHits.length === 0)`），M-Exist-5 侧另以该字段拒绝放行。
-const HARD_RED_LINE_RE = /M-Form-2|M-Form-7|M-Exist-1|M-Integrity-1/;
+// v18.80.1（全量审查修订批 · B2）：加**标签边界** `(?=\s|$)`。旧式无边界 → `M-Exist-1` 同时命中
+//   `M-Exist-10` / `M-Exist-11`（两者都不在 :444-447 的红线 4 类里），使一份只有 P2/P1 的稿子在
+//   `--adjudicate` 通道上一律 exit 30、并被强制标 `verdict_stale` → **合法交付路径不可达**。
+//   同时排除 `LLM 兜底` 与 `ERROR` 两档：前者的语义正是「本项交 LLM 判断」，把它列为
+//   「**不允许** LLM 兜底的红线」自相矛盾；后者表示「门自己没跑通」（未对内容下结论，另有 exit 70）。
+const HARD_RED_LINE_RE = /^M-(?:Form-2|Form-7|Exist-1|Integrity-1)(?=\s|$)/;
+const NON_ADJUDICABLE_SEVERITIES = new Set(['LLM 兜底', 'ERROR']);
 const hardRedLineHits = results
-  .filter((r) => r.pass === false && HARD_RED_LINE_RE.test(String(r.gate || '')))
+  .filter((r) => r.pass === false && !NON_ADJUDICABLE_SEVERITIES.has(String(r.severity || ''))
+    && HARD_RED_LINE_RE.test(String(r.gate || '')))
   .map((r) => `${String(r.gate).split(' ')[0]}(${r.severity})`);
 const anyFail = results.some((r) => r.pass === false);
 // v18.62.4（P1-3）：ERROR 优先级最高 —— 门自己没跑通时，p0/p1 的计数没有意义（可能漏检），

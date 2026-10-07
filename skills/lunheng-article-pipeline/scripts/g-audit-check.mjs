@@ -157,8 +157,13 @@ const fieldRe = (name, tail = '') => new RegExp(`${name}[\\s*_\`]{0,4}[:：][\\s
 const hasField = (text, name) => fieldRe(name).test(text);
 
 // === G8-CharCount：字数偏差（纯汉字 vs 简报目标篇幅）===
-//   判据（`audit-checklist-quickref.md` G8② + `_shared/字数判定表.md` §二）：实测 / 目标
-//     <0.85× 不足；0.85–1.05× 通过；>1.05× 超限（目标 11,000 字时即 11,550 一条线）。
+//   判据（真源 = `_shared/字数判定表.md` §二 + `audit-checklist-quickref.md` G8②）：
+//     **不足 >10%**（< 目标 × 0.9）判 P0 / **超限 >5%**（> 目标 × 1.05）判 P1；
+//     v18.80.1（全量审查修订批 · A2）更正：**候选区间的下界旧写 `lo * 0.85`**，与上述两处真源
+//     （均为 −10%）**不一致**，且注释把 0.85/1.05 误归于这两份真源（它们从没写过 0.85）。
+//     后果：0.86–0.90× 的稿子 —— `apply-revision-cycle` / `apply-compression-cycle` 的
+//     `floor = round(target × 0.9)` 判「低于阻塞线（P0，须扩写）」，而本门判「落在候选区间内 = 通过」。
+//     现按真源收敛为 `lo * 0.9`（不再存在第三种下界）。
 //     **2026-09-29 主人裁定统一口径，废止 v18.11.0 的 1.05–1.09×「偏多」中间档**——
 //     判级只有两档：≤5% 记 P2（不强制修订）/ >5% 记 P1（触发 T5 v3）；本脚本仍只管「是否落在候选区间」。
 //   ⚠️ **本项刻意只判 P2 候选，不自行判 P1/P0**（v18.23.0 EFF-1，实测校准）：
@@ -192,9 +197,10 @@ const g8 = (() => {
     return { name: '字数偏差（正文纯汉字 vs 任务简报篇幅字段）', checked: false, pass: null, severity: 'SKIP',
       skipReason: `未解析到候选字数（${cand.reason}）`, evidence: { hanChars, briefField: cand.raw, brief: briefPath } };
   }
-  // 判据：落在**候选区间**内（下界 ×0.85 ≤ 实测 ≤ 上界 ×1.05）即通过；否则 P2 候选。
+  // 判据：落在**候选区间**内（下界 ×0.9 ≤ 实测 ≤ 上界 ×1.05）即通过；否则 P2 候选。
+  //   v18.80.1（A2）：下界由 ×0.85 收敛为 ×0.9 —— 与 `字数判定表.md` §二 的「不足 >10%」同一阈值。
   const lo = cand.candidates[0], hi = cand.candidates[cand.candidates.length - 1];
-  const inBand = hanChars >= lo * 0.85 && hanChars <= hi * 1.05;
+  const inBand = hanChars >= lo * 0.9 && hanChars <= hi * 1.05;
   // 例外通道：只报事实（简报是否标了 `BUF=on` + 是否落容忍带），**不参与 severity**。
   const bufMarker = (() => { const m = BUF_MARKER_RE.exec(briefText); return m ? m[1].toLowerCase() : null; })();
   const overRatio = hanChars / hi - 1;

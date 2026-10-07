@@ -1,6 +1,6 @@
 # Lunheng (lunheng-article-pipeline) — pipeline multiagente para textos longos
 
-> 版本：v18.80.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.80.1（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > 🌐 [English](README.md) ｜ [中文](README-zh.md) ｜ [Español](README-es.md) ｜ **Português**（este arquivo）｜ [हिन्दी](README-hi.md)
 
@@ -14,7 +14,7 @@ Os nove papéis são independentes e insubstituíveis: T1 busca bibliográfica, 
 
 ## When to use it
 
-- Você precisa de um texto extenso (mais de 2000 caracteres) que resista a escrutínio e pode esperar de 1 a 3 horas.
+- Você precisa de um texto extenso (mais de 2000 caracteres) que resista a escrutínio e pode esperar várias horas (sem faixa horária; veja `skills/lunheng-article-pipeline/SKILL.md` §边界).
 - O tema envolve fatos, números ou múltiplos pontos de vista, exigindo base probatória em vez de opinião apenas.
 - Você quer pontos de controle humanos: confirmar o esboço antes de redigir e revisar o rascunho final.
 
@@ -117,7 +117,7 @@ A camada patch faz duas coisas: **insere uma linha para este pacote** (`- id: lu
 As versões são publicadas **apenas por tag**; `npm publish` local é proibido (contorna os portões de CI e a proveniência OIDC, e uma versão npm nunca pode ser sobrescrita).
 
 ```sh
-git tag v18.80.0 && git push origin v18.80.0   # uma tag por push (GitHub: >3 tags em um push não dispara workflow)
+git tag v18.80.1 && git push origin v18.80.1   # uma tag por push (GitHub: >3 tags em um push não dispara workflow)
 # publish.yml executa: portão 1 consistência → portão 2 empacotamento → portão 3 higiene → portão 4 teste de fumaça do pacote → testes
 #   → tag/versão iguais → guarda de idempotência → OIDC publish --provenance --tag dsh → auditoria posterior
 ```

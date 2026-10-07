@@ -169,7 +169,13 @@ try {
   // 「简报缺失 / 缺研究问题段」属差序输入，只记 LLM 兜底；数据侧三项 = 文档承诺的 P0。
   // v18.2.6：新增两类「脚本自身没能核到位」的情形（简报解析失败 / 数据卡读取失败）——它们既不是
   //   「内容缺陷」（不该判 P0 阻断交付），也不是「可交给 LLM 兜底的差序输入」（LLM 看不到脚本异常）
-  //   → 记为 P1 硬失败，使「跳过」必定出现在 p1 计数里而不是无声无息。
+  //   → 必须**响亮**地出现在机械面里，而不是无声无息。
+  // v18.80.1（全量审查修订批 · B5）**更正载体**：原文写「记为 **P1** 硬失败，使『跳过』出现在 p1 计数里」，
+  //   该写法在 v18.62.4 立「**门内解析/读取失败一律 `ERROR`（→ exit 70）**」契约后已成**残留**：
+  //   记 P1 会被 `final-check.mjs` 读成「存在 P1 残留，可触发 T5 修订一轮」→ **脚本缺陷把未被修改的
+  //   稿件送进付费修订轮**（`m-gate-check.mjs` 头注释的 `exit 70` 段逐字记录了这条代价）。故本处改记 `ERROR`
+  //   ——「响亮」由 exit 70 承担（比 P1 更强：它明确声明「本次未对内容下结论」），与 `mform-gates.mjs`
+  //   / `mexist-gates.mjs` 门内 catch 同口径。
   const SCRIPT_SKIP_RE = /任务简报缺失|未见「## 研究问题|未能解析出子问题|解析失败|数据卡读取失败/;
   const hardHits = hardWhy.filter((w) => !SCRIPT_SKIP_RE.test(w)).length;
   const scriptSkipHits = hardWhy.filter((w) => /解析失败|数据卡读取失败/.test(w)).length;
@@ -182,7 +188,8 @@ try {
         ? `任务简报 ${briefData.subclaims} 子问题（口径：${briefData.subclaimsSource}） / 需找数据点 ${needsT2} 条${briefData.placeholder ? `（${briefData.placeholder} 处占位未填）` : ''}｜数据条目 ${dataEntries} 条（数据卡 ${dataCardN} + 案例集 ${caseSetN}${caseSetReadError ? `；案例集读取失败：${caseSetReadError}` : ''}）`
           + (hardWhy.length ? ` ｜ 硬问题：${hardWhy.slice(0, 2).join('；')}` : ' ｜ 条目数与信任级别对账通过（脚本佐证，主控 L4 跨文件判断）')
         : '任务简报不存在（**已确认未找到 01-任务简报.md**，脚本佐证，主控 L4 跨文件判断）',
-    severity: hardHits > 0 ? 'P0' : (scriptSkipHits > 0 ? 'P1' : 'LLM 兜底'),
+    // v18.80.1（B5）：`scriptSkipHits` 档由 `'P1'` 改 `'ERROR'`（→ 主脚本 `errors > 0` → exit 70）。
+    severity: hardHits > 0 ? 'P0' : (scriptSkipHits > 0 ? 'ERROR' : 'LLM 兜底'),
   });
 }
 

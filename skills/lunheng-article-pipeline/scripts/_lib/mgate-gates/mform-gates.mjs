@@ -14,7 +14,7 @@ import { join, dirname, basename } from 'node:path'
 import { refsOf, dataCardIds, REF_ID_TOKEN } from '../refs.mjs'
 import { TRUST_COMPLIANT_RE, TRUST_LOOSE_RE } from '../trust.mjs'
 import { splitCard } from '../cards.mjs'
-import { ENDNOTE_SECTIONS, ENDNOTE_ORDER, h2Headings } from '../sections.mjs'
+import { ENDNOTE_SECTIONS, ENDNOTE_ORDER, h2Headings, titleMatches } from '../sections.mjs'
 import { countHan } from '../han.mjs'
 import { figurePlaceholders, analyzeSvg, svgTextNumbers, figureNoOf, checkGrid } from '../svg.mjs'
 import { indexSection, sectionRange, CARD_SPECS, entryIds, idsByToken } from '../mgate-helpers.mjs'
@@ -29,7 +29,10 @@ const WHITELIST = ENDNOTE_ORDER;
 // === M-Form-2 文末 5 节存在性（v2.5.2-dsh.5 修订：与 M-Form-7 一致）===
 export function mForm2(ctx) {
   const { h2s, results } = ctx;
-const missingSections = ENDNOTE_SECTIONS.filter((s) => !h2s.some((h) => h === s || h.startsWith(s)));
+// v18.80.1（全量审查修订批 · B4）：改走 `titleMatches`（剥离「五、」「4.1」等**排版前缀**，v18.49.0 F-T 裁定）。
+//   旧用裸 `startsWith` → 把文末节写成 `## 五、参考文献 … ## 九、AI 使用声明`（本仓已判为合法排版）的稿件
+//   被判「五节全缺」P0，而**同一次运行**里正文区/文末区分界（`firstEndnoteIndex`）却承认它们 → 自相矛盾。
+const missingSections = ENDNOTE_SECTIONS.filter((s) => !h2s.some((h) => titleMatches(h, s)));
 results.push({
   // v18.12.0（全量审计 L-28）：标签由「文末四节」改为「文末必需五节」——旧标签与实现不符（实现查 5 节，
   //   自 v2.5.2-dsh.5 起），而该标签是 M-Exist-5「模板行名逐字一致」与 `闸门记录-template.md` 的**逐字真源**，
@@ -47,14 +50,18 @@ export function mForm7(ctx) {
   const { h2s, firstIdx, results } = ctx;
 let mform7Violations = [];
 if (firstIdx === -1) mform7Violations = ['文末无任何白名单节'];
-else mform7Violations = h2s.slice(firstIdx).filter((t) => !WHITELIST.some((w) => t === w || t.startsWith(w)));
+// v18.80.1（全量审查修订批 · B4）：同 M-Form-2，改走 `titleMatches`（否则带序号文末节被判「文末无白名单节」P0）。
+else mform7Violations = h2s.slice(firstIdx).filter((t) => !WHITELIST.some((w) => titleMatches(t, w)));
 // v18.0.0 修复（冲突⑧）：旧版只核**成员资格**、不核 `deliverables.md` 行 32-40 规定的**顺序固定**。
 //   实战：v1 文末顺序为 数据来源→案例来源→参考文献→先行者文献→AI 使用声明（参考文献错位），
 //   M-Form-7 判「全白名单」通过，由 T7 独立扫出（P1-1）。属教训 #139「规范从文档层到执行层断链」同型。
 const mform7OrderViolations = [];
 if (firstIdx !== -1 && mform7Violations.length === 0) {
+  // v18.80.1（全量审查修订批 · B4）：顺序映射同样改走 `titleMatches` —— **这是本条的「另一半」**：
+  //   只改 :54 的成员资格而不改此处，带序号文末节会因 `findIndex` 返回 -1 被 `.filter` 掉 →
+  //   `seq` 塌成空 → 「顺序违规」永不触发（把一次修复变成一处**新的静默放行**）。
   const seq = h2s.slice(firstIdx)
-    .map((t) => WHITELIST.findIndex((w) => t === w || t.startsWith(w)))
+    .map((t) => WHITELIST.findIndex((w) => titleMatches(t, w)))
     .filter((i) => i !== -1);
   const sorted = [...seq].sort((a, b) => a - b);
   if (seq.join(',') !== sorted.join(',')) {
@@ -1211,7 +1218,11 @@ try {
     const skippedSeg11 = (() => {
       const h = ls2.findIndex((l) => /^#{2,4}\s*已跳过/.test(l));
       if (h === -1) return '';
-      return ls2.slice(h + 1, sectionRange(ls2, h, /^#{2,4}\s/).end).join('\n');
+      // v18.80.1（全量审查修订批 · B1）：段边界改与**姊妹段 `:1169`** 同口径（`/^##\s/`）。
+      //   旧用 `/^#{2,4}\s/`：在「`## 已跳过` + `### 一、文献卡`」这一真实清单形态下本段被 `###` 截断
+      //   → `skippedIds11` 恒空 → v18.78.0 F3/F26 那条硬检查（正文引用 ∩「已跳过」≠ ∅）**变空转**，
+      //   且是通过文案照旧断言「引用 ⊆ 已加载，加载集有卡片支撑」。
+      return ls2.slice(h + 1, sectionRange(ls2, h, /^##\s/).end).join('\n');
     })();
     const skippedIds11 = new Set(
       [...skippedSeg11.matchAll(new RegExp('\\[(' + REF_TOKEN + ')\\]', 'g'))].map((m) => '[' + m[1] + ']'),

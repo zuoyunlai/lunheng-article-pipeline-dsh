@@ -9,7 +9,7 @@
 #    ⚠️ **务必钉版本**：不写 `@<版本>` 时，装到哪个版本取决于本机包管理器**当时**的解析状态。
 #    实测过一次：同一条命令装到 **18.15.0**，而 registry 上的 `latest` 已是 18.20.4 —— 差了五个小版本，
 #    且按下面流程走下去**没有任何一步能让人察觉**。版本真源只有一处：`npm view lunheng-article-pipeline version`。
-dsh plugin --profile <profile> add lunheng-article-pipeline@18.80.0
+dsh plugin --profile <profile> add lunheng-article-pipeline@18.80.1
 
 # 1b) **核对装到的版本**（钉了版本也值得跑一次——它读的是 profile 里**实际落盘**的 package.json）
 node -e "console.log(require('<DSH_HOME>/profiles/<profile>/node_modules/lunheng-article-pipeline/package.json').version)"
@@ -78,7 +78,7 @@ dsh --profile <headless-profile> "请调用 skill 工具列出你可见的技能
 | `subagent_strong` | T4 分析 / T5 写作 | 推理强 | 继承父会话（设 `LUNHENG_STRONG_*` 才分档） |
 | `subagent_audit` | T6 批判 / T7 审计 / T9 审稿 / G14 检测 | 顶配防漏判 | 继承父会话（设 `LUNHENG_AUDIT_*` 才分档） |
 
-**分档随 bundle 生效，无需复制任何预设目录**（`examples/preset/` 只是说明文档，不含可加载的 `agent.cordis.yml`）：**v18.2.6 起三档工具行默认不装载**——未设任何 `LUNHENG_*` 时它们不挂载（三档全继承时它们与内置 `subagent` 完全同义，无条件装载等于每会话白付 3 份工具 schema）；设任一档的 `PROVIDER`/`MODEL`，或 `LUNHENG_TIERING=on`，才装载；`LUNHENG_TIERING=off` 优先级最高（强制不装载）。
+**分档随 bundle 生效，无需复制任何预设目录**（`examples/preset/agent-tiered/cordis.yml` 是**随包**的可加载预设，已随 bundle 生效，**无需复制**）：**v18.2.6 起三档工具行默认不装载**——未设任何 `LUNHENG_*` 时它们不挂载（三档全继承时它们与内置 `subagent` 完全同义，无条件装载等于每会话白付 3 份工具 schema）；设任一档的 `PROVIDER`/`MODEL`，或 `LUNHENG_TIERING=on`，才装载；`LUNHENG_TIERING=off` 优先级最高（强制不装载）。
 
 ```sh
 # 换模型：设环境变量后重启 dsh（模型在挂载期求值一次，改完必须重启）
@@ -105,7 +105,7 @@ dsh --profile <profile>
 | `LUNHENG_TIERING` | `on` / `off` | `on` = 显式装载三档工具行（不指定模型也可，用于确认工具可见）；`off` = 强制不装载 | 优先级最高，压过其它 `LUNHENG_*` |
 | `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_{PROVIDER,MODEL}` | provider 名 / 模型 id | 分档取值；**设任一档即同时装载三行** | 跨 provider 时才需同时给 PROVIDER + MODEL |
 
-同名的**部署开关**走插件 `config`（v18.2.6 起入口导出 `Config`）：`allowMechanismEdit` / `quiet` / `scriptTimeoutMs`（原生工具跑脚本的超时，默认 120 000 ms）/ `scriptMaxOutputBytes`（单次 stdout/stderr 采集上限，默认 4 MiB）/ `handoffLevel`（交接门灰度开关：`basic` = 仅验存在/非空/回报六要素；`strict` = 加结构/版本/成对/agents-log 校验；默认 `basic`）。写在你 profile 里本插件行上：
+同名的**部署开关**走插件 `config`（v18.2.6 起入口导出 `Config`，**共 8 键**，完整清单见 `SECURITY.md` §可调参数）：`allowMechanismEdit` / `quiet` / `scriptTimeoutMs` / `scriptMaxOutputBytes` / `handoffLevel`（`basic`｜`strict`，默认 `basic`）/ `ethicsHook`（H2 伦理脱敏总开关，默认 `true`；纯代码·文档工作流可置 `false` 关噪声）/ `hookRewriteContent`（H2 改写正文，默认 `false` = 只标记）/ `hookMaxBlockChars`（单块扫描上限）。写在你 profile 里本插件行上：
 
 ```yaml
 - id: lunheng-article-pipeline

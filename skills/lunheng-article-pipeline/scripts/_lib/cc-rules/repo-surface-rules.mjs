@@ -222,12 +222,18 @@ if (gateModMissing) {
 //   本规则把白名单数字 = 真源数，**与外泄到次级文档的硬编码数一并对账**。
 //   实现：抓 SKILL.md「随包脚本白名单」行（单行字面提取脚本清单）作真源集合 + 数字，
 //   再扫 SKILL.md 全文 / SECURITY.md / AGENTS.md / references/_shared/*.md / docs/审计与修订记录/*.md
-//   所有含 `\d+ 个 (?:脚本|\.mjs|门禁脚本|真实项目|随包脚本)` 等的字面数字，**必须 = 真源数字**。
+//   所有含 `\d+ 个 (?:脚本|\.mjs|门禁脚本|随包脚本)` 的字面数字，**必须 = 真源数字**。
+//   **v18.80.1（⑥）`真实项目` 已移出量词表**：本规则量的是**脚本数**，而「N 个真实项目」是**项目数**
+//   ——两者量纲不同，同列会把 `M-Gate-Algorithm.md` 的「20 个真实项目」误判为「脚本数 ≠ 31」。
 //   边界：含「数量真源 = ...」的指针行（SKILL.md 白名单字段本身）豁免；注解行（… 起 / 更正 / 修订 / 历史 等）豁免，
 //   防止「历史版本提到旧数字」误报。
 {
   // 1) 真源：从 SKILL.md 抓「随包脚本白名单」行的脚本清单与数字
-  const skillPath = join(REPO_ROOT, 'SKILL.md');
+  // v18.80.1（全量审查修订批 · ⑥）：由 `REPO_ROOT` 改 **`ROOT`** —— 仓库布局（`.dsh`/bundle 下技能体在
+  //   `skills/<name>/`）里 `REPO_ROOT/SKILL.md` **不存在**：`readFileSync` 会抛错，且扫描根 :263 会被
+  //   `existsSync` 静默跳过（实测：整条规则只覆盖 `SECURITY.md + docs/`）。注意 `skillText`（ctx 传入）
+  //   本就是 `ROOT/SKILL.md` 的内容——`skillPath` 此前与它**不同源**，这正是病灶。
+  const skillPath = join(ROOT, 'SKILL.md');
   const skillContent = skillText || readFileSync(skillPath, 'utf8');
   const wlLine = skillContent.split('\n').find((l) => /随包脚本白名单/.test(l));
   if (!wlLine) {
@@ -253,14 +259,32 @@ if (gateModMissing) {
       //   ——只对 docs/顶层新增的**当前生效**文档做扫描（如 docs/install.md / docs/usage.md 等）
       const HIST_DOC_BLACKLIST = /token-optimization-plan\.md$|docs[\/\\]审计与修订记录[\/\\]|audits[\/\\]反哺报告-/;
       const wlIdx = skillContent.split('\n').indexOf(wlLine);
+      // v18.80.1（全量审查修订批 · ⑥「扫描面存在性自证」）：以下三处路径此前以 `REPO_ROOT` 为基准，
+      //   而 `skillPath = ROOT/SKILL.md`（技能目录布局）。仓库布局下 `REPO_ROOT/{AGENTS.md,
+      //   references/_shared}` **都不存在** → 被 `if (!existsSync(r.path)) continue;` **静默跳过**，
+      //   规则实际只覆盖 `SECURITY.md + docs/`：而 :248 的注释声称扫 AGENTS.md 与 references/_shared/*.md，
+      //   :218-221 的动机点名的正是这两处 → **规则名下的两个真实漂移点永远扫不到**。
+      //   现改为 `ROOT` 基准，并把「根缺席」从**静默跳过**改为**响亮报告**（否则下次再挪目录，又是无声收窄）。
       const scanRoots = [
-        { path: skillPath, skipLineIdx: wlIdx },
-        { path: join(REPO_ROOT, 'SECURITY.md'), skipLineIdx: -1 },
-        { path: join(REPO_ROOT, 'AGENTS.md'), skipLineIdx: -1 },
-        { path: join(REPO_ROOT, 'references', '_shared'), skipLineIdx: -1, isDir: true },
-        { path: join(REPO_ROOT, 'docs'), skipLineIdx: -1, isDir: true },
+        { path: skillPath, skipLineIdx: wlIdx, label: 'SKILL.md' },
+        { path: join(REPO_ROOT, 'SECURITY.md'), skipLineIdx: -1, label: 'SECURITY.md' },
+        { path: join(ROOT, 'AGENTS.md'), skipLineIdx: -1, label: 'AGENTS.md' },
+        { path: join(ROOT, 'references', '_shared'), skipLineIdx: -1, isDir: true, label: 'references/_shared' },
+        { path: join(REPO_ROOT, 'docs'), skipLineIdx: -1, isDir: true, label: 'docs' },
       ];
-      const reDigit = /(\d+)\s*个(?:\s*脚本|\s*\.mjs|\s*门禁脚本|\s*真实项目|\s*随包脚本)/g;
+      // **存在性自证**：只允许 `docs` 在「纯技能目录」部署下缺席（它随包但不在技能目录内）；
+      //   其余三面缺席 = 覆盖面静默收窄 → P1（本批实测到的正是这一形态）。
+      const OPTIONAL_SCAN_ROOTS = new Set(['docs']);
+      const hardMissingRoots = scanRoots
+        .filter((r) => !existsSync(r.path) && !OPTIONAL_SCAN_ROOTS.has(r.label))
+        .map((r) => r.label);
+      if (hardMissingRoots.length) {
+        errors.push(`[P1 扫描面缺失] 规则 ㉝ 的扫描根不存在：${hardMissingRoots.join(' / ')}——覆盖面已静默收窄（实测：仓库布局下 AGENTS.md / references/_shared 全部落空，规则只覆盖 SECURITY.md + docs/）`)
+      }
+      // ⚠️ **`真实项目` 已移出量词表**（v18.80.1 ⑥）：本规则量的是**脚本数**，而
+      //   `N 个真实项目`/`N 个真实项目横扫` 是**项目数**——两者量纲不同，同列会把
+      //   `M-Gate-Algorithm.md` 的「20 个真实项目」误判为「脚本数 ≠ 31」（实测该文件确有此形态）。
+      const reDigit = /(\d+)\s*个(?:\s*脚本|\s*\.mjs|\s*门禁脚本|\s*随包脚本)/g;
       const reAnno = /起|之前|新增|修订|教训|历史|更正|及以后|变化数|命中|无新|判定|实测|评测|反例|含角色|含.*不剥离/;
       for (const r of scanRoots) {
         if (!existsSync(r.path)) continue;
@@ -471,8 +495,35 @@ for (const baseDir of [REPO_ROOT, dshSkillDir]) {
       //   为什么值得加：该卡这一行的用途正是让新人知道「有多少文档在被棘轮管着」；条数变了而卡不跟，
       //   就会重演本批实测到的「版本连漏两版」那类漂移。读真源的方式与 r09 同法（从门源码里数键）。
       const rhPath = join(REPO_ROOT, 'scripts', 'repo-hygiene-check.mjs')
-      if (existsSync(rhPath)) {
-        const block = readFileSync(rhPath, 'utf8').match(/const DOC_BUDGET\s*=\s*\{[\s\S]*?\n\}/)
+      // v18.80.1（全量审查修订批 · 报告 §C2）：**`DOC_BUDGET` 已外移**到独立模块——本规则随之拆成两个真源：
+      //   · 条数 / 合计上限 ← `scripts/_lib/doc-budget-reasons.mjs` 的 `const DOC_BUDGET = {…}`；
+      //   · 常驻上限        ← `scripts/repo-hygiene-check.mjs` 的 `const ALWAYS_LIMIT = <数字>`。
+      //   为什么拆两处也要拆：那两张表住在两个文件里**是事实**，读一处而假装覆盖两处，就是本仓反复修的
+      //   「覆盖面静默收窄」。下面两条 `!block || !alwaysLimit` 的 P0 对**两侧**同时生效。
+      const budgetPath = join(REPO_ROOT, 'scripts', '_lib', 'doc-budget-reasons.mjs')
+      if (existsSync(rhPath) || existsSync(budgetPath)) {
+        // v18.80.1：**真源派生失败必须响亮**（照 `truth-source.mjs` 的 A6 先例）。
+        //   病灶（本批实测）：④⑤ 两条此前都嵌在 `if (block)` / `if (alwaysLimit && block)` 里——
+        //   一旦 `DOC_BUDGET` 字面量被**搬走或改名**（正是本轮实际发生的外移），本正则就抓不到块
+        //   → **两条门静默失效、0 报错**，而速查卡的条数 / KB 数从此无人对账。
+        //   这与本批在规则 ㉝ 修掉的「扫描面静默收窄」是同一族。判据：**真源在盘、但派生不出 → P0**。
+        const rhSrc = existsSync(rhPath) ? readFileSync(rhPath, 'utf8') : ''
+        const budgetSrc = existsSync(budgetPath) ? readFileSync(budgetPath, 'utf8') : ''
+        // ⚠️ v18.80.1（本轮实测踩到）：正则必须**锚到行首**。首版用 `/const DOC_BUDGET\s*=\s*\{/`（无锚），
+        //   而新模块的头注释里**正好有一句**「`const DOC_BUDGET = {` 正是规则 ㊲ 的读取面」——
+        //   于是「把真声明改名」的注入**没有触发 P0**：正则被那句**注释**满足了（注释被当真源，本仓同族教训）。
+        //   锚到行首即可把「行内提及」与「真实声明」分开（两侧的声明都在行首）。
+        const block = budgetSrc.match(/^\s*(?:export\s+)?const DOC_BUDGET\s*=\s*\{[\s\S]*?\n\}/m)
+        const alwaysLimit = Number((rhSrc.match(/^const ALWAYS_LIMIT\s*=\s*(\d+)/m) || [])[1])
+        if (!block || !alwaysLimit) {
+          const lost = [
+            !block ? '`const DOC_BUDGET = {…}` 块（真源 = `scripts/_lib/doc-budget-reasons.mjs`）' : '',
+            !alwaysLimit ? '`const ALWAYS_LIMIT = <数字>`（真源 = `scripts/repo-hygiene-check.mjs`）' : '',
+          ].filter(Boolean).join(' 与 ')
+          errors.push(`[P0 规则失效] 规则 ㊲ ④⑤ 的真源派生失败：${lost} 解析不到——`
+            + '**速查卡的词预算条数 / 常驻与合计上限从此无人对账**。若刚把这两处数据搬去别处，'
+            + '须**同批**把本规则的读取面一并指向新位置，不得留下静默失效。')
+        }
         if (block) {
           const nBudget = [...block[0].matchAll(/^\s*'[^']+':\s*\[/gm)].length
           const cardBudget = qfText.match(/\|\s*\*\*词预算登记数\*\*\s*\|\s*\*\*(\d+)\s*条\*\*/)
@@ -480,6 +531,62 @@ for (const baseDir of [REPO_ROOT, dshSkillDir]) {
             errors.push(`[P1 速查卡词预算条数漂移] docs/quick-facts.md 写「${cardBudget[1]} 条」，而 repo-hygiene-check.mjs 的 DOC_BUDGET 实测 ${nBudget} 条`)
           } else if (!cardBudget) {
             errors.push('[P2 速查卡词预算条数] docs/quick-facts.md 未见「词预算登记数 | **N 条**」行——该行是常驻面 / 词预算的唯一入口数字，请补齐')
+          }
+          // · ⑤ 常驻面 / 词预算合计的 **KB 数**（v18.80.1 · 全量审查修订批 A1 补）
+          //   病灶（本批实测）：该卡这两行的 KB 数是**手写且无门**，三个数全部漂了——
+          //     · 常驻上限写 `71 KB`，真源 `ALWAYS_LIMIT` = 73 728 B = **72.0 KB**；
+          //     · 常驻实测写 `70.4 KB`，真值 = **71.1 KB**（**已超它自己写的上限**）；
+          //     · 词预算实测写 `1371 KB`，真值 = **1377.6 KB**。
+          //   上一条 ④ 只钉了「条数」，KB 数不在派生面内 → 本条按 r09 **同法**（取盘上 `statSync().size`、
+          //   逐条累加 `limit` 与 `size`）把四个 KB 数一并钉到真源。容差 0.05 KB（卡上保留 1 位小数）。
+          // `block` / `alwaysLimit` 已在上方**与真源存在性自证同处**派生（v18.80.1）——此处不再重复读取文件。
+          if (block) {
+            const kb1 = (n) => (n / 1024).toFixed(1)
+            const NEAR = (a, b) => Math.abs(a - b) <= 0.05
+            let resident = 0
+            for (const f of ['SKILL.md', 'AGENTS.md']) {
+              const abs = join(ROOT, f)
+              if (existsSync(abs)) resident += statSync(abs).size
+            }
+            const cardResident = qfText.match(/合计上限\s*\*{0,2}(\d+(?:\.\d+)?)\s*KB/)
+            if (!cardResident) {
+              errors.push('[P2 速查卡常驻面口径] docs/quick-facts.md 未见「合计上限 **N KB**」形态——该行是每会话固定开销的唯一入口数字')
+            } else if (!NEAR(Number(cardResident[1]), alwaysLimit / 1024)) {
+              errors.push(`[P1 速查卡常驻上限漂移] docs/quick-facts.md 写 ${cardResident[1]} KB，而 \`ALWAYS_LIMIT\` = ${alwaysLimit} B = ${kb1(alwaysLimit)} KB`)
+            }
+            // **刻意不钉「实测」**：常驻实测与合计实测都随**每次文档改动**变化，写进卡 = 每改一份文档就要同步一次、
+            //   且改完即失真——本批实测那三个漂掉的数正是这么来的（70.4 / 71 / 1371）。
+            //   故本规则只钉**结构性上限**，并由下条**禁止卡上复述实测值**。
+            let sumLimit = 0, sumActual = 0, sumMissing = 0
+            for (const mm of block[0].matchAll(/^\s*'([^']+)':\s*\[\s*(\d+)/gm)) {
+              const abs = join(REPO_ROOT, mm[1])
+              if (!existsSync(abs)) { sumMissing++; continue }
+              sumLimit += Number(mm[2])
+              sumActual += statSync(abs).size
+            }
+            // 卡上「合计上限」出现两处：① 常驻集（上条已核）② 词预算合计（本条）。
+            const totalLimitHits = [...qfText.matchAll(/合计上限\s*\*{0,2}(\d+(?:\.\d+)?)\s*KB/g)]
+            const totalLimitVal = totalLimitHits.length >= 2 ? Number(totalLimitHits[1][1]) : null
+            if (totalLimitVal === null) {
+              errors.push('[P2 速查卡词预算上限] docs/quick-facts.md 未见第二处「合计上限 **N KB**」（词预算合计上限）')
+            } else if (sumMissing > 0) {
+              // v18.80.1（本轮实测踩到）：**不得在残缺输入上判漂移**。合计只对「在盘」的登记项求和，
+              //   于是任何只复制了部分仓库的布局（如 `mkRepo` 造的临时仓）都会算出一个偏小的上限，
+              //   进而报出一条**假 P1**。判据：残缺输入 → 明说「本轮不可判定」，不生成数字结论。
+              errors.push(`[P2 词预算合计不可判定] docs/quick-facts.md 的「合计上限」本轮**不判**：`
+                + `DOC_BUDGET 里有 ${sumMissing} 个登记文件不在盘（合计只对在盘项求和 ⇒ 会得出偏小的假上限）。`
+                + '完整仓里应为 0。')
+            } else if (!NEAR(totalLimitVal, sumLimit / 1024)) {
+              errors.push(`[P1 速查卡词预算上限漂移] docs/quick-facts.md 写 ${totalLimitVal} KB，而 DOC_BUDGET 合计上限 = ${sumLimit} B = ${kb1(sumLimit)} KB`)
+            }
+            // **禁止复述实测值**：这是本批「三个 KB 数全漂」的根因——实测值随每次文档改动变化，复述即腐化。
+            //   判据用**否定形态**（卡上不得出现 `实测 ≈ N KB`）+ **肯定形态**（须留指针），两侧都不许空。
+            if (/实测\s*≈\s*\d+(?:\.\d+)?\s*KB/.test(qfText)) {
+              errors.push(`[P1 速查卡复述实测值] docs/quick-facts.md 出现「实测 ≈ N KB」——当前常驻实测 = ${kb1(resident)} KB、合计实测 = ${kb1(sumActual)} KB，两者随**每次文档改动**变化，复述即漂（v18.80.1 实测：三个 KB 数全漂）。请改为指针：「逐轮以 \`repo-hygiene-check\` ⑨ 输出为准」`)
+            }
+            if (!/逐轮以\s*`repo-hygiene-check`/.test(qfText)) {
+              errors.push('[P2 速查卡指针缺失] docs/quick-facts.md 须写明「逐轮以 `repo-hygiene-check` ⑨ 输出为准」——否则读者无从取得实测值（该值不许复述）')
+            }
           }
         }
       }

@@ -44,10 +44,15 @@ const root = resolve(stOpts['--run-dir'] || join(process.cwd(), 'run'));
 //   无 lib/）下自足运行（scripts/_lib 自足原则，同 exit-guard / cli-args）；故此处内联同口径判定——
 //   两侧同入 realpath 空间后判包含（防 junction 逃逸；realpath 失败降级字符串规范化，不劣于旧版）。
 const runBase = join(process.cwd(), 'run');
+// v18.80.1（全量审查修订批 · 第3批）：**大小写归一只在 Windows 做**——与真源 `lib/run-path-fence.mjs`
+//   的 `norm()` 逐字同口径。旧内联版**无条件 `toLowerCase()`**：POSIX 路径大小写敏感，
+//   两侧都压低会把「与被保护根仅差大小写的**真实路径**」（如 `<cwd>/RUN` 与 `<cwd>/run` 是两个目录）
+//   误判为命中 → 只读扫描面被指向 `run/` 之外，与「三层缺一不可」的声明相悖（Windows 上不可利用）。
 const rpNorm = (p) => {
   let q = p;
   try { q = realpathSync.native(p); } catch { /* 不存在/不可达 → 用原路径（存在性另查） */ }
-  return resolve(q).replace(/[\\/]+$/, '').replace(/\//g, sep).toLowerCase();
+  const s = resolve(q).replace(/[\\/]+$/, '').replace(/\//g, sep);
+  return process.platform === 'win32' ? s.toLowerCase() : s;
 };
 const aBase = rpNorm(runBase), aRoot = rpNorm(root);
 if (aRoot !== aBase && !aRoot.startsWith(aBase + sep)) {
