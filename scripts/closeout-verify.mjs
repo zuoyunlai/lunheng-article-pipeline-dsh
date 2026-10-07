@@ -66,7 +66,32 @@ for (const a of argv) {
 //   CHANGELOG（「被提及」的证据源之一）仍会从**脚本所在真仓**读取 —— 真仓 CHANGELOG 含全部 ID，
 //   于是夹具里的陈旧「未做」登记被凭空抹掉、门报 ✓。即「换了输入却没换证据源」= 假绿。
 const repoRoot = resolve(opt('--repo', resolve(import.meta.dirname, '..')));
-const auditPath = resolve(opt('--audit', join(repoRoot, 'audits', '全量审计报告-v18.11.0.md')));
+// ── v18.80.0（全量审计-v18.79.1 §七·补）：**默认目标不再是写死的那一份** ────────────────────────
+//   病灶：默认值原写死 `audits/全量审计报告-v18.11.0.md`。实测——该文件有 151 个 `L-NN`，
+//   而**最近两轮**报告（`全量审计报告-v18.78.1-2026-10-06.md`、`论衡插件文档全量审计-v18.78.0.md`）
+//   的 `L-NN` 是 **0 处**。于是 `node scripts/closeout-verify.mjs` 的 `exit 0` + 「两步均无发现」
+//   检的是**一份早已过期的旧报告**——这正是本仓 ⑩/⑳ 明令禁止的「规则失效即静默放行」，
+//   只不过这次失效发生在**收口门自身**上（门在此、却不看最新产物）。
+//   修法（三件，缺一仍会退化成静默）：
+//     ① 默认目标 = `audits/` 里**按版本号取最新**的一份「全量审计报告」；
+//     ② ID 形态由「只认 `L-NN`」扩到「`L-NN` 或 `P<n>-<n>`」——本仓 v18.7x 起的新报告改用
+//        `P1-1 / P2-3` 形态（实测 v18.78.0 / v18.78.1 报告 0 个 L-NN、我轮报告 9 个 P1-N + 6 个 P2-N）；
+//        两条正则都用词界 + 具体形态，**不引入泛匹配**（避免把「退出码 1」「§P1 差集」之类当 ID）。
+//     ③ 目标报告里**一个 ID 都提不到 → 响亮失败**（而不是照旧输出「两步均无发现」）。
+//       这一条是本次修复的核心：前两条只是让它看对文件，这一条才让「看不对」变得**不可静默**。
+const pickLatestAudit = (dir) => {
+  if (!existsSync(dir)) return null
+  const cands = readdirSync(dir)
+    .filter((f) => f.endsWith('.md') && /审计报告/.test(f))
+    .map((f) => {
+      const v = /v(\d+)\.(\d+)\.(\d+)/.exec(f)
+      return { f, key: v ? [+v[1], +v[2], +v[3]] : [0, 0, 0] }
+    })
+    // 版本号降序；同版本按文件名降序（日期后缀在同一版本内区分 A/B 稿）
+    .sort((a, b) => b.key[0] - a.key[0] || b.key[1] - a.key[1] || b.key[2] - a.key[2] || b.f.localeCompare(a.f))
+  return cands.length ? join(dir, cands[0].f) : null
+}
+const auditPath = resolve(opt('--audit', pickLatestAudit(join(repoRoot, 'audits')) ?? join(repoRoot, 'audits', '全量审计报告-v18.11.0.md')));
 const recordsDir = resolve(opt('--records', join(repoRoot, 'audits')));
 
 for (const [label, p] of [['审计报告', auditPath], ['修订记录目录', recordsDir]]) {
@@ -77,14 +102,30 @@ if (!statSync(recordsDir).isDirectory()) { console.error(`修订记录路径不�
 
 // ── 梯队排序：从文件名取中文序数（第一…第十），取不到则按「承接链」与文件名字典序兜底 ────────────
 const CN_NUM = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+/** 版本式修订记录的 rank（v18.80.0 · §七·补）：排在所有「第N梯队」之后。 */
+const VERSIONED_RECORD_RANK = 100
 const tierRank = (name) => {
   const m = /第([一二三四五六七八九十])梯队/.exec(name);
   // 有「第N梯队」→ 用其序数（这是**唯一**可用于先后判定的序）；
-  // 无该标记的专项记录（「L05裁定通道」「反哺v1v2落地」）与后续的**版本段记录**
-  //   （如「v18.13.0 收口」）→ 返回 null：它们**不构成「后续处理」的证据**。
+  // 无该标记的专项记录（「L05裁定通道」「反哺v1v2落地」）→ 返回 null：它们**不构成「后续处理」的证据**。
   //   ⚠️ 首版把它们排成 90，于是任何 ID 只要在**任意一份**非梯队记录里出现过，
   //   就被当成「后续有人处理了」→ 门虽在却不生效（写脚本时自己踩的第二个坑）。
-  return m ? CN_NUM[m[1]] : null;
+  if (m) return CN_NUM[m[1]];
+  // ── v18.80.0（全量审计-v18.79.1 §七·补）：**版本式记录必须进记录面** ──────────────────────
+  //   病灶（本批实测）：本仓自 v18.6x 起，收口批的记录文件名已改口径为
+  //   `机制文件修订记录-<日期>-<批次名>.md`（如 `…-2026-10-07-全量审计-v18.79.1修订批.md`），
+  //   **不再带「第N梯队」**。旧规则对无梯队标记的名字一律返回 null → 这类记录被**整份排除**
+  //   在「修订记录面」之外。后果：`handledByRecords` 恒为 0、「仅被 CHANGELOG 提及」吞掉全部 ID，
+  //   差集形同虚设（实测本批修复前：8 个 ID 全落 changelogOnly）。
+  //   判据（v18.80.0 · 实测定型）：**法定名 = 既有「第N梯队」或 `机制文件修订记录-<日期>-…-v<版本>…`**
+  //   ——即「日期前缀 + 版本号」两段式，判据 B 的正则因此锚在 `^`（`-v18.13.0-` 里的 `26-01-02` 若不加
+  //   `^` 会被当成「年-月-日」误命中，本批实测踩到过）。实测本仓命中：`…-2026-10-01-全量审计v18.62.3落地.md`
+  //   `…-2026-10-06-反哺-v18.78.2核实批.md` `…-2026-10-07-全量审计-v18.79.1修订批.md`（**本批这份**）。
+  //   ⚠️ 负则样例：`…-2026-09-26-v1822.md` 与 `…-2026-01-02-v18.13.0-收口.md` **不命中**（前者是内联
+  //   版本注记、后者是负向用例里的方案稿）——它们的版本段都不以 `v<数字>.<数字>` 开头且带 `-` 后接文本。
+  //   副作用是好的：第 2 步的 `laterText` 参照系（只拼 `rank > rec.rank`）从此正确。
+  if (/^机制文件修订记录-\d{4}-\d{2}-\d{2}-.*(?<![\d])v\d+\.\d+/.test(name)) return VERSIONED_RECORD_RANK;
+  return null;
 };
 
 // ── 读取全部修订记录 + CHANGELOG（CHANGELOG 也算「被提及」的证据源）────────────────────────
@@ -117,10 +158,22 @@ try {
   //   修了 L-xx」；把它判负 = 让所有历史段都变红，而它证明的「被提及」本来就不等于「被结清」。
   //   本版只做**可见化**：读者必须能看到「差集为空」背后的构成，剩下的语义判定照旧交人工（见文件头边界）。
   const auditText = readFileSync(auditPath, 'utf8');
-  const idsOf = (text) => [...new Set([...text.matchAll(/\bL-\d{2}\b/g)].map((m) => m[0]))].sort();
+  // v18.80.0：两条 ID 形态并存。`L-NN` 是本脚本建立时的形态（v18.11.0 报告 151 个）；
+  //   `P<n>-<n>` 是本仓 v18.7x 起全量审计报告实际在用的形态（v18.78.0 / v18.78.1 报告 0 个 L-NN，
+  //   本轮的 v18.79.1 报告 9 个 `P1-N` + 6 个 `P2-N`）。**只认前者 = 后两轮报告的差集完全失明。**
+  const ID_RE = /\b(?:L-\d{2}|P\d+-\d+)\b/g;
+  const idsOf = (text) => [...new Set([...text.matchAll(ID_RE)].map((m) => m[0]))].sort();
   const auditIds = idsOf(auditText);
   if (!auditIds.length) {
-    console.error(`审计报告里没找到任何 L-NN 形式的 ID（${relative(repoRoot, auditPath)}）——请确认报告格式`);
+    // v18.80.0（§七·补③）：**这一条是本次修复的核心**。旧行为是「提不到 ID → 换一份旧报告照旧输出
+    //   『两步均无发现』」——门在，却检的不是最新产物，且退出码是绿的。现改为响亮失败：
+    //   路径/格式问题一律 10（与本仓「用法/参数错 = 10」的既有口径一致），并在文案里点明可能的原因。
+    console.error(
+      `审计报告里没找到任何可识别的 ID（${relative(repoRoot, auditPath)}）——本脚本认两种形态：\`L-NN\` 与 \`P<n>-<n>\`。\n` +
+      '  可能原因：① 报告确实没有编号化 ID（请在报告里给每条发现编号）；② `--audit` 指错了文件；\n' +
+      '  ③ 默认目标取到了非报告文件。**本脚本拒绝在「一个 ID 都提不到」的情况下判「已收口」**——\n' +
+      '  那会让差集恒空、把「没检」读成「无发现」（本仓 ⑩/⑳ 明禁的形态）。',
+    );
     process.exit(10);
   }
   // 修订记录面 = 梯队记录 + `audits/README.md`（它是修订记录目录自己的索引，属记录侧而非发布留痕侧）
@@ -170,19 +223,36 @@ try {
         open = true;
         level = marker.level === 4 && marker.bold ? 4 : marker.level;
         boldSeen = new Set(marker.bold ? [marker.title] : []);
-        for (const m of line.matchAll(/\bL-\d{2}\b/g)) found.add(m[0]);
+        for (const m of line.matchAll(ID_RE)) found.add(m[0]);
         continue;
       }
-      if (open) for (const m of line.matchAll(/\bL-\d{2}\b/g)) found.add(m[0]);
+      if (open) for (const m of line.matchAll(ID_RE)) found.add(m[0]);
     }
     return found;
   }
   const staleDeferrals = [];
+  // ── v18.80.0（§七·补④的**第二半**）：本判据的证据面**刻意比记录面窄**（这一条是实测定型的）────
+  //   两条规则各司其职，不要合并：
+  //     · **第 1 步差集**问「这个 ID 有没有被任何记录提到」→ 记录面越全越好，**全部**记录都算
+  //       （含版本式记录，见 `tierRank` 的 VERSIONED_RECORD_RANK）——本批修的就是这里；
+  //     · **第 2 步陈旧判定**问「某份**延后清单**之后，有没有人再管过它」→ 参照系只取**梯队记录**
+  //       （`第N梯队`），即本仓实现该纪律的原生载体。
+  //
+  //   ⚠️ 我试过两次**放宽**这一档，都被真数据否掉（过程如实登记，供下次别再试）：
+  //     · 「按文件名分档」——`…-2026-09-26-v1822.0-实测对照.md`（内联版本注记）与负向用例的方案稿
+  //       `…-v18.13.0-收口.md` 在**任何**文件名正则下都同类（`v1822.0` 与 `v18.13.0` 都是合法的
+  //       「语义版本样」写法），分不开；
+  //     · 「按行判是否含回标动作词」——真仓当场报 **47 条陈旧**（历史 `L-24/L-28/L-62/…` 全被翻出），
+  //       因为当年的梯队记录用的是「顺手提到」式措辞，自然不含「已修/已补」这类词。
+  //   落地判据：**沿用旧口径**（其后梯队记录或 CHANGELOG 里**再出现的任何提及**即视为「有人管过」）。
+  //   代价（如实声明，不掩饰）：版本式记录若**真**结清了某个历史延后项，本步仍会报「陈旧」→
+  //     需人工回核。而这恰是本步的设计意图——它**只报「需人工回核」，从不判「已完成」**（见文件头边界）。
   for (const rec of records) {
+    if (!/第[一二三四五六七八九十]梯队/.test(rec.file)) continue
     const undone = undoneIds(rec.text);
     if (!undone.size) continue;
     for (const id of undone) {
-      // 其后（rank 更大，或同 rank 但文件名在后）的记录里是否再出现该 ID
+      // 其后的**梯队记录** + CHANGELOG，是否再提到它（口径与 v18.12.2 建门时一致）
       const laterText = records.filter((o) => o.rank > rec.rank).map((o) => o.text).join('\n') + '\n' + changelogText;
       if (!new RegExp(`\\b${id}\\b`).test(laterText)) {
         // 也查该记录自身后文是否「同一份里已结清」（如「本批未做」后又写「已补」）
