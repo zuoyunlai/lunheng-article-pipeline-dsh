@@ -47,8 +47,13 @@ const DOC_BUDGET_MIN = 12 * 1024
 const SHRINK_SUGGEST_BYTES = 1536
 /** 覆盖面扩面（B4）：`docs/` 下的历史归档目录按既有豁免口径排除。 */
 const DOCS_HISTORICAL = [/^docs\/审计与修订记录\//, /^docs\/验证记录\//]
-/** 覆盖面扩面（B4）：仓库根**仅根级** .md 中按「留痕」口径排除的面（理由见文件头）。 */
-const ROOT_TOP_EXCLUDE = new Set(['CHANGELOG.md'])
+/** 覆盖面扩面（B4）：仓库根**仅根级** .md 中按「留痕」口径排除的面（理由见文件头）。
+ *  v18.80.0（全量审计-v18.79.1 P3⑨）补 `audits/**` 的**口径声明**：`audits/` 是**不随包**的审计留痕
+ *  （实测 150 文件 / 2.85 MB），按本仓「留痕 = append-only、不做逐文件预算」的既有口径与 `CHANGELOG.md`
+ *  同档，故**不进 DOC_BUDGET**。原文只写了 `CHANGELOG.md`，读者会以为 `audits/` 是被漏掉的——**政策空白与
+ *  政策豁免必须能分辨**（这正是本仓「不静的降级」纪律在门自身的应用）。
+ *  另注：`audits/` 不在 `walkMd` 的任一扫面根（`skills/` `docs/` 根级）内，故它连带**不会**被 checkCover 扫到。 */
+const ROOT_TOP_EXCLUDE = new Set(['CHANGELOG.md', 'audits'])
 
 export function run(ctx) {
   const { fail, note, ROOT, DOC_BUDGET, ALWAYS_RESIDENT, ALWAYS_LIMIT, git } = ctx
@@ -56,6 +61,7 @@ export function run(ctx) {
   const lowHeadroom = []
   const overTarget20 = []
   const shrinkSuggest = []
+  const overTargetRaise = []
   let docOver = 0
   let overTargetAny = 0
   let residentTotal = 0
@@ -81,12 +87,24 @@ export function run(ctx) {
   //   **当前永不执行**（原注释是「当时的实测」，随数据形状变化已成假陈述——「注释与实现脱节」那一族，
   //   与 B1/B3 同源：数据在源码里，读者以为它在生效）。
   //   该分支**保留**（将来补写更早理由时不被静默吃掉、也不报错），但注释不得再声称库里存在 4 元条目。
+  //   **v18.80.0（全量审计-v18.79.1 P3③）追加**：实测仍是「48 条全 3 元、`grep '更早：'` 0 命中」，
+  //   故本行再加一句**何时该删它**——判据：若某次复核连 `DOC_BUDGET` 都不再有 4 元条目**且**无新增
+  //   4 元条目计划，就删掉解构第 4 位与 `whyAll` 拼接（保留注释里的这段沿革）。
+  //   为什么不现在就删：删了将来补「更早理由」会被静默忽略（`undefined` 不报错），属同一类「静默吞掉」。
   //   解构与文案的原始理由（仍然成立）：显式接收第 4 项，并把两段理由**都**带进超限报错文案——
   //   多一条理由 = 多一条「为什么必须增长」的上下文，正是这条报错要回答的问题。只改解构与文案，不动数据形状。
   for (const [rel, [limit, target, why, whyOlder]] of Object.entries(DOC_BUDGET)) {
     const whyAll = whyOlder ? `${why}｜更早：${whyOlder}` : why
     const abs = join(ROOT, rel)
     if (!existsSync(abs)) { fail('doc-budget', `词预算表登记了不存在的文件：${rel}（表已过期，请删除该行）`); continue }
+    // v18.80.0（全量审计-v18.79.1 **P2-2** 棘轮不得只升不降）：上限**超过自述长期目标** = 该条已欠债。
+    //   实测 28/48 条处于此态（`规范-机械门对照表` 295% / `09-审稿` 282% / `SKILL.md` 253%）。
+    //   旧行为只有一行 note（「超自述长期目标 N 个」）——**可见但不可行动**：下次任何增长照样抬上限。
+    //   本版给它齿：把这些条目列进报告并**要求抬升必须附「为什么必须超过长期目标」**，否则视为漂移。
+    //   为什么不当场 fail：现状是历史累积（48 条里 28 条已越线），当场 fail 会把本批提交堵死——
+    //   那正是用户要修的 22 条里的另一类「改不动」。故取「可见 + 有行动要求」而不引入新的阻塞。
+    const debt = target > 0 && limit > target
+    if (debt) overTargetRaise.push({ rel, pct: Math.round((limit / target) * 100) })
     const size = statSync(abs).size
     sumLimit += limit
     sumActual += size
@@ -179,6 +197,25 @@ export function run(ctx) {
       `）；**余量 <1 KB 的 ${lowHeadroom.length} 个**（最紧 5 个：${tight.join('、') || '无'}；另 ${Math.max(0, lowHeadroom.length - tight.length)} 个同类，` +
       `本次新登记的条目按公式天然只留 ≤1 KB，逐条列出属噪声——任一条的余量 = 上限 − 实测，可直接复算）`,
   )
+  // ── P2-2（v18.80.0 · 全量审计-v18.79.1）：棘轮「只升不降」的可见化 + 行动要求 ──────────────
+  //   病灶（审计实测）：48 条登记里 **28 条**的**上限本身已超自述长期目标**（295% / 282% / 253% …）。
+  //   长期目标的语义是「这个文件最终应该多大」——上限越线意味着**棘轮的余额已被预支**。
+  //   旧实现只在别处打一行「超自述长期目标 N 个」，读者看见数字也不知道该做什么。
+  //   本段把它变成**点名 + 行动要求**：抬升可以，但必须在这一条的 `why` 里回答「为什么必须超过长期目标」。
+  //   判据（可机械核）：`why` 含「长期目标」四字且含越线比例——写了就是有交代，没写就是没交代。
+  //   **为什么不当场 fail**：这是历史累积态（28/48），当场 fail 会把任何一批修订都堵死，
+  //   那正是本仓反复吃的「门全红 → 只能删门」的药。取可见 + 有要求，把决定权留给 review。
+  const debtNoReason = overTargetRaise.filter((x) => !String(DOC_BUDGET[x.rel]?.[2] || '').includes('长期目标'))
+  if (overTargetRaise.length) {
+    const worst = [...overTargetRaise].sort((a, b) => b.pct - a.pct).slice(0, 5).map((x) => `${x.rel.split('/').pop()} ${x.pct}%`)
+    note(
+      `⑨ 棘轮已越线（v18.80.0 P2-2）：**${overTargetRaise.length}/${Object.keys(DOC_BUDGET).length} 条**的**上限**超自述长期目标`
+        + `（语义 = 棘轮余额已预支；越线最狠 5 条：${worst.join('、')}）。`
+        + `**行动要求**：再抬这些条的上限时，理由里必须回答「为什么必须超过长期目标」（写「长期目标」四字即视为已交代）；`
+        + `**未交代的 ${debtNoReason.length} 条**：${debtNoReason.slice(0, 5).map((x) => x.rel.split('/').pop()).join('、') || '无'}`
+        + `${debtNoReason.length > 5 ? ` 等 ${debtNoReason.length} 条` : ''}——下次触及该条时同批补写。`,
+    )
+  }
   if (shrinkSuggest.length) {
     note(
       `⑨ 建议下调上限（v18.78.2 B1③ · **只提示不自动改**：数值变化必须走显式 review，见规则头）：${shrinkSuggest.join('；')}`,

@@ -1503,7 +1503,13 @@ if (files.length === 0 && isDraftStageAudit) {
   results.push({
     gate: 'M-Exist-2 证据包完整性',
     pass: true,
-    detail: 'N/A：证据包为空且被审对象位于 drafts/（Phase ≤4 审计场景）——证据包由 T8 终检的 build-evidence-bundle.mjs 生成，届时重跑本项自动转实检',
+    // v18.80.0（全量审计-v18.79.1 P3①）：本处**有意**判 `通过`，与同族 6 处「N/A 未检 → SKIP」**不是同一态**，
+    //   故在 detail 里显式声明，防下一轮审计再把它当「同类漏网」。
+    //   两态的区别是**成因**：`SKIP` = 「该有却没有」（报告被删/改名/未产出 → 需人工复核，不得当通过）；
+    //   `通过` = 「时序未到」（证据包由 T8 终检生成，Phase ≤4 审计时它**本就不该在**）。把「时序未到」
+    //   也判 SKIP 会让每个 Phase 4 项目都带一条无法关闭的 exit 3，即本仓反复吃的「门常红 → 只能绕」。
+    //   三态判据表 = `references/_shared/M-Gate-Algorithm.md` §N/A 三态。
+    detail: 'N/A：证据包为空且被审对象位于 drafts/（Phase ≤4 审计场景）——**本处有意判通过（时序未到，非缺失）**：证据包由 T8 终检的 build-evidence-bundle.mjs 生成，届时重跑本项自动转实检。与「N/A 未检 → SKIP」（该有却没有）不是同一态，判据见 M-Gate-Algorithm.md §N/A 三态',
     severity: '通过',
   });
 } else {

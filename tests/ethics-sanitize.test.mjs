@@ -89,10 +89,18 @@ test('E-9 地名：basic 模式替换为占位符；省级在 strict 下保持�
 })
 
 test('E-10 同一姓名跨全文得到同一占位符（引用一致性）', () => {
-  const r = sanitize('受访者王五说。后来王五又提到。', { mode: 'basic', dicts })
+  // v18.80.0 P1-2：本用例的断言对象是「**引用一致性**」这一不变量（同一人 → 同一占位符），
+  //   而不是「裸名也要改写」——后者是本版刻意关掉的（见 E-20）。故显式开启低置信改写来测该不变量；
+  //   默认行为另有一条断言（裸重复不再改写）。
+  const r = sanitize('受访者王五说。后来王五又提到。', { mode: 'basic', dicts, rewriteLowConfidence: true })
   const hits = r.text.match(/受访者A/g) || []
   assert.equal(hits.length, 2, `同一人应得同一占位符，实得：${r.text}`)
   assert.equal(r.distinctPersons, 1)
+  // 默认（不改写低置信）下：带角色词的那处被替换，裸重复保持原样
+  const d = sanitize('受访者王五说。后来王五又提到。', { mode: 'basic', dicts })
+  assert.match(d.text, /^受访者A说。/, `带角色词处仍须替换，实得：${d.text}`)
+  assert.match(d.text, /后来王五又提到。/, '裸重复默认不得改写（P1-2）')
+  assert.equal(d.distinctPersons, 1, '只统计真的被替换掉的人名')
 })
 
 test('E-11 mode=none 必须原样返回且显式声明未脱敏（不得静默假装做了）', () => {
@@ -119,12 +127,18 @@ test('E-13 词表缺失必须走 degraded（不得静默少做一个维度）', 
 })
 
 test('E-14 低置信度人名必须进 reviewFlags（宁多报不漏报的落点）', () => {
-  // 「赵六」前无角色词 → 应替换 + 标记待复核
+  // v18.80.0（全量审计-v18.79.1 P1-2）：低置信**只登记、不改写正文**（见 E-20），但计数照记 ——
+  //   `personLow` 是「本轮共发现多少候选」的完整事实，与「替换了几处」是两件事。
   const r = sanitize('赵六去了现场。', { mode: 'basic', dicts })
   assert.equal(r.counts.person, 1)
+  assert.equal(r.counts.personLow, 1, '低置信候选必须计数（不得因未改写而不计）')
+  assert.equal(r.counts.personHigh, 0)
+  assert.equal(r.text, '赵六去了现场。', '低置信默认不得改写正文')
   assert.ok(r.reviewFlags.some((f) => f.kind === 'person-low-confidence'), '无角色词的命中必须可复核')
-  // 「受访者孙七」有角色词 → 不标记
+  // 「受访者孙七」有角色词 → 替换 + 不标记
   const r2 = sanitize('受访者孙七说。', { mode: 'basic', dicts })
+  assert.equal(r2.counts.personHigh, 1)
+  assert.equal(r2.counts.personLow, 0)
   assert.ok(!r2.reviewFlags.some((f) => f.kind === 'person-low-confidence'), '有角色词的不应标记')
 })
 
@@ -238,5 +252,45 @@ test('E-19 strict 省级地名「保持原样」不得计入替换数（脱敏�
   const basic = sanitize(src, { mode: 'basic', dicts: d })
   assert.equal(basic.counts.place, 3, '对照：basic 模式三处都真的替换了，必须全部计数')
   assert.equal(basic.replacements.length, 3, '对照：basic 模式三条都进 replacements')
+})
+
+// ── E-20 / E-21 / E-22（v18.80.0 · 全量审计-v18.79.1 P1-2：低置信误报不得损坏正文）──────────
+// 为什么需要：审计实测对**真实技术文本**跑 basic 模式——`SKILL.md` 报 person=462、`CHANGELOG.md`
+//   报 person=1658，而抽样**无一是真人姓名**（`生多 / 文流水 / 明细 / 成因 / 包目录 / 权限 / 开关`…）。
+//   机制：人名轮正则 = `(${ROLE_WORDS})?(${surnames})([汉字]{1,2})`，「姓氏字 + 任意 1-2 汉字」的
+//   笛卡尔积覆盖海量普通词，476 词的排除表挡不住。旧行为有两处损伤：
+//     ① 汇总写「**命中替换** N 处」→ 消费方以为真的替换了 N 处 PII；
+//     ② 本工具是交付给论文作者用的，照 `docs` 的用法（把返回 text 交给下游角色）会把一份正常
+//        中文稿替换成数百处 `受访者A/B/C` —— **静默损坏正文**。
+//   本组三条断言把这两处都钉住。
+
+test('E-20 低置信人名默认不得改写正文（防「一份正常中文稿被替换成数百处占位符」）', () => {
+  // 该串里的候选：`技能` 的「技」不是姓氏；`方向` 的「方」是姓氏 + 「向」→ 是低置信候选
+  const src = '本文档说明方向与成因，并列出明细。'
+  const r = sanitize(src, { mode: 'basic', dicts })
+  assert.equal(r.text, src, `低置信候选不得改动正文，实得：${r.text}`)
+  assert.ok(r.counts.personLow >= 1, `应至少发现 1 个低置信候选，实得 ${r.counts.personLow}`)
+  assert.equal(r.replacements.length, 0, '未改写 → 不得有替换明细（否则 summary 会虚报替换数）')
+  // 显式 opt-in 才允许改写（对照，防「修 bug 把能力删掉」）
+  const r2 = sanitize(src, { mode: 'basic', dicts, rewriteLowConfidence: true })
+  assert.notEqual(r2.text, src, '显式 opt-in 时必须生效（能力不得被本修复删掉）')
+})
+
+test('E-21 高置信人名通道不得被本修复误关（`受访者张三` 仍须替换）', () => {
+  const r = sanitize('受访者张三说：我在工厂工作。受访者李四表示同意。', { mode: 'basic', dicts })
+  assert.equal(r.counts.personHigh, 2, `两条带角色词的必须都算高置信，实得 ${r.counts.personHigh}`)
+  assert.equal(r.replacements.filter((x) => !x.lowConfidence).length, 2, '两条都必须真的替换')
+  assert.doesNotMatch(r.text, /张三|李四/, '高置信真名必须被替换掉')
+  assert.equal(r.distinctPersons, 2, '两个不同人应产生两个占位符')
+})
+
+test('E-22 summary / counts 必须分档报，不得把候选数混进「替换」', () => {
+  const src = '方向与成因说明。受访者张三同意。'
+  const r = sanitize(src, { mode: 'basic', dicts })
+  const s = summarize(r)
+  assert.match(s, /人名·高置信 1/, `summary 应分档报高置信，实得：${s}`)
+  assert.match(s, /人名·低置信候选 \d+/, `summary 应单列低置信候选，实得：${s}`)
+  assert.equal(r.counts.person, r.counts.personHigh + r.counts.personLow,
+    'person 必须等于两档之和（旧调用方读 person 不会得到错数）')
 })
 

@@ -3,6 +3,20 @@
 //   注入验证用例 + 真源仓库自跑兜底）。共享态（errors / 派生源 / 版本真源等）由主脚本构建 ctx 传入。
 import { readFileSync, readdirSync, statSync, existsSync, writeFileSync, copyFileSync } from 'node:fs'
 import { join, relative, dirname } from 'node:path'
+// v18.80.0（全量审计-v18.79.1）：㉚「lib 版本写死」改用**真词法剥离器**（不是逐行正则切 `//`）。
+//   两次实测的同一族缺陷：手写剥离器会把**字符串字面量里的 `//`** 当注释开头（v18.80.0 首次：`Config.why`
+//   里写 `` `read`/`web_*` `` → 该行被截断，后续行被并入同一逻辑行），也会把**字符串里的版本号**当真
+//   （同批：`lib/tools.js` 的工具描述串里写「v18.80.0 P1-2」→ 报假 P1）。
+//   后者是**真判据错误**而非误报口径问题：`lib/**` 的字符串常含**面向人的说明文本**，其中的版本号是
+//   「本行为于哪一版引入」的留痕（与该规则明文允许的「注释里引用版本号」完全同源），它**不会被渲染成
+//   运行期版本声明**、也不会随 bump 腐烂——真正要抓的是**代码里**（含模板字面量求值结果）的版本字面量。
+//   修法：复用**包内**的 `_lib/source-mask.mjs`（= `maskNonCode()`，B7 的同一件工具，已覆盖块注释 /
+//   行注释 / 单双引号字符串 / 模板字面量 / 正则字面量，且**等长屏蔽、换行保留**）。
+//   ⚠️ **为什么是包内副本而不是仓库根 `scripts/_lib/`**：本规则跑在 `tests/**` 的 **mkRepo 临时仓库**里
+//   （`skills/` + 少量包级清单就被复制过去，**不含**仓库根 `scripts/`），故跨层 import 会在所有注入用例里
+//   直接 `ERR_MODULE_NOT_FOUND`（v18.80.0 首版就是这么挂的，19 条用例同批变红）。包内副本由
+//   `tests/scripts/cross-script.test.mjs` 类的**同源对账**兜住，仓库根那份仍服务于 `exit-resolution` 族。
+import { maskNonCode } from '../source-mask.mjs'
 
 // ⑩ 随包脚本白名单集合一致性（v2.5.2-dsh.13 新增，教训：白名单曾出现 7/8/9 三种口径）
 export function runScriptRules(ctx) {
@@ -219,9 +233,13 @@ for (const f of diskScripts) {
       return acc
     }
     for (const f of walkJs(libDir)) {
-      const src = readFileSync(f, 'utf8')
-        .replace(/\/\*[\s\S]*?\*\//g, ' ')   // 块注释
-        .split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n')   // 行注释
+      // v18.80.0：改用 `maskNonCode()`（见文件头 import 处的说明）。旧写法是
+      //   `.replace(/\/\*[\s\S]*?\*\//g,' ').split('\n').map(l=>l.replace(/\/\/.*$/,''))`——
+      //   两处缺陷：① 字符串字面量里的 `//` 被当注释（行被截断、后续行并入）；② 字符串内容不被屏蔽，
+      //   于是说明文本里的版本号被当成「代码里的版本字面量」。
+      //   `maskNonCode` 是**真词法扫描**：注释与字符串**内容**置空格、引号与换行保留、长度不变，
+      //   故下面的行号/列号仍可直接映射回原文件；它同时处理模板字面量（`` `${...}` `` 内的表达式仍算代码）。
+      const src = maskNonCode(readFileSync(f, 'utf8'))
       const hits = [...new Set([...src.matchAll(new RegExp(`\\bv?${pkgVer.replace(/\./g, '\\.')}\\b`, 'g'))].map((m) => m[0]))]
       if (hits.length) {
         errors.push(`[P1 lib 版本写死] ${relative(REPO_ROOT, f)} 的**代码**（去注释后）出现当前包版本字面量 ${hits.join(' / ')}`

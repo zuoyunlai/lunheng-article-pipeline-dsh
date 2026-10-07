@@ -2,7 +2,7 @@
 
 > **论衡（lunheng-article-pipeline）** 是一个多 Agent 深度长文生产流水线，DeepSeek Harness（dsh）bundle 插件。它不是让一个 AI 直接写文章，而是让一支 **9 个 AI 角色组成的"论文生产小队"** 按既定协议协作：定题 → 三线并行检索 → 分析 → 写作 → 批判 → 审计 → 审稿 → 终检。每一步都有明确产出物、交接报告与质量闸门，最终交付**有证据底座、有反方论证、有独立审计、有人工核验节点**的文章。
 
-> 适用：公众号深度长文、研究报告、学术论文、商业评论、行业分析——任何"要站得住脚"的长内容。当前版本 **v18.79.0**（DSH 独立版本）。
+> 适用：公众号深度长文、研究报告、学术论文、商业评论、行业分析——任何"要站得住脚"的长内容。当前版本 **v18.80.0**（DSH 独立版本）。
 
 ---
 
@@ -206,7 +206,7 @@ dsh plugin --profile web add lunheng-article-pipeline
 ## 获取方式
 
 - **GitHub（DSH bundle）**：https://github.com/zuoyunlai/lunheng-article-pipeline-dsh
-- **npm**：`lunheng-article-pipeline@dsh`（dist-tag `dsh` = 最新 DSH 迭代版）；锁定具体版本可写 `@18.79.0`
+- **npm**：`lunheng-article-pipeline@dsh`（dist-tag `dsh` = 最新 DSH 迭代版）；锁定具体版本可写 `@18.80.0`
 - **历史版本线（独立化前）**：https://github.com/zuoyunlai/lunheng-article-pipeline
 
 ---
@@ -220,12 +220,12 @@ dsh plugin --profile web add lunheng-article-pipeline
 | 项 | 单一真源 | 本档章节指针 |
 |---|---|---|
 | 硬数字（版本 / 角色 / 阶段 / 闸门 / 脚本 / 命令 / 退出码族） | [`docs/quick-facts.md`](quick-facts.md) | §实战验证段 / §核心设计 / §M 门段 |
-| 概念（9 角色 / 三环制 / G 清单 / F 模式 / 三角验证 等） | [`skills/lunheng-article-pipeline/references/glossary.md`](../lunheng-article-pipeline-dsh/skills/lunheng-article-pipeline/references/glossary.md) | §修订回环段 / §独立审计闭环 / §能力演进段 |
-| 流水线协议（Phase 0-5 + 派发话术） | [`skills/lunheng-article-pipeline/references/pipeline-readme.md`](../lunheng-article-pipeline-dsh/skills/lunheng-article-pipeline/references/pipeline-readme.md) | §核心设计段 / §修订回环段 |
-| M 门算法（25 项总 / 真源 / 复算） | [`skills/lunheng-article-pipeline/references/_shared/M-Gate-Algorithm.md`](../lunheng-article-pipeline-dsh/skills/lunheng-article-pipeline/references/_shared/M-Gate-Algorithm.md) | §独立审计闭环 / §M 门段 |
-| T9 启用决策树（文类档案） | [`skills/lunheng-article-pipeline/references/_shared/文类档案.md`](../lunheng-article-pipeline-dsh/skills/lunheng-article-pipeline/references/_shared/文类档案.md) | §能力演进段 |
+| 概念（9 角色 / 三环制 / G 清单 / F 模式 / 三角验证 等） | [`skills/lunheng-article-pipeline/references/glossary.md`](../skills/lunheng-article-pipeline/references/glossary.md) | §修订回环段 / §独立审计闭环 / §能力演进段 |
+| 流水线协议（Phase 0-5 + 派发话术） | [`skills/lunheng-article-pipeline/references/pipeline-readme.md`](../skills/lunheng-article-pipeline/references/pipeline-readme.md) | §核心设计段 / §修订回环段 |
+| M 门算法（25 项总 / 真源 / 复算） | [`skills/lunheng-article-pipeline/references/_shared/M-Gate-Algorithm.md`](../skills/lunheng-article-pipeline/references/_shared/M-Gate-Algorithm.md) | §独立审计闭环 / §M 门段 |
+| T9 启用决策树（文类档案） | [`skills/lunheng-article-pipeline/references/_shared/文类档案.md`](../skills/lunheng-article-pipeline/references/_shared/文类档案.md) | §能力演进段 |
 | 排错（exit code / 闸门报错） | [`docs/troubleshooting.md`](troubleshooting.md) | §M 门段 / §独立审计闭环 |
-| 实战案例（v18.x + 历史 v2.x） | [`README.md` 顶部 Verification status 表](../lunheng-article-pipeline-dsh/README.md) + [`skills/lunheng-article-pipeline/references/case-studies.md`](../lunheng-article-pipeline-dsh/skills/lunheng-article-pipeline/references/case-studies.md) | §实战验证段 |
+| 实战案例（v18.x + 历史 v2.x） | [`README.md` 顶部 Verification status 表](../README.md) + [`skills/lunheng-article-pipeline/references/case-studies.md`](../skills/lunheng-article-pipeline/references/case-studies.md) | §实战验证段 |
 | 五语 README（en/zh/es/pt/hi） | `README.md` / `README-zh.md` / `README-es.md` / `README-pt.md` / `README-hi.md`（顶部均含 🌐 语言切换器行） | §获取方式 + §实战验证段互引 |
 
 > **本档变更机制**：按 AGENTS.md §机制文件写保护，本档属「**机制文件**」——agent 默认禁写；改进动议只写 `audits/反哺报告-vN.md`，由主人在 host shell 手工 apply。**v18.78.0 §7.1 立规则 ㉜** 已把「CHANGELOG 新段位 ↔ §实战验证段对账」机械化——后续主人 bump 章节时 ㉜ 会主动提示。
