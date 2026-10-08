@@ -5,14 +5,31 @@
 //   node segment-chars.mjs <文件.md> --list                      # 列出全部 H2/H3 标题及各节汉字数
 //   node segment-chars.mjs <文件.md> --section "3.6"             # 取单节
 //   node segment-chars.mjs <文件.md> --section "3.6" --section "7.4"   # 取多节
+//   node segment-chars.mjs <草稿.md> --budget <分析大纲.md>       # 预算对账 + Sl 观测分（v18.82.0）
 //
 // 输出：JSON（stdout），形如
 //   { file, mode, total:{hanChars}, sections:[{selector,level,title,startLine,endLine,hanChars}], sum:{hanChars} }
+//   --budget 模式：{ file, mode:'budget', rows:[{selector,budget,actual,devPct,sl}], weightedSl, missing, unbudgeted }
 //
 // 退出码（本脚本**不是闸门**，但与随包脚本共用 `_lib/exit-guard` 的路径语义）：
 //   0  = 成功（全部 selector 命中）
 //   10 = 参数或路径错误（含 **selector 未命中** —— 会打印可用标题清单帮你改参数）
 //   70 = 内部错误（脚本缺陷）
+//
+// ── v18.82.0（LongWriter 借鉴批 · LW-2）：`--budget` 模式与 Sl 观测分 ─────────────────────
+//   来源：LongBench-Write 的 Sl（柔性长度分，arXiv:2408.07055 evaluation/eval_length.py）。
+//   定位（**必须先读这条再改**）：
+//     · Sl 是**观测指标，不参与判级**——P0/P1/P2 判级真源仍是 `references/_shared/字数判定表.md` §二；
+//     · **不新增退出码**（exit 家族保持 0/10/70 不变；Sl 低不改变 exit）；
+//     · 用途：跨项目/跨轮次的字数健康度横向比较，供审计视图与反哺报告引用。
+//   Sl 函数（中文版变体，软区间 ±10%）：
+//     dev = |实测 − 预算| / 预算
+//     dev ≤ 0.1            → Sl = 5
+//     0.1 < dev < 1        → Sl = 5 − 4 × (dev − 0.1) / 0.9
+//     dev ≥ 1（缺节/超一倍）→ Sl = 0
+//     全文 weightedSl = 各节 Sl 的**预算加权**平均
+//   预算解析：读分析大纲中标题含「字数预算」的节，扫描表格行；每行取第一个单元格为
+//   selector（复用下方 matches() 匹配草稿标题）、行内第一个 ≥100 的整数（后可跟「字」）为预算。
 //
 // 为什么需要它（反哺报告 P0-1）：
 //   段级 diff 模式（v2.5.2-dsh.7）要求 T5 在清单里给「现况 N 汉字 → 修改后 M 汉字」，
@@ -52,7 +69,7 @@ let sgFlags, sgOpts, sgPositionals
 try {
   ({ flags: sgFlags, opts: sgOpts, positionals: sgPositionals } = parseArgs(process.argv.slice(2), {
     flags: ['--list'],
-    values: { '--section': '"3.6"' },
+    values: { '--section': '"3.6"', '--budget': '"分析大纲.md"' },
     repeat: ['--section'],
     minPositionals: 1,
     maxPositionals: 1,
@@ -61,13 +78,14 @@ try {
 } catch (e) {
   if (e && e.code === USAGE_CODE) {
     console.error(e.message)
-    console.error('用法: node segment-chars.mjs <文件.md> --list | --section <sel> [--section <sel>]...')
+    console.error('用法: node segment-chars.mjs <文件.md> --list | --section <sel> [--section <sel>]... | --budget <分析大纲.md>')
     process.exit(10)
   }
   throw e
 }
 const file = sgPositionals[0]   // 约定：文件路径必须是第一个参数（便于「<文件> --section …」的直观写法）
 const wantList = sgFlags.has('--list')
+const budgetPath = sgOpts['--budget']
 const selectors = sgOpts['--section']
 
 if (!existsSync(file)) {
@@ -75,8 +93,16 @@ if (!existsSync(file)) {
   process.exit(10)
 }
 requireExistingFile(file, '待统计文件')
-if (!wantList && selectors.length === 0) {
-  console.error('至少给一个 --section，或使用 --list 先看有哪些节')
+if (wantList && budgetPath) {
+  console.error('--list 与 --budget 互斥（一次只跑一种模式）')
+  process.exit(10)
+}
+if (budgetPath) {
+  if (selectors.length > 0) { console.error('--budget 与 --section 互斥'); process.exit(10) }
+  if (!existsSync(budgetPath)) { console.error(`预算文件不存在: ${budgetPath}`); process.exit(10) }
+  requireExistingFile(budgetPath, '预算文件（分析大纲）')
+} else if (!wantList && selectors.length === 0) {
+  console.error('至少给一个 --section，或使用 --list / --budget')
   process.exit(10)
 }
 
@@ -111,6 +137,86 @@ const matches = (title, sel) => {
   if (!t.startsWith(s)) return false
   const rest = t.slice(s.length)
   return /^[\s\u3000.、:：)）]/.test(rest) || /^\d/.test(rest)
+}
+
+// ── v18.82.0（LW-2）：--budget 模式 ──────────────────────────────────────────────────
+// Sl 是观测分（不参与判级 / 不改 exit），见文件头「LW-2」注。
+if (budgetPath) {
+  const outline = readFileSync(budgetPath, 'utf8')
+  if (outline.includes('\uFFFD')) {
+    console.error(`${budgetPath}: 解码出现替换字符 U+FFFD —— 不是合法 UTF-8，请转码后重跑。`)
+    process.exit(10)
+  }
+  // 预算表定位：标题含「字数预算」的节体（取**最后一个**——§11 写手版精简段在文件末尾）
+  const outlineHeadings = allHeadings(outline)
+  let budgetBody = null
+  for (let i = 0; i < outlineHeadings.length; i++) {
+    if (!outlineHeadings[i].title.includes('字数预算')) continue
+    const from = bodyStartOfHeading(outline, outlineHeadings[i].index)
+    let to = outline.length
+    for (let j = i + 1; j < outlineHeadings.length; j++) {
+      if (outlineHeadings[j].level <= outlineHeadings[i].level) { to = outlineHeadings[j].index; break }
+    }
+    budgetBody = outline.slice(from, Math.max(to, from))   // 循环不 break：同文件多节时取最后一份
+  }
+  if (budgetBody === null) {
+    console.error(`${budgetPath}: 找不到标题含「字数预算」的节（预算表须挂在该标题下）`)
+    process.exit(10)
+  }
+  // 表格行解析：第一个单元格 = selector；行内第一个 ≥100 的整数（后可跟「字」）= 预算。
+  //   分隔线行（|---|---|）与表头行（无 ≥100 整数）自然被跳过。
+  const budgetRows = []
+  for (const line of budgetBody.split('\n')) {
+    const t = line.trim()
+    if (!t.startsWith('|')) continue
+    const cells = t.split('|').map((s) => s.trim()).filter((s, k, a) => !(k === 0 && s === '') && !(k === a.length - 1 && s === ''))
+    if (cells.length < 2) continue
+    const selector = cells[0].replace(/\*/g, '').trim()
+    if (!selector || /^[-: ]+$/.test(selector)) continue
+    const numMatch = t.match(/(\d{3,6})\s*字?/)
+    if (!numMatch) continue
+    const budget = Number(numMatch[1])
+    if (budget < 100) continue   // <100 视为编号/百分比等噪声，不当预算
+    // 同一 selector 只取首行（防同一预算行在多张表重复）
+    if (!budgetRows.some((r) => r.selector === selector)) budgetRows.push({ selector, budget })
+  }
+  if (budgetRows.length === 0) {
+    console.error(`${budgetPath}: 「字数预算」节内解析不到任何「| 节 | … | N字 |」表格行（须为 Markdown 表格，且预算为 ≥100 的整数）`)
+    process.exit(10)
+  }
+  // 对账：预算行 → 草稿实测；未命中的 selector 进 missing（Sl=0，按「缺节」口径）
+  const rows = []
+  const missing = []
+  for (const b of budgetRows) {
+    const i = headings.findIndex((h) => matches(h.title, b.selector))
+    if (i === -1) { missing.push(b.selector); continue }
+    const { from, to } = sectionRange(i)
+    const actual = countHan(text.slice(from, to))
+    const dev = Math.abs(actual - b.budget) / b.budget
+    const sl = dev <= 0.1 ? 5 : (dev >= 1 ? 0 : +(5 - 4 * (dev - 0.1) / 0.9).toFixed(3))
+    rows.push({ selector: b.selector, title: headings[i].title, budget: b.budget, actual, devPct: +(dev * 100).toFixed(1), sl })
+  }
+  // 反向：草稿有 H2 而预算没覆盖的节（不计入 weightedSl，只列出来供人看）
+  const budgetSels = new Set(budgetRows.map((r) => r.selector))
+  const unbudgeted = headings
+    .filter((h) => h.level <= 2)
+    .filter((h) => ![...budgetSels].some((s) => matches(h.title, s)))
+    .map((h) => h.title)
+  // 加权平均只对「命中且有预算」的行；全缺时给 null（不给假 0 分）
+  const wSum = rows.reduce((a, r) => a + r.budget, 0)
+  const weightedSl = wSum > 0 ? +(rows.reduce((a, r) => a + r.sl * r.budget, 0) / wSum).toFixed(3) : null
+  console.log(JSON.stringify({
+    file,
+    mode: 'budget',
+    budgetSource: budgetPath,
+    metric: 'Sl（柔性长度分，观测指标——不参与 P0/P1/P2 判级，判级真源 = 字数判定表 §二）',
+    rows,
+    weightedSl,
+    missing,
+    unbudgeted,
+    note: 'Sl：dev≤10% 满分 5；线性衰减；dev≥100%（缺节/超一倍）=0。weightedSl 为预算加权平均；missing 计 0 分。',
+  }, null, 2))
+  process.exit(0)
 }
 
 if (wantList) {

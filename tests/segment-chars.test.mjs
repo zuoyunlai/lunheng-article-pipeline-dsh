@@ -91,3 +91,58 @@ test('segment-chars：选择器未命中 exit 10，并给出可用标题清单�
   assert.match(r.out, /甲节/, '必须列出可用标题帮助改参')
   rmSync(d, { recursive: true, force: true })
 })
+
+// ── v18.82.0（LongWriter 借鉴批 LW-2）：--budget 模式与 Sl 观测分 ─────────────────────────
+//   覆盖三判据：软区间内满分 / 缺节 Sl=0 且进 missing / 大纲无「字数预算」节 exit 10。
+//   Sl 不改 exit 语义（成功一律 0）——这是本模式的契约底线。
+test('segment-chars --budget：软区间内（dev≤10%）Sl 满分 5，输出不参与判级声明', () => {
+  const d = tmp()
+  const f = join(d, 'draft.md')
+  // 草稿：甲节 198 字（预算 200，dev=1%）；乙节 275 字（预算 250，dev=10%——边界含等号）
+  writeFileSync(f, '## 甲节\n' + '汉'.repeat(198) + '\n## 乙节\n' + '汉'.repeat(275) + '\n')
+  const o = join(d, '分析大纲.md')
+  writeFileSync(o, '# 大纲\n### 字数预算\n| 节 | 要点 | 预算 |\n|---|---|---|\n| 甲节 | A | 200字 |\n| 乙节 | B | 250字 |\n')
+  const r = run([SCRIPT, f, '--budget', o])
+  assert.equal(r.code, 0, r.out.slice(0, 300))
+  const j = parseJson(r)
+  assert.equal(j.mode, 'budget')
+  assert.equal(j.rows.length, 2)
+  assert.equal(j.rows[0].sl, 5, 'dev=1% → 满分')
+  assert.equal(j.rows[1].sl, 5, 'dev=10% → 仍在软区间内，满分（边界含等号）')
+  assert.equal(j.weightedSl, 5)
+  assert.equal(j.missing.length, 0)
+  assert.match(j.metric, /不参与.*判级|观测/, '输出必须自带「不判级」声明')
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('segment-chars --budget：缺节进 missing 计 Sl=0，超软区间线性衰减，均不改 exit', () => {
+  const d = tmp()
+  const f = join(d, 'draft.md')
+  // 甲节预算 100 实测 160（dev=60% → Sl = 5 − 4×0.5/0.9 ≈ 2.778）；丙节缺 → missing
+  writeFileSync(f, '## 甲节\n' + '汉'.repeat(160) + '\n## 乙节\n' + '汉'.repeat(100) + '\n')
+  const o = join(d, '分析大纲.md')
+  writeFileSync(o, '# 大纲\n### 字数预算\n| 节 | 预算 |\n|---|---|\n| 甲节 | 100字 |\n| 丙节 | 300字 |\n')
+  const r = run([SCRIPT, f, '--budget', o])
+  assert.equal(r.code, 0, 'Sl 低不改变 exit（观测不是闸门）')
+  const j = parseJson(r)
+  assert.equal(j.rows.length, 1, '丙节未命中不进 rows')
+  assert.deepEqual(j.missing, ['丙节'])
+  assert.ok(Math.abs(j.rows[0].sl - (5 - 4 * 0.5 / 0.9)) < 0.01, '线性衰减公式')
+  assert.ok(j.weightedSl < 5, '含缺失时加权分 < 满分（missing 不进加权但 rows 已衰减）')
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('segment-chars --budget：大纲无「字数预算」节 / 预算行全为噪声 → exit 10（参数错误族，非新码）', () => {
+  const d = tmp()
+  const f = join(d, 'draft.md')
+  writeFileSync(f, '## 甲节\n' + '汉'.repeat(100) + '\n')
+  const noSec = join(d, '大纲-无节.md')
+  writeFileSync(noSec, '# 大纲\n只有正文，没有预算节。\n')
+  assert.equal(run([SCRIPT, f, '--budget', noSec]).code, 10, '无「字数预算」标题 → 10')
+  const noRows = join(d, '大纲-无行.md')
+  writeFileSync(noRows, '# 大纲\n### 字数预算\n| 节 | 备注 |\n|---|---|\n| 甲节 | 无数字 |\n')
+  assert.equal(run([SCRIPT, f, '--budget', noRows]).code, 10, '预算节内无可解析行 → 10')
+  assert.equal(run([SCRIPT, f, '--budget', join(d, '不存在.md')]).code, 10, '预算文件不存在 → 10')
+  assert.equal(run([SCRIPT, f, '--budget', noSec, '--list']).code, 10, '--budget 与 --list 互斥 → 10')
+  rmSync(d, { recursive: true, force: true })
+})

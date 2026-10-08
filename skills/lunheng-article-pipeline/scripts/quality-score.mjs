@@ -521,6 +521,26 @@ const result = {
           : `n=${blind.length}：差值 ${blind.map((x) => x.total - t9).join(' / ')}（盲评 − T9）`),
     };
   })(),
+  // ── v18.82.0（LongWriter 借鉴批 · LW-2）：Sl 长度剖面（观测字段，非分量）──────────────────
+  // 有 `analysis/分析大纲.md`（含「字数预算」节）时，spawn segment-chars --budget 取 Sl；
+  // 无大纲/解析失败 → null（**不给假分，不进分母，不改 score**——与 qlt6 同一「独立量尺不并分」判据）。
+  // ⚠️ **它不是分量（components）**：Sl 是观测指标（segment-chars 文件头 LW-2 注），
+  //   挂进 components 会改变既有项目的分数与 golden 基线——那是本批明确禁止的。
+  lengthProfile: (() => {
+    const outline = join(project, 'analysis', '分析大纲.md');
+    if (!existsSync(outline)) return { applicable: false, reason: '无 analysis/分析大纲.md（无 §11 预算可对账）' };
+    const r = spawnSync(NODE, [join(SCRIPTS, 'segment-chars.mjs'), draft, '--budget', outline], { timeout: 60000 });
+    if (r.status !== 0 || !r.stdout) {
+      return { applicable: false, reason: `segment-chars --budget 未跑通（exit ${r.status}）——不猜，修复后重跑`, stderrTail: (r.stderr || '').toString().split('\n').slice(-3).join(' ') || undefined };
+    }
+    try {
+      const j = JSON.parse(r.stdout.toString());
+      return { applicable: true, weightedSl: j.weightedSl, rows: j.rows.length, missing: j.missing, unbudgeted: j.unbudgeted.length,
+        notScope: '**不参与 score / 不参与 exit**（观测指标；P0/P1/P2 判级真源 = 字数判定表 §二）' };
+    } catch {
+      return { applicable: false, reason: 'segment-chars --budget 输出不是合法 JSON——不猜，修复后重跑' };
+    }
+  })(),
   validity: {
     scope: '合规与成本',
     notScope: '论证质量',

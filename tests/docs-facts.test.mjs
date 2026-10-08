@@ -1013,3 +1013,16 @@ test('v18.62.4 P2-4：CHANGELOG 最新段的测试计数不得与真值矛盾（
       + `（≥ 声明值）→ 声明已过期。修法：把该段「N/N 全绿」改为当前实测值（或删去绝对值只写「全绿」）。`,
   )
 })
+
+// ── v18.82.0（LongWriter 借鉴批 LW-1）：前文锚机制的防瘦身心线 ───────────────────────────
+//   前文锚（T5 ≥5000 字档的跨节连贯机制）只写在 05 卡 + T5 派发话术两处；文档瘦身批次
+//   历史上多次把「角色卡新增条目」当冗余删掉（AGENTS.md 登记「语义等价但不同形 → 机械面失明」）。
+//   本断言保证：机制在则两处真源都在；要删须两处同删（那就必然是有意的撤销决策）。
+test('LW-1 前文锚：05 卡与 T5 派发话术两处真源齐备（单删一处 = 瘦身漂移）', () => {
+  const writer = readFileSync(join(SKILL, 'references', 'agents', '05-写作-writer.md'), 'utf8')
+  const readme = readFileSync(join(SKILL, 'references', 'pipeline-readme.md'), 'utf8')
+  const analyst = readFileSync(join(SKILL, 'references', 'agents', '04-分析-analyst.md'), 'utf8')
+  assert.match(writer, /前文锚/, '05 卡必须含「前文锚」条目（机制定义真源）')
+  assert.match(readme, /前文锚/, 'pipeline-readme.md T5 派发话术必须含「前文锚」（spawn 前必读，防只写卡不进话术重演教训 #57）')
+  assert.match(analyst, /节间承接规划/, '04 卡 §11 要素须含「节间承接规划」（大纲期承接设计，与 05 卡配套）')
+})
