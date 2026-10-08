@@ -1729,6 +1729,10 @@ const readArgumentTable = (outlineText) => {
       论点: head.findIndex((c) => c.includes('论点')),
       反方: head.findIndex((c) => c.includes('反方') || c.includes('反驳')),
       回应: head.findIndex((c) => c.includes('回应')),
+      // v18.81.0（独立审计批 2 · 2.4d）：**证据列此前只被用来判「表头存在」，行内内容从不校验**——
+      //   于是「表头有『证据』列、每行该列却空着或写着散文」在机检层与合规同形。
+      //   审计实测的形态正是这一类：反方论证**零证据编号**却一路放行。
+      证据: head.findIndex((c) => c.includes('证据')),
     };
     const rows = [];
     for (let j = i + 1; j < lines.length; j++) {
@@ -1737,7 +1741,7 @@ const readArgumentTable = (outlineText) => {
       if (/^\s*\|[\s:|-]+\|\s*$/.test(r)) continue;                  // 分隔行
       const cells = reCell(r).slice(1, -1);
       if (cells.every((c) => c === '' || /^-+$/.test(c))) continue;
-      rows.push({ line: j + 1, 论点: cells[idx.论点] ?? '', 反方: cells[idx.反方] ?? '', 回应: cells[idx.回应] ?? '' });
+      rows.push({ line: j + 1, 论点: cells[idx.论点] ?? '', 证据: cells[idx.证据] ?? '', 反方: cells[idx.反方] ?? '', 回应: cells[idx.回应] ?? '' });
     }
     return { rows, headerFound: true };
   }
@@ -1790,6 +1794,18 @@ export function mExist11(ctx) {
     const issues = [];
     for (const r of rows) {
       const label = (r.论点 || `第${r.line}行`).slice(0, 24);
+      // v18.81.0（独立审计批 2 · 2.4d）：**证据列必须落到素材编号**（或显式声明"无证据"）。
+      //   为什么单列这一条：审计实测「反方论证零证据编号」能一路通过——因为本门此前只校验
+      //   `反方`/`回应` 两列，**`证据` 列只被用来确认表头存在**。空着、或写成一句散文，都与合规同形。
+      //   判级取 **P1**（不是 P2）：它不是文风问题，而是「这条论点的反方**没有证据底座**」——
+      //   与 M-Form-8 的三角验证同一族缺陷。**允许显式声明「无证据」**（离线/常识性反方确实可能无素材），
+      //   但那样写是**可见的声明**，而不是留白。
+      const ev = (r.证据 || '').trim();
+      if (!ev || /^[-—–/\s]+$/.test(ev)) {
+        issues.push({ line: r.line, severity: 'P1', reason: `「${label}」的**证据列空白**——该论点的反方无任何素材为据` });
+      } else if (!/\[(?:L|D|C|先)\s*\d+\]/.test(ev) && !/无(?:证据|来源|对应)|N\/A|不适用/i.test(ev)) {
+        issues.push({ line: r.line, severity: 'P1', reason: `「${label}」的证据列未含任何素材编号（\`[Lxx]/[Dxx]/[Cxx]/[先xx]\`）：「${ev.slice(0, 24)}」——若确无对应素材，须显式写「无证据」而不是留散文` });
+      }
       for (const [k, v] of [['反方', r.反方], ['回应', r.回应]]) {
         if (!v || /^[-—–/\s]+$/.test(v)) { issues.push({ line: r.line, severity: 'P1', reason: `「${label}」缺${k}锚点` }); continue; }
         if (isProse(v)) { issues.push({ line: r.line, severity: 'P2', reason: `「${label}」的${k}列疑似写了**内容**而非锚点（${v.slice(0, 20)}…）——须 T6/T7 判定该写法是否可接受` }); continue; }

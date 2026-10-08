@@ -221,14 +221,34 @@ const g8 = (() => {
   //   修法：把「候选从哪来 / 共几个 / 区间判据是什么 / 判级归谁」写进 detail（不动任何判级逻辑）。
   const candNote = `候选值来自简报字段「${String(cand.raw || '').trim().slice(0, 40)}」，共 ${cand.candidates.length} 个`
     + `（模板常并列多个可选档 → 区间跨度可能远宽于实际档位；**判级以简报实际档位为准**，本项只判「是否落在候选区间」）`;
+  // ── v18.81.0（独立审计批 2 · 2.4c）：**方向必须可辨 + 判级义务机器可读** ────────────────────
+  // 病灶（审计 P1-3 的**成立部分**）：本项此前只有「对上界」一条 detail 分支，于是**不足侧**
+  //   （`hanChars < lo × 0.9`）也会被写成「= 0.370×（对上界）→ 候选」——**方向相反、读数误导**，
+  //   而 `字数判定表.md` §二明写「**不足 >10% → P0（须扩写）**」（2026-09-29 主人裁定、**明示保留**）。
+  //   ⇒ 结果是「方向记错 + 该 P0 档在机检面完全不可见」。
+  // ⚠️ **刻意仍不自行判 P1/P0**（理由见上方 v18.23.0 EFF-1 两条：简报篇幅可能是失效早期值；
+  //   实测存在「简报 16k / 定稿 40k + 交付说明记主人豁免」这种**已授权**情形，判罚是最贵的假阳性）。
+  //   本批只做两件不改判级的事：① detail **分方向**；② 新增机器可读字段 **`adjudicationRequired`**，
+  //   把「T7 必须对这个候选给出哪一档」变成可 grep 的事实——**义务可见，判定仍归人**。
+  const shortfall = hanChars < lo * 0.9;
+  const shortPct = +((hanChars / lo - 1) * 100).toFixed(1);
+  const overPct = +((hanChars / hi - 1) * 100).toFixed(1);
+  const adjudicationRequired = inBand ? null : (shortfall
+    ? { by: 'T7', level: 'P0', why: '字数判定表 §二：不足 >10%（低于下限 ×0.9）→ P0，须扩写（2026-09-29 主人裁定明示保留该档）', floor: Math.round(lo * 0.9) }
+    // 超限侧只有一档：`!inBand` 且非不足 ⇒ 必然 > 上界 ×1.05 ⇒ 就是「>5% 记 P1」。
+    //   ⚠️ 刻意**不写** `overPct > 5 ? 'P1' : 'P2'`：那个 P2 分支**不可达**（≤5% 全在候选区间内 → 走 null），
+    //   留着它会让人以为「超限 ≤5% 也会产生义务」——死分支比没有分支更误导（本批自证：P3 用例当场证伪）。
+    : { by: 'T7', level: 'P1', why: '字数判定表 §二（2026-09-29 裁定）：超限 >5% 记 P1（触发 v3）；≤5% 落在候选区间内 → 本项判通过（不产生判级义务）' });
   const detail = inBand
     ? `在候选区间内：${hanChars} 字 vs 候选 ${lo}${hi !== lo ? `–${hi}` : ''} 字 ｜ ${candNote}`
-    : `${hanChars} 字 vs 简报候选 ${lo}${hi !== lo ? `–${hi}` : ''} 字 = ${(hanChars / hi).toFixed(3)}×（对上界）→ **候选，判级归 T7**：先核 status.md / 交付说明.md 是否已声明字数豁免或篇幅变更（实测存在「简报 16k / 定稿 40k + 交付说明记主人豁免」与「简报为 Phase 0 原始文档、后经 v4 增补扩篇」两类真实情形，均不构成缺陷） ｜ ${candNote}${bufNote}`;
+    : shortfall
+      ? `${hanChars} 字 vs 简报候选 ${lo}${hi !== lo ? `–${hi}` : ''} 字 → **不足侧**：低于下限（${Math.round(lo * 0.9)}）${Math.abs(shortPct)}% → 按 \`字数判定表\` §二 该档为 **P0（须扩写）**；**判级仍归 T7**（先核 status.md / 交付说明.md 是否已声明篇幅变更或豁免——简报篇幅可能是已失效的早期值） ｜ ${candNote}`
+      : `${hanChars} 字 vs 简报候选 ${lo}${hi !== lo ? `–${hi}` : ''} 字 = ${(hanChars / hi).toFixed(3)}×（对上界，+${overPct}%）→ **候选，判级归 T7**：先核 status.md / 交付说明.md 是否已声明字数豁免或篇幅变更（实测存在「简报 16k / 定稿 40k + 交付说明记主人豁免」与「简报为 Phase 0 原始文档、后经 v4 增补扩篇」两类真实情形，均不构成缺陷） ｜ ${candNote}${bufNote}`;
   return {
     name: '字数偏差（正文纯汉字 vs 任务简报篇幅字段）', checked: true, pass: inBand, severity: inBand ? 'PASS' : 'P2',
     detail, evidence: { hanChars, candidates: cand.candidates, briefField: cand.raw, ratioToUpper: +(hanChars / hi).toFixed(4), brief: briefPath,
-      bufMarker, inBufferBand, bufferBand, waiverMarker,
-      note: '只判「是否落在候选区间」；候选之外不自动升 P1——目标值本身可能是档位下限/过期值/已通过 WAIVER=on 显式豁免，判级归 T7。`bufferBand` = 例外通道的 ①② 条是否满足（标记 + 落带），**不含第 ③ 条**（T5 交接报告的估算标注不在本脚本输入内，须 T7 核）' },
+      bufMarker, inBufferBand, bufferBand, waiverMarker, shortfall, shortPct, overPct, adjudicationRequired,
+      note: '只判「是否落在候选区间」；候选之外不自动升 P1/P0——目标值本身可能是档位下限/过期值/已通过 WAIVER=on 显式豁免，判级归 T7。**`adjudicationRequired` = T7 对该候选应给出的档位（义务可见，判定仍归人）**。`bufferBand` = 例外通道的 ①② 条是否满足（标记 + 落带），**不含第 ③ 条**（T5 交接报告的估算标注不在本脚本输入内，须 T7 核）' },
   };
 })();
 

@@ -169,9 +169,20 @@ if (existsSync(evidence)) {
   const r = runGate('mgate', [join(SCRIPTS, 'm-gate-check.mjs'), draft, evidence]);
   const j = r.json;
   if (j && j.total > 0) {
+    // v18.81.0（独立审计批 1.2）：**门版本可见性**。
+    // 为什么在这里做：`runGate` 每次都是**新跑一遍**（temp 报告、无 prev）→ 它自己永远不会有
+    //   `gate_rev_drift`；而消费这份分数的人真正需要知道的是「磁盘上那份被引用的报告，
+    //   是不是与本门版本同一版」。故此处把「本次 fresh 的 rev」与「磁盘报告的 rev」对一下。
+    // 边界（如实）：本字段**只影响说辞与 evidence**，不改 `ratio`、不改分数、不改退出码——
+    //   跨版本可比性是「读法」问题，不是「分数」问题（与 QLT-1 的「度量不是闸门」同一条判据）。
+    const diskM = readJson(join(project, 'final', 'M-Gate-Report.json'));
+    const diskRev = diskM && typeof diskM.gate_rev === 'string' ? diskM.gate_rev : null;
+    const revNote = !diskRev
+      ? (diskM ? `｜磁盘报告缺 gate_rev（v18.81.0 前写入）→ 与本门版本**不可比性未知**` : '')
+      : (diskRev === j.gate_rev ? '' : `｜⚠️ 磁盘报告 gate_rev=${diskRev} ≠ 本次 ${j.gate_rev} → **跨门版本，两份读数不可直接比较**`);
     add('M-Gate', MGATE_NAME, MGATE_WEIGHT, j.pass / j.total,
-      `${j.pass}/${j.total} 通过｜P0 ${j.p0 ?? 0} / P1 ${j.p1 ?? 0} / P2 ${j.p2 ?? 0}｜exit ${j.exit}`,
-      { pass: j.pass, total: j.total, p0: j.p0 ?? 0, p1: j.p1 ?? 0, p2: j.p2 ?? 0 });
+      `${j.pass}/${j.total} 通过｜P0 ${j.p0 ?? 0} / P1 ${j.p1 ?? 0} / P2 ${j.p2 ?? 0}｜exit ${j.exit}｜gate_rev ${j.gate_rev ?? '缺'}${revNote}`,
+      { pass: j.pass, total: j.total, p0: j.p0 ?? 0, p1: j.p1 ?? 0, p2: j.p2 ?? 0, ...(j.gate_rev ? { gate_rev: j.gate_rev } : {}), ...(diskRev ? { disk_gate_rev: diskRev } : {}) });
   } else {
     add('M-Gate', MGATE_NAME, MGATE_WEIGHT, null, '', {}, `m-gate-check 未产出可用 JSON（status=${r.status}${r.error ? ` / ${r.error}` : ''}）`);
   }
@@ -430,6 +441,55 @@ const result = {
   // v18.53.0（F-BC ③ / 主人裁定口径 D）：**QLT-6 论证强度**作为**同级独立量尺**随本脚本一并输出。
   //   刻意**不并入**上面的 score（那是合规分）：两者效度不同，相加 = 把两种量混成一个数（F-BC 的病灶）。
   qlt6: evaluateQlt6({ projectDir: project, draftPath: draft }),
+  // ── v18.81.0（独立审计批 2 · 盲评一致性统计，批 1 遗留）────────────────────────────────
+  // 为什么需要：审计实测「**唯一存在的质量量尺分辨不出读者能看见的差距**」——T9 给模板腔更重、
+  //   把 T6 问答体搬进正文的《夫妻收入差异家庭权力》**22/30**，给行文更紧的《县中塌陷》**19/30**，
+  //   两篇 QLT-6 都是 21.4。要让这类问题**可见**，唯一可行的第一步是：把「盲评（来源盲）」
+  //   与「非盲 T9」对同一稿的打分**并排落盘**并给出差值与档位是否一致。
+  // ⚠️ **它不是判据、不改 score、不参与 exit**（与 `flow-metrics` / `quality-score` 同一判据：
+  //   度量不是闸门）。**分歧本身不是缺陷，是信息**——一旦挂闸门就会催生「为过线而调分」。
+  // 边界（如实）：样本为 0 或 1 时**不给一致率**（n=1 的一致率必然是 100%，那是噪声不是结论）；
+  //   仅当两侧都能解析出 `总评分 XX/30` 时才计算。
+  reviewAgreement: (() => {
+    const band = (t) => (t >= 26 ? 'accept' : t >= 21 ? 'minor' : t >= 16 ? 'major' : 'reject');
+    const readTotal = (p) => {
+      try {
+        const m = /总评分[^\n]*?(\d{1,2})\s*\/\s*30/.exec(readFileSync(p, 'utf8'));
+        return m ? Number(m[1]) : null;
+      } catch { return null }
+    };
+    const auditsDir = join(project, 'audits');
+    let files = [];
+    try { files = readdirSync(auditsDir) } catch { files = [] }
+    const t9Files = files.filter((f) => /^审稿报告-v\d+\.md$/.test(f)).sort()
+    const blindFiles = files.filter((f) => /^盲评-.+\.md$/.test(f)).sort()
+    const t9File = t9Files[t9Files.length - 1] || null
+    const t9 = t9File ? readTotal(join(auditsDir, t9File)) : null
+    const blind = blindFiles.map((f) => ({ file: f, total: readTotal(join(auditsDir, f)) })).filter((x) => x.total !== null)
+    const spread = blind.length >= 2 ? Math.max(...blind.map((x) => x.total)) - Math.min(...blind.map((x) => x.total)) : null
+    const comparable = t9 !== null && blind.length >= 1
+    // ⚠️ 一致率**只在 n≥2 时给**：n=1 的一致率恒为 1（分母就是它自己）——那是噪声不是结论。
+    //   首版写成 `comparable ? … : null` → n=1 时输出 100%，与同一条 note 自述的「不给一致率」**自相矛盾**
+    //   （由 `tests/blind-review.test.mjs` Q2 当场抓出）。判据：**说好不给的数，代码里也不许算**。
+    const bandAgreement = (t9 !== null && blind.length >= 2)
+      ? blind.filter((x) => band(x.total) === band(t9)).length / blind.length
+      : null
+    return {
+      metric: '盲评一致性（measurement，非闸门）',
+      t9: t9File ? { file: t9File, total: t9, band: t9 !== null ? band(t9) : null } : null,
+      blind: blind.map((x) => ({ ...x, band: band(x.total) })),
+      blindFilesSeen: blindFiles.length,
+      blindUnparsed: blindFiles.length - blind.length,
+      spread,
+      bandAgreement,
+      notScope: '**不参与 score / 不参与 exit**；分歧不是缺陷（`review-agreement` 的判据与 `flow-metrics` 同源）',
+      note: !comparable
+        ? '样本不足：需至少一份可解析的 `audits/审稿报告-v*.md` 与一份 `audits/盲评-*.md`（各含 `总评分 XX/30`）——**不给数字，不给「通过」**'
+        : (blind.length < 2
+          ? `n=1：只报告差值（Δ=${blind[0].total - t9}），**不给一致率**（n=1 的一致率恒为 100%，是噪声不是结论）`
+          : `n=${blind.length}：差值 ${blind.map((x) => x.total - t9).join(' / ')}（盲评 − T9）`),
+    };
+  })(),
   validity: {
     scope: '合规与成本',
     notScope: '论证质量',

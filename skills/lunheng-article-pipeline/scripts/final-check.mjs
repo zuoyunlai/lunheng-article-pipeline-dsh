@@ -81,6 +81,43 @@ steps.push({ name: 'm-gate-check.mjs', cmd: 'node', args: [join(scriptDir, 'm-ga
 //   而 final-check 的 args 是写死的）→ 那会造出「唯一的正常入口反而进不去」的死结。
 //   **它不是默认行为**：不带旗标时 M 门拒绝静默覆盖带裁定的报告，并把两条出路打在 stderr 上。
 
+// ── v18.81.0（独立审计批 1.3）：**交付路径的人在环门（fail-closed）** ──────────────────
+// 病灶（实测）：`handoff-check` 的四门校验**默认不判**（`:554-557` 自陈「有意选择，非疏漏」），
+//   `SKILL.md` 只把它写成「Phase 5 交付前必跑」的**文字义务**。后果：≥5 个项目在四门缺失/未留痕的
+//   状态下交付（`AB-ai-content-farm-A/-B`、`AB-共锁-A/-B`、`guannian-yu-linian`），其中
+//   `中国新能源车出口-2026-09` 是 **0/4 门**而 `final/` 产物齐全。
+// 判据：把它接进 T8 的主管道（本脚本），使「缺门」在交付动作上**真的阻塞**，而不是靠自觉。
+//
+// 触发条件（刻意按**契约采用度**分段，理由见批 1.1 三态注释）：
+//   · `audits/gate-receipts.jsonl` **在盘**（该项目已采用回执契约）→ **接硬步**：20/21 直接阻塞；
+//   · **不在盘**（存量项目）→ 不接该步，只在 `notes` 里说明「本轮未判四门」。
+//   为什么这样分段：把硬步无条件接上，会让**所有**存量项目（以及本仓全部夹具）在
+//   「没有四门单据」这一历史事实上报到。那不是发现缺陷，是把制度追溯适用到制度存在之前。
+//   代价（如实登记）：**存量项目可以一直不采用回执契约**，因而一直不受本步约束。
+//   收敛路径 = 批 1.1 的模板强制（新项目必落账本）；待存量迁移完成后改为**无条件**。
+// `tolerate: [22]`：T8 无收报必需产物（`ROLE_TO_ARTIFACTS['T8']` 为空）→ 恒有一条 A0 软提示 ⇒
+//   合法形态的退出码就是 22。**22 = 仅软提示**（放行），20/21 才是硬失败；两者必须分开。
+const receiptLedger = join(project, 'audits', 'gate-receipts.jsonl');
+const deliveryGateNotes = [];
+if (existsSync(receiptLedger)) {
+  // ⚠️ **必须排在 steps 最前（`unshift`），不能排在 M 门之后**：本循环遇到 `opt:false` 的非零步即
+  //   `break`，而 M 门步是 `opt:false` 且**常态非零**（`exit 3` = 仅 P2/软提示也算非零，实测
+  //   `县中塌陷` 就是这个码）→ 排在它后面的门**几乎永远轮不到**。
+  //   实测教训（本批自证）：首版写成 `steps.push` 放在 M 门之后，`tests` 里的探针根本观测不到本步。
+  //   判据：**「必判」的步必须排在会提前退出的步之前**。
+  steps.unshift({
+    name: 'handoff-check.mjs（人在环四门 + 回执，--require-gates）',
+    cmd: 'node',
+    args: [join(scriptDir, 'handoff-check.mjs'), '--project', project, '--role', 'T8', '--require-gates', '--summary'],
+    opt: false,
+    parse: null,
+    tolerate: [22],
+  });
+} else {
+  deliveryGateNotes.push('人在环门未判：缺 `audits/gate-receipts.jsonl`（未采用回执契约）→ 本脚本**不**接 `handoff-check --require-gates` 硬步。'
+    + '交付前请手工跑一次；新项目须按 `references/templates/主人确认-template.md` §6 落回执账本。');
+}
+
 if (!wantJson) {
   console.log(`# final-check: ${project}`);
   console.log(`# 串联 ${steps.length} 步：${steps.map((s) => s.name).join(' → ')}\n`);
@@ -100,7 +137,10 @@ for (const step of steps) {
   //   现在：spawn 失败记 `EXIT_INTERNAL`（70）并给出独立推荐语（属环境/脚本问题，不是内容问题）。
   const spawnFailed = r.status === null && (r.error || r.signal);
   const statusVal = spawnFailed ? EXIT_INTERNAL : r.status;
-  const ok = statusVal === 0;
+  // v18.81.0（批 1.3）：`tolerate` —— 该步**契约内的**放行码（如 handoff-check 对 T8 恒有的 22=仅软提示）。
+  //   判据：`ok`（不进硬失败分支）与「这一步到底有没有告警」是两件事，故 tolerated 另存可见。
+  const tolerated = (step.tolerate || []).includes(statusVal);
+  const ok = statusVal === 0 || tolerated;
   // v18.64.2（自审批 P1）：**非零步的子进程 stderr 必须被 surface**。
   //   病灶（本批实测暴露，非本批引入）：旧版 `spawnSync` 用 `stdio:['ignore','pipe','pipe']` 捕获了 stderr
   //   却**从不读取**，而本文件自己的文案（:293 那句「请…查该步 stderr」）叫读者去看一个**从未被打印的东西**。
@@ -111,6 +151,7 @@ for (const step of steps) {
   const stderrTail = (r.stderr || '').trim()
   summary.push({
     step: step.name, exit: statusVal, ok,
+    ...(tolerated ? { tolerated: true, tolerateNote: `本步按契约放行 exit ${statusVal}（仅软提示），**不等于无告警**——详见 hard/soft 清单` } : {}),
     ...(spawnFailed ? { spawnError: String(r.error?.message || r.signal) } : {}),
     ...(!ok && stderrTail ? { stderrTail: stderrTail.length > 1200 ? stderrTail.slice(-1200) : stderrTail } : {}),
   });
@@ -191,6 +232,8 @@ const charOut = parsedOutputs['count-chars'];
 const charDegraded = charOut?.degraded === true;
 const charScope = charOut?.scope ?? null;
 const notes = [];
+// v18.81.0（批 1.3）：交付门的分段说明（见上方 steps 构建处的三态注释）
+for (const n of deliveryGateNotes) notes.push(n);
 if (charDegraded) {
   notes.push(
     `字数口径失真：count-chars 置 degraded=true（${charOut?.degradedReason || '见 count-chars 输出'}）`
@@ -330,6 +373,15 @@ const report = {
         : (notes.length
           ? `🔍 不足以判「通过」：${notes[0]}${notes.length > 1 ? `（另有 ${notes.length - 1} 条见 summary.notes）` : ''}——须 T8 逐项复核后以 T8 裁定值放行`
           : '🔍 仅 P2 / LLM兜底 / SKIP 残留（无 P0/P1）——须 T8 逐项复核后以 T8 裁定值放行（不得当作失败，也不得无条件当作通过）'))
+      // v18.81.0（批 1.3）：人在环门（`handoff-check` 的 20/21/22 是**另一套契约**的码）——
+      //   旧文案会把它笼统推进下方「不在 M 门契约内」的兜底，操作者读到的是「可能是别的脚本」，
+      //   而不是「去补哪一门、去回填哪个字段」。判据：**已知语义就必须给已知动作**。
+      : stableExitCode === 20
+      ? '⛔ 人在环门未过（exit 20：四门确认单缺失或 0 字节）——主人 2026-09-25 定案「四门必须」；**缺门 → 补开那一门**（`SKILL.md` §启动清单 第 7 条），不是写「未留痕」了事'
+      : stableExitCode === 21
+      ? '⛔ 人在环门未过（exit 21：§6 回填不全 / 回执与 §6 不相容 / 账本行不自洽）——按该步 stderr 的 A7 明细逐条回填；账本在盘时「主人原话」必须逐字含回执 `rawAnswer`，不得替换为主控的选项标签'
+      : stableExitCode === 22
+      ? '🔍 人在环门仅软提示（exit 22）——可放行，但**不等于无告警**（如 T8 无收报必需产物、缺 T8 执行记录）'
       : stableExitCode === EXIT_INTERNAL
       ? '🛠️ 内部错误（EX_SOFTWARE 70）——子步骤未跑起来或脚本缺陷，**与正文内容无关**；核对上面的 spawnError/栈后重跑'
       : stableExitCode === EXIT_USAGE

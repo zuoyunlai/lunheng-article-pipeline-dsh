@@ -41,6 +41,7 @@ import { analyzeSvg, svgTextNumbers, figureNoOf, figurePlaceholders } from './_l
 import { installExitGuard, requireExistingFile, requireExistingDir } from './_lib/exit-guard.mjs'; // 退出码硬化（v18.0.5）
 import { writeReport } from './_lib/destructive-write.mjs';   // 报告写盘守卫（v18.12.0，全量审计 L-50）
 import { parseArgs as parseCliArgs, USAGE_CODE as CLI_USAGE_CODE } from './_lib/cli-args.mjs';      // 参数解析唯一实现（v18.2.9，审计 A7）
+import { computeGateRev } from './_lib/gate-rev.mjs';   // 门版本指纹（v18.81.0 · 独立审计批 1.2）——把「可复现」从单版本内扩到跨版本可见
 import { escapeRegExp, latestReport, PROTECT_CH, tableCells, isSeparatorRow, sectionRange, indexSection, CARD_SPECS, ENTRY_ID_RE, entryIds, idsByToken, walkMd } from './_lib/mgate-helpers.mjs';
 import { mExist1, mExist2, mExist3, mExist4, mExist5, mExist6, mExist7, mExist8, mExist9, mExist10, mExist11 } from './_lib/mgate-gates/mexist-gates.mjs';  // M-Exist 门族（v18.3.1 审计 B2 阶段 1）
 import { mIntegrity1 } from './_lib/mgate-gates/mintegrity-gate.mjs';
@@ -233,6 +234,15 @@ if (text.charCodeAt(0) === 0xfeff) { console.error('⚠️ 被审正文含 UTF-8
 //   指纹用**内容哈希 + 字节数**（不含 mtime：证据包会复制/重写文件，mtime 不可靠）。
 const draftSha256 = createHash('sha256').update(readFileSync(draftPath)).digest('hex');
 const draftBytes = readFileSync(draftPath).length;
+// ── v18.81.0（独立审计批 1.2）：**门版本指纹** ─────────────────────────────────────
+// 病灶：报告绑定被审正文指纹，却**不绑定门版本**。实测 `run/夫妻收入差异家庭权力` 的同一份
+//   `final/定稿.md`（sha256 `01b89282…`，逐字节未变）在 2026-09-30 的报告里是
+//   `p0=0 / p1=0 / p2=5 / script_exit_raw=3 / exit=0`，用当前脚本复跑得 `exit=2 / p0=2 / p1=1`
+//   ——而报告的 `verdict_stale` 仍是 `false`（判据只看正文指纹）。
+//   于是「按旧门交的」与「漏跑了」在**所有字段上同形**，读报告的人无法区分。
+// 口径真源 = `scripts/_lib/gate-rev.mjs`（单一实现，本处只消费）。
+const gateRevInfo = computeGateRev(scriptDir);
+const gateRev = gateRevInfo.rev;
 // v18.13.0（L-06）：被审正文的**项目相对路径**（`drafts/<name>` 或 `final/定稿.md`）——与上面两项
 //   一起构成「这份报告审的是哪一版」的完整、可机读记录。相对路径而非绝对：报告会被复制进证据包、
 //   跨机器 review，绝对路径没有意义。解析失败（路径不在项目内）时退化为 basename，并在值里保留线索。
@@ -571,13 +581,20 @@ const report = {
   //   为什么两件都给：`draft_name` 供人读与路径核对，`draft_sha256` 供内容核对（防「按名字审的
   //   其实是改过的稿」）。`handoff-check` 的 A4c 与未来的一致性规则都读这两个字段。
   verdict_scope: { draft_name: relativeBase, draft_sha256: draftSha256, draft_bytes: draftBytes },
+  // v18.81.0（独立审计批 1.2）：**门版本指纹**——本报告由哪一版门族产出。
+  //   为什么与被审正文指纹并列：`verdict_scope` 证明「审的是哪一版正文」，本字段证明
+  //   「用哪一版门审的」。缺任一项，「同一份产物两个读数」都无法归因。
+  //   口径 = `_lib/gate-rev.mjs`（scripts/**/*.mjs 的内容哈希前 12 位）；
+  //   ⚠️ 它是**内容哈希**：注释改动也会抬 rev——保守方向，且**不判断改动是否重要**（语义不下沉）。
+  gate_rev: gateRev,
+  gate_rev_files: gateRevInfo.fileCount,
   // v18.79.0（反哺-v18.78.2 §七 T0-9②）：**显式读法字段**（只读说明，不参与任何判定）。
   //   病灶实测：裁定段写入后**再跑一次非裁定复跑** → 报告的 `exit` **仍为 0（保留裁定）**，而**进程退出码 = 3（本次机械值）**；
   //   这个「两套数怎么读」的说明**只印在 stderr**，不落盘。于是任何 **CI / 脚本化消费**若只看命令退出码，
   //   会把一次「放行（exit=0）」读成「门没过（3）」。
   //   判据：**读法必须随产物走**——消费方不应被迫读控制台才能知道该信哪个数。
   //   ⚠️ 本字段是**纯说明**：不改 `exit`、不改任何布尔/计数、不参与 `final-check` 与 `handoff-check` 的任何判据。
-  read_rule: '放行与否以本报告的 `exit` 字段为准；**进程退出码只表示本次机械面的等级**（非裁定复跑时它=本次机械值，而报告里可能保留着更高的 T8 裁定值 `exit`）——两者不同时以 `exit` 为准，并读 `script_exit_raw`（机械原值，禁改）与 `_t8_conclusion`（裁定依据）。',
+  read_rule: '放行与否以本报告的 `exit` 字段为准；**进程退出码只表示本次机械面的等级**（非裁定复跑时它=本次机械值，而报告里可能保留着更高的 T8 裁定值 `exit`）——两者不同时以 `exit` 为准，并读 `script_exit_raw`（机械原值，禁改）与 `_t8_conclusion`（裁定依据）。**跨版本可比性**：本报告的结论只对 `gate_rev` 相同的门版本可比；`gate_rev` 不同 ⇒ `verdict_stale=true`（须重跑或重裁）；缺 `gate_rev`（v18.81.0 之前写入）⇒ `gate_rev_absent=true`，**不可比但也不判其陈旧**（无法证明不可比时不说它不可比）。',
   // v18.52.0（反哺 F-BB）：写入次序留痕 + 中间态标注（判据见上方 transientInfo 块）
   ...(transientInfo
     ? {
@@ -610,6 +627,17 @@ if (reportPath) {
     if (existsSync(reportPath)) {
       try {
         const prev = JSON.parse(readFileSync(reportPath, 'utf8'));
+        // ── v18.81.0（独立审计批 1.2）：门版本漂移 ────────────────────────────────
+        // 正文没变、但**门变了** ⇒ 既有报告的结论不与本门版本可比。判据与被审正文指纹**正交**：
+        //   正文指纹回答「审的是哪一稿」，gate_rev 回答「用哪一版门审的」。
+        // ⚠️ 本判定必须**独立于「是否存在 T8 裁定」**——首版误置于裁定保留分支内，
+        //   于是**没有裁定的报告**（占多数）永远不会被标版本漂移，等于该字段对它们不存在
+        //   （实测由 `tests/gate-rev.test.mjs` 的 I2/I3/I4 当场抓出）。判据：**版本可见性不是裁定的附属品**。
+        // 旧报告缺 gate_rev（v18.81.0 之前写入）→ **不翻 stale**，只挂 `gate_rev_absent`：
+        //   无法证明「不可比」时不说它不可比（与 M-Exist-2 的 N/A 口径同族）。
+        const prevGateRev = typeof prev.gate_rev === 'string' && prev.gate_rev ? prev.gate_rev : null;
+        const gateDrift = prevGateRev !== null && prevGateRev !== gateRev;
+        const gateRevAbsent = prevGateRev === null;
         const keep = {};
         // v18.54.0（反哺 F-BF②）：`_t8_adjudicated_at` / `_t8_adjudicated_by` 并入 keep 列表。
         //   实测缺陷：裁定当次落盘含这两个键，**随后一次不带 `--adjudicate` 的复跑即静默丢弃**
@@ -635,10 +663,24 @@ if (reportPath) {
           const declaredSha = declaredRaw ? declaredRaw[1].toLowerCase() : null;
           const declaredOk = !declaredSha || draftSha256.toLowerCase().startsWith(declaredSha.slice(0, 12));
           const sameDraft = typeof prevSha === 'string' && prevSha === draftSha256 && declaredOk;
-          if (sameDraft && hardRedLineHits.length === 0 && !prevStale) {
+          if (sameDraft && hardRedLineHits.length === 0 && !prevStale && !gateDrift) {
             if (typeof prev.exit === 'number') out.exit = prev.exit; // 保留 T8 裁定值（正文未变，裁定仍有效）
             out.verdict_stale = false;
             console.error(`· 已保留既有 T8 裁定段（exit=${out.exit}，本次脚本值 script_exit_raw=${report.exit}；正文指纹一致）`);
+          } else if (sameDraft && hardRedLineHits.length === 0 && gateDrift) {
+            // v18.81.0（批 1.2）：正文与裁定段都指向本稿，但**门版本变了** ⇒ 结论不可跨版本沿用。
+            // 为什么放在「单调保留」分支之前：那一支的文案自述「既有 verdict_stale 已为 true」，
+            //   而本场景 prevStale 为 false —— 复用它会输出一句与事实不符的原因（本项目最忌「原因写错」）。
+            if (typeof prev.exit === 'number') out.exit = prev.exit;
+            out.verdict_stale = true;
+            out.verdict_stale_reason =
+              `门版本已变更（既有报告 gate_rev=${prevGateRev}，本次=${gateRev}）——被审正文**未变**（sha256 ${draftSha256.slice(0, 12)}…），`
+              + '但**门本身变了**，旧 T8 裁定不与本门版本可比（v18.81.0 批 1.2）；请按当前门重跑并按需经 `--adjudicate` 写入新裁定';
+            console.error(
+              `⚠️ 门版本漂移：既有报告 gate_rev=${prevGateRev} → 本次 ${gateRev}（被审正文未变）——`
+              + '标 `verdict_stale=true`：旧裁定的结论不跨门版本沿用；'
+              + '如需放行，请按当前门重跑并按需经 `--adjudicate` 写入新裁定。',
+            );
           } else if (sameDraft && hardRedLineHits.length === 0) {
             // 正文与裁定段都指向本稿，但**上一轮已判为陈旧** → 旗标单调，不撤销（须走 `--adjudicate` 才能清）
             if (typeof prev.exit === 'number') out.exit = prev.exit;
@@ -704,6 +746,21 @@ if (reportPath) {
           if (typeof prev.script_exit_raw === 'number' && prev.script_exit_raw !== report.exit) {
             out.script_exit_raw_prev = prev.script_exit_raw; // 留痕：上一次脚本原值
           }
+        }
+        // ── v18.81.0（批 1.2）：**门版本可见性**（无条件写入，与裁定是否存在无关）──────────
+        // 两个字段的分工（刻意不合并）：
+        //   · `gate_rev_absent` = 既有报告**无版本信息**（v18.81.0 前写入）→ 不判其陈旧、也不判可比；
+        //   · `gate_rev_drift`  = 既有报告的版本**与本次不同** → 事实层：两个读数不属同一门版本。
+        // 裁定层的后果（`verdict_stale`）只在**真的保留了旧裁定**时才有意义，故它留在上面的分支里。
+        if (gateRevAbsent) {
+          out.gate_rev_absent = true;
+          out.gate_rev_note = `既有报告无 \`gate_rev\`（v18.81.0 之前写入）→ **无法判断它与本门版本是否可比**`
+            + `（不等于不可比，也不等于已陈旧）；本次报告已写入 gate_rev=${gateRev}。跨版本比较前请先重跑本门。`;
+        }
+        if (gateDrift) {
+          out.gate_rev_drift = true;
+          out.gate_rev_drift_reason = `既有报告 gate_rev=${prevGateRev} → 本次 ${gateRev}（**门版本已变更**）——`
+            + '同一份被审正文在两个门版本下的机械读数**不可直接比较**；跨版本对比前请以本门版本重跑两者。';
         }
       } catch (e) {
         // v18.2.6 审计修复 P1-7（本脚本最后一处吞异常）：既有报告损坏/非 JSON 时旧写法静默继续，

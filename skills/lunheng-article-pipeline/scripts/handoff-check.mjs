@@ -28,9 +28,11 @@
 //
 // 只读：不联网、不写盘、不 spawn 子进程。stdout 只有 JSON（--summary 时 artifacts 只留失败项）。
 import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs'
-import { join, basename } from 'node:path'
+import { join, basename, resolve } from 'node:path'
 import { createHash } from 'node:crypto'   // v18.13.0（L-06）：A4c 复算最新正文 sha256，与 M 门审定对象比对
 import { installExitGuard, requireExistingDir } from './_lib/exit-guard.mjs'
+import { loadSessions, pairAskUserQuestion, collectTouched } from './_lib/session-log.mjs'   // v18.81.0（批 1.4）：会话日志独立核对
+import { parseLedger, ROUND_CAPS, LEDGER_REL } from './_lib/round-ledger.mjs'   // v18.81.0（批 2.1）：轮次额度真源
 import { CONTRACTS } from './_lib/cc-rules/content-rules.mjs'
 import { CARD_SPECS, latestReport, indexSection, entryIds, idsByToken } from './_lib/mgate-helpers.mjs'
 
@@ -49,6 +51,14 @@ const HELP = [
   '  --require-gates  加验**人在环四门**（阶段确认-Phase0/2.5/3.5/5.md 四份齐备 + §6 主人回复段五项字段已回填）——**A7 只在此旗标下判**。',
   '                   主人在 2026-09-25 定案「四门必须」→ 主控在 **Phase 5 交付前**调用本旗标做机械校验；',
   '                   不加此旗标则不判四门（向后兼容 T1-T4/T6/T9 等中期角色的收报，那时后几门本就还没开）。',
+  '  --session-log <文件|目录|会话 id>  v18.81.0（批 1.4）：读 **DSH 会话日志**做 A7 的**独立核对**——',
+  '                   回执账本由主控写入（自述），而会话日志由**宿主**写入（主控改不了）：本旗标核对',
+  '                   「账本每条回执的 `callId` 在日志里确有 `ask_user_question` 调用，且其答复逐字等于 `rawAnswer`」。',
+  '                   开启后账本的 `callId` 字段**必填**；不开启则不判（默认关，避免依赖宿主日志形态）。',
+  '  --session-root <目录>  配合 --session-log 传「会话 id」时用（默认 $DSH_HOME/sessions）。',
+  '  --blind-review <盲评件.md>  v18.81.0（批 1.4）：只判**盲评件契约**并退出（不要求 --project/--role）——',
+  '                   六维名逐字 + 每维 x/5 + 总评分 = 六维之和 + 首节「已读范围」非空 + 禁忌面（自述层）；',
+  '                   再给 --session-log 时另判**独立越界层**：会话日志里**真的读过**禁忌面即硬失败。',
   '报告编号命名契约（v18.62.7 A7 —— 别再靠读源码猜）：',
   '  · 审计族（审计报告 / 复核报告 / 反哺报告）的 N = **审计轮次**；复核必须与它复核的那轮审计同号。',
   '  · 审稿报告 / G14-检测报告 的 N = **正文轮次**（= drafts/初稿-vN.md 的 N）。',
@@ -152,16 +162,19 @@ for (let i = 0; i < args.length; i++) {
   else if (a === '--report-file') opt.reportFile = needValue('--report-file', i++)
   else if (a === '--summary') opt.summary = true
   else if (a === '--require-gates') opt.requireGates = true
+else if (a === '--session-log') opt.sessionLog = needValue('--session-log', i++)
+else if (a === '--session-root') opt.sessionRoot = needValue('--session-root', i++)
+else if (a === '--blind-review') opt.blindReview = needValue('--blind-review', i++)
   else if (a === '--level') opt.level = needValue('--level', i++)
   else { console.error(`未知参数: ${a}\n${HELP}`); process.exit(10) }
 }
 if (opt.help) { console.log(HELP); process.exit(0) }
-if (!opt.project) { console.error('缺 --project（项目目录）\n' + HELP); process.exit(10) }
-if (!opt.role) { console.error('缺 --role（被验收角色，必填）\n' + HELP); process.exit(10) }
-if (!VALID_ROLES.has(opt.role)) { console.error(`--role 非法: ${opt.role}（须 ∈ ${[...VALID_ROLES].join('/')}）`); process.exit(10) }
+if (!opt.blindReview && !opt.project) { console.error('缺 --project（项目目录）\n' + HELP); process.exit(10) }
+if (!opt.blindReview && !opt.role) { console.error('缺 --role（被验收角色）\n' + HELP); process.exit(10) }
+if (opt.role && !VALID_ROLES.has(opt.role)) { console.error(`--role 非法: ${opt.role}（须 ∈ ${[...VALID_ROLES].join('/')}）`); process.exit(10) }
 if (!['basic', 'strict'].includes(opt.level)) { console.error(`--level 非法: ${opt.level}（须 basic|strict）`); process.exit(10) }
 
-const project = requireExistingDir(opt.project, '项目目录')
+const project = opt.project ? requireExistingDir(opt.project, '项目目录') : null
 const role = opt.role
 const level = opt.level
 const strict = level === 'strict'
@@ -169,6 +182,124 @@ const strict = level === 'strict'
 // v18.70.0（批 7 · BOM 口径统一）：剥 UTF-8 BOM（与 count-chars/md2html 同口径）。本脚本是**结构校验器**
 //   （回报/产物按 `##`/`###` 匹配），BOM 只影响首行 h1，故**静默剥离不警告**（警告纯属噪音）；不改退出码。
 const readText = (p) => { const t = readFileSync(p, 'utf8'); return t.charCodeAt(0) === 0xfeff ? t.slice(1) : t }
+
+// ── v18.81.0（批 1.4）：**会话日志独立核对**（只在显式给 `--session-log` 时启用）──────────────
+// 为什么默认关：会话日志的**路径与事件形态属宿主契约**（实测本机为
+//   `$DSH_HOME/sessions/<workspace>/<id>/session.v4.jsonl.zstd`）。把它设成默认依赖，会让本门在
+//   别的宿主版本/部署形态下**假红**——那比不判更坏。故：**显式开启、开启即严格**。
+// 判据（这一层是**真的独立**，不是又一层自述）：账本由主控写，会话日志由**宿主**写。
+const sessionIndex = (() => {
+  if (!opt.sessionLog) return null
+  const target = opt.sessionLog
+  if (!existsSync(target) && !opt.sessionRoot) {
+    console.error(`--session-log 目标不存在: ${target}（传会话 id 时请一并给 --session-root）`)
+    process.exit(10)
+  }
+  const loaded = loadSessions(target, { sessionRoot: opt.sessionRoot || null })
+  if (loaded.files.length === 0) {
+    console.error(`--session-log 未匹配到任何会话文件: ${target}`)
+    process.exit(10)
+  }
+  const { pairs, callOnly } = pairAskUserQuestion(loaded.events)
+  return { ...loaded, pairs, callOnly }
+})()
+
+// ── v18.81.0（批 1.4）：**盲评件契约**模式——独立出口，不进入 A 组（它审的是一个产物，不是一个项目）
+/** 盲评禁忌面：这些**生产中间产物**不得进入审稿人的载荷（真源 = 09 卡 §🕶 的「不给」清单）。 */
+const BLIND_FORBIDDEN = [
+  '分析大纲', '数据卡', '文献卡', '案例卡', '先行者清单', '批判报告',
+  'G14-检测报告', '核验报告', '局限性', '审计视图', '闸门记录', '审稿报告', 'status.md',
+]
+if (opt.blindReview) {
+  const r = runBlindReview(opt.blindReview, sessionIndex ? { events: sessionIndex.events, collectTouched } : null)
+  const exit = r.hard.some((h) => h.exitClass === 20) ? 20 : (r.hard.length ? 21 : (r.soft.length ? 22 : 0))
+  console.log(JSON.stringify({
+    mode: 'blind-review',
+    artifact: opt.blindReview,
+    exit,
+    hardCount: r.hard.length,
+    softCount: r.soft.length,
+    hard: r.hard.map(({ exitClass, ...rest }) => rest),
+    soft: r.soft,
+    ...(r.notes.length ? { notes: r.notes } : {}),
+    countingNote: '本模式只判**盲评件契约**（六维逐字 + 总评分=和 + 已读范围 + 禁忌面自述层），'
+      + '给了 --session-log 时另判**独立越界层**（宿主日志，主控改不了）。退出码与 A 组共用：20/21/22/0。',
+    checkedAt: new Date().toISOString(),
+  }, null, 2))
+  console.error(`盲评件契约：${opt.blindReview}｜exit ${exit}（硬 ${r.hard.length} / 软 ${r.soft.length}）`)
+  process.exit(exit)
+}
+
+// ── v18.81.0（批 1.4）：**盲评件契约**模式（`--blind-review <路径>`）────────────────────────
+// 定位：把 T9 盲评的产物契约（`09-审稿-peer-reviewer.md` §🕶 盲评模式）变成机械判据。
+//   与 A 组共用退出码语义：20 产物缺失 / 21 结构不合 / 22 仅软提示。
+// 为什么放在本脚本而不是新脚本：① 「已读范围不得含禁忌面」的**独立核对**要用
+//   `_lib/session-log.mjs` 的 `collectTouched`（本脚本已 import）；② 新入口要连带改
+//   `SKILL.md` 白名单行 + 计数 + 对照用例，而本批的原则是**先减字再加规则**。
+// 禁忌面真源 = 09 卡 §🕶 盲评模式的「不给」清单（此处按**文件名词**匹配；改卡须同批改这里）。
+// ⚠️ 它必须声明在**调用点之前**：`const` 与函数声明不同，**不提升**——首版把它放在
+//   `runBlindReview` 定义旁（晚于调用点），运行时直接 TDZ 崩溃（`Cannot access 'BLIND_FORBIDDEN'
+//   before initialization`，被 exit-guard 映射为 70）。实测由 `--blind-review` 探针当场抓出。
+
+/** 用同一套 hard/soft 结构跑盲评件契约，返回退出码（不写盘）。 */
+function runBlindReview(blindPath, session) {
+  const hard = [], soft = [], notes = []
+  if (!existsSync(blindPath)) { hard.push({ check: 'BR-A1', subject: blindPath, severity: 'hard', detail: '盲评件不存在（产物缺失）', exitClass: 20 }); return { hard, soft, notes } }
+  let text = ''
+  try { text = readText(blindPath) } catch { hard.push({ check: 'BR-A1', subject: blindPath, severity: 'hard', detail: '盲评件不可读', exitClass: 20 }); return { hard, soft, notes } }
+  if (!text.trim()) { hard.push({ check: 'BR-A1', subject: blindPath, severity: 'hard', detail: '盲评件 0 字节', exitClass: 20 }); return { hard, soft, notes } }
+
+  // ① 六维名逐字 + 每维 x/5（名字真源 = 09 卡，机检契约不得改写）
+  const DIMS = ['原创性', '方法论', '证据强度', '论证结构', '写作质量', '引文规范']
+  const scores = []
+  for (const d of DIMS) {
+    const m = new RegExp(`${d}\\s*[（(]\\s*([1-5])\\s*/\\s*5\\s*[)）]`).exec(text)
+    if (!m) { hard.push({ check: 'BR-A2', subject: d, severity: 'hard', detail: `缺「${d}（x/5）」——六维名是机检契约，逐字不得改写，且每维都要写出 x/5`, exitClass: 21 }) }
+    else scores.push(Number(m[1]))
+  }
+  // ② 总评分 = 六维之和（逐项写出算式）
+  const total = /总评分[^\n]*?(\d{1,2})\s*\/\s*30/.exec(text)
+  if (!total) {
+    hard.push({ check: 'BR-A3', subject: '总评分', severity: 'hard', detail: '缺 `总评分 XX/30`（盲评件与审稿报告共用该契约）', exitClass: 21 })
+  } else if (scores.length === 6) {
+    const sum = scores.reduce((a, b) => a + b, 0)
+    if (Number(total[1]) !== sum) {
+      hard.push({ check: 'BR-A3', subject: '总评分', severity: 'hard', detail: `总评分 ${total[1]} ≠ 六维之和 ${sum}（逐项写算式：${scores.join('+')} = ${sum}）`, exitClass: 21 })
+    }
+  }
+  // ③ 「已读范围」为首节且非空
+  const mRead = /^##\s*已读范围/m.exec(text)
+  if (!mRead) {
+    hard.push({ check: 'BR-A4', subject: '已读范围', severity: 'hard', detail: '缺首节「## 已读范围」——盲评的**全部效力**建立在「读的是什么」可核对之上', exitClass: 21 })
+  } else {
+    const after = text.slice(mRead.index + mRead[0].length)
+    const nextH2 = after.search(/^##\s/m)
+    const body = (nextH2 === -1 ? after : after.slice(0, nextH2)).trim()
+    if (!body) hard.push({ check: 'BR-A4', subject: '已读范围', severity: 'hard', detail: '「已读范围」为空——空节会被读成「已核对过」', exitClass: 21 })
+    // ④ 禁忌面（本轮**自述**层）
+    const hit = BLIND_FORBIDDEN.filter((k) => body.includes(k))
+    if (hit.length) {
+      hard.push({ check: 'BR-A5', subject: '已读范围', severity: 'hard', detail: `已读范围含**禁忌面**：${hit.join(' / ')}——盲评载荷不得含生产中间产物（09 卡 §🕶 的「不给」清单）`, exitClass: 21 })
+    }
+    if (!/匿名/.test(text)) soft.push({ check: 'BR-A6', subject: '匿名声明', severity: 'soft', detail: '未见「匿名送审稿 / 未接触生产中间产物」类声明' })
+  }
+  // ⑤ 独立核对（给了 `--session-log` 才做）：会话真正碰过的路径 vs 禁忌面
+  if (session) {
+    const { collectTouched } = session
+    const touched = collectTouched(session.events)
+    const bad = touched.filter((t) => BLIND_FORBIDDEN.some((k) => String(t.value).includes(k)))
+    if (bad.length) {
+      hard.push({
+        check: 'BR-B1', subject: '会话越界', severity: 'hard', exitClass: 21,
+        detail: `会话日志显示该次评审**真的读过禁忌面**（${bad.length} 处，宿主记录、主控改不了）：`
+          + bad.slice(0, 4).map((t) => `${t.tool}→${t.value}`).join('；') + `${bad.length > 4 ? ' …' : ''}`,
+      })
+    } else {
+      notes.push(`盲评独立核对：会话共 ${touched.length} 次带路径的调用，未命中禁忌面（宿主日志，非自述）。`)
+    }
+  }
+  return { hard, soft, notes }
+}
 
 let reportText = null
 if (opt.report === '-') reportText = readFileSync(0, 'utf8')          // stdin
@@ -181,6 +312,12 @@ else if (opt.reportFile) {
 // ── A 组：产物侧 ───────────────────────────────────────────────────────────
 const hard = []
 const soft = []
+// v18.81.0（独立审计批 1.1）：**信息通道**——与 hard/soft 分开，专门承载「可见但本轮不判」的观测。
+//   为什么需要第三条通道：把「无回执账本」记作 soft 会让 exit 0 → 22，从而把**门齐备且记录完整**的
+//   最好项目在 `quality-score` 的 handoff 分量上从 1 压到 0.5（该分量把 22 映射为 0.5）——
+//   那是对合规项目的反向惩罚（与 A6「记录越勤越扣分」同型）。判据：**新观测在拿到存量迁移方案之前，
+//   只能可见，不能改判定。**
+const notes = []
 const artifacts = []
 const addHard = (check, subject, detail, exitClass) => hard.push({ check, subject, severity: 'hard', detail, exitClass })
 const addSoft = (check, subject, detail) => soft.push({ check, subject, severity: 'soft', detail })
@@ -448,7 +585,24 @@ if (strict && role === 'T7') {
 //   （模板 + AGENTS.md 都要求），首轮角色可缺（文件可能还没建）。
 if (strict) {
   const logPath = join(project, 'agents-log.md')
-  if (existsSync(logPath)) {
+  // ── v18.81.0（独立审计批 2 · 2.3）：**T8 不适用本项**（修掉「记录越勤越扣分」的逆向激励）─────────
+  // 病灶（实测两项目对照）：
+  //   · `run/test-v18-78-2-县中塌陷`（agents-log 有 T1/T2/T3/T7 四条记录）→ 缺 `### T8 执行记录`
+  //     → `others.size=4 ≥ 3` → **硬 21** → `quality-score` 的 handoff 分量 = **0**；
+  //   · `run/共锁-自愿性理论的第四象限`（**一条记录都没有**）→ `others.size=0` → 软 → **22** → 分量 **0.5**。
+  //   即：**记录得越多，越容易被判硬、分数越低**；而完全不记的项目反而拿 0.5。
+  // 判据（不是"为了分数好看"，而是**本项的前提在 T8 上不成立**）：
+  //   A6 的依据是「**派发话术**要求子代理追加 agents-log，走满 3 个角色后已是既成约定」（见下方旧注释）。
+  //   而 T8 **不 spawn 子代理**——本文件头注释的「档位不对称」段自陈「T8 是主控亲执行的角色，本就无收报」
+  //   （`ROLE_TO_ARTIFACTS['T8']` 为空即此意），`08-终检-finalizer.md` 亦写死「T8 不 spawn 子代理」。
+  //   ⇒ 把**面向子代理的留痕约定**套到 T8 上，是把同一文件自己声明的非对称性抹掉。
+  //   实测本项对本仓最具代表性的项目给出的正是那个**反向激励**（越规范越吃亏），故在此显式排除。
+  // 边界（如实）：**排除的是「T8 记录」这一项**，不是排除 T8 的留痕——T8 的产物（`final/M-Gate-Report.json`、
+  //   `final/交付说明.md`）仍由 A1 与 M-Exist 系列核；T1-T7/T9/G14 的 A6 行为**一字未改**。
+  if (role === 'T8') {
+    notes.push('A6（agents-log 执行记录）：T8 **不 spawn 子代理**（主控亲执行），'
+      + '本项面向子代理的留痕约定不适用 → 不判；T8 的留痕由 `final/` 产物（M-Gate-Report / 交付说明）核。')
+  } else if (existsSync(logPath)) {
     const log = readFileSync(logPath, 'utf8')
     const token = role === 'G14' ? 'G14' : role
     if (!new RegExp(`###\\s*${token}\\s*执行记录`).test(log)) {
@@ -557,14 +711,69 @@ if (reportText != null) {
 //   **主控在 Phase 5 交付前调用 `--require-gates`**；这也让本项成为「交付前一次性验收」而非每轮开销。
 if (opt.requireGates) {
   const GATE_DOCS = [
-    ['阶段确认-Phase0.md', 'Phase 0 定题'],
-    ['阶段确认-Phase2.5.md', 'Phase 2.5 大纲确认'],
-    ['阶段确认-Phase3.5.md', 'Phase 3.5 洞察补充'],
-    ['阶段确认-Phase5.md', 'Phase 5 终稿交付'],
+    ['阶段确认-Phase0.md', 'Phase 0 定题', 'Phase0'],
+    ['阶段确认-Phase2.5.md', 'Phase 2.5 大纲确认', 'Phase2.5'],
+    ['阶段确认-Phase3.5.md', 'Phase 3.5 洞察补充', 'Phase3.5'],
+    ['阶段确认-Phase5.md', 'Phase 5 终稿交付', 'Phase5'],
   ]
   const GATE_FIELDS = ['主人原话', '回复时间', '提问方式', '主控落盘结论', '轮次计数']
+  // ── v18.81.0（独立审计批 1.1）：**人门口回执账本** ──────────────────────────────
+  // 病灶（实测，不是假想）：45 份真实 `阶段确认-*.md` 里，「主控落盘结论」含 **驳回/打回** 的实例 = **0**，
+  //   而「主人原话」栏**系统性填的是主控自己的选项标签**——`cn-llm-inference-cost-econ/阶段确认-Phase2.5.md:47`
+  //   与 `-Phase5.md:53` 直接把「推荐:按 T4 大纲推进…」「推荐:不进 minor 修订…」抄进该栏；
+  //   45 份里只有 1 份是逐字原话。即：§6 五字段只能证明「有人填过」，不能证明「主人真的这么答过」，
+  //   而机制把它称作**权威留痕**。
+  // 判据：**回执账本 `audits/gate-receipts.jsonl`**（一行一次人门往返，字段形态见
+  //   `references/templates/主人确认-template.md` §6 的「回执 id」条）。§6 用 `回执 id` 指向账本行
+  //   （形如 `Phase0#1`——**一个门可以有多轮**，实测 `test-v18-78-2-县中塌陷` 的 Phase 0 就有两轮），
+  //   本门核对三件事：① 账本里确有该次往返；② 该回执的 gate 与本文档一致；③ §6 的话与账本**相容**
+  //   （账本 `rawAnswer` 须逐字出现在「主人原话」栏、`answeredAt` 须出现在「回复时间」栏）。
+  //   「相容」而非「相等」是刻意的：真实确认单会把**多轮**往返合并写在同一个 §6（实测），
+  //   精确等值会把那种正常形态判红。代价是它比等值弱——**如实登记，不假装更强**。
+  // 三态（分段，避免一刀切误伤存量）：
+  //   · **无账本文件** → 只进 `notes[]`（**不改退出码**）：存量项目在 v18.81.0 前不可能有账本；
+  //     若把它记作 soft，会把「门齐备且记录完整」的最好项目从 exit 0 压到 22（评分 handoff 分量
+  //     由 1 掉到 0.5）——**那是对合规项目的反向惩罚**，与 A6 的逆向激励同型，故刻意不挂软项。
+  //   · **有账本**：§6 缺 `回执 id` / id 解析不到 / gate 不符 / 文本不相容 → **硬 21**（动作 = 回填）；
+  //     账本行自身不自洽（缺字段、tool 名不对、`options[chosenIndex] ≠ chosenLabel`）→ **硬 21**。
+  // ⚠️ 能力边界（如实，不得读成「已双盲」或「已防伪」）：**账本仍由主控写入**，它不是 Host 侧独立记录，
+  //   故本项提高的是**自述的门槛与一致性**（必须维护一份可交叉核对的结构化账本），**不是密码学保证**。
+  //   真正独立于主控的核对路径 = 会话日志（Host 写、主控改不了）——那是**待办**，不构成本项的宣称。
+  const receiptsPath = join(project, 'audits', 'gate-receipts.jsonl')
+  const receipts = []
+  const badLines = []
+  if (existsSync(receiptsPath)) {
+    let raw = ''
+    try { raw = readFileSync(receiptsPath, 'utf8') } catch { addHard('A7', 'gate-receipts.jsonl', '回执账本存在但不可读', 21) }
+    raw.split(/\r?\n/).forEach((line, i) => {
+      const t = line.trim()
+      if (!t) return
+      let o = null
+      try { o = JSON.parse(t) } catch { badLines.push(`第 ${i + 1} 行不是合法 JSON`); return }
+      const problems = []
+      if (typeof o.gate !== 'string' || !o.gate) problems.push('缺 gate')
+      if (typeof o.answeredAt !== 'string' || !o.answeredAt) problems.push('缺 answeredAt')
+      if (typeof o.rawAnswer !== 'string' || !o.rawAnswer) problems.push('缺 rawAnswer')
+      if (o.tool !== 'ask_user_question') problems.push('tool 必须逐字为 "ask_user_question"')
+      if (!Array.isArray(o.options) || o.options.length === 0) problems.push('options 必须是非空数组')
+      else if (!Number.isInteger(o.chosenIndex) || o.chosenIndex < 0 || o.chosenIndex >= o.options.length) problems.push('chosenIndex 越界或非整数')
+      else if (o.chosenLabel !== o.options[o.chosenIndex]) problems.push('chosenLabel ≠ options[chosenIndex]（账本自身不自洽）')
+      if (problems.length) { badLines.push(`第 ${i + 1} 行：${problems.join(' / ')}`); return }
+      receipts.push({ ...o, _line: i + 1, _key: `${o.gate}#${o.round ?? 1}` })
+    })
+    if (badLines.length) {
+      addHard('A7', 'gate-receipts.jsonl',
+        `回执账本 ${badLines.length} 行不合法：${badLines.slice(0, 3).join('；')}${badLines.length > 3 ? ' …' : ''}`
+        + '——账本损坏时**回执核对不可当通过**（与「N/A ≠ SKIP」同口径）', 21)
+    }
+  }
+  /** 取 §6 段内某固定字段的值（字段名真源 = 模板 §6；此处按名字匹配，不抄行文）。 */
+  const fieldVal = (s, k) => {
+    const m = new RegExp(`\\*\\*${k}\\*\\*[：:]\\s*([^\\n]*)`).exec(s)
+    return m ? m[1].trim() : null
+  }
   const missingDocs = []
-  for (const [f, label] of GATE_DOCS) {
+  for (const [f, label, gateId] of GATE_DOCS) {
     const p = join(project, f)
     if (!existsSync(p)) { missingDocs.push(`${f}（${label}）`); continue }
     let bytes = null
@@ -602,7 +811,224 @@ if (opt.requireGates) {
     if (/TBD|待回填/.test(sec)) {
       addSoft('A7', f, `§6 含「TBD / 待回填」字样（${label}）——请确认是主人真这么答，还是没回填`)
     }
+    // ── v18.81.0（批 2.1）：**轮次计数越额**（此前只判「字段非空」，写「已用 5/2 轮」也放行）────────
+    // 口径真源 = `_lib/round-ledger.mjs` 的 `ROUND_CAPS`（A ≤2 / B ≤1 / G ≤2；**相位轮无额度**）。
+    // 只判**本门声明的数字**是否越额；「账本 ↔ §6 是否一致」放在循环外按 Phase 5 做（累计量只在那时可比）。
+    // ⚠️ **本项必须排在「回执账本缺位即 continue」之前**：轮次额度与「有没有回执账本」是**两件独立的事**，
+    //   首版把它写在回执块之后 → 无回执账本的项目（占多数）**永远轮不到本项**（本批自证抓出）。
+    const roundField = fieldVal(sec, '轮次计数') || ''
+    for (const m of roundField.matchAll(/([ABG])\s*轨?\s*(\d+)\s*\/\s*(\d+)/g)) {
+      const [, trk, usedRaw, capRaw] = m
+      const used = Number(usedRaw); const cap = ROUND_CAPS[trk]
+      if (Number(capRaw) !== cap) {
+        addHard('A7', f, `§6「轮次计数」里 ${trk} 轨的分母写成 ${capRaw}，而额度真源是 **${cap}**（见 \`${LEDGER_REL}\` 与 \`glossary.md\` §修订回环）`, 21)
+      }
+      if (used > cap) {
+        addHard('A7', f, `§6「轮次计数」**越额**：${trk} 轨 ${used}/${cap}——` +
+          (trk === 'A'
+            ? '第 3 轮应走 **Acknowledged Limitations**（未关闭 P0/P1 搬入 `final/局限性.md`）并升级主控，不得继续打回'
+            : '该轨额度用尽后只出建议件（交付后由主控另行处置）'), 21)
+      }
+    }
+    // ── v18.81.0（批 1.1）：回执核对（**只在账本存在时判硬**，理由见上方三态注释）──────────
+    if (!existsSync(receiptsPath)) continue
+    const idRaw = fieldVal(sec, '回执 id')
+    if (!idRaw) {
+      addHard('A7', f, `§6 缺「**回执 id**」字段（${label}）——回执账本在盘却未被引用：`
+        + '主人的决策将只剩主控自述这一个来源（模板 §6 已列该字段为必填）', 21)
+      continue
+    }
+    const idList = idRaw.split(/[、,，\s]+/).filter(Boolean)
+    const hit = idList.map((id) => receipts.find((r) => r._key === id)).filter(Boolean)
+    if (hit.length !== idList.length) {
+      const miss = idList.filter((id) => !receipts.some((r) => r._key === id))
+      addHard('A7', f, `§6 的「回执 id」在账本中找不到：${miss.join(' / ')}`
+        + `（可用 id 形如 \`Phase0#1\`；账本共 ${receipts.length} 条有效回执）`, 21)
+      continue
+    }
+    const wrongGate = hit.filter((r) => r.gate !== gateId)
+    if (wrongGate.length) {
+      addHard('A7', f, `「回执 id」指向的 gate 与本文档不一致（期望 ${gateId}，实得 ${wrongGate.map((r) => r.gate).join(' / ')}）`, 21)
+      continue
+    }
+    const answerVal = fieldVal(sec, '主人原话') || ''
+    const whenVal = fieldVal(sec, '回复时间') || ''
+    const textMiss = hit.filter((r) => !answerVal.includes(r.rawAnswer))
+    if (textMiss.length) {
+      addHard('A7', f, `§6「主人原话」与回执**不相容**：回执 ${textMiss.map((r) => r._key).join(' / ')} 的 \`rawAnswer\` `
+        + '未逐字出现在原话栏——该栏必须记录主人的实际回复（模板 §6「不得改写」），不得替换为主控的选项标签', 21)
+    }
+    const timeMiss = hit.filter((r) => !whenVal.includes(r.answeredAt))
+    if (timeMiss.length) {
+      addHard('A7', f, `§6「回复时间」未包含回执的 \`answeredAt\`：`
+        + `${timeMiss.map((r) => `${r._key}=${r.answeredAt}`).join('；')}`, 21)
+    }
+    // ── v18.81.0（批 1.4）：**用宿主写的会话日志核对账本**（开启 `--session-log` 时）──────────
+    // 批 1.1 的边界是「账本由主控写 ⇒ 提高自述门槛，不是防伪」。本层把那个边界**实质收掉**：
+    //   日志由宿主落盘，主控改不了；核对的是「这条回执声称的主人答复，在日志里确有对应的
+    //   `ask_user_question` 调用与答复，且答复逐字相同」。
+    if (sessionIndex) {
+      for (const r of hit) {
+        if (!r.callId) {
+          addHard('A7', f, `回执 ${r._key} 缺 \`callId\`——**开启 --session-log 后该字段必填**：`
+            + '没有它就无法把账本条目绑到日志里那一次真实提问（账本将退回「仅自述」）', 21)
+          continue
+        }
+        const pair = sessionIndex.pairs.find((p) => p.callId === r.callId)
+        if (!pair) {
+          const known = sessionIndex.callOnly.some((c) => c.callId === r.callId)
+          addHard('A7', f, `回执 ${r._key} 的 \`callId=${r.callId}\` 在会话日志中`
+            + (known ? '**只有调用、没有答复记录**' : '**找不到**')
+            + `（本批读到 ${sessionIndex.files.length} 个会话文件、${sessionIndex.pairs.length} 次完整问答）——`
+            + '账本条目无独立来源可核', 21)
+          continue
+        }
+        if (!pair.selected.includes(r.rawAnswer)) {
+          addHard('A7', f, `回执 ${r._key} 与**会话日志**不一致：账本 \`rawAnswer\`=「${r.rawAnswer}」，`
+            + `而宿主记录的答复是「${pair.selected.join(' / ') || '（无）'}」。`
+            + '日志由宿主写入、主控改不了，故此项**不可由改账本消除**', 21)
+        }
+      }
+    }
   }
+  // 无账本 → 只进 notes（**不改退出码**，理由见上方三态注释：挂软项会反向惩罚合规项目）
+  if (!existsSync(receiptsPath)) {
+    notes.push('人门口回执：未发现 `audits/gate-receipts.jsonl` —— 本项目的门留痕仅为 §6 **人工自述**'
+      + '（无法核对「主人真的这么答过」）。v18.81.0 前开工的项目属此形态；'
+      + '**新项目必须按 `references/templates/主人确认-template.md` §6 落回执账本**（一行一次往返）。')
+  } else if (receipts.length === 0 && badLines.length === 0) {
+    notes.push('人门口回执：账本存在但 0 条有效回执——与「没记」同形，禁止（与 disproofs-check 对空账本的口径一致）。')
+  }
+  if (sessionIndex) {
+    const totalEvents = sessionIndex.perFile.reduce((s, x) => s + x.events, 0)
+    const badLines = sessionIndex.perFile.reduce((s, x) => s + x.badLines, 0)
+    notes.push(`人门口回执·独立核对：已读 ${sessionIndex.files.length} 个会话文件 / ${totalEvents} 条事件`
+      + `${badLines ? `（${badLines} 行不可解析）` : ''}，配对到 ${sessionIndex.pairs.length} 次 \`ask_user_question\` 完整问答`
+      + `${sessionIndex.callOnly.length ? `（另有 ${sessionIndex.callOnly.length} 次只有调用、无答复记录）` : ''}`
+      + '——**这一层不依赖账本自述**（日志由宿主写入、主控改不了）。')
+  }
+  // ── v18.81.0（批 2.1）：**轮次账本**的独立核对（只在账本存在时判）────────────────────────
+  // 三件事：① 账本可解析（损坏 ⇒ 额度不可判，不得当通过）；② 账本自身未越额；
+  //   ③ **Phase 5 的 §6 声明**与账本累计计数一致（其余门的 §6 是**当时**读数，与累计量不可比，故不比）。
+  const ledgerInfo = parseLedger(project)
+  if (ledgerInfo.exists) {
+    if (ledgerInfo.malformed.length) {
+      addHard('A7', LEDGER_REL, `轮次账本有 ${ledgerInfo.malformed.length} 处不可解析：${ledgerInfo.malformed.slice(0, 3).join('；')}`
+        + '——账本损坏时**额度不可判**，不得当通过（与「N/A ≠ SKIP」同口径）', 21)
+    }
+    if (ledgerInfo.over.length) {
+      addHard('A7', LEDGER_REL, `轮次账本已越额：${ledgerInfo.over.join('；')}`, 21)
+    }
+    const p5 = join(project, '阶段确认-Phase5.md')
+    if (existsSync(p5)) {
+      let t5 = ''
+      try { t5 = readFileSync(p5, 'utf8') } catch { /* 不可读已由上文报 */ }
+      // ⚠️ **不要用 `\Z`**：JS 正则里 `\Z` 不是「串尾」断言——它退化成**字面量 `Z`**，
+      //   于是该节在多数文档里**匹配不上**，而 `s5` 为 null 会让 declared 为空、
+      //   **静默跳过不一致检查**（本批自证抓出：探针显示 accounts.A=1 而 §6 写 0/2 却不报）。
+      //   这里改用与上文同款的「search + 切到下一个 `### 7.`」写法，避免两类锚点差异。
+      const start5 = t5.search(/^###\s*6\.\s*主人回复/m)
+      let field5 = ''
+      if (start5 !== -1) {
+        const after5 = t5.slice(start5)
+        const next5 = after5.slice(1).search(/^###\s*7\./m)
+        const sec5 = next5 === -1 ? after5 : after5.slice(0, next5 + 1)
+        field5 = fieldVal(sec5, '轮次计数') || ''
+      }
+      const declared = {}
+      for (const m of field5.matchAll(/([ABG])\s*轨?\s*(\d+)\s*\/\s*(\d+)/g)) declared[m[1]] = Number(m[2])
+      const mismatch = Object.keys(declared).filter((k) => declared[k] !== (ledgerInfo.counts[k] || 0))
+      if (mismatch.length) {
+        addHard('A7', LEDGER_REL, `Phase 5 的 §6「轮次计数」与账本**不一致**：`
+          + mismatch.map((k) => `${k} 轨 §6 记 ${declared[k]} 而账本累计 ${ledgerInfo.counts[k] || 0}`).join('；')
+          + '——两者必须同源（账本是累计真源，§6 是当时读数；终稿门应已收敛）', 21)
+      }
+    }
+  } else {
+    notes.push(`轮次额度：未发现 \`${LEDGER_REL}\` —— **A 轨 ≤2 / B 轨 ≤1 / G 环 ≤2 本轮仅按 §6 声明的数字判越额**，`
+      + '无累计账本可比（存量项目形态；新项目应由 `apply-revision-cycle.mjs` 落账）。')
+  }
+  // ── v18.81.0（批 2.2）：**A9 轮次复核绑定**（每一轮内容修订都必须有一份指纹相符的复核报告）──────
+  // 病灶（审计 P0-2，实测）：`run/test-v18-78-2-县中塌陷` 的 **B 轨深化轮（v4→v5，15 项编辑，改后即定稿）**
+  //   **没有独立 T7 复核产物**——`audits/` 下只有 `复核报告-v1.md`，其首节明写只审 `drafts/初稿-v4.md`。
+  //   而 A4b 与 M-Exist-4 都只判「审计报告 ↔ 复核报告」的**编号配对**，**B 轨 / 相位轮根本没有审计报告**，
+  //   于是「某一轮内容修订从未被复核」在机检层**完全不可见**。
+  // 判据：以 `drafts/轮次账本.md` 为真源（批 2.1 已建），对**每一行 A/B 轨**要求
+  //   ① `复核报告` 列非空且文件在盘；② 该报告含 `被审正文 sha256`；③ 该指纹与本行 `正文版本` 的实算值相符。
+  // 为什么用指纹而不是编号：编号是**审计轮次**的键，B 轨/相位轮没有这个键；指纹是唯一能把「复核过哪一版」钉死的键。
+  // 分段（与批 1/2.1 一致）：**账本不存在则不判**（存量项目不追溯）。
+  if (ledgerInfo.exists) {
+    for (const r of ledgerInfo.rows) {
+      if (r.track !== 'A' && r.track !== 'B') continue
+      const label = `${r.track} 轨第 ${r.n} 轮（正文 ${r.draft || '**账本未记**'}）`
+      if (!r.review) {
+        addHard('A9', LEDGER_REL, `${label} 缺「复核报告」列——该轮内容修订**无复核产物**`
+          + '（B 轨/相位轮没有审计报告可配对，故这一列是它们唯一的复核凭证）', 21)
+        continue
+      }
+      const repPath = resolve(project, r.review)
+      if (!existsSync(repPath)) {
+        addHard('A9', LEDGER_REL, `${label} 的复核报告不在盘：\`${r.review}\``, 21)
+        continue
+      }
+      if (!r.draft) {
+        addSoft('A9', LEDGER_REL, `${label} 的「正文版本」列空缺 → **无法核对复核指纹**（如实声明，不算通过）`)
+        continue
+      }
+      const draftFile = resolve(project, r.draft)
+      if (!existsSync(draftFile)) {
+        addSoft('A9', LEDGER_REL, `${label} 的正文文件不在盘（${r.draft}）→ 无法核对复核指纹`)
+        continue
+      }
+      let want = ''
+      try { want = createHash('sha256').update(readFileSync(draftFile)).digest('hex') } catch { /* 下面按缺指纹报 */ }
+      let repTxt = ''
+      try { repTxt = readFileSync(repPath, 'utf8') } catch { /* 上面已确认可读 */ }
+      // ⚠️ 模式必须容忍**模板自己规定的那种写法**：`- **被审正文 sha256**：\`<hex>\``——
+      //   `sha256` 后面紧跟的是 `**` 而不是冒号。首版正则写成 `…sha256\s*[:：]?…` → 对模板原文
+      //   **零命中** → 一份照模板写的合规复核报告被判「缺字段」（本批自证抓出：M1 用例当场红）。
+      //   判据：**门用来识别契约的正则，必须先在契约原文上试一遍**（这与「改机制前先读文档」同源）。
+      const mm = /被审正文\s*(?:sha256|指纹)[\s*]{0,6}[:：]?[\s*]{0,6}`?([0-9a-fA-F]{12,64})`?/.exec(repTxt)
+      if (!mm) {
+        addHard('A9', LEDGER_REL, `${label} 的复核报告缺「**被审正文 sha256**」字段`
+          + '——没有它无法证明该报告复核的是**这一版**正文（编号对不上 B 轨/相位轮）', 21)
+        continue
+      }
+      const got = mm[1].toLowerCase()
+      const n = Math.min(got.length, 12)
+      if (!want.toLowerCase().startsWith(got.slice(0, n))) {
+        addHard('A9', LEDGER_REL, `${label} 的复核指纹**不符**：账本该轮正文实算 ${want.slice(0, 12)}… `
+          + `vs 报告声明 ${got.slice(0, 12)}…——该报告复核的是**另一版**正文`, 21)
+      }
+    }
+  }
+  // ── v18.80.1+v（批 5 · A10）：**`drafts/` 语义目录不得混入中间件** ──────────────────────────
+  // 判据真源 = `references/agents/05-写作-writer.md` 的修订轮纪律 ④（v18.79.0）：
+  //   「段级 diff 的中间件一律落 `%TEMP%` 或 `<项目>/_tmp/`，**不得写进 `drafts/`**」——
+  //   理由是 `drafts/` 的语义是「**正文版本**」，而 `build-evidence-bundle.mjs` 靠
+  //   「`drafts/` 里最高版 `初稿-vN.md`」**自动挑选被审正文**；混入 `_t5-probe*/` 之类会让
+  //   「**最高版本 = 谁**」这条判据依赖命名巧合。卡里自己写着「用毕自删」，并注明「主控手工清了两次」
+  //   ——**手工清两次 = 该规则从未被机械化**（本次实测：`run/test-v18-78-2-县中塌陷/drafts/` 下
+  //   `_t5-probe{,2,3}` 共 **6.12 MB / 139 文件**，全部违反该条）。
+  // 判级取**软**（`addSoft`）：它不改变稿件质量，也不阻塞交付，但必须**可见**——
+  //   且**不追溯判红存量项目**（与批 1/2 的分段口径一致：先把事实摆出来，语义处置归主控）。
+  // 判据（只认能确证的形态）：`drafts/` 下的**子目录**或**文件名**以 `_` 开头，或形如 `_t5-*` / `*.tmp` / `*.bak`
+  //   ——**注意只查 `drafts/` 一级**，不递归（`drafts/archive/` 之类的既有归档不算）。
+  //   白名单：`初稿-vN.md` / `修订说明-vN.md` / `段级diff-vN.md` / `轮次账本.md` / `archive/`。
+  try {
+    const draftsDir = join(project, 'drafts')
+    if (existsSync(draftsDir)) {
+      const ALLOW = /^(初稿-v\d+\.md|修订说明-v\d+\.md|段级diff-v\d+\.md|轮次账本\.md|archive)$/
+      const junk = readdirSync(draftsDir).filter((n) => !ALLOW.test(n) && (/^_/.test(n) || /\.(tmp|bak)$/.test(n) || /^_t5-/.test(n)))
+      if (junk.length) {
+        addSoft('A10', 'drafts/ 语义目录', `\`drafts/\` 里混入 ${junk.length} 项**非正文版本**产物：`
+          + `${junk.slice(0, 6).join(' / ')}${junk.length > 6 ? ' …' : ''}——`
+          + '该目录的语义是「**正文版本**」（`build-evidence-bundle` 靠「最高版 `初稿-vN.md`」自动挑被审正文），'
+          + '混入中间件会让「最高版本 = 谁」依赖**命名巧合**。按 05 卡修订轮纪律 ④，中间件应落 `%TEMP%` 或 `<项目>/_tmp/`，'
+          + '**用毕自删**。（本项为**软提示**：不阻塞交付，但请在该项目下次落盘前清掉。）')
+      }
+    }
+  } catch { /* 目录不可读则跳过：不把「读不到」当「干净」以外的事处理 */ }
   if (missingDocs.length) {
     addHard('A7', '人在环四门', `四门确认单不全：缺 ${missingDocs.join(' / ')}——主人 2026-09-25 定案「四门必须」，交付前四份都要在盘`, 20)
   }
@@ -639,6 +1065,9 @@ const out = {
     + '判定请以 exit 与 hard/soft 清单为准，pass 仅供速览。',
   hard: hard.map(({ exitClass, ...rest }) => rest),
   soft,
+  // v18.81.0（批 1.1）：信息通道（**不改 exit**）——目前只承载「人门口回执账本缺位」。
+  //   它与 `soft` 的分界：`soft` = 「适用但有问题，需复核」（22）；`notes` = 「观测到了，但本轮不判」。
+  ...(notes.length ? { notes } : {}),
   artifacts: opt.summary ? artifacts.filter((a) => !a.exists || a.bytes === 0) : artifacts,
   ...(report ? { report } : {}),
   checkedAt: new Date().toISOString(),

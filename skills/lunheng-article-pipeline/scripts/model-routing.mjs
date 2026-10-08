@@ -200,8 +200,28 @@ const localUsable = (name) => (noProbe ? true : localProbe[name]?.ok === true);
 const SPEED = /\b(flash|lite|mini|small|nano|tiny|turbo|oss|air|haiku)\b|(?:^|[^a-z])(?:qwen|gemma|phi)(?:\d)?|:[0-9]{1,2}b|-?[0-9]{1,2}b\b/i;
 const REASON = /\b(pro|max|plus|ultra|thinking|reasoner|reasoning|opus|sonnet|large|70b|72b|235b|405b)\b|\bM[0-9]+(?:\.[0-9]+)?\b/i;
 const NO_REASONING = /\b(vision|embed|embedding|rerank|whisper|tts|audio|image|dall|sd)\b/i;
+// ── v18.80.1+v（独立审计批 4 · 4.2）：**版本号解析必须先剥掉日期后缀** ─────────────────────
+// 病灶（实测，本批当场复现）：`versionOf('claude-haiku-4-5-20251001')` 旧实现的第三条
+//   `/(\d+(?:\.\d+)?)\s*$/` 抓到的是**日期后缀 `20251001`** → `version = 20251001`；
+//   而 `scoreOf` 里有 `s += 0.3 * c.version` → 该项给出 **+6,075,300 分**，把其余所有维度（推理 / 上下文）
+//   全部淹没。后果实测：**审计档（需求 =「顶配防漏判、不得为省钱降档」）推的主选是 `claude-haiku-4-5`
+//   ——一个「小参数快模型」**，而 `claude-opus-4-8` 落到兜底。这不是「启发式不完美」，是**排序被一个
+//   与模型能力无关的日期字段决定**。
+// 同族 id：`deepseek-v4-pro-260425`（6 位 YYMMDD）→ 旧实现同样得 260425。
+// 修法（两段，缺一不可）：
+//   ① **先剥日期**：8 位（YYYYMMDD）与 6 位（YYMMDD）纯数字段不算版本；
+//   ② **再兜底找 `-<1~2位>-` 形态**（`claude-haiku-4-5-` → 4），避免剥完只剩横杠而退回 0。
+//   ⚠️ 另加**上限夹取** `Math.min(version, 10)` 于打分处（见 `scoreOf`）——即便将来再出现没预料到的
+//   id 形态，版本项也只能是**温和的 tie-break**，不可能再压过能力维度。判据：**排序项必须与它声称
+//   衡量的东西相关**；一个能被 id 里任意数字串放大的项，不是「版本偏好」而是噪声。
 const versionOf = (id) => {
-  const m = id.match(/\bM(\d+(?:\.\d+)?)\b/i) || id.match(/\bv(\d+(?:\.\d+)?)\b/i) || id.match(/(\d+(?:\.\d+)?)\s*$/);
+  const cleaned = id
+    .replace(/(?<![0-9])(?:19|20)\d{6}(?![0-9])/g, '')   // YYYYMMDD
+    .replace(/(?<![0-9])\d{6}(?![0-9])/g, '');           // YYMMDD
+  const m = cleaned.match(/\bM(\d+(?:\.\d+)?)\b/i)
+    || cleaned.match(/\bv(\d+(?:\.\d+)?)\b/i)
+    || cleaned.match(/(\d{1,3}(?:\.\d+)?)\s*$/)
+    || cleaned.match(/-(\d{1,2})-/);
   return m ? Number(m[1]) : 0;
 };
 const ctxScore = (n) => (n >= 200000 ? 3 : n >= 100000 ? 2 : n >= 32000 ? 1 : 0);
@@ -273,7 +293,9 @@ const scoreOf = (c, t) => {
   // 检索档：本地优先（可用则压过远端）；其余档位本地不加分（顶配/强推理走远端）
   if (t.localFirst && c.local && !preferRemote) s += 10;
   if (c.provider === defaultModel?.provider) s += 0.5;
-  s += (t.key === 'retrieval' ? -0.3 : 0.3) * c.version;
+  // v18.80.1+v（批 4）：**版本项上限夹取 10**——见 `versionOf` 头注释：历史缺陷是它被日期后缀放大到
+  //   6,075,300 分、压过推理/上下文全部维度。夹取后它只能当**温和 tie-break**（≤3 分，与 reasoning 权重同量级）。
+  s += (t.key === 'retrieval' ? -0.3 : 0.3) * Math.min(c.version, 10);
   return s;
 };
 const ranked = (t) => [...usable].sort((a, b) => scoreOf(b, t) - scoreOf(a, t));
@@ -295,6 +317,49 @@ const routing = TIERS.map((t) => {
     confidence: top && second && Math.abs(scoreOf(top, t) - scoreOf(second, t)) < 0.4 ? 'low' : 'medium',
   };
 });
+
+// ── v18.80.1+v（独立审计批 4 · 4.1）：**档位策略的可满足性判定** ─────────────────────────
+// 病灶（审计 P1-5）：`_shared/模型路由.md` 要求策略 ②/③ 的前置 = 「**每档 ≥2 个可用候选**（跨平台至少一跳）」，
+//   而**没有任何脚本校验它**；且 `LUNHENG_*_PROVIDER/_MODEL` 只能表达**一个** provider+model → 「候选池」
+//   在配置面**不可表达**。⇒ 规则不可满足、也无人检查。
+// 判据（只在能判的范围内判，不猜）：从**实测候选池**逐档导出两个事实——
+//   · `candidateCount` = 该档可用候选数；`distinctProviders` = 其中不同 provider 数；
+//   · 由此判定三种策略**是否可满足**：① 继承会话模型（恒可）／② 同平台分档（需**同 provider ≥2 模型**）／
+//     ③ 跨平台分档（需 **≥2 provider 且每档 ≥2 候选**）。
+// ⚠️ **本判定不改宿主配置、也不替主人选策略**——它只把「你这台机器能不能走策略 X」变成可读事实，
+//   供 Phase 0 的「模型策略」决策引用（`references/_shared/模型路由.md` §五）。判据：**把不可满足的前置
+//   变成可见事实，比再加一条没人执行的规则有用。**
+const strategyVerdict = (() => {
+  const perTier = routing.map((r) => {
+    const list = ranked(TIERS.find((t) => t.key === r.tier));
+    const providers = [...new Set(list.map((c) => c.provider))];
+    return { tier: r.tier, candidateCount: list.length, distinctProviders: providers.length, providers };
+  });
+  const minCand = perTier.length ? Math.min(...perTier.map((x) => x.candidateCount)) : 0;
+  const allHaveTwo = perTier.every((x) => x.candidateCount >= 2);
+  const allHaveTwoProviders = perTier.every((x) => x.distinctProviders >= 2);
+  const crossPlatformAllowed = allHaveTwo && allHaveTwoProviders;
+  const samePlatformAllowed = allHaveTwo;
+  return {
+    inherit: { allowed: true, why: '零配置可用：不设任何 LUNHENG_* 时三档全部继承会话模型' },
+    samePlatform: {
+      allowed: samePlatformAllowed,
+      why: samePlatformAllowed
+        ? `实测每档候选 ≥2（最少 ${minCand} 个）→ 同平台分档**可满足**`
+        : `实测存在档位候选 <2（最少 ${minCand} 个）→ 同平台分档**不满足前置**（"没有兜底"），请改走策略 ① 或补候选`,
+    },
+    crossPlatform: {
+      allowed: crossPlatformAllowed,
+      why: crossPlatformAllowed
+        ? '实测每档 ≥2 候选且 ≥2 provider → 跨平台分档**可满足**'
+        : `实测不可满足：${perTier.filter((x) => x.distinctProviders < 2).map((x) => `${x.tier} 仅 ${x.distinctProviders} 个 provider`).join('；') || '每档候选数不足 2'}——`
+          + '⚠️ **注意**：`LUNHENG_*_PROVIDER/_MODEL` 一对变量只能表达**一个** provider+model，故"跨平台一跳"**无法在配置面表达**；'
+          + '要真走跨平台，须先由主人扩展配置面（每题候选数组），否则应如实选策略 ①/②。',
+    },
+    perTier,
+    note: '**只报可满足性，不替主人选策略**；本判定不改宿主配置。真源 = `_shared/模型路由.md` §五。',
+  };
+})();
 
 // ── 主控档（T0）：不参与路由，只给「稳定性」建议（它就是会话模型）──
 const t0Pool = usable.filter((c) => !c.local);
@@ -331,6 +396,7 @@ const out = {
   localProbe: noProbe ? '（--no-probe：未探测本地）' : localProbe,
   inventory,
   routing, t0, t8,
+  strategyVerdict,   // v18.80.1+v（批 4 · 4.1）：档位策略的可满足性（只报事实，不替主人选策略）
   envSnippet: {
     note: '同 provider 只写 _MODEL（provider 逐字段继承父级）；**跨 provider 必须同时写 _PROVIDER**；设置后重启 DSH 生效。',
     powershell: [...new Set(routing.filter((r) => r.pick).flatMap(envOf))],

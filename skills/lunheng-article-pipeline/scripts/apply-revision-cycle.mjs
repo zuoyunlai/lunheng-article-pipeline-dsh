@@ -23,18 +23,19 @@ import { parseArgs } from './_lib/cli-args.mjs';
 import { countHan } from './_lib/han.mjs';
 import { parseTargetChars } from './_lib/target-chars.mjs';   // v18.12.3：目标字数解析唯一实现
 import { firstEndnoteIndex, maskFences, bodyStartAfterAbstract } from './_lib/sections.mjs';   // v18.12.3 L-56：正文区口径与 count-chars 同源
+import { parseLedger, appendLedgerRow, TRACKS, ROUND_CAPS, LEDGER_REL } from './_lib/round-ledger.mjs';   // v18.81.0 批 2.1：轮次额度真源
 
 installExitGuard();
 
 const argv = process.argv.slice(2);
-const USAGE = '用法: node apply-revision-cycle.mjs <run/项目名> <目标版本号N> [--diff-list <analysis/vN-diff-list.md>] [--skip-bundle] [--dry-run]';
+const USAGE = '用法: node apply-revision-cycle.mjs <run/项目名> <目标版本号N> [--track A|B|G|相位] [--diff-list <analysis/vN-diff-list.md>] [--skip-bundle] [--dry-run]';
 const usageExit = (why) => { console.error(why); console.error(USAGE); process.exit(10); };
 
 let flags, opts, positionals;
 try {
   ({ flags, opts, positionals } = parseArgs(argv, {
     flags: ['--skip-bundle', '--dry-run'],
-    values: { '--diff-list': '' },
+    values: { '--diff-list': '', '--track': '' },
     minPositionals: 2,
     maxPositionals: 2,
     positionalHint: '<run/项目名> <目标版本号N>',
@@ -55,6 +56,42 @@ if (!existsSync(prevPath)) usageExit(`上一版草稿不存在：${prevPath}（�
 const diffList = opts['--diff-list'] ? resolve(process.cwd(), opts['--diff-list']) : '';
 if (diffList && !existsSync(diffList)) usageExit(`--diff-list 文件不存在：${diffList}`);
 const dryRun = flags.has('--dry-run');
+
+// ── v18.81.0（独立审计批 2 · 2.1）：**轮次额度闸门**（本脚本 = 开轮次的入口，故闸门设在这里）──────
+// 病灶：「审计打回 ≤2 轮」此前**零机械强制**——本脚本对目标版本号只要求「≥2 的整数」（v9/v99 都放行），
+//   而 `轮次类别` 字段无消费者、`handoff-check` 对「轮次计数」只判非空。⇒ 约束只存在于散文里。
+// ⚠️ **本闸门刻意不拿「版本号 N」当轮次**：实测 `县中塌陷` 的 v1..v5 里只有 **1** 个 A 轨轮
+//   （其余是首稿 / Phase 3.5 / Phase 3.6 / B 轨）——版本号与轮次**量纲不同**（这正是审计点名的仪器缺陷）。
+//   故额度按 `drafts/轮次账本.md` 的**独立记账**判，且必须由调用方**显式声明轨别** `--track`。
+// 三态（与批 1 的分段原则一致，避免把制度追溯适用到它存在之前）：
+//   · **无账本**（存量项目）→ 只提示、不阻塞；
+//   · **有账本** → `--track` **必填**；该轨已用满额度 → **exit 10**（动作 = 不再开这一轨，改走升级路径）。
+const ledgerBefore = parseLedger(projRoot);
+const trackArg = (opts['--track'] || '').trim();
+if (ledgerBefore.exists) {
+  if (!trackArg) {
+    usageExit('本项目已有 `drafts/轮次账本.md` → **必须显式声明本轮轨别** `--track A|B|G|相位`\n'
+      + `  当前账本记账：A ${ledgerBefore.counts.A}/2 ｜ B ${ledgerBefore.counts.B}/1 ｜ G ${ledgerBefore.counts.G}/2 ｜ 相位 ${ledgerBefore.counts.相位}（无额度）\n`
+      + '  判据：轮次额度按**轨**分别记账（A ≤2 / B ≤1 / G ≤2），不声明轨别就无法判是否越额。');
+  }
+  if (!TRACKS.includes(trackArg)) usageExit(`--track 非法：「${trackArg}」（须 ∈ ${TRACKS.join('/')}）`);
+  const cap = ROUND_CAPS[trackArg];
+  const used = ledgerBefore.counts[trackArg] || 0;
+  if (cap != null && used + 1 > cap) {
+    usageExit(`⛔ **${trackArg} 轨额度已用满**（${used}/${cap}）——不再开新轮。\n`
+      + (trackArg === 'A'
+        ? '  按 `deliverables.md` §修订回环：A 轨第 3 轮应走 **Acknowledged Limitations**（未关闭 P0/P1 搬入 `final/局限性.md`）并升级主控，而不是继续打回。'
+        : '  按 `_shared/文类档案.md`「T9 后处置」列：B 轨至多 +1；额度用尽后 T9 建议只出建议件（交付后由主控另行处置）。')
+      + `\n  账本：${LEDGER_REL}`);
+  }
+  if (ledgerBefore.malformed.length) {
+    usageExit(`账本有 ${ledgerBefore.malformed.length} 处不可解析：${ledgerBefore.malformed.slice(0, 3).join('；')}\n`
+      + '  判据：账本损坏时**额度不可判** → 不得当通过（与「N/A ≠ SKIP」同口径）。');
+  }
+  if (ledgerBefore.over.length) {
+    usageExit(`账本已越额：${ledgerBefore.over.join('；')}\n  → 请先按升级路径处置，再开新轮。`);
+  }
+}
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const nodeBin = process.execPath;
@@ -208,9 +245,33 @@ ${diffList ? (diffResult?.skipped === 'dry-run' ? '- dry-run 未应用' : `- ${b
   revNote = `已生成 ${revNotePath}`;
 }
 
+// ---- ⑧ 轮次账本落账（v18.81.0 · 独立审计批 2 · 2.1）----
+// 为什么由**本脚本**落账（而不是留给主控手填）：本脚本就是「开一轮修订」这个动作本身，
+//   落在这里才可能**不漂**——手填的账本在实测里从未存在过（全 `run/` 零命中，本批新立）。
+// 无账本 = 存量项目：只提示、不阻塞（与批 1 的分段原则一致），并在输出里如实标注。
+let ledgerWrite = 'skipped';
+if (!ledgerBefore.exists) {
+  ledgerWrite = `no-ledger（存量项目：未建 ${LEDGER_REL}，本脚本只提示不阻塞；新项目请由主控先建账本）`;
+} else if (dryRun) {
+  ledgerWrite = 'dry-run 未写';
+} else {
+  const r = appendLedgerRow(projRoot, {
+    track: trackArg,
+    n: (ledgerBefore.counts[trackArg] || 0) + 1,
+    draft: `drafts/初稿-v${nTarget}.md`,
+    source: diffList ? basename(diffList) : '',
+  });
+  ledgerWrite = r.created ? `已创建并落账 ${LEDGER_REL}（${r.appended}）` : `已追加一行到 ${LEDGER_REL}（${r.appended}）`;
+}
+
 // ---- 汇总 ----
 console.log(JSON.stringify({
-  project: projArg, targetVersion: nTarget, baselineCopied,
+  project: projArg, targetVersion: nTarget,
+  // v18.81.0（批 2.1）：轮次额度可见（`track` 为空 = 无账本的存量项目）
+  track: trackArg || null,
+  ledger: ledgerWrite,
+  roundCaps: ROUND_CAPS,
+  ledgerCounts: ledgerBefore.exists ? ledgerBefore.counts : null, baselineCopied,
   chars: {
     prevBody: pre.body,
     nextBody: post ? post.body : null,
