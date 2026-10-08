@@ -4,7 +4,7 @@
 
 ## 18.82.0 — 2026-10-08
 
-> **主题**：**LongWriter（THUDM, ICLR 2025）借鉴批**——推理侧三项：T5 前文锚（LW-1）/ Sl 柔性长度观测分（LW-2）/ 各档有效生成上限探针（LW-3）。评估与方案 = `audits/反哺报告-LongWriter借鉴-2026-10-08-v1.md`。
+> **主题**：**LongWriter（THUDM, ICLR 2025）借鉴批**——推理侧三项：T5 前文锚（LW-1）/ Sl 柔性长度观测分（LW-2）/ 各档有效生成上限探针（LW-3）。执行留痕 = `audits/机制文件修订记录-2026-10-08-LongWriter批.md`（主人裁定：借鉴**评估**报告一律不入库，评估原文本地保留于 `<工作区>/_backup/lunheng-2026-10-08-longwriter/`）。
 > **授权（如实标注）**：主人 2026-10-08 直接指令「请开始依次全部修订」——依 `AGENTS.md` §机制文件写保护「唯一例外」（主人明确下令 = 可写，走五步安全流程）；改前备份 `<工作区>/_backup/lunheng-2026-10-08-longwriter/`（196 文件，scripts + references + SKILL.md + AGENTS.md + 仓库级 scripts 全量）。
 > **版本判据 = minor**：新增脚本能力面（`segment-chars.mjs --budget` 模式 + `quality-score.mjs` lengthProfile 字段 + 仓库级 `ruler-probe.mjs`）与角色卡机制条目（前文锚），但**零新增随包脚本、零新增退出码**（白名单计数 31 不变；Sl 是观测指标不参与 exit）。
 > **同车（如实）**：本版一并携带「独立审计批」（代码内注记 v18.81.0）的已提交改动——该批 CHANGELOG 段由其主人后续补记。
