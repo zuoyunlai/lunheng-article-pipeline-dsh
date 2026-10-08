@@ -14,7 +14,7 @@ import assert from 'node:assert/strict'
 import { writeFileSync, mkdirSync, rmSync, symlinkSync, linkSync, cpSync, readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { run, tmp } from './_fixtures.mjs'
-import { join, dirname } from 'node:path'
+import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
@@ -62,9 +62,15 @@ test('P1-1 对照：正常 status.md（非链接）仍可读', () => {
 })
 
 test('P1-2：resolveSessionPath 相对路径按会话 cwd 解析；绝对路径/无会话 cwd 保持原样', () => {
-  const exec = { agent: { session: { header: { cwd: join('X:', 'ws') } } } }
-  assert.equal(resolveSessionPath(exec, 'paper.md'), join('X:', 'ws', 'paper.md'))
-  assert.equal(resolveSessionPath(exec, join('X:', 'elsewhere', 'a.md')), join('X:', 'elsewhere', 'a.md'), '绝对路径不得被重定向')
+  // 平台中立（v18.80.4 实测踩到）：基准必须用**真绝对路径**。首版写 `join('X:', 'ws')`——
+  //   在 Windows 上是 `X:\ws`（绝对），在 POSIX 上是相对路径 `X:/ws`，`resolve` 会再前置 cwd
+  //   → 断言在 Linux 上必红（CI 的 ubuntu 作业就是这么红起来的）。判据：**测试夹具不得依赖
+  //   「某个平台特有的绝对路径写法」**，用 `import { resolve }` 表达期望值即可。
+  const base = join(tmpdir(), 'lh-sess', 'ws')
+  const exec = { agent: { session: { header: { cwd: base } } } }
+  assert.equal(resolveSessionPath(exec, 'paper.md'), resolve(base, 'paper.md'), '相对路径按会话 cwd 解析')
+  const abs = resolve(base, 'elsewhere', 'a.md')
+  assert.equal(resolveSessionPath(exec, abs), abs, '绝对路径不得被重定向')
   assert.equal(resolveSessionPath({}, 'paper.md'), 'paper.md', '取不到会话 cwd → 原样返回（不劣于旧行为）')
   assert.equal(resolveSessionPath(exec, ''), '', '空串原样返回')
 })

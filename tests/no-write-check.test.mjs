@@ -41,6 +41,33 @@ test('no-write-check：良性命令 → exit 0，且报「无改写」', () => {
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
 
+// ── v18.80.4（发版实测补）：**失败步骤必须回显内层输出** ───────────────────────────────
+// 由来（一次真实的诊断代价）：v18.80.4 发版时 publish 的 gates 作业报「随包脚本回归测试 exit=1」，
+//   而内层 TAP 被 `stdio: 'pipe'` 丢弃——CI 日志里只有归因表，**看不出是哪条用例红**。
+//   一个「测试夹具在 POSIX 下的绝对路径假设」缺陷因此多耗一整个 CI 周期。判据：
+//   **归因表说「哪一步失败」，输出尾部说「为什么失败」——两者缺一不可**。
+test('no-write-check：被包命令失败时，**其输出尾部必须回显**（否则 CI 只说 exit=1、无法定位）', () => {
+  const d = mkRoot()
+  try {
+    const r = run([CHECK, '--root', d, '--', NODE, '-e', 'console.error("MARKER_INNER_OUTPUT"); process.exit(3)'])
+    assert.equal(r.code, 1, '被包命令退非 0 → 必须判负：' + r.out + r.err)
+    assert.match(r.out, /MARKER_INNER_OUTPUT/, '失败步骤的内层输出必须出现在本脚本输出里（诊断面）：' + r.out)
+    assert.match(r.out, /失败步骤输出尾部/, '须有一段明确标题，便于人在 CI 日志里直接定位')
+    assert.match(r.out, /exit=3/, '须点名该步的退出码')
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
+test('no-write-check --json：失败步骤的 outputTail 也要出现在结构化结果里', () => {
+  const d = mkRoot()
+  try {
+    const r = run([CHECK, '--root', d, '--json', '--', NODE, '-e', 'console.error("JSON_TAIL_MARK"); process.exit(2)'])
+    assert.equal(r.code, 1)
+    const j = JSON.parse(r.out.slice(r.out.indexOf('{')))
+    assert.equal(j.steps[0].exit, 2)
+    assert.match(String(j.steps[0].outputTail || ''), /JSON_TAIL_MARK/, 'JSON 分支同样要带 outputTail')
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
 test('no-write-check：新增 / 内容变 / 删除**三类改写都要抓到并点名**', () => {
   const d = mkRoot()
   try {

@@ -92,6 +92,13 @@ const STEPS = custom
     { label: '④ pack-smoke', cmd: process.execPath, args: [join(REPO_SCRIPTS, 'pack-smoke.mjs')] },
   ];
 
+/** v18.80.4（发版实测补）：失败步骤**回显输出尾部**的行数。
+ *  为什么必须补（一次真实的诊断代价）：v18.80.4 发版时 `.github/workflows/publish.yml` 的 gates 作业
+ *  报「随包脚本回归测试 exit=1」，而**内层 TAP 输出被 `stdio: 'pipe'` 丢弃**——CI 日志里只有本脚本的
+ *  归因表，谁也看不出**是哪条用例红**。结果是：一个「测试夹具在 POSIX 下的绝对路径假设」缺陷，
+ *  要多耗一整个 CI 周期（~5 min + 一次 force-tag）才定位。**归因表说「哪一步失败」，输出尾部说「为什么失败」**，两者缺一不可。 */
+const OUT_TAIL_LINES = 25
+
 let before = snapshot();
 if (before.size === 0) { console.error(`${root} 下快照到 0 个文件——--root 指错了吧`); process.exit(10); }
 const steps = [];
@@ -99,8 +106,8 @@ try {
   for (const s of STEPS) {
     if (!s.cmd) { console.error('自定义命令为空'); process.exit(10); }
     const pre = snapshot();
-    let exit = 0, spawnErr = null;
-    try { execFileSync(s.cmd, s.args, { cwd: root, encoding: 'utf8', stdio: 'pipe' }); }
+    let exit = 0, spawnErr = null, outputTail = '';
+    try { execFileSync(s.cmd, s.args, { cwd: root, encoding: 'utf8', stdio: 'pipe', maxBuffer: 64 * 1024 * 1024 }); }
     catch (e) {
       // v18.62.4（全量审计-v18.62.3 P1-1/P1-11）：**「没跑起来」不等于「没改写」**。
       // 旧实现只记三种码，于是 EPERM / EACCES（受限沙箱禁命名管道）被记成 `exit=-1` 后**完全不影响结论**
@@ -114,9 +121,12 @@ try {
       if (e.code === 'ENOENT') spawnErr = `找不到命令 ${s.cmd}（ENOENT）`;
       else if (e.code === 'EPERM' || e.code === 'EACCES') spawnErr = `无法派生（${e.code}）：环境拒绝启动该命令——**不是**「无改写」`;
       else if (exit === -1 || exit === null) spawnErr = `未能启动（${e.code || '未知'}）`;
+      // v18.80.4：把被包命令的输出尾部带出来（见 OUT_TAIL_LINES 注释：CI 里没有它就无法定位是哪条用例红）
+      const tailText = `${e.stdout ?? ''}${e.stderr ?? ''}`
+      outputTail = tailText.trim().split('\n').slice(-OUT_TAIL_LINES).join('\n')
     }
     const d = compare(pre, snapshot());
-    steps.push({ label: s.label, exit, spawnErr, ...d });
+    steps.push({ label: s.label, exit, spawnErr, ...(outputTail ? { outputTail } : {}), ...d });
   }
 } catch (e) {
   console.error(`no-write-check 内部错误：${e.message}`);
@@ -144,6 +154,15 @@ if (json) {
       if (s.changed.length) console.log(`      内容变：${show(s.changed).join(', ')}`);
       if (s.added.length) console.log(`      新增：${show(s.added).join(', ')}`);
       if (s.removed.length) console.log(`      删除：${show(s.removed).join(', ')}`);
+    }
+  }
+  // v18.80.4：失败步骤的**输出尾部**（归因表说「哪一步失败」，这里说「为什么失败」）
+  const withTail = steps.filter((s) => s.outputTail)
+  if (withTail.length) {
+    console.log('\n── 失败步骤输出尾部（各最后 ' + OUT_TAIL_LINES + ' 行；**这是定位「哪条用例/哪条判据红」的唯一入口**）──')
+    for (const s of withTail) {
+      console.log(`\n▼ ${s.label}（exit=${s.exit}）`)
+      console.log(s.outputTail.split('\n').map((l) => `  ${l}`).join('\n'))
     }
   }
   console.log(
