@@ -19,14 +19,19 @@ const HANDOFF = join(ROOT, 'skills', 'lunheng-article-pipeline', 'scripts', 'han
 const SHARED = join(ROOT, 'skills', 'lunheng-article-pipeline', 'scripts', '_lib', 'blind-forbidden.mjs')
 const BODY = '论衡流水线产出的这一段正文用于盲评载荷测试，需足够长以满足最小汉字数校验。'.repeat(12)
 
-/** 造一个最小项目：稿件含项目名、版本头、库内字样与一处禁忌面词 */
-const mkProj = ({ forbid = false } = {}) => {
+/** 造一个最小项目：稿件含项目名、版本头、库内字样
+ *  forbid：注入**指向形态**的禁忌面（`见 分析大纲 与 批判报告`）
+ *  prose ：注入**散文形态**的禁忌面词（`局限性`，学术常用词——不应被拦）
+ *  inject：注入任意文本（用于逐形态验证文件名/路径/显式指引） */
+const mkProj = ({ forbid = false, prose = false, inject = '' } = {}) => {
   const d = tmp('lunheng-bpack-')
   const proj = join(d, 'run', '某测试项目')
   mkdirSync(join(proj, 'final'), { recursive: true })
   writeFileSync(join(proj, 'final', '定稿.md'),
     '> 版本：v18.80.4（DSH bundle 插件）\n\n# 标题\n\n' + BODY
     + (forbid ? '\n\n（见 分析大纲 与 批判报告）\n' : '\n')
+    + (prose ? '\n本文的局限性在于样本量偏小。\n' : '')
+    + inject
     + '\n项目 某测试项目 的内部说明。\n论衡流水线角色。\n')
   return { d, proj, out: join(d, '载荷'), map: join(d, '_QLT6-盲评', '映射表.md') }
 }
@@ -58,6 +63,34 @@ test('载荷 ②：残留禁忌面文件名词 → **exit 1**（fail-closed，�
     assert.match(r.out, /分析大纲|批判报告/, '须点名命中的禁忌面词')
     assert.ok(!existsSync(join(c.out, '盲评稿-ACAD-T-01.md')), '自检不过时**不得**留下载荷文件')
   } finally { rmSync(c.d, { recursive: true, force: true }) }
+})
+
+test('载荷 ②b：散文用词**不拦**（「本文的局限性」是学术常用词，非对产物的指向）——v18.80.4 实测纠正', () => {
+  // 由来：首版口径是「出现禁忌面词就拦」，实测 `共锁-自愿性理论的第四象限` 初稿含「分析大纲」（散文），
+  //   整批载荷被判 exit 1、无法开工——门退化为噪声。真源口径（handoff-check BR-A5）判的是**指向形态**。
+  const c = mkProj({ prose: true })
+  try {
+    const r = run(packArgs(c))
+    assert.equal(r.code, 0, '散文提及不得拦：' + r.out + r.err)
+    assert.match(r.out, /散文提及（可见性，非硬门）：局限性/, '须登记为可见性清单，供人看一眼')
+    const manifest = readFileSync(join(c.out, '载荷清单-ACAD-T-01.txt'), 'utf8')
+    assert.match(manifest, /散文提及（\*\*可见性，非硬门\*\*）：局限性/, '载荷清单里也要如实登记')
+  } finally { rmSync(c.d, { recursive: true, force: true }) }
+})
+
+test('载荷 ②c：**指向形态**仍必须拦（文件名 / 路径 / 显式指引）——三道形态逐一验', () => {
+  for (const [label, payload] of [
+    ['文件名', '\n\n见 `分析大纲.md`。\n'],
+    ['路径', '\n\n详见 `audits/批判报告`。\n'],
+    ['显式指引', '\n\n（参见 先行者清单）\n'],
+  ]) {
+    const c = mkProj({ inject: payload })
+    try {
+      const r = run(packArgs(c))
+      assert.equal(r.code, 1, `${label}形态必须拦：` + r.out)
+      assert.match(r.out, /指向/, `${label}：须说明拦的是「指向」形态`)
+    } finally { rmSync(c.d, { recursive: true, force: true }) }
+  }
 })
 
 test('载荷 ③：`--map` 与载荷同目录 → **exit 10 拒绝**（钥匙必须物理解耦）', () => {

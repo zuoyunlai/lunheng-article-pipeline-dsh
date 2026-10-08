@@ -38,6 +38,19 @@ import { BLIND_FORBIDDEN } from '../skills/lunheng-article-pipeline/scripts/_lib
 /** 去标识替换 token（统一，便于判者读到「此处被抹」而不会误以为原文如此）。 */
 const REPL = '〔去标识〕'
 
+/** 生产中间产物的**指向形态**（硬门）。
+ *  为什么不是「出现该词就拦」（v18.80.4 **实测纠正**，原口径过严）：学术正文里「局限性」「分析大纲」
+ *  是**常用词**——实测 `共锁-自愿性理论的第四象限` 的初稿就含「分析大纲」（散文用法），把散文用词当
+ *  泄露会**误伤真稿件**，使本门退化为噪声（该稿因此被判 exit 1，整批无法开工）。
+ *  真源口径 = `handoff-check` 的 **BR-A5**：它判的是**盲评件「已读范围」行**是否点名了这些产物；
+ *  载荷侧对应的风险是「**指向**这些产物」（文件名 / 路径 / 显式指引），故只拦指向形态；
+ *  纯散文提及转**可见性清单**（打印 + 进载荷清单），由人看一眼，机器不判语义。
+ *  边界（如实）：能抓「点名/引用产物」，抓不到「内容来自那些产物」——后者仍靠 `--session-log` 独立面。 */
+const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const pointerRe = (term) => new RegExp(
+  `(?:[\\\\/]\\s*${esc(term)}|${esc(term)}\\s*(?:\\.md|-v\\d+)|(?:见|依|据|参照|按|详见|来自|出自)\\s*${esc(term)})`,
+)
+
 const HELP = `用法：node scripts/blind-review-pack.mjs --project <run/项目> --id <编号> --out <目录> --map <映射表> [--draft <相对路径>] [--journal <文本|文件>] [--related <文件>] [--scrub <正则>]... [--force]`
 
 const argv = process.argv.slice(2)
@@ -123,7 +136,9 @@ try {
   // ── 自检（fail-closed）────────────────────────────────────────────────────────────────────
   const problems = []
   if (new RegExp(projectName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(payload)) problems.push(`载荷内仍出现项目名「${projectName}」`)
-  for (const w of BLIND_FORBIDDEN) if (payload.includes(w)) problems.push(`载荷内出现禁忌面文件名词「${w}」（真源 = handoff-check 的 BLIND_FORBIDDEN）`)
+  const pointerHits = BLIND_FORBIDDEN.filter((w) => pointerRe(w).test(payload))
+  if (pointerHits.length) problems.push(`载荷出现**指向**生产中间产物的形态（文件名/路径/显式指引）：${pointerHits.join(' / ')}——口径真源 = handoff-check BR-A5（它判「已读范围」是否点名产物），此处按同口径拦载荷侧的指向`)
+  const proseMentions = BLIND_FORBIDDEN.filter((w) => payload.includes(w) && !pointerHits.includes(w))
   const han = (payload.match(/[\u4e00-\u9fff]/g) || []).length
   if (han < 200) problems.push(`载荷正文过短（纯汉字 ${han} < 200）——错传了简报/空稿？`)
 
@@ -151,6 +166,10 @@ try {
     opt.related ? '  ③ 去标识邻近工作清单（已并入载荷尾部）' : '  ③ （未附邻近工作清单）',
     '',
     '判者**不得**接触（禁忌面）：' + BLIND_FORBIDDEN.join(' / '),
+    '',
+    '散文提及（**可见性，非硬门**）：' + (proseMentions.length
+      ? proseMentions.join(' / ') + ' ——这些词在正文里当普通用词出现（如「本文的局限性」），不构成对产物的指向；机器不判语义，故只登记'
+      : '（无）'),
     '越界核对：node skills/lunheng-article-pipeline/scripts/handoff-check.mjs --blind-review audits/盲评-' + opt.id + '-vN.md',
   ].join('\n') + '\n', 'utf8')
 
@@ -166,6 +185,7 @@ try {
   console.log(`  映射表（钥匙，已与载荷分离）：${mapPath}`)
   console.log(`  载荷纯汉字 ${han}｜sha256 ${sha.slice(0, 12)}…`)
   console.log(scrubLog.length ? `  去标识记录：\n${scrubLog.join('\n')}` : '  去标识记录：（本稿无需替换）')
+  if (proseMentions.length) console.log(`  散文提及（可见性，非硬门）：${proseMentions.join(' / ')}——正文里当普通用词出现，不构成对产物的指向`)
   console.log('  下一步：人工复核去标识处是否伤及正文语义 → spawn 判者 → `handoff-check --blind-review` 核对')
 } catch (e) {
   console.error(`内部错误：${e?.stack || e}`)

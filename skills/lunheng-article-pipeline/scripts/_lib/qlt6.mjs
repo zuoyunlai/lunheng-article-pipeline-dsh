@@ -48,10 +48,30 @@ export const CALIBRATION = {
     + '记录见 `run/_AB-QLT5/QLT6-标定.md` 与 `QLT6-标定.json`',
   caveat: '标定样本 = **1 个阳性对照（单项目单对）**——足以证明「它对该类改善敏感」，**不足以**给出阈值或跨项目可比性；'
     + '跨项目比较前先对齐 ② 的条件集来源与 closureBasis（见 validity.boundary）',
+  /** v18.80.4（QLT-6 跨体例盲评批，2026-10-08）：**盲评**样本 6 组 × 2 判者 = 12 件（3 体例：学术理论 / 学术描述性 / 公众号评论）。
+   *  预注册与判据冻结见 `audits/预注册-QLT6-跨体例盲评-v1.md`；复算台 `scripts/qlt6-blind-analysis.mjs`（import 本文件的 `normalizePanel`）。 */
+  blindReview: {
+    at: '2026-10-08',
+    design: '复用 golden 三例的早期稿与后期稿（**零新流水线**），每稿 2 名独立盲评判者；载荷由 `scripts/blind-review-pack.mjs` 去标识生成，钥匙（编号↔项目）与载荷物理分离',
+    n: '6 稿 / 12 件有效盲评（另有 **2 件因「总评分 ≠ 六维之和」的算术失误被判不合规、未计入**——机械门当场抓出）',
+    H1_同尺性: '**不达标**：三体例 ① 均值 0.036 / 0.197 / 0.518，两两差 0.161 / 0.482 / 0.321（判据 ≤0.15）⇒ **① 不得跨体例横比**。⚠️ 差异**无法归因**于「尺子偏置」还是「稿件真实差异」（本设计无锚定质量标尺，且各体例的锚点释义按预注册 §5-4 分别冻结）',
+    H2_判者一致性: '**不达标**：6 对同稿 ① 绝对差均值 0.095（≤0.10 达标线内），但**有 2 对达 0.214 > 硬上限 0.20**；总分差均值 1.5、最大 3（/30）',
+    H4_敏感性: '**不达标**：判者平均 Δ(晚−早) = ACAD-D **+1.5**、ACAD-T **−3.5**（后期稿反而更低）、PUB **+0.5**（小于该稿自身判者噪声 3）⇒ 方向不一致',
+    floor_saturation: '**① 下界饱和（机械缺陷，与样本无关）**：`clamp` 下界 = reject 上界 16 ⇒ 总评分 ≤16 一律映射为 **0**，实测 **3/12 件**如此；低分段**完全不可区分**（15 与 16 的 ① 同为 0.0000）',
+    decision: '**不切换**：① 的输入源**保持**知情 `audits/审稿报告-vN.md`。依据 = 预注册 §3 H2 条款（判者一致性不达标 ⇒ 先扩判者数再谈标定，**不进入切换讨论**）；09 卡 §🕶 末条的「样本 ≥3 组」**只是必要条件**，不是充分条件',
+    nextSteps: '① 扩判者数（每稿 ≥4）以降噪；② 修 `clamp` 下界的饱和（或改用 16→0 / 30→1 之外的分段映射）并重新标定；③ 若要论「跨体例可比」，须先造**锚定质量标尺**（同稿跨体例改写或专家锚点），否则 H1 的差异永远不可归因',
+  },
 };
 
 const WEIGHTS = { panel: 50, closure: 50 };
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
+/** ① 分量（审稿判断）的归一化：`clamp((总评分 − 16) / 14, 0, 1)`。
+ *  **为什么导出**（v18.80.4 · QLT-6 跨体例盲评批）：跨体例盲评要**离线**把盲评件的 `总评分 XX/30`
+ *  喂进同一式子（盲评件不在产物的 `audits/` 里，`evaluateQlt6` 读不到），若在分析脚本里另写一份
+ *  公式就是「同一事实两处实现」——必然漂。故此处导出为**单一真源**，分析脚本 import 它。
+ *  ⚠️ **已知边界（本批实测暴露，重要）**：16 分及以下一律映射为 **0**（clamp 下界＝「reject 上界」），
+ *  故 ① 在低分段**完全饱和**、不可区分（实测两稿 15/30 与 16/30 的 ① 同为 0.0000）。 */
+export const normalizePanel = (total) => clamp((Number(total) - 16) / 14, 0, 1);
 const norm12 = (s) => String(s || '').toLowerCase().slice(0, 12);
 const sha256 = (p) => createHash('sha256').update(readFileSync(p)).digest('hex');
 
@@ -195,7 +215,7 @@ export const evaluateQlt6 = ({ projectDir, draftPath }) => {
       na.push({ id: panel.id, weight: panel.weight, reason: panel.naReason });
     } else {
       const total = Number(m[1]);
-      const norm = clamp((total - 16) / 14, 0, 1);
+      const norm = normalizePanel(total);
       panel.applicable = true;
       panel.raw = total;
       panel.ratio = +norm.toFixed(4);
