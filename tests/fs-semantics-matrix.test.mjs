@@ -157,3 +157,30 @@ test('矩阵 ⑦ 组合：合法项目内的输出路径既「在围栏内」又
     assert.equal(existsSync(out), false)
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
+
+// ── ⑧ v18.80.4（CI 两平台实测抓出）：**「候选尚不存在」不得退回未规范化形式** ──────────────
+// 病灶：`isPathInsideRunDir` 旧实现用「存在则 realpath、不存在则字面 resolve」的兜底——当 **runDir 侧
+//   已 canonical 而候选（如「即将写出的新文件」）尚不存在**时，两侧落在不同路径空间 → **合法路径被判越界**。
+//   真实触发面：macOS 的 `os.tmpdir()` 是 `/var/folders/…`（软链到 `/private/var/…`）、Windows 的 TEMP
+//   可能是 junction / 8.3 短名；共享被链接前缀的一切调用都会中招（CI：macOS 与 windows 作业红，本机绿）。
+// 本用例**在任意平台可复现**：造一个「被链接的前缀」，再问一个**不存在**的子路径是否在围栏内。
+test('矩阵 ⑧ 被链接前缀 + **候选不存在** → 仍必须判「在围栏内」（同空间规范化，不因不存在而退回字面）', { skip: (canDirJunction || canFileSymlink) ? false : '本机无法创建目录 junction/软链——环境不支持，带理由跳过' }, () => {
+  const d = mk('lh-fs-canon')
+  try {
+    const realRun = join(d, 'real', 'run')
+    mkdirSync(join(realRun, 'proj'), { recursive: true })
+    // 链接：d/link -> d/real（Windows 用 junction，POSIX 用目录软链）
+    const linkParent = join(d, 'link')
+    try {
+      symlinkSync(join(d, 'real'), linkParent, process.platform === 'win32' ? 'junction' : 'dir')
+    } catch { return }   // 环境不允许（已在 skip 判据里探过，这里是兜底）
+    // ① 经链接看到的「合法未创建文件」必须判在围栏内（旧实现在 macOS/Windows 上此处失败）
+    assert.equal(fence.isPathInsideRunDir(join(linkParent, 'run'), join(linkParent, 'run', 'proj', '新稿.html')), true,
+      '经被链接前缀的**未创建**输出路径必须判「在 run 内」（规范化应上溯到存在的最近祖先）')
+    // ② 越界仍必须拦（防修「假拒绝」时把真拒绝一起放开）
+    assert.equal(fence.isPathInsideRunDir(join(linkParent, 'run'), join(d, 'outside', 'x.html')), false,
+      '真越界不得因为本次修复而放行')
+    assert.equal(fence.isPathInsideRunDir(join(linkParent, 'run'), join(linkParent, 'run', 'proj', '..', '..', '..', 'outside', 'y.html')), false,
+      '`..` 穿越后仍越界 → 必须拦')
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})

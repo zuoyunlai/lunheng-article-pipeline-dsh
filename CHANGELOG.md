@@ -41,6 +41,12 @@
 > - **优化方向 6 + 11**：`maintainers.md` 的 `loader-smoke` 失效成因叙事、历史更正清单、dist-tag 退役缘由**逐字外移**到 `audits/沿革外移-maintainers-2026-10-08.md`（沿革外移 ≠ 删除，判据留正文）；§六 改建为**「CI 作业职责与验证责任」表**（含「`gates` 不含 `loader-smoke`」这一结构性成因与各 job 的「不验什么」）。净 −308 B（外移与新增相抵），**本批不抬其棘轮**。
 >   > **未做完的（如实登记）**：沿革外移**只完成 `maintainers.md` 一份**。`glossary.md`（余 36 B）**经实测不适合沿革外移**——其沿革多为**标题内联括注**，而标题是规则 ㉗ 的锚点来源，改动即断链；正确出路是**整节去重**（§七 版本号管理 与 §五 工具能力边界 与 CHANGELOG / SKILL 重复），需专门一批。`M-Gate-Algorithm.md`（114 KB，余 86 B）、`docs/troubleshooting.md`（余 58 B）、`docs/introduction.md`（余 190 B）同理待专门一批。
 
+> **18.80.4 已发布（2026-10-08）**：tag `v18.80.4` → `publish.yml` gates（四门 + 全量套 + 宿主装载烟测）+ OIDC 发布。**独立核验**：`npm view lunheng-article-pipeline@18.80.4 version` = `18.80.4`；注册表 API `dist-tags` = `{dsh: 18.80.4, latest: 18.80.4}`（**OIDC 自动前移 `latest`，无需人工 dist-tag**）；`gitHead = 13c6c21f3fe630f9f4d84e2003d705e10e23a556`（== 发布时 HEAD，provenance 由 OIDC 签署）；GitHub Release `v18.80.4` 含 tgz 资产。
+> **发版过程中自证抓出三处（两次 CI 周期，全部留痕）**：
+> 1. **首次 gates 失败**：`no-write-check` 只报「随包脚本回归测试 exit=1」，**内层 TAP 输出被丢弃** → CI 日志看不出哪条用例红。**已补诊断面**：失败步骤回显「失败标记行 + 其后 6 行」+「输出尾部」（仅回显尾部仍不够——TAP 失败块在**中段**，macOS 作业实测再次暴露）。
+> 2. **P1-2 用例的平台假设**（首次失败的真因）：`join('X:', 'ws')` 在 POSIX 下**不是**绝对路径，`resolve` 会再前置 cwd → 断言在 Linux 必红。已改为平台中立（用 `resolve(base, …)` 表达期望）。
+> 3. **发版后补丁（**未随 18.80.4 发布**，进入下一版）**：CI 的 macOS/Windows 作业抓出 **`isPathInsideRunDir` 的真实潜伏缺陷**——候选路径**尚不存在**时旧实现退回**字面 resolve**，而 runDir 侧已 canonical → 两侧不同路径空间 → **合法路径被判越界**（macOS `os.tmpdir()` 的 `/var`→`/private/var` 软链、Windows junction/短名可触发；本机因 TEMP 不经链接而绿）。这正是该文件注释里「**只 realpath 一侧**」缺陷的**再次复现**。修法：新增 `canonicalBest()`——**存在的最近祖先做 realpath 再接回剩余段**（「路径不存在」不是退回未规范化形式的理由）；`fs-semantics-matrix` 增 **⑧** 用例（被链接前缀 + 候选不存在 + 真越界仍须拦），并以**反事实**证明旧逻辑判 `false`、新逻辑判 `true`。**影响面（如实）**：当前随包调用点（`/lunheng-status`、`/lunheng-stats --run-dir`、history/pending CLI）传的都是**已存在**路径，故**今日不可达**、属 fail-closed 潜伏缺陷——这也是它**不单独发补丁版**、随下一版交付的理由。
+
 ## 18.80.3 — 2026-10-08
 
 > **性质**：**发版流程修正版**——**代码内容与 18.80.2 逐字相同**（五批修订未改动一行），仅重新发布一次，目的是取得**正确的 `gitHead` 与 provenance**。
