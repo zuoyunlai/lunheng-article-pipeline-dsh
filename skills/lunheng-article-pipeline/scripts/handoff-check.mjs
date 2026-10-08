@@ -33,6 +33,7 @@ import { createHash } from 'node:crypto'   // v18.13.0（L-06）：A4c 复算最
 import { installExitGuard, requireExistingDir } from './_lib/exit-guard.mjs'
 import { loadSessions, pairAskUserQuestion, collectTouched } from './_lib/session-log.mjs'   // v18.81.0（批 1.4）：会话日志独立核对
 import { parseLedger, ROUND_CAPS, LEDGER_REL } from './_lib/round-ledger.mjs'   // v18.81.0（批 2.1）：轮次额度真源
+import { BLIND_FORBIDDEN } from './_lib/blind-forbidden.mjs'   // v18.80.4（QLT-6 脚手架批）：盲评禁忌面**单一真源**
 import { CONTRACTS } from './_lib/cc-rules/content-rules.mjs'
 import { CARD_SPECS, latestReport, indexSection, entryIds, idsByToken } from './_lib/mgate-helpers.mjs'
 
@@ -205,11 +206,8 @@ const sessionIndex = (() => {
 })()
 
 // ── v18.81.0（批 1.4）：**盲评件契约**模式——独立出口，不进入 A 组（它审的是一个产物，不是一个项目）
-/** 盲评禁忌面：这些**生产中间产物**不得进入审稿人的载荷（真源 = 09 卡 §🕶 的「不给」清单）。 */
-const BLIND_FORBIDDEN = [
-  '分析大纲', '数据卡', '文献卡', '案例卡', '先行者清单', '批判报告',
-  'G14-检测报告', '核验报告', '局限性', '审计视图', '闸门记录', '审稿报告', 'status.md',
-]
+// v18.80.4（QLT-6 脚手架批）：禁忌面词表**外提为共享模块** `_lib/blind-forbidden.mjs`——载荷打包器
+//   （`scripts/blind-review-pack.mjs`）需要同一份，两处副本必然漂。语义真源仍是 09 卡 §🕶 的「不给」清单。
 if (opt.blindReview) {
   const r = runBlindReview(opt.blindReview, sessionIndex ? { events: sessionIndex.events, collectTouched } : null)
   const exit = r.hard.some((h) => h.exitClass === 20) ? 20 : (r.hard.length ? 21 : (r.soft.length ? 22 : 0))
