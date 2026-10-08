@@ -1,6 +1,6 @@
 # 维护者手册（maintainers.md）
 
-> 版本：v18.80.3｜**读者**：维护者/主人。**本文件不进任何运行期读清单**（角色/主控不读）；它承接 v18.8.0 文档瘦身从 SKILL.md 迁出的维护者向元信息（rank 考证 / guard 缺口 / 更正史）。改本文件不受「同一事实多处漂移」约束——运行期事实仍以 SKILL.md 为唯一真源，此处是背景与考证。
+> 版本：v18.80.4｜**读者**：维护者/主人。**本文件不进任何运行期读清单**（角色/主控不读）；它承接 v18.8.0 文档瘦身从 SKILL.md 迁出的维护者向元信息（rank 考证 / guard 缺口 / 更正史）。改本文件不受「同一事实多处漂移」约束——运行期事实仍以 SKILL.md 为唯一真源，此处是背景与考证。
 
 ## 一、技能来源 rank 考证（v18.0.0 对齐官方；v18.0.5 修两处官方事实）
 
@@ -31,9 +31,8 @@
 ## 三、更正史与教训编号索引
 
 - 版本注解聚合政策：见 `AGENTS.md`「注解聚合」条；完整演进见 git log 与**仓库根 `CHANGELOG.md` / `audits/**`**（**均不在随包目录内**——npm 发布物与纯技能目录部署都没有这些文件，缺则跳过，不要当成断链）。
-- 历史更正（原文详注已聚合）：v18.0.5 修「verify job 不存在」误述；v18.0.1 补 patch 自注册行（v18.0.0 缺陷）；v18.2.4 实证 `disabled` 行级门控；v18.2.6 更正 `!!js` 执行面计数（3→6 处）。
+- 历史更正与早年误述（原文详注已聚合）：见 `audits/沿革外移-maintainers-2026-10-08.md` §二（**仓库级、不随包**）。
 - 教训编号（#57/#128/#152/#153/#154…）：出处见 git log 对应提交与 `references/memory/lessons.md`。
-- 全量审计（v18.7.1 综合评分 7.6/10）与修订方案：`audits/全量审计报告-v18.7.1.md`、`docs/审计与修订记录/论衡插件-修订方案-v18.7.2.md`。
 
 ## 四、发布面事实
 
@@ -44,7 +43,7 @@
 - 发版后**先看该次 publish 运行的 dist-tag 步日志**：
   - 打 `✓ latest 已前移 → <ver>（OIDC…）` = 已自动完成，**无须任何手工动作**；
   - 打 warning（**仅当 npm 侧权限被关回、或 npm CLI 过旧、或未来 OIDC 临时不可用**）→ 按 SECURITY.md 补齐后 `gh workflow run publish.yml` 重跑（幂等，不会重发 npm）；
-  - **历史背景**：上述兜底人工命令（`npm dist-tag add <pkg>@<ver> latest --registry=https://registry.npmjs.org`）自 v18.62.10 起**永久退役**——`latest` 改由 OIDC 维护。
+  - **历史背景**：人工兜底命令自 v18.62.10 起**永久退役**（`latest` 改由 OIDC 维护）——退役缘由与实证见 `audits/沿革外移-maintainers-2026-10-08.md` §三。
   ⚠️ **`--registry` 不能省**（**人工兜底路径**）：本机 `~/.npmrc` 的默认 `registry` 指向**只读镜像** `registry.npmmirror.com`，
   而 `_authToken` 是给 `registry.npmjs.org` 的 → 不带该参数会把 dist-tag 请求打到镜像，
   报 `E401 Unauthorized … Login first`（**v18.62.4 发版实测踩到**）。（CI 内无此问题：publish 作业已设 `registry-url`。）
@@ -77,13 +76,22 @@
 
 > ⚠️ 反面参照：**官方文档路径**（`docs/subsystems/*.md`、`docs/cookbook/*.md`、`references/official-docs/**`）**不属于本表**——属主是 `dsh-plugin-guide` 与 DSH 官方仓库，已由 `link-check` 的 `CROSS_SKILL_*` 白名单登记，写属主前缀即可。
 
-## 六、CI `loader-smoke` 的上游缺陷（**v18.12.1 已修**，记录成因防复发）
+## 六、CI 作业职责与验证责任（v18.80.4 · 审计优化方向 11 落地）
 
-- **现状**：`ci.yml` 的 `loader-smoke` **全绿**。此前**每次必红**（`publish.yml` 的 `gates` 不含它，故不影响发布，但仓面 CI 徽章一直红）。
-- **成因（三步都验过）**：① 该 job 走的官方 `dsh-plugin-guide verify` 的 `pack / install / dump-config` **全过**，只倒在自己的 `headless-smoke`；② 错误是 `dsh: user patch-layer watching requires the Cordis HMR service`（栈顶 `dsh-app-boot/lib/index.js:1112`）——是 **DSH 启动失败**，与本包代码无关；③ 根因：`dsh plugin … add` 生成的 profile manifest 写 `"dsh": { "profile": { "patchReload": "live" } }`（`DEFAULT_PROFILE_PATCH_RELOAD = "live"`），而 `profile-boot` 在 `patchReload === "live"` 时调 `watchUserPatches()`，该函数拿不到 `ctx.get('hmr')` 就抛错 → headless 必红。本机用 `dsh plugin --profile smoke add @deepseek-ai/dsh-base` 复现了同一 manifest 形态。
-- **修法（v18.12.0 采取的是 ③）**：把 `ci.yml` 里 pin 的 dsh 由 **0.1.5-rc.2 → 0.1.7-rc.2**。**逐版核对过 `@deepseek-ai/dsh-app-boot`**：0.1.5-rc.2 与 rc.3 都仍有 `DEFAULT_PROFILE_PATCH_RELOAD = "live"` 与那条 HMR 守卫；**0.1.7-rc.2 里两者都已不存在**，且内置 `headless` profile（`bundles: ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-headless"]` + `headless-runner`）。改后 CI 全绿（`loader-smoke in 50s ✓`）。
-- **另两条处方（未采用，留给上游）**：① profile manifest 的 `dsh.profile.patchReload` 设 `"startup"`（需改 profile 生成侧，本包够不到）；② 上游把「`patchReload === "live"` 且无 HMR」改为降级而非抛错。
-- **教训（判据级）**：本 job 红了**四个版本周期**而无人修，原因是「它在发布门之外」+「报错栈指向 dsh 自己」→ 容易被读成「环境问题，与我无关」。可行判据：**CI 里任何一个 job 长期必红，本身就是缺陷**——要么修到绿，要么删掉并写明「为什么不跑这一层」。
+> **为什么单列**（审计依据）：CI 有多个作业、各验一部分，而**没有一处说明「谁不验什么」**——读者容易把「CI 全绿」读成「什么都验过了」。下表两列同等重要。
+
+| 作业 | 验什么 / **不验什么（如实）** |
+|---|---|
+| `drift-check` | `consistency-check`（版本点位、白名单↔磁盘、口径、工具名、CHANGELOG 段、**规则 ㉗ 全库锚点**）；**不跑测试、不验打包面** |
+| `lockfile-frozen` | `pnpm install --frozen-lockfile` 漂移即红 + 宿主契约产物探针；**不跑全量测试**——「锁文件 job 绿」≠ 依赖当前可用 |
+| `plugin-surface` | 打包面静态门（含现取第三方 CLI）；**不验运行期装载** |
+| `repo-hygiene` | 语法/JSON/YAML/行尾/编码/发布面负清单/凭据/本机路径棘轮/退出码契约/词预算棘轮；**不判内容质量** |
+| `loader-smoke` | 官方 `verify` 的 pack/install/dump-config/headless（**真实装载链**）；**依赖上游 dsh 版本行为** |
+| `script-tests` | 全量套（`no-write-check` 包裹 + 裸跑）；**不验包面装载**。`link-check` 的**断链空集**断言本批已由其测试承担 |
+| `gates` → `publish` | tag 时四门 + 全量套（无 secret）→ OIDC 发布 + 版本审计；**`gates` 不含 `loader-smoke`**——上游失效时发布不受阻，这正是 v18.12.x 那次「红了四个版本周期」的结构性成因 |
+
+> **沿革指针**：`loader-smoke` 曾每次必红的成因与修法（上游 `patchReload:"live"` + 缺 HMR 服务）已外移到
+> `audits/沿革外移-maintainers-2026-10-08.md` §一（仓库级、不随包）。**保留判据**：**CI 里任何一个 job 长期必红本身即缺陷**——修到绿，或删掉并写明「为什么不跑这一层」。
 
 ## 七、**收口批固定动作：差集 + 反向核验**（v18.15.0 定案，主人指示「固化为固定动作」）
 
@@ -200,6 +208,8 @@
 **边界（如实）**：① 比对的是**净状态**——「写完又复原」的瞬态写入抓不到（那需要 fs 层审计，超出范围）；② 排除 `.git` / `node_modules` / `.dsh`（部署镜像，由 `mirror-sync` **有意**改写）/ `_backup` / `*.tgz`；③ 只核本仓库根，不核 `%TEMP%` 里的夹具（那正是测试该用的地方）。
 
 **三条已固化的教训（都进了脚本注释与用例）**：① **「子进程没跑起来」与「跑了但没改写」在快照上完全一样** → 必须对 spawn 失败单独判负（首版 `--` 的参数被多前置一个 `node`，子进程 exit 1 而检查器报「✓ 无改写」，被自己的用例抓到）；② **「指错根」不得当「干净」**（快照 0 个文件 → exit 10）；③ 三类改写**都要点名**（新增 / 内容变 / 删除——只比哈希集合大小会让新增与删除互相抵消）。
+
+> **同族新增动作（v18.80.4）**：`node scripts/host-install-smoke.mjs`（仓库级、不随包）—— 真发布物 → 隔离 `DSH_HOME` → `dsh plugin add` → `--dump-config` 断言**自注册行**在场；补 `pack-smoke` 明确声明证明不了的那段（宿主 loader 是否加载本包），**无 `dsh` → exit 10（「没跑」≠ 通过）**；CI 侧同一段由 `loader-smoke` 覆盖。
 
 ---
 

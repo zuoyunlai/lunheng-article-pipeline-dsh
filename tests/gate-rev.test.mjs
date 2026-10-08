@@ -130,7 +130,12 @@ test('gate-rev I5：裁定后 rev 一致 → 裁定被保留（exit=裁定值）
     const mech = readReport(f.report).exit
     assert.notEqual(mech, 0, '夹具机械值须非 0 才能验证裁定通道')
     const adjPath = join(f.d, 't8.json')
-    writeFileSync(adjPath, JSON.stringify({ true_p0: 0, true_p1: 0, verdict: 'Pass（T8 裁定）', llm_review: FOUR }, null, 2))
+    // v18.80.4（P1-10）：裁定值 ≠ 机械值须给 refutations——从本次机械报告派生（一条对一条）
+    const mechReport = readReport(f.report)
+    const refutations = (mechReport.results || [])
+      .filter((x) => x.pass === false && x.severity !== 'LLM 兜底' && x.severity !== 'ERROR')
+      .map((x) => ({ gate: String(x.gate || '').split(' ')[0], basis: `T8 复核：${String(x.gate || '').split(' ')[0]} 为假阳性（测试夹具）` }))
+    writeFileSync(adjPath, JSON.stringify({ true_p0: 0, true_p1: 0, verdict: 'Pass（T8 裁定）', llm_review: FOUR, refutations }, null, 2))
     const r1 = run([M(), f.draft, f.ev, '--report', f.report, '--adjudicate', adjPath])
     assert.equal(r1.code, 0, '裁定成功应 exit 0：' + r1.out + r1.err)
     const j1 = readReport(f.report)

@@ -91,23 +91,45 @@ test('② packed 链接：随包 .md 的 Markdown 相对链接必须落在包内
   ]
 
   const offenders = []
+  const missingTargets = []
   const hitRepoOnly = new Set()
+  // 路径型目标判据（与 `link-check.mjs` 口径 ① 同源）：含目录分隔符，或扩展名在白名单内。
+  //   为什么必须：`references/templates/sources-索引-template.md` 的表格里写着 `` `[name](url)` ``——
+  //   `url` 是**占位符值**不是路径；不设此判据会把写法示例当断链（本批实测踩到）。
+  const EXT_RE = /\.(?:md|mjs|js|json|ya?ml|svg|png|txt|csv)$/i
+  const isPathLike = (t) => t.includes('/') || EXT_RE.test(t)
   for (const rel of packed) {
     if (!rel.endsWith('.md')) continue
     const txt = readFileSync(join(ROOT, rel), 'utf8')
-    for (const m of txt.matchAll(/\]\(([^)\s]+)\)/g)) {
-      const target = m[1].split('#')[0]
-      if (!target || /^(https?:|mailto:|#|\/)/.test(target)) continue
-      if (target.includes('...')) continue                       // 缩写记法（link-check 同口径）
-      const abs = resolve(dirname(join(ROOT, rel)), target)
-      const relTarget = relative(ROOT, abs).replaceAll('\\', '/')
-      if (relTarget.startsWith('..')) continue                  // 包外（上游技能/官方文档）
-      if (!existsSync(abs)) continue                            // 真断链归 link-check，不在此重复报
-      if (packed.has(relTarget)) continue
-      if (REPO_ONLY.some((re) => re.test(relTarget))) { hitRepoOnly.add(relTarget); continue }
-      offenders.push(`${rel} → ${relTarget}`)
+    let inFence = false
+    for (const line of txt.split('\n')) {
+      if (/^\s*(?:```|~~~)/.test(line)) { inFence = !inFence; continue }
+      if (inFence) continue
+      // 代码跨度内遮成等长空格（同 `content-rules.mjs` 规则 ㉗ 的 codeMasked 手法，保偏移）
+      const codeMasked = line.replace(/`[^`]*`/g, (s) => ' '.repeat(s.length))
+      for (const m of line.matchAll(/\]\(([^)\s]+)\)/g)) {
+        if (codeMasked[m.index] === ' ') continue               // 写法示例（落在代码跨度内）
+        const target = m[1].split('#')[0]
+        if (!target || /^(https?:|mailto:|#|\/)/.test(target)) continue
+        if (target.includes('...')) continue                     // 缩写记法（link-check 同口径）
+        if (!isPathLike(target)) continue                        // 非路径型（如占位符 `url`）
+        const abs = resolve(dirname(join(ROOT, rel)), target)
+        const relTarget = relative(ROOT, abs).replaceAll('\\', '/')
+        if (relTarget.startsWith('..')) continue                 // 包外（上游技能/官方文档）
+        // v18.80.4（审计优化方向 0 落地 · 批 A）：**本地目标不存在即判负**。
+        //   旧版此处 `continue`，注释写「真断链归 link-check」——但 link-check **从未被 CI 调用**
+        //   （`check:link` 无任何 workflow 引用），而唯一会跑 `scan()` 的用例只钉扫面与分类、
+        //   从不断言 `broken` 为空 ⇒ 「随包文档指向不存在的文件」在两侧**都不判**。
+        //   现为 fail-closed：包内本地目标（非 `..`）不存在 → 直接进 missingTargets。
+        if (!existsSync(abs)) { missingTargets.push(`${rel} → ${relTarget}`); continue }
+        if (packed.has(relTarget)) continue
+        if (REPO_ONLY.some((re) => re.test(relTarget))) { hitRepoOnly.add(relTarget); continue }
+        offenders.push(`${rel} → ${relTarget}`)
+      }
     }
   }
+  assert.deepEqual(missingTargets, [],
+    `随包文档里的 Markdown 链接指向**仓库内不存在的文件**（断链，且不在包内）：\n${missingTargets.join('\n')}`)
   assert.deepEqual(offenders, [],
     `随包文档里的 Markdown 链接指向**未随包且未登记**的目标（装包后 404）：\n${offenders.join('\n')}`)
   assert.ok(hitRepoOnly.size > 0,

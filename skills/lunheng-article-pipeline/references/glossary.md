@@ -1,4 +1,4 @@
-> 版本：v18.80.3（DSH bundle 插件）
+> 版本：v18.80.4（DSH bundle 插件）
 
 
 <a id="concepts"></a>
@@ -328,58 +328,24 @@
 ## 六、教训沉淀体系
 
 ### 教训编号规则
-- **编号不可回收**：即使教训过时，编号永久保留
-- **当前总数**：#1-#144（v2.3.14）
-- **存储位置**：``<DSH 数据目录>``
+- **编号不可回收**（过时也保留编号，防历史引用失指）；**教训正文/编号/分类/存储位置的真源 = [`memory/lessons.md`](memory/lessons.md)**（本节 v18.80.4 去重，不再复述）。
 
 ### 教训分类（待实施 P1-2）
-- **A 类：架构设计**（#56, #60, #102 等）
-- **B 类：执行可靠性**（#46, #102, #103-#107 等）
-- **C 类：质量防御**（#43, #51, #64-#67 等）
-- **D 类：发布管理**（#49, #52, #53, #57, #60, #115 等）
-- **E 类：外部集成**（#87-#91, #98-#101 等）
+- A 架构 / B 执行可靠性 / C 质量防御 / D 发布管理 / E 外部集成——**未实施**；编号清单见上条真源。
 
 ---
 
 ## 七、版本号管理（DSH 发布同步）
 
-> **真源唯一（v2.3.15 澄清）**：论衡只有一个真源——skill 目录 `references/`（见 §十一「真源 vs 副本」）。本节的「4 层」是**发布同步的 4 个目标**，不是 4 个真源。
-> **v2.4.0 更新**：原「5 层」→「4 层」——skill 化（v2.3.13）后论衡不再依赖外部 agent 配置，原第 3 层取消。
-
-### 第 1 层：Git（真源版本控制）
-- **Commit**：（维护由开发者完成，使用者无需 git 操作）
-- **Tag**：（维护由开发者完成，使用者无需 git 操作）
-- **Push**：（维护由开发者完成，使用者无需 git 操作）
-
-### 第 2 层：技能文档（18 文件版本号同步）
-- `SKILL.md` frontmatter `version: X.Y.Z`（版本号单一真源）
-  > **契约定位（v18.0.0 对齐官方）**：DSH 官方的 skill frontmatter 契约只定义 **`name`（必填，kebab-case）/ `description`（必填）/ `whenToUse`（可选路由指引）/ `disable-model-invocation` / `user-invocable`** 五个键；**`version` 不在官方契约内**——它落入 `metadata: Record<string, unknown>`（provider-specific metadata），实测 `dsh-skill-filesystem` 会**原样保留、不警告、不拒绝**。
-  > 因此：① 本技能把 `version` 当版本号单一真源**是允许的自定义用法**，但**不得假定任何其他 DSH 组件会读取它**（模型目录更不会）；② 下游工具要读版本号，应显式从 `metadata` 取，或改用 `package.json#version`（后者才是 npm/DSH 通用的版本真源）；③ 若未来官方 frontmatter 引入同名的 `version` 键，须复核本技能用法是否冲突。
-
-### 第 3 层：GitHub（Release + description）
-- **GitHub Releases**：每版必建 `gh release create`（教训：v2.3.11 曾漏建）
-- repo description：`gh repo edit`（含版本号）
-
-### 第 4 层：npm registry 与已安装副本
-- `npm publish --tag dsh`：registry 发布（dist-tag = `dsh`）
-- 已安装副本同步：各部署位（如 `<镜像根>/.dsh/skills/lunheng-article-pipeline`）随发布内容保持一致，用 `scripts/consistency-check.mjs` 校验漂移
+> **发布同步流程的真源 = [`CONTRIBUTING.md`](../../../CONTRIBUTING.md)**（仓库级、不随包；含 tag → CI publish → dist-tag）。本节只留**两条运行期/维护者判据**，细节与「4 层」清单已于 v18.80.4 去重外移（`audits/去重外移-glossary-2026-10-08.md` §四——其中「18 文件版本号同步」是陈旧计数，规模以 `scripts/bump-version.mjs` 实跑为准）。
+> ① **版本号点位**：`package.json#version` = npm/DSH 通用真源；`SKILL.md` frontmatter `version` 是**本技能的自定义用法**——官方 frontmatter 契约只定义 `name`/`description`/`whenToUse`/`disable-model-invocation`/`user-invocable` 五键，`version` 落入 `metadata`（实测 `dsh-skill-filesystem` 原样保留、不警告、不拒绝），故**不得假定其它 DSH 组件会读它**。
+> ② **级联纪律**：改版本只改「当前版本点位」白名单形态（版本头 / frontmatter / 脚本 `version:` 契约 / README pin / docs 当前版本），**绝不改历史注解**（历史注解改写 = 篡改 changelog 语义）；判据与实现见 `scripts/bump-version.mjs` 头注释。
 
 ---
 
 ## 八、适用边界
 
-### ✅ 适用场景
-- 学术论文（社科/人文）
-- 商业评论/行业分析
-- 公众号深度长文
-- 政策分析报告
-
-### ❌ 不适用场景（5 类，v2.1.7）
-1. **理工科论文**（需数学推导/代码实现/实验设计）
-2. **文学创作**（小说/诗歌/剧本）
-3. **新闻快讯**（时效性要求 <24 小时）
-4. **营销软文**（非客观分析）
-5. **需要主人一手数据但主人未提供**（田野调查/问卷/实验数据）
+> **判据真源 = `SKILL.md` 的 `description`**（常驻面；「何时该用/不该用」完整判据在那里）。本节原场景表是同一事实的第三份复述（SKILL + README），已于 v18.80.4 去重外移（`audits/去重外移-glossary-2026-10-08.md` §二）——**判据以 `SKILL.md` 为准**。
 
 ---
 
@@ -411,24 +377,8 @@
 
 ## 十、引用形式
 
-### 学术论文模式（编号引用）
-
-正文：
-```markdown
-根据研究[L1]，中国城市化率从 2010 年的 49.95% 提升到 2020 年的 63.89%[D3]。
-```
-
-文末参考文献：
-```markdown
-[L1] 张三, 李四. 中国城市化进程研究[J]. 城市规划学刊, 2021, 45(3): 12-25.
-[D3] 国家统计局. 中国统计年鉴 2021[M]. 北京: 中国统计出版社, 2021: 89.
-```
-
-### 公众号/商业评论模式（内联引用）
-
-```markdown
-根据国家统计局数据（2021），中国城市化率从 2010 年的 49.95% 提升到 2020 年的 63.89%。
-```
+> **两种模式的判据**：**学术论文 = 编号引用**（正文标 `[L1]`/`[D3]`，文末按编号列著录；编号↔文末双向闭环由 M-Exist-1 / M-Exist-3 机械核）｜**公众号/商业评论 = 内联引用**（正文内给来源与年份，不设文末编号表）。
+> **格式与逐字段规范的真源** = [`_shared/引用格式.md`](_shared/引用格式.md)（机械面 = `scripts/cite-format.mjs`）；原样例已于 v18.80.4 去重外移（`audits/去重外移-glossary-2026-10-08.md` §三）。
 
 ---
 

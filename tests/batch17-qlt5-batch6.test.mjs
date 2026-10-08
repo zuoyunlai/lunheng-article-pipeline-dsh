@@ -150,12 +150,21 @@ const mkClean = () => {
 }
 const FOUR = '① 逐条枚举：M-Form-11 属格式严格度；② 真阳性扫描：全稿无对应硬缺陷；③ 规范冲突说明：与机检契约不冲突；④ 独立复核来源：T7 审计复核'
 
+/** v18.80.4（全量审计 P1-10）：裁定值 ≠ 机械值时须给 `refutations` **一条对一条**覆盖全部硬失败项。
+ *  从**机械报告**派生（与脚本判据同源：排除 LLM 兜底 / ERROR 档）——夹具的失败项集合随门版本变化，
+ *  静态写死会在门新增项时假红（本批实测：batch17 夹具的失败项是 M-Exist-4/5/9 而非 M-Form-11）。 */
+const refutationsFrom = (report) => (report.results || [])
+  .filter((x) => x.pass === false && x.severity !== 'LLM 兜底' && x.severity !== 'ERROR')
+  .map((x) => ({ gate: String(x.gate || '').split(' ')[0], basis: `T8 复核：${String(x.gate || '').split(' ')[0]} 为假阳性（测试夹具）` }))
+
 test('F-BF②：裁定写入的 `_t8_adjudicated_*` 在**普通复跑后仍保留**（旧版复跑即丢）', () => {
   const f = mkClean()
   try {
     run([M, f.draft, f.ev, '--report', f.report])
     const adj = join(f.dir, 't8.json')
-    writeFileSync(adj, JSON.stringify({ true_p0: 0, true_p1: 0, verdict: 'Pass（T8 裁定）', llm_review: FOUR }, null, 2))
+    // v18.80.4（P1-10）：裁定值 ≠ 机械值须给 refutations（从本次机械报告派生，一条对一条）
+    const mech0 = JSON.parse(readFileSync(f.report, 'utf8'))
+    writeFileSync(adj, JSON.stringify({ true_p0: 0, true_p1: 0, verdict: 'Pass（T8 裁定）', llm_review: FOUR, refutations: refutationsFrom(mech0) }, null, 2))
     const ra = run([M, f.draft, f.ev, '--report', f.report, '--adjudicate', adj])
     assert.equal(ra.code, 0, '裁定后进程码应为裁定值 0：' + ra.out + ra.err)
     const after1 = JSON.parse(readFileSync(f.report, 'utf8'))
@@ -181,7 +190,8 @@ test('F-BF①：非裁定复跑且两值不同时，stderr 须同时给出机械
   try {
     run([M, f.draft, f.ev, '--report', f.report])
     const adj = join(f.dir, 't8.json')
-    writeFileSync(adj, JSON.stringify({ true_p0: 0, true_p1: 0, verdict: 'Pass（T8 裁定）', llm_review: FOUR }, null, 2))
+    const mech1 = JSON.parse(readFileSync(f.report, 'utf8'))
+    writeFileSync(adj, JSON.stringify({ true_p0: 0, true_p1: 0, verdict: 'Pass（T8 裁定）', llm_review: FOUR, refutations: refutationsFrom(mech1) }, null, 2))
     run([M, f.draft, f.ev, '--report', f.report, '--adjudicate', adj])
     const r2 = run([M, f.draft, f.ev, '--report', f.report])
     const report = JSON.parse(readFileSync(f.report, 'utf8'))

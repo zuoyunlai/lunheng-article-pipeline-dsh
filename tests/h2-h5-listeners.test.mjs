@@ -155,6 +155,20 @@ test('H2 R1 核心回归：**深冻 result**（真宿主形状）驱动 → 不�
   assert.ok(/13800138000/.test(result.content[0].text), '默认不重写时原文应保留')
 })
 
+test('H2 P1-3（v18.80.4）：opt-in 改写时**下游已替换的 decision.content 不得被覆盖**（以其为脱敏输入）', async () => {
+  // 反事实网：旧实现从**原始 result.content** 重建脱敏数组再写 decision.content——下游监听器的
+  //   删减/安全过滤（此处 DOWNSTREAM_SAFE_REPLACEMENT）会被整体覆盖、被删文本被重新引入 → 必红。
+  const { decision } = await driveH2({
+    text: '联系 a@example.com',
+    config: { hookRewriteContent: true },
+    next: () => Promise.resolve({ kind: 'accept', content: [{ type: 'text', text: 'DOWNSTREAM_SAFE_REPLACEMENT' }] }),
+  })
+  assert.ok(Array.isArray(decision.content), '下游已给 content 时应保留 content 字段')
+  assert.equal(decision.content[0].text, 'DOWNSTREAM_SAFE_REPLACEMENT',
+    `下游替换的 content 必须原样保留（实测 ${JSON.stringify(decision.content)}——被覆盖即审计 P1-3 病灶）`)
+  assert.ok(!JSON.stringify(decision.content).includes('a@example.com'), '不得从原始 result 重新引入文本')
+})
+
 test('H2 标记**不含原文**：additionalContexts 里不得出现被脱敏的原手机号 / 原人名', async () => {
   const { decision } = await driveH2({ text: '受访者张三的手机是13800138000' })
   const marker = decision.additionalContexts.map((m) => m.content.map((b) => b.text).join('')).join('\n')

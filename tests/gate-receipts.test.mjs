@@ -75,6 +75,23 @@ test('R2：有账本 + §6 引用正确且**相容** → 放行（无 A7 硬项�
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
 
+test('R8（v18.80.4 · 全量审计 P1-7）：Phase 0 预授权门 → 回执 id 指向 Phase0 回执即可（不再逐门要求现场回执）', () => {
+  const d = tmp('lunheng-receipt-preauth-')
+  mkdirSync(join(d, 'audits'), { recursive: true })
+  const gateDoc = (askMode, receiptId) => `# 确认单\n\n### 6. 主人回复（必填）\n\n- **主人原话**：同意\n- **回复时间**：2026-10-01 10:00\n- **回执 id**：${receiptId}\n- **提问方式**：${askMode}\n- **主控落盘结论**：进入下一阶段（预授权三条件：建议=通过 ✅ / P0 数=0 ✅ / 未做项=无 ✅）\n- **轮次计数**：否 / A 轨 0/2\n`
+  writeFileSync(join(d, '阶段确认-Phase0.md'), gateDoc('ask_user_question', 'Phase0#1'))
+  for (const g of ['Phase2.5', 'Phase3.5', 'Phase5']) {
+    writeFileSync(join(d, `阶段确认-${g}.md`), gateDoc('Phase 0 预授权', 'Phase0#1'))
+  }
+  writeFileSync(join(d, 'audits', 'gate-receipts.jsonl'), RECEIPT('Phase0', 1, '同意', '2026-10-01 10:00') + '\n')
+  try {
+    const j = runH(d)
+    assert.equal(j.exit, 22, '合法预授权不得硬 21（旧版 wrongGate 判定会拦，与模板 §0-d 承诺互斥）：' + JSON.stringify(j.hard))
+    assert.ok(!a7(j).some((x) => /gate 与本文档不一致/.test(x.detail)), '预授权门不得再报 wrongGate')
+    assert.ok((j.soft || []).some((x) => /Phase 0 预授权/.test(x.detail) || /预授权/.test(x.detail)), '应给三条件人工核 soft 提示')
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
 test('R3：账本在盘但 §6 **缺「回执 id」** → A7 硬 21（动作 = 回填）', () => {
   const d = mkProj({ receipts: GATES.map((g) => RECEIPT(g, 1, '同意', '2026-10-01 10:00')) })
   try {

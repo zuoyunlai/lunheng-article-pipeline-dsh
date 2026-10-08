@@ -1533,6 +1533,7 @@ if (files.length === 0 && isDraftStageAudit) {
   let manifestProblem = null;   // 硬问题（P0）
   let manifestNote = '';        // 提示（不改严重度）
   let manifestStale = '';       // v18.13.0（L-55）：陈旧副本（源侧变动而包未重建）——同样只进 detail，不翻 severity
+  let manifestRejected = '';    // v18.80.4（全量审计-v18.80.3 P1-5）：构建器声明的拒收源——**翻 P1**（见下方消费段）
   let manifestChecked = false;
   if (existsSync(manifestPath)) {
     try {
@@ -1622,6 +1623,19 @@ if (files.length === 0 && isDraftStageAudit) {
               + '（**本包是另一版正文的证据**，其素材副本可能同样落后）';
           }
         } catch { /* 相对路径算不出（异盘/软链）→ 略过该提示，不影响其余判定 */ }
+        // v18.80.4（全量审计-v18.80.3 P1-5）：**消费构建器的拒收源声明**。
+        //   病根：build-evidence-bundle.mjs 把 0 字节 / 大小不符的源记进 manifest.zeroByteSrcs /
+        //   sizeMismatch 后仍成功收尾，而本门复算只看 files/empty/hash——实测含拒收源字段的
+        //   manifest 照样 M-Exist-2 pass（「构建器明说没装全」与「门说完整」同时成立）。
+        //   拒收源 = 证据不完整（但有合法部分），故定 **P1**：须补源或由 T8 裁定后重跑构建。
+        const rejected0 = Array.isArray(mf.zeroByteSrcs) ? mf.zeroByteSrcs.filter(Boolean) : [];
+        const rejectedS = Array.isArray(mf.sizeMismatch) ? mf.sizeMismatch.filter(Boolean) : [];
+        if (rejected0.length || rejectedS.length) {
+          manifestRejected =
+            (rejected0.length ? `0 字节被拒收的源 ${rejected0.length} 个：${rejected0.slice(0, 3).join(', ')}${rejected0.length > 3 ? '…' : ''}` : '')
+            + (rejected0.length && rejectedS.length ? '；' : '')
+            + (rejectedS.length ? `大小不符被拒收的源 ${rejectedS.length} 个：${rejectedS.slice(0, 3).join(', ')}${rejectedS.length > 3 ? '…' : ''}` : '');
+        }
       }
     } catch (e) {
       manifestProblem = `清单无法解析（${e.message}）——请重跑 build-evidence-bundle.mjs 重生成`;
@@ -1632,14 +1646,15 @@ if (files.length === 0 && isDraftStageAudit) {
   }
   results.push({
     gate: 'M-Exist-2 证据包完整性',
-    pass: files.length > 0 && empty.length === 0 && !layoutAnomaly && !manifestProblem,
+    pass: files.length > 0 && empty.length === 0 && !layoutAnomaly && !manifestProblem && !manifestRejected,
     detail:
       `${files.length} 个 .md 文件` +
       (empty.length ? `，空文件: ${empty.map(relOf).join(',')}` : '，无空文件') +
       (layoutAnomaly ? ` ｜ 布局异常（P1）：${layoutAnomaly}` : '') +
       (manifestProblem ? ` ｜ 清单复算失败（P0）：${manifestProblem}` : manifestNote) +
+      (manifestRejected ? ` ｜ 构建器拒收源未入包（P1，证据不完整——补源或 T8 裁定后重跑 build-evidence-bundle.mjs）：${manifestRejected}` : '') +
       (manifestStale ? ` ｜ ⚠️ 证据包可能陈旧（P2，请重跑 build-evidence-bundle.mjs）：${manifestStale}` : ''),
-    severity: (files.length === 0 || empty.length > 0 || manifestProblem) ? 'P0' : (layoutAnomaly ? 'P1' : '通过'),
+    severity: (files.length === 0 || empty.length > 0 || manifestProblem) ? 'P0' : ((layoutAnomaly || manifestRejected) ? 'P1' : '通过'),
   });
 }
 

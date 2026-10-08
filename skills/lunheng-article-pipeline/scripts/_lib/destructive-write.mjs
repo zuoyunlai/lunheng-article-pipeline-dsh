@@ -54,10 +54,21 @@ export function pathKey(p) {
   return WIN ? r.toLowerCase() : r
 }
 
-/** 两个路径是否指向**同一个文件**（归一 + realpath 后比较）。空值一律判 false。 */
+/** 两个路径是否指向**同一个文件**（归一 + realpath 比较；硬链接补 inode 判定）。空值一律判 false。 */
 export function sameFile(a, b) {
   if (!a || !b) return false
-  return pathKey(a) === pathKey(b)
+  if (pathKey(a) === pathKey(b)) return true
+  // v18.80.4（全量审计-v18.80.3 P1-6）：**硬链接**——两个路径 realpath 不同、却指向同一 inode
+  //   （实测 `fs.linkSync` 别名绕过旧判定 → writeReport / assertNotSameFile 的源文件保护可被
+  //   别名路径覆盖真源）。同设备（dev）同 inode 即同一文件；stat 失败（任一侧不存在/不可达）
+  //   维持原判 false（不劣于旧实现）。
+  try {
+    const sa = statSync(realPath(a))
+    const sb = statSync(realPath(b))
+    return sa.dev === sb.dev && sa.ino === sb.ino
+  } catch {
+    return false
+  }
 }
 
 /** 同文件拒绝时抛出的错误（供调用方 catch 后打印 + exit 10）。 */

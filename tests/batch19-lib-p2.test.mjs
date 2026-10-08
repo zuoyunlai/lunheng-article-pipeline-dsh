@@ -19,14 +19,16 @@ test('validateConfig：0 < v < 1（如 0.5）必须被拒（旧版 floor 后静�
   assert.equal(one.scriptTimeoutMs, 1)
 })
 
-test('ethics PUA 哨兵：原文自带 \\uE000<n>\\uE000 序列 → 不吞字 + sentinel-collision 留痕', async () => {
+test('ethics PUA 哨兵：原文自带 \\uE000<n>\\uE000 序列 → 不吞字 + sentinel-collision-input 留痕（v18.80.4 P2-1：输入侧隔离取代还原侧兜底）', async () => {
   const { sanitize, loadDicts } = await import(pathToFileURL(join(ROOT, 'lib', 'ethics-sanitize.js')).href)
   const dicts = loadDicts(join(ROOT, 'skills', 'lunheng-article-pipeline'))
   const marker = '\uE000999\uE000'
   // strict 模式才启用「地名 → 哨兵 → 还原」链路（sentMap 非空，还原 replace 才会运行）
   const out = sanitize(`原文含哨兵形序列 ${marker}，另有地名 杭州。`, { mode: 'strict', dicts })
   assert.ok(out.text.includes(marker), '哨兵同形序列不得被静默吞字（应保留原串）：' + JSON.stringify(out.text))
-  assert.ok(out.reviewFlags.some((f) => f.kind === 'sentinel-collision'), '必须记 sentinel-collision 供人工核：' + JSON.stringify(out.reviewFlags))
+  // v18.80.4（P2-1）：哨兵序列现在**地名轮之前**就被输入侧隔离（防「编号命中本轮 sentMap」的静默改写），
+  //   标记 kind 由还原侧的 sentinel-collision 升级为 sentinel-collision-input（语义更准：输入自带）。
+  assert.ok(out.reviewFlags.some((f) => f.kind === 'sentinel-collision-input'), '必须记 sentinel-collision-input 供人工核：' + JSON.stringify(out.reviewFlags))
 })
 
 test('ethics 词表缓存：同 skillRoot 二次 loadDicts 返回同一引用（mtime 指纹不变则不重读）', async () => {

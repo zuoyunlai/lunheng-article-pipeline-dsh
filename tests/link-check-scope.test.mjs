@@ -76,3 +76,21 @@ test('L-5 技能目录仍必须被扫（扩面不得替换掉原有面）', () =
   assert.ok(sawSkill, '技能目录的引用点从扫面消失了——扩包级文档面时把原来那一面挤掉了')
   assert.ok(existsSync(SKILL_ROOT), 'SKILL_ROOT 必须存在')
 })
+
+// ── v18.80.4（审计优化方向 0 落地 · 批 A）─────────────────────────────────────────────
+// 病灶（本次审计实测）：本文件 L-1..L-5 只钉「扫面」与「分类」，**从不断言 `broken` 为空**；
+//   而 `.github/workflows/**` 里**没有任何** link-check 引用（`package.json#scripts.check:link` 从未被 CI 调到）。
+//   两者相加 = 「穷举断链」这项能力**在 CI 里从未被断言过**：扫面在、分类在，结论缺失。
+// 判据（fail-closed）：本用例把「无未归类断链」变成 CI 内的硬断言——这是 link-check.mjs 自身的
+//   exit 语义（0 = 无未归类断链）在测试层的等价物，不必再把脚本挂进 workflows。
+// 边界（如实）：只断言 `broken`；`runtime`（运行期产物）/`crossSkill`（属主非本包）/`tomb`（墓碑）/
+//   `suspect`（存疑待收口）四桶按 link-check 的定义**本就不是判定对象**，故不在此断言为空。
+test('L-6 穷举断链必须为空（把 link-check 的 exit 语义搬进 CI——此前「扫了但不判」）', () => {
+  assert.deepEqual(
+    r.broken,
+    [],
+    `存在 ${r.broken.length} 条未归类断链（link-check 的判定结论）：`
+      + r.broken.slice(0, 8).map(([t, from]) => `\n  ${from} → ${t}`).join('')
+      + (r.broken.length > 8 ? `\n  …共 ${r.broken.length} 条` : ''),
+  )
+})

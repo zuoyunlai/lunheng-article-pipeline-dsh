@@ -796,7 +796,7 @@ if (reportPath) {
         //   粘进 `llm_review`」即可让关键词校验满分 —— 校验退化为「格式检查」，声称的「证据」其实没被看。
         //   故：提示**保留形状**（告诉调用方要哪些字段），但**不再给出可复制的关键词**。
         //   判据：**模板不得包含校验所依赖的字面量**（否则校验等于在考自己出的题）。
-        console.error('  期望 JSON：{"true_p0":0,"true_p1":0,"verdict":"…","llm_review":"<证伪证据四件套，逐项写明；具体要件见 SKILL.md/审计报告，本处不再印出关键词>"}');
+        console.error('  期望 JSON：{"true_p0":0,"true_p1":0,"verdict":"…","llm_review":"<证伪证据四件套，逐项写明；具体要件见 SKILL.md/审计报告，本处不再印出关键词>","refutations":[{"gate":"<失败项编号>","basis":"<该条为何假阳性，写明依据>"}]}——裁定值 ≠ 机械值时，refutations 须一条对一条覆盖本次全部硬失败项');
         process.exit(10);
       }
       const aP0 = adj.true_p0 ?? adj.true_p0_count;
@@ -836,11 +836,43 @@ if (reportPath) {
           `本次机械运行命中**硬 P0 红线**（${hardRedLineHits.join(' / ')}）——红线项不允许 LLM 兜底（v18.11.0 F-1 契约，v18.12.0 L-44 实装）`,
         );
       }
+      // v18.80.4（全量审计-v18.80.3 P1-4）：门内 ERROR 一律拒绝裁定。
+      //   病根：`errors > 0` 的机械语义是 exit 70「门没跑通、未对内容下结论」，但 NON_ADJUDICABLE_SEVERITIES
+      //   把 ERROR 排除出硬红线 → 实测「2 条 ERROR + true_p0/p1=0 + 关键词齐」的裁定被采纳为 exit=0、
+      //   进程 0——「系统未能完成检查」被表示成「通过」。门没跑通时**不存在可裁定的「假阳性」**：
+      //   必须先修复执行错误并重跑，再走裁定。
+      if (errors > 0) {
+        rejectAdjudication(
+          `本次机械运行含 ${errors} 项 ERROR（门内解析/读取失败，exit 语义 70）`,
+          `本次机械运行含 **ERROR ${errors} 项**——门未对内容下结论，不存在可裁定的「假阳性」；须先修复执行错误并重跑，再走 --adjudicate（审计 P1-4）`,
+        );
+      }
       if (adjExit !== report.exit && fourHits < 3) {
         rejectAdjudication(
           `裁定值 ${adjExit} 与机械值 ${report.exit} 不同，但证伪四件套仅命中 ${fourHits}/4`,
           `裁定值 ${adjExit} ≠ 本次机械值 ${report.exit}，但证伪证据四件套仅命中 ${fourHits}/4（至少需要 3 项）`,
         );
+      }
+      // v18.80.4（全量审计-v18.80.3 P1-10）：裁定证据必须**结构化逐条绑定**到本次失败项。
+      //   病根：旧校验只有 FOUR 关键词命中（≥3/4）——任意 llm_review 文本写上四个关键词即可把机械
+      //   P1/P2 改成 exit 0（探针复现），「证伪四件套」退化为词语门。
+      //   现：adjExit ≠ 机械值时，`adj.refutations` 须一条对一条覆盖本次全部硬失败项（gate 前缀匹配 +
+      //   非空 basis）；「LLM 兜底」档不要求（其语义本就是交 LLM 判断），ERROR 已被上方整批拒绝。
+      if (adjExit !== report.exit) {
+        const adjudicableFails = results.filter((r) => r.pass === false
+          && !NON_ADJUDICABLE_SEVERITIES.has(String(r.severity || '')));
+        const refs = Array.isArray(adj.refutations) ? adj.refutations : null;
+        const gatePrefix = (g) => String(g || '').split(' ')[0];
+        const covered = (g) => refs && refs.some((x) => x && typeof x.basis === 'string' && x.basis.trim()
+          && gatePrefix(x.gate) === gatePrefix(g));
+        const uncovered = adjudicableFails.filter((r) => !covered(r.gate));
+        if (!refs || uncovered.length) {
+          rejectAdjudication(
+            `裁定值 ${adjExit} ≠ 机械值 ${report.exit}，但 refutations 未一条对一条覆盖失败项（缺 ${uncovered.length} 项）`,
+            `裁定值 ${adjExit} ≠ 机械值 ${report.exit} 时，裁定文件须给 \`refutations: [{gate, basis}]\` 并一条对一条覆盖全部硬失败项`
+              + `（未覆盖：${uncovered.slice(0, 4).map((r) => gatePrefix(r.gate)).join(' / ') || '（refutations 缺失或为空）'}${uncovered.length > 4 ? ` …共 ${uncovered.length} 项` : ''}）；关键词命中只是门槛，不构成证据（审计 P1-10）`,
+          );
+        }
       }
       out = {
         ...report,

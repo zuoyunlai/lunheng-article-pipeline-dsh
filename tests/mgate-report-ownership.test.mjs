@@ -46,7 +46,11 @@ const withVerdict = (f) => {
   assert.notEqual(j0.exit, 0, '夹具机械值须非 0（否则「需要裁定」的前提不成立）')
   assert.deepEqual(j0.hard_red_line_hits, [], '夹具不得命中硬 P0 红线（否则裁定通道会被拒）：' + JSON.stringify(j0.hard_red_line_hits))
   const adj = join(f.dir, 't8.json')
-  writeFileSync(adj, JSON.stringify({ true_p0: 0, true_p1: 0, verdict: 'Pass（T8 裁定）', llm_review: FOUR }))
+  // v18.80.4（全量审计 P1-10）：裁定值 0 ≠ 机械值 → 须给 refutations 一条对一条覆盖全部硬失败项
+  const refutations = (j0.results || [])
+    .filter((x) => x.pass === false && x.severity !== 'LLM 兜底' && x.severity !== 'ERROR')
+    .map((x) => ({ gate: String(x.gate || '').split(' ')[0], basis: `T8 复核：${String(x.gate || '').split(' ')[0]} 为假阳性，依据见复核报告（测试夹具）` }))
+  writeFileSync(adj, JSON.stringify({ true_p0: 0, true_p1: 0, verdict: 'Pass（T8 裁定）', llm_review: FOUR, refutations }))
   const r1 = run([M(), f.draft, f.ev, '--report', f.report, '--adjudicate', adj])
   assert.equal(r1.code, 0, '裁定应被接受（进程码 = 裁定值 0）：' + r1.out + r1.err)
   assert.equal(readReport(f.report).exit, 0)

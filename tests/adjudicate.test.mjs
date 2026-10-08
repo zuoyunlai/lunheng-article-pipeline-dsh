@@ -16,6 +16,12 @@ import { SCRIPTS, run, tmp } from './_fixtures.mjs'
 const M = () => join(SCRIPTS, 'm-gate-check.mjs')
 const FOUR = '① 逐条枚举：M-Form-11 属格式严格度；② 真阳性扫描：全稿无对应硬缺陷；③ 规范冲突说明：与机检契约不冲突；④ 独立复核来源：T7 审计报告-v2 复核'
 
+/** v18.80.4（全量审计 P1-10）：裁定值 ≠ 机械值时须给 `refutations` 一条对一条覆盖全部硬失败项——
+ *   本助手从**机械报告**派生（与脚本判据同源：排除 LLM 兜底 / ERROR 档）。 */
+const refutationsOf = (j) => (j.results || [])
+  .filter((x) => x.pass === false && x.severity !== 'LLM 兜底' && x.severity !== 'ERROR')
+  .map((x) => ({ gate: String(x.gate || '').split(' ')[0], basis: `T8 复核：${String(x.gate || '').split(' ')[0]} 为假阳性，逐项依据见 audits/复核报告（测试夹具）` }))
+
 /** 造一个「无红线」项目：机械 exit=1（仅 M-Form-11 P1），red=[] —— 已实测 */
 const mkClean = () => {
   const dir = tmp('lunheng-adj-')
@@ -47,7 +53,7 @@ test('成功路径：机械 1 → 裁定 0（含证伪四件套）→ 写入并*
   const f = mkClean()
   try {
     run([M(), f.draft, f.ev, '--report', f.report])                       // 先落机械值
-    const adj = adjFile(f.dir, { true_p0: 0, true_p1: 0, verdict: 'Pass（T8 裁定）', llm_review: FOUR })
+    const adj = adjFile(f.dir, { true_p0: 0, true_p1: 0, verdict: 'Pass（T8 裁定）', llm_review: FOUR, refutations: refutationsOf(readReport(f.report)) })
     const r = run([M(), f.draft, f.ev, '--report', f.report, '--adjudicate', adj])
     assert.equal(r.code, 0, '裁定后进程码应为裁定值 0：' + r.out + r.err)
     const j = readReport(f.report)
@@ -94,6 +100,36 @@ test('P2-5 回归：**错误提示不得印出校验所依赖的关键词**（�
         `「期望 JSON」提示行里出现了校验关键词「${kw}」→ 粘贴提示即可通过四件套校验（P2-5 病灶）。该行：${expectLine.slice(0, 300)}`,
       )
     }
+  } finally { rmSync(f.dir, { recursive: true, force: true }) }
+})
+
+test('P1-10（v18.80.4）：证伪四件套关键词齐但**无 refutations** → exit 30（词语命中不构成证据）', () => {
+  const f = mkClean()
+  try {
+    run([M(), f.draft, f.ev, '--report', f.report])
+    const adj = adjFile(f.dir, { true_p0: 0, true_p1: 0, verdict: 'Pass', llm_review: FOUR })   // 故意不给 refutations
+    const r = run([M(), f.draft, f.ev, '--report', f.report, '--adjudicate', adj])
+    assert.equal(r.code, 30, '关键词齐但无逐条覆盖 → 必须拒：' + r.out + r.err)
+    assert.match(String(r.err || r.out), /refutations/, '拒绝理由须点名 refutations')
+    assert.equal(readReport(f.report).exit, 1, '被拒时报告保持机械值')
+  } finally { rmSync(f.dir, { recursive: true, force: true }) }
+})
+
+test('P1-4（v18.80.4）：门内 ERROR（机械 exit 70）→ 裁定一律拒绝（exit 30）——门没跑通时无可裁定对象', () => {
+  const f = mkClean()
+  try {
+    // 构造 ERROR：① 放一份审计报告（M-Exist-5 的激活前提：hasAudit5）② 闸门记录-T7.5.md 做成目录
+    //   → 门 existsSync 通过后 readFileSync 抛 EISDIR → severity ERROR → 机械 exit 70
+    mkdirSync(join(f.dir, 'audits'), { recursive: true })
+    writeFileSync(join(f.dir, 'audits', '审计报告-v1.md'), '# 审计报告\n\nG 项检查。\n')
+    mkdirSync(join(f.dir, 'audits', '闸门记录-T7.5.md'))
+    const adj = adjFile(f.dir, { true_p0: 0, true_p1: 0, verdict: 'Pass', llm_review: FOUR, refutations: [{ gate: 'M-Exist-5', basis: '环境读取错误非内容缺陷（测试夹具）' }] })
+    const r = run([M(), f.draft, f.ev, '--report', f.report, '--adjudicate', adj])
+    const after = readReport(f.report)
+    assert.equal(after.exit, 70, `夹具前提：机械值应为 70（实测 ${after.exit}——若非 70，夹具构造失效须调整）`)
+    assert.equal(r.code, 30, 'ERROR 存在时裁定必须被拒（旧版会写成裁定 0）：' + r.out + r.err)
+    assert.match(String(r.err || r.out), /ERROR/)
+    assert.equal(after.verdict_stale, true)
   } finally { rmSync(f.dir, { recursive: true, force: true }) }
 })
 
@@ -162,7 +198,7 @@ test('m-gate-check（F-AV①）：verdict_stale 为 true 的报告 → 再次运
   const f = mkClean()
   try {
     run([M(), f.draft, f.ev, '--report', f.report])                                  // 落机械值
-    const adj = adjFile(f.dir, { true_p0: 0, true_p1: 0, verdict: 'x', llm_review: FOUR })
+    const adj = adjFile(f.dir, { true_p0: 0, true_p1: 0, verdict: 'x', llm_review: FOUR, refutations: refutationsOf(readReport(f.report)) })
     run([M(), f.draft, f.ev, '--report', f.report, '--adjudicate', adj])             // 写成裁定态
     const base = readReport(f.report)
     assert.equal(base.verdict_stale, false, '前提：裁定后应为未过期')
@@ -181,7 +217,7 @@ test('m-gate-check（F-AV②）：裁定段自述绑定的指纹与正文不符 
   const f = mkClean()
   try {
     run([M(), f.draft, f.ev, '--report', f.report])
-    const adj = adjFile(f.dir, { true_p0: 0, true_p1: 0, verdict: 'x', llm_review: FOUR })
+    const adj = adjFile(f.dir, { true_p0: 0, true_p1: 0, verdict: 'x', llm_review: FOUR, refutations: refutationsOf(readReport(f.report)) })
     run([M(), f.draft, f.ev, '--report', f.report, '--adjudicate', adj])
     const base = readReport(f.report)
     assert.equal(base.verdict_stale, false, '前提：裁定后应为未过期')

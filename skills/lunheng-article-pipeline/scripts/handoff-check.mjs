@@ -773,6 +773,11 @@ if (opt.requireGates) {
     return m ? m[1].trim() : null
   }
   const missingDocs = []
+  // v18.80.4（全量审计-v18.80.3 P1-9）：生效轮次额度 = 默认 ∪ 账本「额度授权」行（主人显式授权，
+  //   只许上调、须含依据，见 `_lib/round-ledger.mjs` 的 authorizedCaps）——§6 分母与越额判定
+  //   均按**生效额度**判。病根：模板 §8 承诺主人可变更上限，而旧判定固定 ROUND_CAPS → 合法授权
+  //   的额外轮次被硬 21。
+  const effCaps = parseLedger(project).caps
   for (const [f, label, gateId] of GATE_DOCS) {
     const p = join(project, f)
     if (!existsSync(p)) { missingDocs.push(`${f}（${label}）`); continue }
@@ -819,9 +824,10 @@ if (opt.requireGates) {
     const roundField = fieldVal(sec, '轮次计数') || ''
     for (const m of roundField.matchAll(/([ABG])\s*轨?\s*(\d+)\s*\/\s*(\d+)/g)) {
       const [, trk, usedRaw, capRaw] = m
-      const used = Number(usedRaw); const cap = ROUND_CAPS[trk]
+      const used = Number(usedRaw); const cap = effCaps[trk]
+      const capNote = cap !== ROUND_CAPS[trk] ? `（默认 ${ROUND_CAPS[trk]}，已按账本「额度授权」行上调）` : ''
       if (Number(capRaw) !== cap) {
-        addHard('A7', f, `§6「轮次计数」里 ${trk} 轨的分母写成 ${capRaw}，而额度真源是 **${cap}**（见 \`${LEDGER_REL}\` 与 \`glossary.md\` §修订回环）`, 21)
+        addHard('A7', f, `§6「轮次计数」里 ${trk} 轨的分母写成 ${capRaw}，而额度真源是 **${cap}**${capNote}（见 \`${LEDGER_REL}\` 与 \`glossary.md\` §修订回环）`, 21)
       }
       if (used > cap) {
         addHard('A7', f, `§6「轮次计数」**越额**：${trk} 轨 ${used}/${cap}——` +
@@ -831,11 +837,21 @@ if (opt.requireGates) {
       }
     }
     // ── v18.81.0（批 1.1）：回执核对（**只在账本存在时判硬**，理由见上方三态注释）──────────
+    // ── v18.80.4（全量审计-v18.80.3 P1-7）：**Phase 0 预授权门**接受 Phase0 回执 ──────────
+    //   模板 §0-d 承诺：主人在 Phase 0 勾选预授权（三条件满足时不等现场回复），§6「提问方式」写
+    //   「Phase 0 预授权」。旧判据要求每门一份 gate 相符的现场回执 → 合法预授权被硬 21（审计 P1-7）。
+    //   预授权本身在 Phase 0 经 ask_user_question 确认过，故「回执 id」指向 Phase0 那条即合法。
+    //   三条件核验仍由人工按模板执行（soft 提示，不假装机械已核）。
+    const askMode = fieldVal(sec, '提问方式') || ''
+    const isPreAuth = /Phase\s*0\s*预授权/.test(askMode)
+    if (isPreAuth) {
+      addSoft('A7', f, `本门标注「Phase 0 预授权」——请人工核对「主控落盘结论」栏是否含三条件逐条核验（建议=通过 / P0 数=0 / 未做项=无，模板 §0-d）`)
+    }
     if (!existsSync(receiptsPath)) continue
     const idRaw = fieldVal(sec, '回执 id')
     if (!idRaw) {
       addHard('A7', f, `§6 缺「**回执 id**」字段（${label}）——回执账本在盘却未被引用：`
-        + '主人的决策将只剩主控自述这一个来源（模板 §6 已列该字段为必填）', 21)
+        + '主人的决策将只剩主控自述这一个来源（模板 §6 已列该字段为必填；预授权门填 Phase 0 确认门的回执，如 `Phase0#1`）', 21)
       continue
     }
     const idList = idRaw.split(/[、,，\s]+/).filter(Boolean)
@@ -846,7 +862,7 @@ if (opt.requireGates) {
         + `（可用 id 形如 \`Phase0#1\`；账本共 ${receipts.length} 条有效回执）`, 21)
       continue
     }
-    const wrongGate = hit.filter((r) => r.gate !== gateId)
+    const wrongGate = hit.filter((r) => r.gate !== gateId && !(isPreAuth && r.gate === 'Phase0'))
     if (wrongGate.length) {
       addHard('A7', f, `「回执 id」指向的 gate 与本文档不一致（期望 ${gateId}，实得 ${wrongGate.map((r) => r.gate).join(' / ')}）`, 21)
       continue

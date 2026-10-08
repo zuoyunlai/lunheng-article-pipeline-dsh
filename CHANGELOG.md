@@ -2,6 +2,45 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.80.4 — 2026-10-08
+
+> **性质**：**《全量审计报告-v18.80.3》问题批修订**——12 项确认问题（10 P1 + 2 P2）+ 1 项部署兼容缺陷全部落地修复；报告落盘 `audits/全量审计报告-v18.80.3-2026-10-08.md`（综合 68/100），修订计划见 `audits/修订计划-全量审计-v18.80.3-2026-10-08.md`，逐项记录见 `audits/修订记录-全量审计-v18.80.3-2026-10-08.md`。
+> **授权（如实标注）**：主人 2026-10-08 直接指令「根据审计报告开始逐项核实制定修订计划，然后开始修订」——依 `AGENTS.md` §机制文件写保护「唯一例外」（主人明确下令 = 可写，走五步安全流程）；改前备份 `<DSH_HOME>/_backup/lunheng-2026-10-08-preaudit-fix/`（11 文件 + 行数基线）。
+> **版本判据 = patch**：全部为缺陷修复与契约收紧，不新增包形态 / 脚本入口 / 退出码（P1-4/P1-10 复用 30，P1-5 复用 P1，P1-7/P1-9 复用 21/22）；**一处工具输入契约收紧**（`--adjudicate` 在裁定值 ≠ 机械值时新增必填 `refutations` 数组，逐条覆盖硬失败项）。
+> **落地——按审计编号**：
+> - **P1-1** `lib/commands.js`：`/lunheng-status` 叶文件（status.md / 进展-主人版.md）读前经 `isPathInsideRunDir` 三层围栏验证——symlink 指向 run/ 外时拒读并播报（TOCTOU 残余如实声明）。
+> - **P1-2** `lib/tools.js`：新增 `resolveSessionPath`——四个原生工具的相对路径入参按 `exec.agent.session.header.cwd` 解析，`runScript` spawn 显式 `cwd`；ethics 工具直读路径同源处理。
+> - **P1-3** `lib/index.js`：H2 opt-in 改写以下游 `decision.content`（若下游已设）为脱敏输入，不再从原始 result 重建——不覆盖下游删减/安全过滤。
+> - **P1-4** `m-gate-check.mjs`：门内 `ERROR`（exit 70 语义）一律拒绝裁定（exit 30）——门没跑通时无可裁定的「假阳性」。
+> - **P1-5** `mexist-gates.mjs`：M-Exist-2 消费 `manifest.zeroByteSrcs` / `sizeMismatch` 拒收源声明 → **P1**（证据不完整）。
+> - **P1-6** `destructive-write.mjs`：`sameFile` 补 inode 判定（dev+ino 相同即同文件）——硬链接别名不再绕过源文件保护。
+> - **P1-7** `handoff-check.mjs`：§6「提问方式」含「Phase 0 预授权」时回执核验接受 `gate=Phase0` 回执 + 三条件人工核 soft 提示；模板 §0-d 机械面注同批更正。
+> - **P1-8** `quality-score.mjs`：① `SCRIPTS` 改 `fileURLToPath`（安装路径含空格/中文时四子门 ENOENT → 被记 N/A 还 exit 0 的部署兼容缺陷，实测复现后修复）；② 门执行错误（status null/70、JSON exit=70）判 **invalid**（非 N/A），evidence 带 `invalid:true`。
+> - **P1-9** `round-ledger.mjs` + `handoff-check.mjs` + 模板 §8：账本支持 `> 额度授权：A=3（依据：主人 …）` 授权行（**只许上调**、须含依据），`parseLedger`/`appendLedgerRow`/§6 分母判定全按生效额度；模板「写进 §6 即生效」更正为「须同步写进账本授权行才对机械门生效」。
+> - **P1-10** `m-gate-check.mjs`：裁定值 ≠ 机械值时，除证伪四件套关键词（≥3/4）外，须给 `adj.refutations: [{gate, basis}]` **一条对一条覆盖**全部硬失败项（LLM 兜底/ERROR 除外）——关键词门升级为结构化证据绑定。
+> - **P2-1** `ethics-sanitize.js`：地名轮之前把输入中 `${SENT}<n>${SENT}` 形态序列隔离暂存（备用 PUA 哨兵从输入不出现的候选中选取），跑完放回——命中本轮编号的哨兵碰撞不再静默改写原文，登记 `sentinel-collision-input`。
+> - **P2-2** `ethics-sanitize.js` + `tools.js`：`maxChars` floor 后夹 ≥1——0<x<1 小数不再产出「空串 + truncated」的无进展分页。
+> **测试**：新增 `tests/audit-fixes-v18-80-4.test.mjs`（10 用例：P1-1/2/5/6/8/9×3/P2-1/P2-2）+ `adjudicate.test.mjs` 2 用例（P1-4/P1-10）+ `h2-h5-listeners.test.mjs` 1 用例（P1-3）+ `gate-receipts.test.mjs` 1 用例（P1-7）；既有裁定夹具按新契约补 `refutations`（adjudicate / mgate-report-ownership），batch19 哨兵断言迁移到新 kind。
+> **同版第三批：继续修订（主人「继续修订」指令）——优化方向 6 续 + 方向 9**
+> - **方向 6 续（`glossary.md` 去重，−1,259 B）**：核心术语表此前余量仅 **36 B**（不可再写）。本次按三条判据选节去重——① 全库 grep 验证**未被任何文档当真源指针引用**；② 内容在别处**已有真源**；③ **保留标题**（规则 ㉗ 锚点由标题派生，删标题即断链）。落地：§六 教训沉淀体系 → `memory/lessons.md`；§八 适用边界 → `SKILL.md` 的 `description`（常驻面）；§十 引用形式 → `_shared/引用格式.md`（+ 机械面 `cite-format.mjs`）；§七 版本号管理 → `CONTRIBUTING.md`（并**删掉陈旧事实**「18 文件版本号同步」——实际 bump 触及 87 文件，规模以 `bump-version.mjs` 实跑为准）。逐字原文外移 `audits/去重外移-glossary-2026-10-08.md`。**余量 36 B → 1,295 B**，`consistency-check` **0 漂移**。
+>   > **为什么不搬被引用的那几节（如实登记）**：`§一/二/三/五/九/十二` **全都被引用**（`SKILL.md:174`、05/07 卡、QUICKSTART、`M-Gate-Algorithm.md:121` 等）——它们的真源地位是刻意的，**不动**。判据：**去重的前提是「无人在指它」，不是「看起来重复」**。
+> - **方向 9（宿主装载烟测，新增脚本 + 2 用例）**：新增仓库级 `scripts/host-install-smoke.mjs` —— 真发布物 → **隔离 `DSH_HOME`** → 官方 `dsh plugin add` → `--dump-config` 断言**自注册行**（`- id: lunheng-article-pipeline`）在场，补 `pack-smoke` **明确声明证明不了**的那段（宿主 loader 是否加载本包 = v18.0.0 缺陷面）。**本机实测通过**（pnpm 695 ms 装入 tarball → 合成含自注册层）；**无 `dsh` → exit 10（「没跑」≠ 通过）**，`tests/host-install-smoke.test.mjs` 两条用例分别钉「无宿主时如实报未跑」与「有宿主时真跑完」。**CI 不强制**（同一段在 CI 由 `loader-smoke` 覆盖）；登记进 `maintainers.md` §十 发布前固定动作族。
+>   > **实测踩到并修掉（如实）**：首版 `spawnSync('dsh', …)` 在 Windows 上以 `EINVAL` 静默失败（`dsh` 是 `.cmd`）——**「没跑起来」与「跑了没通过」读数完全一样**（本仓已登记的同类陷阱）；现 Windows 下经 shell 调用并逐参引号包裹。
+
+> **验证（本版终态）**：全量套 **922/922 全绿**（实测 922 tests / 921 pass / 0 fail / 1 skip；相对 v18.80.3 的 889 **净增 33 条用例**——审计修订批 15 + 优化方向批 A/B 18）；`self-check` **15/15 PASS**；`consistency-check` **0 处漂移**（85 个 .md）；`repo-hygiene-check` **✓ 全部通过**（词预算：模板按定案 ① 公式抬 16→18 KB，**合计上限 1459→1461 KB**，`docs/quick-facts.md` 同批更正；`maintainers.md`/`glossary.md` 沿革与去重外移后**均未抬上限**；⑬ CHANGELOG 首段 == package.json）；`pack-smoke` **通过**（18.80.4 发布物 185 文件 / 3273 KB）；**`host-install-smoke` 通过**（真实宿主安装 → 合成含自注册层）；`no-write-check` **0 改写**。逐项数字与回滚命令见 `audits/修订记录-全量审计-v18.80.3-2026-10-08.md` §验证。
+
+> **同版第二批：审计「进一步优化方向」批 A + 批 B（主人 2026-10-08 选定）**
+> **批 A（零新依赖，四项）**：
+> - **优化方向 0**：`link-check` 的「断链为空」此前**从未被 CI 断言**（`tests/link-check-scope.test.mjs` 只钉扫面与分类；`workflows/**` 无 `check:link` 引用）→ 新增 **L-6** 断言 `broken === []`；`tests/batch21-…test.mjs` 的 packed-link 检查由「目标不存在即 `continue`」改为 **fail-closed**（并对齐 link-check 的「路径型目标 + 代码跨度/围栏内是写法示例」两条口径——首版实测把模板里的 `` `[name](url)` `` 误判为断链，已修正）。
+>   > **更正一条审计表述（如实）**：审计方向 0 把「锚点校验缺失」列为缺口属**过度概括**——锚点在**全库**已由 `consistency-check` **规则 ㉗**（共用 `_lib/anchor-slug.mjs`，含围栏遮蔽与历史归档豁免）覆盖，且该门在每次 push 都跑。真实缺口只有「断链空集未断言」与「packed 存在性未拦截」两条，均已闭合。
+> - **优化方向 8**：新增 `tests/fs-semantics-matrix.test.mjs`（**7 用例**）——词法/结构/物理三层 × 目录链接/叶文件链接/硬链接/大小写/相对写法成矩阵；环境能力不足时**带理由跳过**（本机实测三种链接能力均可用、0 跳过）。
+> - **优化方向 5**：新增 `tests/lib-static-check.test.mjs`（**2 用例**）——`lib/**` 此前无任何静态检查；以**零依赖**形态补「未使用相对 import」+「孤儿模块」两条高精度判据（**不引入 ESLint**，与仓库零 devDependency 一致）。
+> - **优化方向 10**：常驻面**实测数字**写入 `operations-capability.md`——`SKILL.md` 38,898 + `AGENTS.md` 17,844 = **56,742 B（55.4 KB）/ 上限 56.0 KB → 余量 620 B**；并登记六份「几乎不可再写」的文档（余量 20–190 B）。**结论：外移有效（SKILL ~52→38.9 KB）但已回到墙前**（迁移前 775 B）。
+> **批 B（两项）**：
+> - **优化方向 4**：新增 `scripts/_lib/gate-result.mjs`（门运行状态**四态**：`ok`/`invalid`/`not_applicable`/`unavailable`）并让 `quality-score.mjs` **五处判据收口**到它——此前同一判据写了五遍且形状不一致（M 门三条件 / 四检门两条件），正是 P1-8 那类缺陷的成因。新增 `tests/gate-result.test.mjs`（**6 用例**，含「exit 3（仅 P2）必须仍是 ok」「JSON exit=70 必须也判 invalid」两条边界）。
+> - **优化方向 6 + 11**：`maintainers.md` 的 `loader-smoke` 失效成因叙事、历史更正清单、dist-tag 退役缘由**逐字外移**到 `audits/沿革外移-maintainers-2026-10-08.md`（沿革外移 ≠ 删除，判据留正文）；§六 改建为**「CI 作业职责与验证责任」表**（含「`gates` 不含 `loader-smoke`」这一结构性成因与各 job 的「不验什么」）。净 −308 B（外移与新增相抵），**本批不抬其棘轮**。
+>   > **未做完的（如实登记）**：沿革外移**只完成 `maintainers.md` 一份**。`glossary.md`（余 36 B）**经实测不适合沿革外移**——其沿革多为**标题内联括注**，而标题是规则 ㉗ 的锚点来源，改动即断链；正确出路是**整节去重**（§七 版本号管理 与 §五 工具能力边界 与 CHANGELOG / SKILL 重复），需专门一批。`M-Gate-Algorithm.md`（114 KB，余 86 B）、`docs/troubleshooting.md`（余 58 B）、`docs/introduction.md`（余 190 B）同理待专门一批。
+
 ## 18.80.3 — 2026-10-08
 
 > **性质**：**发版流程修正版**——**代码内容与 18.80.2 逐字相同**（五批修订未改动一行），仅重新发布一次，目的是取得**正确的 `gitHead` 与 provenance**。

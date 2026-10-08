@@ -65,14 +65,21 @@ import { readFileSync, existsSync, mkdtempSync, rmSync, readdirSync } from 'node
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { installExitGuard, requireExistingDir } from './_lib/exit-guard.mjs';
 import { h2Headings, titleMatches, firstEndnoteIndex, bodyStartAfterAbstract } from './_lib/sections.mjs';
 import { evaluate as readabilityEvaluate } from './_lib/readability.mjs';   // v18.26.0 QLT-3：可读性剖面（第 8 分量）
 import { evaluateQlt6 } from './_lib/qlt6.mjs';   // v18.53.0 QLT-6：论证强度（**独立于门**的第二把尺，见 F-BC）
+// v18.80.4（审计优化方向 4 落地 · 批 B）：门运行状态四态判定的**单一真源**——此前同一判据在本文件
+//   写了五遍（M 门一处 + 四个三检门各一处），形状还不一致（M 门三条件 / 四检门两条件）。
+import { classifyGateRun, explainGateRun } from './_lib/gate-result.mjs';
 import { packageVersionTag } from './_lib/pkg-version.mjs';   // §8.3 #39：产物 version 单一真源
 installExitGuard();
 
-const SCRIPTS = new URL('.', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+// v18.80.4（全量审计-v18.80.3 · 路径编码缺陷）：改用 fileURLToPath。旧写法 URL.pathname 是
+//   percent-encoded——安装路径含空格/中文时（实测「space dir」「中文目录」夹具）spawnSync 拿到
+//   转义序列路径 → 四个子门全部 ENOENT（status=1）、JSON 缺失，评分却把它们记 N/A 后 exit 0。
+const SCRIPTS = fileURLToPath(new URL('.', import.meta.url));
 const NODE = process.execPath;
 
 // --- CLI ---
@@ -156,6 +163,16 @@ const hardRatio = (checks) => {
   };
 };
 
+/** v18.80.4（B2）：把「门没跑通」的处置收口——**invalid 而非 N/A**（非 N/A 是 P1-8 的核心判据）。
+ *  两种成因都返回 invalid：① 运行态不可用/内部错误（经 `_lib/gate-result.mjs` 判四态）；
+ *  ② 跑通了但 JSON 缺 `checks` 结构（跑通 ≠ 可判定，仍不得当 N/A 蒙混）。 */
+const gateFallback = (label, r) => {
+  const cls = classifyGateRun({ status: r.status, error: r.error, json: r.json });
+  return cls.kind === 'ok'
+    ? { invalid: true, reason: `${label} 产出 JSON 但缺 checks 结构——不可判定（**invalid 非 N/A**，修复后重跑）` }
+    : { invalid: true, reason: `${label} ${explainGateRun(cls)}——**invalid 非 N/A**，修复后重跑` };
+};
+
 // ① M 门机械项（权重 38）——图件闭环 M-Form-9 / M-Fact-1 均含在内，不另计
 //    v18.57.x（审计修订 P2）：同一分量此前在三个分支下有三种写法（38 / 38 / 40），且名称硬编码的
 //    项数与本门实际入账数不一致（写过 22 / 23，实测 total 为 24）。两处后果都是**同一个分量看起来
@@ -168,7 +185,13 @@ const MGATE_NAME = 'M 门机械项（含图件闭环 M-Form-9 + M-Fact-1）';
 if (existsSync(evidence)) {
   const r = runGate('mgate', [join(SCRIPTS, 'm-gate-check.mjs'), draft, evidence]);
   const j = r.json;
-  if (j && j.total > 0) {
+  // v18.80.4（全量审计-v18.80.3 P1-8 + 批 B）：**门执行错误 ≠ 缺数据（N/A）**，判据收口到
+  //   `_lib/gate-result.mjs`（四态：ok / invalid / not_applicable / unavailable）。病灶：m-gate 对
+  //   可解析的门内 ERROR 会 stdout 完整 JSON 且进程 exit 70；旧判定只看 `j && j.total > 0` → 照常按
+  //   pass/total 计分——「检查没跑通」被记成合规分。现非重跑不可的三种成因一律判 invalid。
+  const mgCls = classifyGateRun({ status: r.status, error: r.error, json: j });
+  const gateErr = mgCls.kind !== 'ok';
+  if (j && j.total > 0 && !gateErr) {
     // v18.81.0（独立审计批 1.2）：**门版本可见性**。
     // 为什么在这里做：`runGate` 每次都是**新跑一遍**（temp 报告、无 prev）→ 它自己永远不会有
     //   `gate_rev_drift`；而消费这份分数的人真正需要知道的是「磁盘上那份被引用的报告，
@@ -183,8 +206,12 @@ if (existsSync(evidence)) {
     add('M-Gate', MGATE_NAME, MGATE_WEIGHT, j.pass / j.total,
       `${j.pass}/${j.total} 通过｜P0 ${j.p0 ?? 0} / P1 ${j.p1 ?? 0} / P2 ${j.p2 ?? 0}｜exit ${j.exit}｜gate_rev ${j.gate_rev ?? '缺'}${revNote}`,
       { pass: j.pass, total: j.total, p0: j.p0 ?? 0, p1: j.p1 ?? 0, p2: j.p2 ?? 0, ...(j.gate_rev ? { gate_rev: j.gate_rev } : {}), ...(diskRev ? { disk_gate_rev: diskRev } : {}) });
+  } else if (gateErr) {
+    add('M-Gate', MGATE_NAME, MGATE_WEIGHT, null, '', { invalid: true },
+      `m-gate-check ${explainGateRun(mgCls)}——**invalid，非 N/A**：检查未成功运行，本分数不得解读为合规面，修复后重跑`);
   } else {
-    add('M-Gate', MGATE_NAME, MGATE_WEIGHT, null, '', {}, `m-gate-check 未产出可用 JSON（status=${r.status}${r.error ? ` / ${r.error}` : ''}）`);
+    add('M-Gate', MGATE_NAME, MGATE_WEIGHT, null, '', { invalid: true },
+      'm-gate-check 产出 JSON 但 total=0（无可判定项）——**invalid 非 N/A**，修复后重跑');
   }
 } else {
   add('M-Gate', MGATE_NAME, MGATE_WEIGHT, null, '', {}, '缺 final/证据包（M 门第二参数必须是证据包目录）');
@@ -210,7 +237,8 @@ if (existsSync(evidence)) {
       `${Math.round(hr.ratio * cs.length)}/${cs.length} 通过` + (cs.filter((c) => !c.pass && c.severity !== 'P2').length ? `｜硬失败：${cs.filter((c) => !c.pass && c.severity !== 'P2').map((c) => Object.keys(j.checks)[cs.indexOf(c)] || '').join(' / ')}` : '') + hr.detailSuffix,
       { pass: cs.filter((c) => c.pass).length, total: cs.length, soft: hr.soft, humanities });
   } else {
-    add('structure', '学术结构（IMRaD / 引言漏斗 / 讨论四要素）', 8, null, '', {}, `structure-check 未产出可用 JSON（status=${r.status}）`);
+    const gf = gateFallback('structure-check', r);
+    add('structure', '学术结构（IMRaD / 引言漏斗 / 讨论四要素）', 8, null, '', { invalid: true }, gf.reason);
   }
   }
 }
@@ -224,7 +252,8 @@ if (hasMethods) {
     const hr = hardRatio(cs);
     add('methodology', '方法论可复现（MC-Form-12 / MC-Exist-11 / MC-Exist-12）', 4, hr.ratio, `${cs.filter((c) => c.pass).length}/${cs.length} 通过` + hr.detailSuffix, { pass: cs.filter((c) => c.pass).length, total: cs.length, soft: hr.soft });
   } else {
-    add('methodology', '方法论可复现（MC-*）', 4, null, '', {}, `methodology-check 未产出可用 JSON（status=${r.status}）`);
+    const gf = gateFallback('methodology-check', r);
+    add('methodology', '方法论可复现（MC-*）', 4, null, '', { invalid: true }, gf.reason);
   }
 } else {
   add('methodology', '方法论可复现（MC-*）', 4, null, '', {}, '本文无「方法 / 研究设计 / Methodology」节（评论类与人文学科通常不适用）');
@@ -241,7 +270,8 @@ if (hasRefs) {
       `${cs.filter((c) => c.pass).length}/${cs.length} 通过` + (hr.soft.length ? `｜软提示：${hr.soft.join(' / ')}` : ''),
       { pass: cs.filter((c) => c.pass).length, total: cs.length, soft: hr.soft });
   } else {
-    add('cite-coverage', '引用实质相关性（强度 / 冗余 / 年代分布）', 10, null, '', {}, `cite-coverage-check 未产出可用 JSON（status=${r.status}）`);
+    const gf = gateFallback('cite-coverage-check', r);
+    add('cite-coverage', '引用实质相关性（强度 / 冗余 / 年代分布）', 10, null, '', { invalid: true }, gf.reason);
   }
 } else {
   add('cite-coverage', '引用实质相关性（强度 / 冗余 / 年代分布）', 10, null, '', {}, '本文无「参考文献」节');
@@ -276,7 +306,8 @@ if (existsSync(evidence) && existsSync(brief)) {
         { pass: checked.length - hardFail.length, checked: checked.length, skipped: skipped.length, na: na.length, applicable: applicable.length, p1: hardFail.length, soft: softList.map((c) => c.name) });
     }
   } else {
-    add('g-audit', LABEL_NA, 15, null, '', {}, `g-audit-check 未产出可用 JSON（status=${r.status}）`);
+    const gf = gateFallback('g-audit-check', r);
+    add('g-audit', LABEL_NA, 15, null, '', { invalid: true }, gf.reason);
   }
 } else {
   add('g-audit', LABEL_NA, 12, null, '', {},

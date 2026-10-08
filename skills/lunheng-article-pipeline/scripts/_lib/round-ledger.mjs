@@ -47,16 +47,53 @@ export function ledgerPath(projectDir) { return join(projectDir, LEDGER_REL) }
 export function hasLedger(projectDir) { return existsSync(ledgerPath(projectDir)) }
 
 /**
+ * v18.80.4（全量审计-v18.80.3 P1-9）：从账本头注解析**主人授权的额度覆盖**。
+ * 病根：模板 §8 承诺「主人可当场变更轮次上限、写进 §6 即生效」，而机械面固定 `ROUND_CAPS` 2/1/2
+ *   → 合法授权的额外轮次仍被 handoff-check 硬 21（授权与机械两个「真源」互斥）。
+ * 授权行形态（每轨一行，主控独占写，与表格同文件）：
+ *   > 额度授权：A=3（依据：主人 2026-10-08，阶段确认-Phase0.md §6）
+ * 规则（宁拒不猜）：① 数值须为正整数且**只许上调**（下调 = 借「授权」绕过既有上限，不允许）；
+ *   ② 须含「依据：」说明且提到「主人」——无依据的授权行不生效并计入 malformed。
+ * @param {string} text 账本全文
+ * @returns {{caps: Record<string, number>, bad: string[]}}
+ */
+export function authorizedCaps(text) {
+  const caps = {}
+  const bad = []
+  for (const line of String(text || '').split(/\r?\n/)) {
+    const m = /^>\s*额度授权[:：]\s*([ABG])\s*=\s*(\d+)\s*(.*)$/.exec(line.trim())
+    if (!m) continue
+    const [, trk, nRaw, rest] = m
+    const n = Number(nRaw)
+    if (!Number.isInteger(n) || n <= ROUND_CAPS[trk]) {
+      bad.push(`轨 ${trk} 的授权行无效（${n} 须为大于默认额度 ${ROUND_CAPS[trk]} 的整数——只许上调）`)
+      continue
+    }
+    if (!/依据[:：]/.test(rest) || !/主人/.test(rest)) {
+      bad.push(`轨 ${trk} 的授权行缺「依据：…主人…」说明——不生效`)
+      continue
+    }
+    caps[trk] = n
+  }
+  return { caps, bad }
+}
+
+/**
  * 解析账本。
- * @returns {{exists:boolean, rows:Array, counts:Record<string,number>, malformed:Array<string>, over:Array<string>}}
+ * @returns {{exists:boolean, rows:Array, counts:Record<string,number>, malformed:Array<string>, over:Array<string>, caps:Record<string,number>, capsAuthorized:Record<string,number>}}
  */
 export function parseLedger(projectDir) {
   const p = ledgerPath(projectDir)
-  const out = { exists: false, rows: [], counts: { A: 0, B: 0, G: 0, 相位: 0 }, malformed: [], over: [] }
+  const out = { exists: false, rows: [], counts: { A: 0, B: 0, G: 0, 相位: 0 }, malformed: [], over: [], caps: { ...ROUND_CAPS }, capsAuthorized: {} }
   if (!existsSync(p)) return out
   out.exists = true
   let text = ''
   try { text = readFileSync(p, 'utf8') } catch { out.malformed.push('账本不可读'); return out }
+  // v18.80.4（P1-9）：生效额度 = 默认 ∪ 授权行（只许上调、须含依据；无效行进 malformed 不静默吞）。
+  const auth = authorizedCaps(text)
+  out.caps = { ...ROUND_CAPS, ...auth.caps }
+  out.capsAuthorized = auth.caps
+  out.malformed.push(...auth.bad)
   for (const line of text.split(/\r?\n/)) {
     const t = line.trim()
     if (!t.startsWith('|')) continue
@@ -68,7 +105,7 @@ export function parseLedger(projectDir) {
     const m = /^(\d+)\s*\/\s*(\d+)$/.exec(cells[1] || '')
     if (!m) { out.malformed.push(`轨 ${track} 的「轮次」不是 \`n/m\` 形态：「${cells[1]}」`); continue }
     const n = Number(m[1]); const declared = Number(m[2])
-    const cap = ROUND_CAPS[track]
+    const cap = out.caps[track]
     out.rows.push({ track, n, declared, draft: cells[2] || '', source: cells[3] || '', review: cells[4] || '', at: cells[5] || '' })
     out.counts[track] += 1
     if (declared !== (cap ?? declared)) out.malformed.push(`轨 ${track} 的 \`n/m\` 分母 ${declared} ≠ 该轨额度 ${cap ?? '（无额度）'}`)
@@ -84,7 +121,12 @@ export function parseLedger(projectDir) {
  */
 export function appendLedgerRow(projectDir, row) {
   const p = ledgerPath(projectDir)
-  const cap = row.cap ?? ROUND_CAPS[row.track]
+  // v18.80.4（P1-9）：分母取「生效额度」（默认 ∪ 账本授权行）——授权后追加的行直接写新分母。
+  let effCaps = ROUND_CAPS
+  if (existsSync(p)) {
+    try { effCaps = { ...ROUND_CAPS, ...authorizedCaps(readFileSync(p, 'utf8')).caps } } catch { /* 读不到保持默认 */ }
+  }
+  const cap = row.cap ?? effCaps[row.track]
   const roundCell = cap == null ? `${row.n}` : `${row.n}/${cap}`
   const line = `| ${row.track} | ${roundCell} | ${row.draft || ''} | ${row.source || ''} | ${row.review || ''} | ${row.at || new Date().toISOString().slice(0, 10)} |\n`
   if (!existsSync(p)) {
