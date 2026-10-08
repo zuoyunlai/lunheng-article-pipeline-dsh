@@ -47,6 +47,33 @@ test('① 逐维明细：从审稿报告的 `### N. 名称（x/5）` 解析六�
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
 
+test('①b（v18.80.5 动议 A）：evidence 必须同时给**不夹取**的 `ratioRaw` 与下界饱和标记', () => {
+  // 由来：① 的下界 = reject 上界 16 ⇒ 总评分 ≤16 一律映射 0，低分段分辨率被抹平
+  //   （v18.80.4 跨体例盲评实测：15/30 与 16/30 的 ① 同为 0.0000）。裁定 = **只加读数、不改合成**，
+  //   故本条同时钉两件相反的事：**读数在**（ratioRaw = total/30）+ **合成不变**（ratio 仍是夹取值）。
+  const { d, draft } = mkProject()
+  try {
+    const r = evaluateQlt6({ projectDir: d, draftPath: draft })
+    const ev = r.components[0].evidence
+    assert.equal(ev.ratioRaw, +(24 / 30).toFixed(4), 'ratioRaw 必须是不夹取的 总分/30')
+    assert.equal(ev.saturatedAtFloor, false, '24 > 16 → 未触下界')
+    assert.equal(r.components[0].ratio, 0.5714, '合成仍用夹取值（口径未改，既有标定不作废）')
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
+test('①c（v18.80.5）：总评分 16 → ratio 夹取为 0，但 ratioRaw 保留分辨率（0.5333）', () => {
+  const { d, draft } = mkProject()
+  try {
+    writeFileSync(join(d, 'audits', '审稿报告-v1.md'),
+      '# 审稿报告\n\n> **总评分**：16 / 30\n\n- **总分**：16 / 30（3 + 3 + 2 + 3 + 3 + 2）\n')
+    const r = evaluateQlt6({ projectDir: d, draftPath: draft })
+    const ev = r.components[0].evidence
+    assert.equal(r.components[0].ratio, 0, '16 = reject 上界 → 夹取后 0（既有口径）')
+    assert.equal(ev.saturatedAtFloor, true, '须标出「已触下界」，否则读者会以为它真的很差')
+    assert.equal(ev.ratioRaw, 0.5333, 'ratioRaw 让低分段差异仍可见（这就是动议 A 的目的）')
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
 test('② 逐域明细：按条件 id 的 `C1–C7` 段聚合（提出 / 已关闭 / 未闭合 id）', () => {
   const { d, draft } = mkProject()
   try {
