@@ -98,6 +98,26 @@ const STEPS = custom
  *  归因表，谁也看不出**是哪条用例红**。结果是：一个「测试夹具在 POSIX 下的绝对路径假设」缺陷，
  *  要多耗一整个 CI 周期（~5 min + 一次 force-tag）才定位。**归因表说「哪一步失败」，输出尾部说「为什么失败」**，两者缺一不可。 */
 const OUT_TAIL_LINES = 25
+/** 失败标记行（v18.80.4 二次修正）：**只取尾部仍然不够**——TAP 的失败块在**中段**（`not ok N - 用例名`
+ *  后面紧跟 YAML 断言诊断），而尾部只有 `# pass/# fail` 汇总。实测（macOS 作业）：
+ *  仅回显尾部时，日志里看得见「fail 1」却**看不见是哪一个**。故除尾部外，另抽取失败标记行
+ *  + 其**后 6 行**（TAP 诊断块就长在那里），两者都给。 */
+const FAIL_MARK_RE = /^(?:not ok\b|# fail\b|.*\bAssertionError\b|.*✗|.*\bError:)/m
+function failureDigest(text) {
+  const lines = String(text || '').split('\n')
+  const marks = []
+  for (let i = 0; i < lines.length && marks.length < 120; i++) {
+    if (FAIL_MARK_RE.test(lines[i])) {
+      for (let j = i; j < Math.min(lines.length, i + 7) && marks.length < 120; j++) marks.push(lines[j])
+      marks.push('  ⋯')
+    }
+  }
+  const tail = lines.slice(-OUT_TAIL_LINES)
+  const parts = []
+  if (marks.length) parts.push('【失败标记行 + 其后 6 行】', ...marks)
+  parts.push('【输出尾部】', ...tail)
+  return parts.join('\n')
+}
 
 let before = snapshot();
 if (before.size === 0) { console.error(`${root} 下快照到 0 个文件——--root 指错了吧`); process.exit(10); }
@@ -122,8 +142,8 @@ try {
       else if (e.code === 'EPERM' || e.code === 'EACCES') spawnErr = `无法派生（${e.code}）：环境拒绝启动该命令——**不是**「无改写」`;
       else if (exit === -1 || exit === null) spawnErr = `未能启动（${e.code || '未知'}）`;
       // v18.80.4：把被包命令的输出尾部带出来（见 OUT_TAIL_LINES 注释：CI 里没有它就无法定位是哪条用例红）
-      const tailText = `${e.stdout ?? ''}${e.stderr ?? ''}`
-      outputTail = tailText.trim().split('\n').slice(-OUT_TAIL_LINES).join('\n')
+      const full = `${e.stdout ?? ''}${e.stderr ?? ''}`
+      outputTail = failureDigest(full)
     }
     const d = compare(pre, snapshot());
     steps.push({ label: s.label, exit, spawnErr, ...(outputTail ? { outputTail } : {}), ...d });
