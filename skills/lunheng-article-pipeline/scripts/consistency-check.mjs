@@ -110,6 +110,7 @@
 const fixMode = process.argv.includes('--fix');
 
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { sep } from 'node:path';
 import { join, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { installExitGuard } from './_lib/exit-guard.mjs';
@@ -447,25 +448,93 @@ const skillHeader = skillText.split('\n').find((l) => VER_HEADER_RE.test(l));
 if (skillHeader && !skillHeader.includes(pkgVer)) {
   errors.push(`[P0 版本一致性] SKILL.md 版本头「${skillHeader.trim().slice(0, 30)}…」≠ package.json=${pkgVer}`);
 }
-// 仓库级文档版本头（v18.0.0：按部署布局分流）
-//   ① 仓库布局（ROOT ≠ REPO_ROOT）：README.md / docs/introduction.md / skills/README.md 三处
-//   ② 技能即包根（ROOT === REPO_ROOT，本机 `.dsh/skills/<name>/` 部署）：只有一处 README.md
-//      ——旧实现硬编码三处，在布局②下 `README.md` 与 `skills/README.md` 指向**同一文件**（重复检查），
-//      且 `docs/introduction.md` 根本不存在 → 产生 3 条假 P0，使脚本在本地部署下不可用。
+// 仓库级文档版本头（v18.85.0 · CONTRIBUTING §26 扩面）：
+//   旧实现硬编码 3 处（README.md / docs/introduction.md / skills/README.md），导致 SECURITY.md /
+//   docs/troubleshooting.md / 5 语 README 等 v18.2.4+ 一直未进硬检——v18.2.5 C-3 抓到
+//   SECURITY.md + troubleshooting.md 双双停 v18.2.4 → 一致性门报「0 漂移」= 假绿。
+//   **扩面原则（v18.85.0）**：
+//     ① **hard targets** = CONTRIBUTING §2 列出的 8 个「必同步」文件（4 语 README+SECURITY+docs/
+//        introduction+docs/troubleshooting+skills/README+examples/preset/README）——必须严格匹配 pkgVer；
+//     ② **soft targets** = 仓库根其他 .md + docs/ 其他 .md（**不**含 `docs/审计与修订记录/` 历史留痕）——
+//        若含 `v\d+\.\d+` 字面量才检「与 pkgVer 不一致」则报 P1；不含则 pass（不强制加版本头，因为
+//        AGENTS.md / IDEA.md / docs/agents/* / docs/architecture.md / docs/faq.md 等文件**本无**版本头约定，
+//        一刀切硬检会误伤 + 制造大量 P0 阻塞 release 链）。
+//   排除面：CHANGELOG.md（append-only）/ `docs/审计与修订记录/` / `node_modules/` / `.git/` / `audits/`。
 const isRepoLayout = ROOT !== REPO_ROOT;
-const repoTargets = isRepoLayout
+const HARD_VERSION_FILES = isRepoLayout
   ? [
+      // 必同步：CONTRIBUTING §2 列出的 8 个（按文件路径相对 REPO_ROOT 排列）
       ['README.md', join(REPO_ROOT, 'README.md')],
+      ['README-zh.md', join(REPO_ROOT, 'README-zh.md')],
+      ['README-es.md', join(REPO_ROOT, 'README-es.md')],
+      ['README-pt.md', join(REPO_ROOT, 'README-pt.md')],
+      ['README-hi.md', join(REPO_ROOT, 'README-hi.md')],
+      ['SECURITY.md', join(REPO_ROOT, 'SECURITY.md')],
       ['docs/introduction.md', join(REPO_ROOT, 'docs', 'introduction.md')],
-      ['skills/README.md', join(ROOT, 'README.md')],
+      ['docs/troubleshooting.md', join(REPO_ROOT, 'docs', 'troubleshooting.md')],
+      ['skills/lunheng-article-pipeline/README.md', join(ROOT, 'README.md')],
+      ['examples/preset/README.md', join(REPO_ROOT, 'examples', 'preset', 'README.md')],
     ]
   : [['README.md', join(ROOT, 'README.md')]];
-for (const [rel, p] of repoTargets) {
-  if (!existsSync(p)) { errors.push(`[P0 版本一致性] 缺文件 ${rel}`); continue; }
+// hard: 必须有版本头且与 pkgVer 一致；缺文件 / 缺版本头 / 不一致 → 报 P0
+const VER_HEADER = new RegExp('^>\\s*\\*{0,2}?\\s*版本\\s*[：:]\\s*v?' + SEMVER, 'm');
+for (const [rel, p] of HARD_VERSION_FILES) {
+  if (!existsSync(p)) { errors.push(`[P0 版本一致性] 缺文件 ${rel}（必同步文件）`); continue; }
   const t = readFileSync(p, 'utf8');
-  const m = t.match(new RegExp('v?' + SEMVER));
+  // 优先匹配 `> 版本：vX.Y.Z` 头；无头则取全文第一个 semver 字面
+  const m = t.match(VER_HEADER) || t.match(new RegExp('v?' + SEMVER));
   if (!m) errors.push(`[P0 版本一致性] ${rel} 无版本号（期望「> 版本：vX.Y.Z」）`);
-  else if (normVer(m[0]) !== normVer(pkgVer)) errors.push(`[P0 版本一致性] ${rel} 写 ${m[0]} ≠ package.json=${pkgVer}（需 bump）`);
+  else if (normVer(m[0].match(/\d.*/)[0]) !== normVer(pkgVer)) errors.push(`[P0 版本一致性] ${rel} 写 ${m[0]} ≠ package.json=${pkgVer}（需 bump）`);
+}
+// soft: 仓库根其他 .md + docs/ 其他 .md（排除已 hard 的）—— 若含 v\d+\.\d+ 字面量，不一致则报 P1
+const repoTopLevelMd = () => {
+  if (!existsSync(REPO_ROOT)) return [];
+  const out = [];
+  for (const e of readdirSync(REPO_ROOT, { withFileTypes: true })) {
+    if (!e.isFile() || !e.name.endsWith('.md')) continue;
+    if (e.name === 'CHANGELOG.md') continue;
+    if (HARD_VERSION_FILES.some(([rel]) => rel === e.name)) continue;   // 已 hard 检过
+    out.push([e.name, join(REPO_ROOT, e.name)]);
+  }
+  return out;
+};
+const repoDocsMd = () => {
+  if (!existsSync(join(REPO_ROOT, 'docs'))) return [];
+  return walk(join(REPO_ROOT, 'docs'))
+    .filter((f) => !isHistoricalDocs(f))
+    .map((f) => [relative(REPO_ROOT, f).split(sep).join('/'), f])
+    .filter(([rel]) => !HARD_VERSION_FILES.some(([h]) => h === rel));  // 已 hard 检过
+};
+const softTargets = isRepoLayout ? [...repoTopLevelMd(), ...repoDocsMd()] : repoTopLevelMd();
+const softNotes = [];   // soft 不推 errors，结尾打印（**负向用例**保留：注入旧版本字面量必出现在该段里）
+// v18.85.0 soft 重定义：**soft 不再扫全文**，**只扫「文件首部 5 行内的 `v?\d+\.\d+(\.\d+)?` 字面量」**：
+//   本批扩面暴露的 7 处实测**全部是历史叙事/旧规约/宿主版本/旧实测**（CONTRIBUTING.md §1 / docs/faq.md
+//   "v18.0.0 起" 叙述 / docs/installation.md "实测装到 18.15.0" / docs/token-optimization-plan.md `v2.5.2-dsh.15`
+//   规约版本线 / docs/usage.md "v18.2.6 起" / 2 个验证记录 `@deepseek-ai/dsh@0.1.5-rc.2` 宿主包）——
+//   改 = 改写历史。**只有「文件首部版本头与 pkgVer 不一致」才是 sync 债**（此即 hard 已覆盖 10 个文件的子集，
+//   soft 仅为「本批扩面副作用的负向用例保留」）。
+//
+//   判据：
+//     · 软目标只读每文件**前 5 行**；
+//     · 命中形态豁免（`@scope/pkg@version` / `v\d+\.\d+\.\d+-dsh\.\d+`）→ 放行；
+//     · 命中叙述豁免（前文 50 字符内出现「v\d+\.\d+ 起|后|以来|开始|实」/ `实测|装到|装入`）→ 放行；
+//     · 命中本包版本线（`v?\d+\.\d+\.\d+` 无后缀）且与 pkgVer 不一致 → 入 softNotes（**负向用例**仍生效）。
+const SOFT_EXEMPT_PATTERNS = [
+  /@[\w./-]+@\d+\.\d+(\.\d+)?(-[0-9A-Za-z][0-9A-Za-z.]*)?/,      // 宿主包版本
+  /v\d+\.\d+\.\d+-dsh\.\d+/,                                    // 旧规约版本线
+];
+const SOFT_NARRATIVE_CTX = /(?:v\d+\.\d+(\.\d+)?\s*(?:起|后|以来|开始)|实测[^。\n]{0,8}?\d+\.\d+|装到[^。\n]{0,8}?\d+\.\d+)/;
+for (const [rel, p] of softTargets) {
+  if (!existsSync(p)) continue;
+  const t = readFileSync(p, 'utf8');
+  // 仅扫前 5 行（文件首部）—— 替代全文扫描以消解历史叙事带来的噪音
+  const head = t.split('\n').slice(0, 5).join('\n');
+  if (SOFT_EXEMPT_PATTERNS.some((re) => re.test(head))) continue;
+  if (SOFT_NARRATIVE_CTX.test(head)) continue;
+  const m = head.match(/(^|[^0-9a-zA-Z])v?(\d{1,3}\.\d{1,3}\.\d{1,3})([^0-9a-zA-Z-]|$)/);
+  if (m && normVer(m[2]) !== normVer(pkgVer)) {
+    softNotes.push(`[P1 soft · 不阻塞] ${rel}（首部）含 ${m[2]} ≠ package.json=${pkgVer}（soft 检：仅扫文件首部 5 行；首部本包版本与 pkgVer 不一致时触发；旧规约/宿主包/叙述起始时点 等非本包线已豁免；负向用例保留：注入旧版本字面量到首部会出现在本段）`);
+  }
 }
 
 // ①/⑦ 补面（v18.2.4 新增，第三方审计「门必须覆盖它声称覆盖的规范」；主人指令「修」）：
@@ -492,6 +561,7 @@ for (const [rel, p] of inlineTagTargets) {
     }
   });
 }
+
 
 for (const f of files) {
   const rel = relative(ROOT, f).replaceAll('\\', '/');
@@ -728,6 +798,16 @@ if (errors.length) {
   const code = p0 > 0 ? 2 : (p1 > 0 ? 1 : 3);
   if (code === 2) console.error('→ 退出码 2（**含 P0：版本红线**，与 M 门 / 战略门同义——优先于 P1 处理）');
   else if (code === 3) console.error('→ 退出码 3（**仅 P2 / 软提示**：需复核，但不属版本红线或 P1）');
+  if (softNotes.length) {
+    console.error(`\nsoft 检（**v18.85.0 扩面副作用**——可见不阻塞，负向用例保留）：${softNotes.length} 处`);
+    for (const s of softNotes) console.error('  - ' + s);
+  }
   process.exit(code);
 }
-console.log(`一致性自检通过：${files.length} 个 .md 文件 + cordis.patch.yml/examples/.dsh 同步，0 处漂移。`);
+if (softNotes.length) {
+  console.log(`一致性自检通过：${files.length} 个 .md 文件 + cordis.patch.yml/examples/.dsh 同步，0 处漂移。`);
+  console.log(`\nsoft 检（**v18.85.0 扩面副作用**——可见不阻塞，负向用例保留）：${softNotes.length} 处`);
+  for (const s of softNotes) console.log('  - ' + s);
+} else {
+  console.log(`一致性自检通过：${files.length} 个 .md 文件 + cordis.patch.yml/examples/.dsh 同步，0 处漂移。`);
+}

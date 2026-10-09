@@ -2,7 +2,7 @@
 
 > 🌐 **English** (this file) ｜ [中文](README-zh.md) ｜ [Español](README-es.md) ｜ [Português](README-pt.md) ｜ [हिन्दी](README-hi.md)
 
-> 版本：v18.84.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v18.85.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > A DeepSeek Harness (DSH) bundle that registers **two on-demand agent skills**:
 > - `lunheng-article-pipeline` — the main 9-role pipeline (T1–T9, see below).
@@ -122,7 +122,7 @@ The patch layer does two things: it **inserts one row for this package** (`- id:
 Releases are **tag-only**; a local `npm publish` is forbidden (it would bypass the CI gates and OIDC provenance, and a published npm version can never be overwritten).
 
 ```sh
-git tag v18.84.0 && git push origin v18.84.0   # push one tag at a time (GitHub: >3 tags in one push triggers no workflow)
+git tag v18.85.0 && git push origin v18.85.0   # push one tag at a time (GitHub: >3 tags in one push triggers no workflow)
 # publish.yml then runs gate 1 consistency → gate 2 packaging surface → gate 3 hygiene → gate 4 pack smoke → script tests
 #   → tag/version equality → idempotency guard → OIDC publish --provenance --tag dsh → post-publish audit
 ```

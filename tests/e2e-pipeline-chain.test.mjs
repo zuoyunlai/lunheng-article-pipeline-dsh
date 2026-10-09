@@ -108,3 +108,57 @@ test('E2E-4 链路：产物齐备时 handoff-check 不得再报 20（防「永�
     assert.notEqual(r.code, 20, `产物已在盘，不得再判「产物缺失」（exit 20）；实得 ${r.code}\n${r.stdout}${r.stderr}`)
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
+
+// E2E-5 端到端（v18.85.0-feat 落地，v18.80.0 P2-5 留独立批兑现）：
+//   **为什么需要这一层**：v18.80.0 P2-5 留的"全库无一条流水线真跑"——`m-gate-check` 虽有 60+ 用例覆盖**单门**判定，
+//   但**从空项目 → 写产物 → 落 M-Gate-Report.json → closeout-verify 串联**这条全链路**从未**在
+//   tmp 上真跑过。这意味着任何一个脚本改动后，**"产物 ↔ 门期望"接口漂移**得等真项目出问题时才暴露。
+//   本用例 = **最小端到端真跑**：
+//     ① 造 4 张卡（文献/数据/案例/文末五节定稿 — 满足 M-Form-2/3/4/5/6/7/8 + M-Exist-1/2/3/4/5/6/7/10 的最小契约）
+//     ② 跑 `build-evidence-bundle.mjs` 落证据包
+//     ③ 跑 `m-gate-check.mjs` 落 M-Gate-Report.json
+//     ④ 跑 `closeout-verify.mjs`（**不入本仓库 diff**——它是工作区级 run-* 验证，单独测）
+//   判据：本条**不要求全绿**——只要求「每一步 exit 在已知语义集里、产物落盘路径符合 M 门期望」；
+//   这是 v18.80.0 P2-5 留的「端到端夹具」最小形态（v18.80.3 已在 e2e-pipeline-chain 前 4 条覆盖了
+//   关键接口，本条补「全链路串联」）。
+test('E2E-5 端到端：T1/T2/T3 + 写手 + 证据包 + M 门串联，跑通脚本层（不要求全绿，只验接口）', () => {
+  const { d, proj } = mkProject()
+  try {
+    // ① T1 文献卡：3 条 + 先行者清单（M-Form-1/2/3 最小契约）
+    const lit = join(proj, 'literature')
+    mkdirSync(lit, { recursive: true })
+    writeFileSync(join(lit, '文献卡.md'), '# 文献卡\n\n## 📇 索引段\n\n[L01] 条目一\n[L02] 条目二\n[L03] 条目三\n\n## L01\n\n信任级别：已发布\n\n## L02\n\n信任级别：已发布\n\n## L03\n\n信任级别：已发布\n')
+    writeFileSync(join(lit, '文献卡-L01.md'), '# L01\n\n## 条目\n\n- 标题：测试条目一\n- DOI：10.0000/test01\n')
+    writeFileSync(join(lit, '文献卡-L02.md'), '# L02\n\n## 条目\n\n- 标题：测试条目二\n- DOI：10.0000/test02\n')
+    writeFileSync(join(lit, '文献卡-L03.md'), '# L03\n\n## 条目\n\n- 标题：测试条目三\n- DOI：10.0000/test03\n')
+    writeFileSync(join(lit, '先行者清单.md'), '# 先行者清单\n\n| 编号 | 文献 |\n|---|---|\n| 先01 | 测试 |\n')
+    // ② T2 数据卡（M-Form-1 引用类型：含 [D01]）
+    const data = join(proj, 'data')
+    mkdirSync(data, { recursive: true })
+    writeFileSync(join(data, '数据卡.md'), '# 数据卡\n\n## 📇 索引段\n\n[D01] 数据一\n\n## D01\n\n- 描述：测试数据\n')
+    // ③ T3 案例卡（M-Form-1 引用类型：含 [C01]）
+    const cases = join(proj, 'cases')
+    mkdirSync(cases, { recursive: true })
+    writeFileSync(join(cases, '案例卡.md'), '# 案例卡\n\n## 📇 索引段\n\n[C01] 案例一\n\n## C01\n\n- 描述：测试案例\n')
+    // ④ 写手产出（M-Form-1 全部引用 [L01][L02][L03][D01][C01] + M-Form-2/7 文末五节 + 摘要）
+    const draft = join(proj, 'drafts')
+    mkdirSync(draft, { recursive: true })
+    writeFileSync(join(draft, '初稿-v1.md'),
+      '# 标题\n\n## 摘要\n\n本文综述 [L01] [L02] [L03] [D01] [C01]。\n\n' +
+      '## 一、导论\n\n' + '段落内容。'.repeat(30) + '\n\n' +
+      '## 参考文献\n\n[L01] a\n[L02] b\n[L03] c\n\n## 数据来源\n\n[D01] d\n\n## 案例来源\n\n[C01] e\n\n## 先行者文献\n\n## AI 使用声明\n\n本文使用 AI 辅助。\n')
+    // ⑤ 跑 build-evidence-bundle
+    const bRes = run([join(SCRIPTS, 'build-evidence-bundle.mjs'), proj, '--summary'])
+    assert.equal(bRes.code, 0, `build-evidence-bundle 应 exit 0；实得 ${bRes.code}\n${bRes.stdout}${bRes.stderr}`)
+    // ⑥ 跑 m-gate-check（exit 不要求 0—— M-Form-5/8 等可能因文末结构或字面差异软提示；
+    //     只要求「在 0/1/2/3 集里」+ 报告落盘）
+    const report = join(proj, 'final', 'M-Gate-Report.json')
+    const mRes = run([join(SCRIPTS, 'm-gate-check.mjs'), join(proj, 'drafts', '初稿-v1.md'), join(proj, 'final', '证据包'), '--report', report])
+    assert.ok([0, 1, 2, 3].includes(mRes.code), `m-gate-check 应在 0/1/2/3 之一；实得 ${mRes.code}\n${mRes.stdout}${mRes.stderr}`)
+    assert.ok(existsSync(report), `M 门报告应落盘到 final/M-Gate-Report.json（契约硬要求）`)
+    // ⑦ 复跑证据包（**带 M 门报告**——验证第二遍能拾到）
+    const bRes2 = run([join(SCRIPTS, 'build-evidence-bundle.mjs'), proj, '--summary'])
+    assert.equal(bRes2.code, 0, `带 M 门报告的证据包应仍能 exit 0；实得 ${bRes2.code}\n${bRes2.stdout}${bRes2.stderr}`)
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+

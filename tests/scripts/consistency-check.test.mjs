@@ -493,3 +493,72 @@ test('v18.78.2 ㉟：一致性规则登记表必须自洽（未登记标签 / �
 
   rmSync(d, { recursive: true, force: true })
 })
+
+// v18.85.0（CONTRIBUTING §26 扩面落地）—— ⑫ 仓库级版本头负向用例：
+//   **旧实现硬编码 3 文件**（README.md / docs/introduction.md / skills/README.md）= SECURITY.md 等
+//   「必同步」文件版本漂移**门看不见**（v18.2.5 C-3 抓到 SECURITY.md + troubleshooting.md 双双
+//   停 v18.2.4 → 一致性门仍报「0 漂移」= 假绿）。
+//   本用例做两件事：
+//     ① **负向**——注入 SECURITY.md 写旧版 `> 版本：v18.2.4`，consistency-check 必须报 P0；
+//     ② **正向**——清理后 SECURITY.md 写**当前版**（**从 `package.json` 派生，不得写死**），通过；
+//   用以钉住**「扩面 + 加版本头 + 一致性」三件套**，防止「扩面后悄悄把硬检改回软检」的回退。
+test('consistency-check ⑫ 扩面负向：SECURITY.md 写旧版本头 → P0（v18.85.0 CONTRIBUTING §26）', () => {
+  // 用 full:true 拷整个仓库根（含 5 语 README / SECURITY.md 等「必同步」hard targets）——避免
+  //   mkRepo 默认子集触发其他 P0（如「五语 README 缺」）混淆本用例的断言。
+  const { d, repo, R } = mkRepo({ full: true })
+  const cc = join(repo, 'skills', 'lunheng-article-pipeline', 'scripts', 'consistency-check.mjs')
+  // **真源派生**（v18.85.0 修正）：当前版本从 `package.json` 读——首版写死 `v18.84.0`，
+  //   本版 bump 到 18.85.0 后该「正例」立刻变成负例、被 `no-write-check` 当场抓出。
+  //   本仓判据：**测试里的「当前版本 / 当前计数」一律派生，不写死**。
+  const pkgVer = JSON.parse(readFileSync(join(repo, 'package.json'), 'utf8')).version
+  // SECURITY.md 必须在 mkRepo 生成的仓库内，且是 hard 检的目标
+  const sec = join(repo, 'SECURITY.md')
+  assert.ok(existsSync(sec), '夹具假设 SECURITY.md 在 mkRepo 仓库根')
+  const orig = readFileSync(sec, 'utf8')
+  // ① 注入旧版本头（覆盖原 `> 版本：vX.Y.Z` 行；用「v18.2.4」模拟 v18.2.5 第三方审计抓到的
+  //    SECURITY.md 停 v18.2.4 那一例）
+  const bad = orig.replace(/^> 版本：v\d+\.\d+\.\d+.*$/m, '> 版本：v18.2.4（注入测试）')
+  assert.notEqual(bad, orig, '夹具：原文件必须含「> 版本：vX.Y.Z」行可被替换')
+  assert.notEqual(pkgVer, '18.2.4', '夹具：注入值须与当前版不同，否则本用例恒真')
+  writeFileSync(sec, bad)
+  const outBad = run([cc])
+  assert.match(outBad.out, /\[P0 版本一致性\] SECURITY\.md/, '必须报 SECURITY.md 旧版本：' + outBad.out.slice(-600))
+  // ② 写当前版本头 → 不再因 SECURITY.md 报 P0（其他 P0 仍可能因 mkRepo 子集触发，本用例只断这一行）
+  const good = orig.replace(/^> 版本：v\d+\.\d+\.\d+.*$/m, `> 版本：v${pkgVer}`)
+  writeFileSync(sec, good)
+  const outGood = run([cc])
+  assert.doesNotMatch(outGood.out, /\[P0 版本一致性\] SECURITY\.md/, '当前版本不应报 SECURITY.md 漂移：' + outGood.out.slice(-400))
+  // 还原文件（防污染后续用例）
+  writeFileSync(sec, orig)
+  rmSync(d, { recursive: true, force: true })
+})
+
+// v18.85.0-feat ⑬ docs/ 安装 pin 负向用例：注入 `docs/introduction.md:5` 行内「当前版本 vX.Y.Z」
+//   写旧版本 → 必须报 P1；写当前版本 → 通过；**也钉**豁免面（`@scope/pkg@version` 宿主包形态不报）。
+//   注：`docs/quick-facts.md` 已被规则 ㊲ 接管（L469 `[P1 速查卡版本漂移]`），不再由 ⑬ 报——本用例用 introduction.md。
+test('consistency-check ⑬ docs/ 安装 pin + 当前版本声明（v18.85.0-feat）', () => {
+  const { d, repo, R } = mkRepo({ full: true })
+  const cc = join(repo, 'skills', 'lunheng-article-pipeline', 'scripts', 'consistency-check.mjs')
+  // **真源派生**（v18.85.0 修正）：同 ⑫ 用例——「当前版本」从 `package.json` 读，不写死。
+  const pkgVer = JSON.parse(readFileSync(join(repo, 'package.json'), 'utf8')).version
+  const intro = join(repo, 'docs', 'introduction.md')
+  assert.ok(existsSync(intro), '夹具假设 docs/introduction.md 在 mkRepo 仓库内')
+  const orig = readFileSync(intro, 'utf8')
+  // ① 注入旧版本（模拟「bump 后忘了刷 introduction.md」场景）→ 必须报 P1
+  const bad = orig.replace(/(当前版本 \*\*v)\d+\.\d+\.\d+(\*\*)/, '$118.20.4$2（注入测试）')
+  assert.notEqual(bad, orig, '夹具：原文件必须含「当前版本 **vX.Y.Z**」行可被替换')
+  assert.notEqual(pkgVer, '18.20.4', '夹具：注入值须与当前版不同，否则本用例恒真')
+  writeFileSync(intro, bad)
+  const outBad = run([cc])
+  assert.match(outBad.out, /\[P1 docs 当前版本声明漂移\] docs\/introduction\.md/, `必须报 docs/introduction.md 当前版本漂移：${outBad.out.slice(-600)}`)
+  // ② 写回当前版本 → 不报
+  const good = orig.replace(/(当前版本 \*\*v)\d+\.\d+\.\d+(\*\*)/, `$1${pkgVer}$2`)
+  writeFileSync(intro, good)
+  const outGood = run([cc])
+  assert.doesNotMatch(outGood.out, /\[P1 docs 当前版本声明漂移\] docs\/introduction\.md/, '当前版本不应报 docs/introduction.md 漂移：' + outGood.out.slice(-400))
+  // ③ 钉**豁免面**：docs/ 里有 `@deepseek-ai/dsh@0.1.5-rc.2`（宿主包）不得报 P1 docs 安装 pin 漂移
+  assert.doesNotMatch(outGood.out, /\[P1 docs 安装 pin 漂移\].*@0\.1\.5/, '宿主包 @scope/pkg@version 必须被豁免：' + outGood.out.slice(-600))
+  // 还原
+  writeFileSync(intro, orig)
+  rmSync(d, { recursive: true, force: true })
+})
