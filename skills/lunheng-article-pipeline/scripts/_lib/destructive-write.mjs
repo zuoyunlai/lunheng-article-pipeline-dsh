@@ -110,7 +110,9 @@ function timestamp(d = new Date()) {
  *   而非文件名——`<path>.<秒级时间戳>.bak` 的「无序号 = 最旧」假设在**回收后**会被同秒内的下一次写盘
  *   **复用同名**而破坏（实测：无序号名被回收后立即被新备份复用，按文件名排序会误删新备份、保留中段）。
  */
-export const BAK_MAX = 20
+// 2026-10-09（检索审计反哺 R7）：20 → 6——实测 20 仍过宽（cn-llm 项目 15 分钟 11 个 sources.json.bak、
+//   台海项目 manifest 5 连 bak；6 个回滚点对本包「单轮修订」场景已绰绰有余，超出部分只构成目录污染）。
+export const BAK_MAX = 6
 
 /** 回收 `<p>` 最旧的 `.bak`，使每个原文件最多保留 `BAK_MAX` 个回滚点。 */
 function pruneBackups(p) {

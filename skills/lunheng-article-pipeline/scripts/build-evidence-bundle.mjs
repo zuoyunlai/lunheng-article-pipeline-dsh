@@ -177,6 +177,10 @@ const RULES = [
   // v18.64.0（反哺报告-v5 §v5.3-1 的 C1-b 半）：**负知识账本**——外审要看的正是「哪些主张被证伪过」。
   //   它存在就随包走（进 manifest，受 M-Exist-2 复算）；**不存在时跳过并计入「缺失源」是正常的**
   //   （语义 = 本项目确实无已证伪项；契约见 `references/_shared/负知识账本.md` §七 空状态）。
+  // v18.2.6 → 2026-10-09（检索审计反哺 R1）：**共享来源索引**——溯源三字段（tool/engine/query）的
+  //   唯一载体，不进证据包则 T7/M 门在审计输入层面查不到「某条来源用哪个档取的」（A19/A20 断链）。
+  //   与 disproofs.jsonl 同语义：存在就随包走；**无检索阶段的项目缺失属正常**（计入「缺失源」不算错）。
+  ['sources.json', 'sources.json'],
   ['audits/disproofs.jsonl', 'disproofs.jsonl'],
 ];
 
@@ -258,18 +262,30 @@ for (const [rel, name] of RULES) {
   }
 }
 
-// 修订说明 *：drafts/ 下所有 修订说明-*.md
+// 修订说明 *：drafts/ 下所有 修订说明-*.md——2026-10-09（检索审计第三批）：版本化说明只随包**最新 2 版**
+//   （最新 = 审计对象，次新 = 差异对照），更旧的留在 drafts/ 原地不丢、manifest 不记账。
+//   实测：某项目 v1–v5 全量入包 ≈94 KB（单份最高 23.6 KB）——证据包应随「证据」而非「全史」。
+//   非版本化命名（无 vN 段）的说明不受此限，全部随包。
+const REVNOTE_KEEP = 2;
 const draftsDir = join(project, 'drafts');
 if (existsSync(draftsDir)) {
-  for (const f of readdirSync(draftsDir)) {
-    if (/^修订说明-.*\.md$/.test(f)) {
-      if (copyChecked(join(draftsDir, f), join(destDir, f), `drafts/${f}`)) {
-        copied++;
-        console.log(`✓ drafts/${f} -> 证据包/${f}`);
-      } else {
-        missing++;
-        missingSrcs.push(`drafts/${f}`);   // v18.48.0（F-R）：0 字节 / 大小不符也计缺失
-      }
+  const revs = readdirSync(draftsDir)
+    .filter((f) => /^修订说明-.*\.md$/.test(f))
+    .map((f) => ({ f, m: f.match(/^修订说明-.*v(\d+)\.md$/) }))
+    .map((x) => ({ f: x.f, n: x.m ? Number(x.m[1]) : null }))
+    .sort((a, b) => (b.n ?? -1) - (a.n ?? -1) || a.f.localeCompare(b.f));
+  let versionedSeen = 0;
+  for (const { f, n } of revs) {
+    if (n !== null && ++versionedSeen > REVNOTE_KEEP) {
+      console.log(`ℹ 跳过旧版修订说明（留 drafts/ 原地，不入 manifest）: drafts/${f}`);
+      continue;
+    }
+    if (copyChecked(join(draftsDir, f), join(destDir, f), `drafts/${f}`)) {
+      copied++;
+      console.log(`✓ drafts/${f} -> 证据包/${f}`);
+    } else {
+      missing++;
+      missingSrcs.push(`drafts/${f}`);   // v18.48.0（F-R）：0 字节 / 大小不符也计缺失
     }
   }
 }

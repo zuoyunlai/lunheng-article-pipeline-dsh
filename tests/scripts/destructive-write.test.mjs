@@ -24,7 +24,8 @@ test('v18.3.1 审计 B4：.bak 上限回收——同文件写 N 次只留最近 
   assert.equal(readFileSync(f, 'utf8'), 'v30', '最终内容应为最后一次写入')
   const contents = baks.map((x) => readFileSync(join(d, x), 'utf8'))
   assert.ok(contents.includes('v29'), '最新回滚点 v29 应保留')
-  assert.ok(contents.includes('v10'), '第 11 新回滚点 v10 应保留（旧 10 个已回收）')
-  assert.ok(!contents.includes('v9'), 'v9 及更早应被回收（防无限累积）')
+  // 2026-10-09（检索审计反哺 R7）：BAK_MAX 20 → 6，断言改为按常量派生（夹具不再绑死具体值）
+  assert.ok(contents.includes(`v${30 - BAK_MAX}`), `第 ${BAK_MAX} 新回滚点 v${30 - BAK_MAX} 应保留（更旧者已回收）`)
+  assert.ok(!contents.includes(`v${29 - BAK_MAX}`), `v${29 - BAK_MAX} 及更早应被回收（防无限累积）`)
   rmSync(d, { recursive: true, force: true })
 })
