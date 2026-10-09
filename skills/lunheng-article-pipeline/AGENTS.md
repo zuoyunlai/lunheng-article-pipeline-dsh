@@ -59,13 +59,7 @@
    - `node scripts/consistency-check.mjs` —— 文档一致性（**规则表见脚本头注释**——v18.0.3 起此处不再抄数字，防「加规则忘改数字」；**exit 0 才提交**）
    - `dsh-plugin-dev check` —— 包面静态门（14 项，清单见 `references/maintainers.md` §八；**目标 0 fail / 0 warn**）
    - `node --test "tests/**/*.test.mjs" "skills/*/tests/**/*.test.mjs"` —— 随包脚本 + **组合包契约** + 入口回归 + 内嵌子技能（改脚本输出契约、`cordis.patch.yml`、`package.json` 时**必跑**）
-   > **布局提示（v18.0.0）**：`consistency-check.mjs` 的 `REPO_ROOT` 自动探测两种布局（仓库布局 / 技能即包根）；旧版硬编码「向上两级」，在本机 `.dsh/skills/` 布局下会指向 `~/.dsh` 而 ENOENT。
-   > **改「规范」时另查**（v18.0.5，冗余审计 §二.7）：`references/_shared/规范-机械门对照表.md`——**维护者文档**，逐条勾稽「规范写了什么 ↔ 机械门是否覆盖」（两问：有无门 / 是否覆盖全要件）。新增或修改任何规范/机检门时在该表加一行；它刻意不进运行期读清单（角色不读）。
-   > **收口批必跑「差集 + 反向核验」**：仓库级脚本 **closeout-verify**（**不随包**）——宣布「修订已全部完成」**之前**必跑。两步：① **差集**（审计报告每个 `L-NN` 必须被某处修订记录/CHANGELOG 提及）；② **反向核验**（登记为「未做/延后」的项，其后梯队必须回标）。判据：**差集查漏，反向核验查「记录陈旧」**。⚠️ **边界**：只报「需人工回核」的项，**不判「已完成」**——语义那半必须逐条回代码/产物实测。原理与两次自证见 `references/maintainers.md` §七。
-   > **发版前必跑「工具链不得改写仓库」**（v18.45.0）：仓库级脚本 **no-write-check**（**不随包**）——`node scripts/no-write-check.mjs` 跑发布序列（全量套 + 四道具）并**逐步快照比对**，报告哪一步改写了仓库的哪些文件（exit `1` = 有改写或**有步骤没跑起来**）。判据：`git status` 只说最终状态，**说不出是谁在哪一步改的**；而「跑完套件与四门」本就是必经动作，顺手核对成本 ≈ 0。立此动作的直接原因是一次**未定位成因**的改写事故（v18.44.0：一个模板标题少了段被登记的豁免括注），故它兼作**下次复现时抓改写者的网**。原理与边界见 `references/maintainers.md` §十。
-   > **文档涨了先看词预算门**（v18.1.0）：`repo-hygiene-check` 规则⑨ 对技能目录内 ≥12 KB 的 .md 逐文件设**棘轮上限**（上限按「当前字节向上取整到整 KB」）。**任何文档增长必须在同一次提交里抬升上限并写明理由**；`skills/lunheng-article-pipeline/scripts/` 外的仓库脚本改动不受此门约束。规则① 同时扩面到 `.js` 与**未跟踪文件**（`npm pack` 会打包未 `git add` 的新脚本）。
-   > **跑门验证前先清 staging 中间产物（2026-10-09 retro C）**：`/code-review` / `/grill-with-docs` / `/grill-me` 等技能**会**在工作区根写一次性中间文件（如 `.dsh-review-diff.patch` / `.dsh-staging-*` 等 sub-agent 输入/输出缓存），这些文件**不在 `.gitignore` 默认面**内——跑 `repo-hygiene-check` 时 `⑱ utf8` / `⑱ utf8-replacement` 会**把它们当"非法 UTF-8 / 含 U+FFFD"**直接 fail，让本批**红在中间产物而不是真改**。**两件必做**：① **跑门**前先 `git status --short` 看 untracked 区，**手清或移出工作区**（`Remove-Item -Force`，勿 `git add`）；② **新写 staging 中间产物**用 `.dsh-<skill>-staging/` 子目录（gitignore 默认排除）而不是裸 `<name>.patch` 顶在根。**判据**：`git status` 只看「该不该 commit」，**「该不该删」是另一类问题**——本指针是 2026-10-09 /code-review 收尾 3 红中 2 红的根因。
-   **仓库级打包面检查**由 CI 的 `plugin-surface` job 承担（**v18.0.0 起无豁免**）；**清单**与「**两条静态门抓不到、必须由测试兜的**」（包入口执行路径 / patch 自注册行，教训 #152 / #154）见 `references/maintainers.md` §八。
+   > **维护期固定动作**（布局探测 / 改规范时登记对照表 / 收口批 `closeout-verify` / 发版前 `no-write-check` / 词预算门 / 跑门前清 staging / 仓库级打包面 CI）——**逐条判据与原理见 [`references/maintainers.md`](references/maintainers.md) §十四**（v18.86.0 常驻集真外移：本节七条长说明逐字迁入该节，原位只留本条指针）。
 
 7. **读中文文件一律显式 `-Encoding UTF8`（v18.2.5 新增）**：`Get-Content` 等文本读取必带该参数。
    > **判据：看到中文乱码，先怀疑读取端编码，不要先怀疑文件**（实测：合法 UTF-8 文案在 pwsh 默认解码下显示乱码，曾被误判为「子代理产物编码坏了」，险些错误重派）。
