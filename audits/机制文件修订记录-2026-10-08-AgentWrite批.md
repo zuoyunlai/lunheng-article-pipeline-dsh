@@ -65,6 +65,6 @@
 
 1. **首轮读数只有两处可用**：`cite-coverage` 硬拦价值 0 + 软提示近乎恒真（可下结论）；`methodology` 2 例具体命中（待核查）。`structure`（n=2 <5）与 `readability`（**循环**：阈值就在这批稿上标定）**本轮不可用**——下一轮先逐稿取 `--genre`/`--humanities` 再重跑。
 2. **`errors.md` 距 12 KB 登记线仅 316 B**——下一次编辑该文件前**先核棘轮**（否则要同批登记并更新 `quick-facts` 条数/合计）。
-3. **发版前未跑 `no-write-check`**（该门会重跑全量套 + 四道具，耗时长）——**tag 之前必跑**（`AGENTS.md` §文件修改操作约束）。
+3. **v18.83.0 阶段发版前未跑 `no-write-check`**（该门会重跑全量套 + 四道具，耗时长）——**tag 之前必跑**（`AGENTS.md` §文件修改操作约束）。**v18.84.0 同车批补跑**（commit `b307b642` msg 报 `no-write-check 0`）—— 两条记录描述**不同批**，口径不冲突。**澄清动机**（2026-10-09 /code-review a1）：原措辞"发版前未跑"未点版本号 + 上下文紧接 v18.83.0 段落，可能被未来读者误读为"v18.84.0 时也没跑"；此处钉死阶段归属。
 4. **部署镜像：本机不存在独立镜像**（实测工作区 `.dsh\skills\…` 与用户级 `~\.dsh\skills\…` 均不存在；本会话加载的就是**仓库内** `lunheng-article-pipeline-dsh\skills\lunheng-article-pipeline`——可由 AGENTS.md 版本头实时变为 v18.83.0 佐证）⇒ **本机无需同步**。若日后在别的机器上装 bundle / 镜像，须按 `references/` 路径映射 `cp`，且**不要在镜像上改**（镜像不含 `tests/`，改了再回流 = 跳过契约验证）。
 5. **发版**：提交 → `git tag v18.83.0` → 推 tag（CI 自动 publish）；`latest` 若不跟随，手工 `npm dist-tag add lunheng-article-pipeline@18.83.0 latest`。
