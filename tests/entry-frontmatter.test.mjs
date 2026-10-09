@@ -17,7 +17,7 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { settle, withEnv } from './_fixtures.mjs'   // v18.16.0（F-1 反哺 · 共享 settle）；v18.18.0（F-6 · withEnv）
+import { isPlatformStderrNoise, settle, withEnv } from './_fixtures.mjs'   // v18.16.0（F-1 反哺 · 共享 settle）；v18.18.0（F-6 · withEnv）；v18.85.0（#3 · isPlatformStderrNoise）
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PACKAGE_ROOT = join(HERE, '..')
@@ -94,7 +94,13 @@ test('C.1 CRLF 行尾：SKILL.md 是 CRLF 时 frontmatter 仍必须解析（不�
     //   「解析成功」的同义词——而 warn 通道还有别的合法来源（如「宿主未提供 tools.guard，
     //   机制写保护未安装」这条降级告警）。本用例真正要防的是**解析失败告警**，故只针对它断言。
     assert.ok(!logs.warn.some((m) => /未解析/.test(String(m))), '解析成功时不得报「未解析」：' + JSON.stringify(logs.warn))
-    assert.deepEqual(errs, [], '宿主有 logger 时不得退回 console.error（审计 C.3）')
+    // v18.85.0（/implement #3 修复）：原 `assert.deepEqual(errs, [])` 是**通道全空**断言——把
+    //   「stderr 里没有任何东西」当成「入口没退回 console.error」的同义词。而 `--test-isolation=none`
+    //   下 Node 自身的弃用警告（`[DEP0190]`）会异步落进本窗口 → **假红**（实测最小复现：
+    //   `batch21-…test.mjs` 排本文件之前即 1 红，红的内容逐字是 DEP0190 文案）。
+    //   修法与同文件行 93-95（`logs.warn` 改按内容）与行 141-143（`errs` 计数耦合改按内容）**同构**：
+    //   只针对**被测对象自己的输出**断言，不把平台噪声算作入口行为。
+    assert.deepEqual(errs.filter((e) => !isPlatformStderrNoise(e)), [], '宿主有 logger 时不得退回 console.error（审计 C.3）')
   })
 })
 
@@ -169,5 +175,39 @@ test('E.2 宿主违约：ctx 缺 skills 服务时必须响亮降级、不抛 Typ
   } finally {
     console.error = originalError
   }
-  assert.deepEqual(errs, [], '有 logger 时不得产生 console.error 噪声')
+  // v18.85.0（/implement #3 修复）：同 C.1 行 97——`deepEqual(errs, [])` 是**通道全空**断言，
+  //   会把平台噪声（`--test-isolation=none` 下 Node 的 `[DEP0190]` 等异步 stderr 行）读成入口行为。
+  //   本处与行 97 是同一次修复的两个站点（全库劫持全局 `console.error` 的点只有这两处 + `_fixtures`）。
+  assert.deepEqual(errs.filter((e) => !isPlatformStderrNoise(e)), [], '有 logger 时不得产生 console.error 噪声')
+})
+
+// ── v18.85.0（/implement #3）：C.3「通道全空」断言的**反事实**回归 ────────────────────────────
+// 锁住判据的**双向**：① 平台噪声必须被豁免（否则 no-isolation 假红复发）；② 被测对象自己的输出
+//   **不得**被豁免（否则修法把真回归放过——那等于用「让门变绿」换掉了门的牙）。
+test('C.3 反事实：平台 stderr 噪声豁免，但入口自身的 console.error 输出必须仍被判出', () => {
+  // ① 正向：逐字取自 `--test-isolation=none` 全量跑的真实命中（DEP0190 由
+  //    `execFileSync('npm', [...], { shell: true })` 触发，实测弹进本文件 C.1 的采集窗口）
+  assert.ok(isPlatformStderrNoise(
+    '(node:36704) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to '
+    + 'security vulnerabilities, as the arguments are not escaped, only concatenated.\n'
+    + '(Use `node --trace-deprecation ...` to show where the warning was created)'),
+  'DEP0190 形态必须被豁免（本缺陷的实测原文）')
+  assert.ok(isPlatformStderrNoise('[DEP0190] DeprecationWarning: 无 (node:…) 前缀的形态'))
+  assert.ok(isPlatformStderrNoise('(node:123) ExperimentalWarning: something'))
+  assert.ok(isPlatformStderrNoise('(node:123) MaxListenersExceededWarning: possible EventEmitter memory leak'))
+  // ② 反向：入口自己的诊断**一条都不许**被豁免——否则 `deepEqual(filter(...), [])` 成了恒真断言。
+  //    文案逐字取自 `lib/index.js` 的 `say()` 调用点（makeReporter 在无 logger 时走 console.error）。
+  assert.ok(!isPlatformStderrNoise('· 论衡原生工具安装失败（不影响技能与流水线）：boom'))
+  assert.ok(!isPlatformStderrNoise('· 论衡技能名不一致：SKILL.md frontmatter "x" ≠ 包名 "y"——将以 frontmatter 为准注册。'))
+  assert.ok(!isPlatformStderrNoise('frontmatter 未解析（CRLF 行尾或缺少闭合行）'))
+  assert.ok(!isPlatformStderrNoise('· H2 伦理脱敏监听器安装失败（不影响技能）：boom'))
+  // ③ **断言不空转**（修法的牙）：混合批次（平台噪声 + 真入口报错）过滤后**必须仍有残留**，
+  //    即行 97 / 行 178 的 `deepEqual(filter(errs), [])` 对「入口真退回 console.error」仍会红。
+  //    没有这一条，把过滤写成 `() => true` 也能让全绿——那正是本修复要避免的「用改绿换掉门的牙」。
+  const mixed = ['(node:1) [DEP0190] DeprecationWarning: x', '· 论衡原生工具安装失败（不影响技能与流水线）：boom']
+  assert.deepEqual(
+    mixed.filter((e) => !isPlatformStderrNoise(e)),
+    ['· 论衡原生工具安装失败（不影响技能与流水线）：boom'],
+    '混合批次过滤后必须保留真入口报错——否则 C.3 断言退化为恒真',
+  )
 })

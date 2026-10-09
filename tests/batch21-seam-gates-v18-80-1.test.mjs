@@ -79,7 +79,12 @@ test('① 工具面旗标缺口：文档要求的旗标必须已接线（args.X�
 
 test('② packed 链接：随包 .md 的 Markdown 相对链接必须落在包内（或属已登记的仓库级目标）', (t) => {
   if (skipWhen(NPM_UNAVAILABLE, 'npm 不可用')) { t.skip('npm 不可用——跳过包面链接检查'); return }
-  const out = execFileSync('npm', ['pack', '--dry-run', '--json'], { cwd: ROOT, encoding: 'utf8', shell: true })
+  // v18.85.0（/implement #3）：改用**单命令串 + shell**，不再传 args 数组——`execFileSync('npm', [...], { shell: true })`
+  //   会让 Node 抛 `[DEP0190]`（"Passing args to a child process with shell option true"），该警告异步写
+  //   stderr，在 `--test-isolation=none` 下会弹进**后一个**用例的 `console.error` 采集窗口 → 假红
+  //   （实测：本文件排在 `entry-frontmatter.test.mjs` 之前即把它打红，红的内容逐字是 DEP0190 文案）。
+  //   形态与 `scripts/_lib/hygiene/r06-pack.mjs` 的既有规避逐字一致（那里注释已点名同一 DEP0190）。
+  const out = execFileSync('npm pack --dry-run --json', { cwd: ROOT, encoding: 'utf8', shell: true })
   const packed = new Set(JSON.parse(out)[0].files.map((f) => f.path))
 
   // **已登记的仓库级目标**（**故意**不随包）：npm 常态——README 在 npm 首页渲染时这些链接只在 GitHub 可用。

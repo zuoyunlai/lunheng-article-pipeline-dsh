@@ -226,6 +226,23 @@ export const withCapturedConsole = async (fn) => {
   }
 }
 
+// ── v18.85.0（/implement #3 · no-isolation 假红修复）：stderr 通道的「平台噪声」判据 ─────────────
+// 病灶（实测最小复现，2026-10-09）：`--test-isolation=none` 下所有测试文件**同进程**，而 Node 自身的
+//   弃用/实验警告走 stderr **异步**落地，会落进**后一个**用例劫持 `console.error` 的采集窗口。此时
+//   「通道必须全空」式断言（`assert.deepEqual(errs, [])`）把**平台噪声**读成**被测对象的行为** → 假红。
+//   实测：`entry-frontmatter.test.mjs` 单独跑 6/6 绿；`batch21-…test.mjs` 排在它前面即 1 红，
+//   红的内容逐字是 `(node:36704) [DEP0190] DeprecationWarning: Passing args to a child process with
+//   shell option true …`（触发方 = `execFileSync('npm', [...], { shell: true })`）。
+// 为什么必须在这里给判据（而不是只在某个用例里改断言）：本仓已为**同一类跨文件污染**修过一次——
+//   见本文件 `withEnv` 的头注释（`--test-isolation=none` 下 `LUNHENG_ALLOW_MECH_EDIT=1` 泄漏进 guard
+//   断言 → 写保护测试**假绿**）；那次只修了 `process.env` 这条通道，**stderr 通道漏了**。
+// 边界（如实）：本判据只豁免「Node/平台自己写的」行；被测代码自己 console.error 的内容不含这些形态，
+//   故**不会**把真回归放过——反向断言见 `tests/entry-frontmatter.test.mjs` 的 C.3 反事实用例。
+const PLATFORM_STDERR_RE = /^\(node:\d+\)\s|\[(?:DEP|EXP)\d+\]|\b(?:Deprecation|Experimental|MaxListenersExceeded|TimeoutOverflow|Unsupported)Warning\b/
+
+/** 该行是否由 Node / 平台自身写入 stderr（而非被测对象）。把平台噪声从 console.error 采集里剔除。 */
+export const isPlatformStderrNoise = (text) => PLATFORM_STDERR_RE.test(String(text))
+
 // v18.16.0（S-3 反哺 · 共享夹具上提）：m-gate-check M-Exist-7 §6 成本指标用例的
 // 「除 §6 外的其余交付说明小节」标准内容。原先在 tests/scripts.test.mjs 各 test 块内联 13 次（部分完全相同、部分略有变体）。
 // 上提后：① 改动 §6 测试输入时不会牵连别的章节字符串；② 新增用例不再需要复制这 11 节。
