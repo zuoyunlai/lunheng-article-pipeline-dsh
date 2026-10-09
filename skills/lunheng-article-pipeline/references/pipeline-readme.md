@@ -1,4 +1,4 @@
-> 版本：v18.85.0（DSH bundle 插件）
+> 版本：v18.86.0（DSH bundle 插件）
 
 
 # 论衡（lunheng-article-pipeline）— 通用深度长文多 Agent 流水线 运行手册
@@ -451,6 +451,7 @@ Phase 5 终检      **T8** 主控终检 → final/定稿.md + 图件/（如有�
 > 【落盘·agents-log】开工与结束各追加一次「### <Tn> 执行记录」（四要素 ≤5 行：
 >   输入文件清单 / 已完成步骤 / 产物路径 / 下一步）到项目根 agents-log.md——**追加，不覆盖**。
 >   （缺节：项目已有 ≥3 个角色记录时 handoff-check A6 判硬 exit 21）
+>   单文件过长时**可按 Phase 拆分为同族分片**（`agents-log-P1.md` / `agents-log-Phase3.md`，前缀 `agents-log` 即同族、须留项目根）——**A6 按族读取**（v18.86.0-prep · 台海反哺 F-10）。
 >
 > 【报告编号命名契约】审计族（审计报告 / 复核报告 / 反哺报告）的 N = **审计轮次**；
 >   审稿报告 / G14-检测报告 的 N = **正文轮次**（= drafts/初稿-vN.md 的 N）。

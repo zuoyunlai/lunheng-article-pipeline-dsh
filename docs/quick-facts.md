@@ -1,4 +1,4 @@
-# 论衡速查卡（v18.85.0）
+# 论衡速查卡（v18.86.0）
 
 > **定位**：新人「第一眼需要知道的硬数字」**单一真源**——所有用户文档**只引本卡**、不在自己文档里复述数字。本卡是 `audit-report-v18.78.0.md` §7.2 立项的落地产物。
 >
@@ -12,8 +12,8 @@
 
 | 项 | 值 | 真源 |
 |---|---|---|
-| 当前版本 | **v18.85.0** | `package.json#version` |
-| 引擎锚定（子技能 `lunheng-commands`） | **v18.85.0**（规则 ㉖ 机械对账） | `skills/lunheng-commands/SKILL.md` description + L8 |
+| 当前版本 | **v18.86.0** | `package.json#version` |
+| 引擎锚定（子技能 `lunheng-commands`） | **v18.86.0**（规则 ㉖ 机械对账） | `skills/lunheng-commands/SKILL.md` description + L8 |
 
 ## 角色与 Phase
 
@@ -55,7 +55,7 @@
 | `consistency-check.mjs` 主规则 | **37 类主规则**（v18.80.0 实测：㊲ 速查卡硬数字派生新立；**子规则计数不再声明**——带字母后缀的标签实测十余个，旧文写的「5 个子规则」本身就是同一类手写漂移；本卡这个数字由规则 ㉟ 机械对账，其余文档只许指向登记表） | 真源 = `skills/lunheng-article-pipeline/scripts/_lib/cc-rules/rule-registry.mjs` 的 `RULE_REGISTRY`（§五 各模块按 `// <编号> ` 形态登记规则级标签） |
 | DSH 原生只读工具 | **4 个**（`lunheng_m_gate` / `lunheng_char_count` / `lunheng_handoff_check` / `lunheng_ethics_sanitize`；v18.60.1 加伦理脱敏） | `SKILL.md` §DSH 原生能力接缝 |
 | **常驻上下文面**（每会话固定开销） | `SKILL.md` + `AGENTS.md` **合计上限 60.0 KB**（v18.85.0-prep 抬升 56→60 KB · 2026-10-09 retro C 同车：AGENTS.md §文件修改操作约束 末加 staging 清理指针 +840 B）；逐文件上限 40.0 / 19.0 KB。余量/实测**逐轮以 `repo-hygiene-check` ⑨ 输出为准、本卡不复述**（复述即漂：v18.80.1 实测该行三个 KB 数全漂；**该上限已由独立审计批 3 从 72.0 KB 显式下调**——瘦身成果必须锁住，否则会再涨回去） | `scripts/repo-hygiene-check.mjs` 的 `ALWAYS_LIMIT` + `DOC_BUDGET`（规则 ⑨）；**上限与逐文件值由规则 ㊲ 机械对账** |
-| **词预算登记数** | **49 条**（≥12 KB 的 `.md` 逐文件棘轮）；**合计上限 1469 KB**（v18.83.0 AW 批抬升一条：规范-机械门对照表 50→52 KB；v18.82.0 LongWriter 批抬升两条：字数判定表 15→18 KB / 模型路由 21→24 KB）；实测合计同左**不复述**（逐轮以规则 ⑨ 输出为准） | 同规则 ⑨；报告逐轮打印「越线 N 条 / 余量 <1 KB N 条 / 建议下调」三段；**条数与上限由规则 ㊲ 机械对账** |
+| **词预算登记数** | **49 条**（≥12 KB 的 `.md` 逐文件棘轮）；**合计上限 1471 KB**（v18.86.0-prep 抬升一条：外部检索源接入面 30→32 KB〔台海反哺 F-13：B 档可达性实探〕；v18.83.0 AW 批抬升一条：规范-机械门对照表 50→52 KB；v18.82.0 LongWriter 批抬升两条：字数判定表 15→18 KB / 模型路由 21→24 KB）；实测合计同左**不复述**（逐轮以规则 ⑨ 输出为准） | 同规则 ⑨；报告逐轮打印「越线 N 条 / 余量 <1 KB N 条 / 建议下调」三段；**条数与上限由规则 ㊲ 机械对账** |
 
 ## 退出码族（按 §真源排序）
 

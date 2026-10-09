@@ -204,6 +204,7 @@ const EXIT_GUARDED_EXEMPT = {}
 //     · `pack-smoke.mjs` 装了 guard（真 import `installExitGuard`）→ 异常路径 10/70 可达。
 // ──────────────────────────────────────────────────────────────────────────────
 const ROOT_EXIT_CONTRACT = {
+  'agents-log-check.mjs': [0, 10, 70],           // v18.86.0-prep（台海反哺 F-5）：头注释自述；**刻意没有 1**——ADR-0003「非内容判定脚本用 1 = 撞码」，与 flow-metrics.mjs 同判据（只报事实：发现项进 stdout/--json，不进退出码）
   'bump-version.mjs': [0, 10],                    // 0 = 已执行 bump / 10 = 用法错（未给 <old> <new>）
   'closeout-verify.mjs': [0, 1, 10, 70],          // 头注释 :28 自述；70 = 内部错误（v18.62.4 #5 起真可达）
   'dist-tag-check.mjs': [0, 1, 10, 70],           // 头注释 :25 自述（1 含 latest 落后；10 含 registry 不可达）

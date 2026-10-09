@@ -26,8 +26,7 @@ const mkProj = (shards) => {
 }
 const OK = (url, title = '标题', summary = '摘要') => JSON.stringify({ url, title, fetchedAt: '2026-09-27', summary })
 
-test('sources-index --check：合法分片 exit 0，且**跨线重复只报不判错**', () => {
-  const d = mkProj({ T1: [OK('https://a.example/1'), OK('https://b.example/2')], T2: [OK('https://b.example/2', '乙（T2 也抓到）')], T3: null })
+test('sources-index --check：合法分片 exit 0，且**跨线重复只报不判错**', () => {  const d = mkProj({ T1: [OK('https://a.example/1'), OK('https://b.example/2')], T2: [OK('https://b.example/2', '乙（T2 也抓到）')], T3: null })
   const r = run([S, d, '--check'])
   assert.equal(r.code, 0, '跨线重复不得判错（它是收益来源）：' + r.out.slice(-200))
   assert.match(r.out, /跨线重复 1 个/, '必须统计出重复数：' + r.out)
@@ -146,4 +145,40 @@ test('F6：分片首行带 UTF-8 BOM 时剥除后照常解析（不再误报「�
   assert.equal(r.code, 0, 'BOM 是编码头问题，不该被报成 JSON 写坏：' + r.out.slice(-300))
   assert.doesNotMatch(r.out, /不是合法 JSON/)
   assert.match(r.out, /含 UTF-8 BOM/, 'BOM 必须显式点名（机检硬格式要求无 BOM）')
+})
+
+// ── v18.86.0-prep（台海反哺 F-14）：分片级「溯源混用」判据（兼容期 → 强制的渐进升级）──────────
+//   行级规则「要么都不写、要么写齐」挡不住**半途而废**：同一分片里部分行带齐、部分行全缺，
+//   两半各自「合法」，而换档可审计性已破坏（台海 55/55 缺 tool/engine/query 即此类）。
+//   三条口径：纯旧 = 兼容期（软提示，不判红）｜纯新 = 通过｜**混用 = 不合法**（exit 1）。
+const WITH_PROV = (url) => JSON.stringify({ url, title: '标题', fetchedAt: '2026-09-27', summary: '摘要', tool: 'advanced_search', engine: 'exa', query: '检索式' })
+
+test('F-14：纯旧分片（全缺溯源）走**兼容期**——只软提示、不判红', () => {
+  const d = mkProj({ T1: [OK('https://a.example/1'), OK('https://b.example/2')] })
+  const r = run([S, d, '--check'])
+  assert.equal(r.code, 0, '纯旧分片属兼容期，不得判不合法：' + r.out.slice(-300))
+  assert.match(r.out, /无溯源字段/, '必须如实软提示（可见但不判红）')
+  assert.doesNotMatch(r.out, /混用/)
+})
+
+test('F-14：纯新分片（全带齐溯源）通过', () => {
+  const d = mkProj({ T1: [WITH_PROV('https://a.example/1'), WITH_PROV('https://b.example/2')] })
+  const r = run([S, d, '--check'])
+  assert.equal(r.code, 0, '纯新分片应通过：' + r.out.slice(-300))
+  assert.doesNotMatch(r.out, /混用/)
+})
+
+test('F-14：**混用**分片（部分带齐 / 部分全缺）→ exit 1 并给出两半计数', () => {
+  const d = mkProj({ T1: [WITH_PROV('https://a.example/1'), OK('https://b.example/2')] })
+  const r = run([S, d, '--check'])
+  assert.equal(r.code, 1, '混用必须判不合法：' + r.out.slice(-300))
+  assert.match(r.out, /混用/, '必须点名「混用」')
+  assert.match(r.out, /1 行带齐溯源（tool\/engine\/query）、1 行全缺/, '必须给出两半计数以便定位：' + r.out.slice(-400))
+})
+
+test('F-14：**跨分片**不构成混用（T1 纯新 / T2 纯旧 → 各自成立）', () => {
+  const d = mkProj({ T1: [WITH_PROV('https://a.example/1')], T2: [OK('https://b.example/2')] })
+  const r = run([S, d, '--check'])
+  assert.equal(r.code, 0, '判据是**分片级**：跨分片纯新 + 纯旧并存不构成混用：' + r.out.slice(-300))
+  assert.doesNotMatch(r.out, /混用/)
 })

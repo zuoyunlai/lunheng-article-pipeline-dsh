@@ -38,6 +38,11 @@
 //     `engine` = 该次调用的引擎（`advanced_search` 的 `engine` 参数值；`multi_search` 可写聚合名 + `seenIn` 数），
 //     `query` = 该条来源对应的检索式。**为什么必需**：没有它，「某条是不是用规定的源取的」无法核验
 //     （实测要回答「检索用了哪些插件」，交付物里查不到，只能回翻 DSH 会话缓存）。
+//   **分片级一致性（v18.86.0-prep · 台海反哺 F-14：兼容期 → 强制的渐进升级）**：**同一分片必须
+//     全带齐或全不带**——**混用**（部分带齐 / 部分全缺）判**不合法**（exit 1）。判据：一个分片是**同一轮
+//     检索**的产物，不可能一半有溯源一半没有；行级规则挡不住「写一半就停」，而写一半已足以让换档
+//     不可逐条标注（台海 55/55 缺 `tool/engine/query` 即此类）。**纯旧分片仍在兼容期**（仅软提示，存量
+//     项目不被打红）；**新项目/新一轮分片应全片带齐**——这就是把「兼容期 → 强制」做成**不回溯罚存量**。
 //
 // ── 不是门（如实声明）─────────────────────────────────────────────────────────
 //   本脚本**不判定「该不该抓某个源」**，也不阻断任何流程：`--check` 只校验**行是否合法**与**统计重复**；
@@ -162,6 +167,16 @@ const readShards = (p) => {
   }
   for (const { file, base, path: f } of files) {
     const raw = readFileSync(f, 'utf8').split('\n');
+    // v18.86.0-prep（台海反哺 F-14 · 兼容期 → 强制 的**渐进升级**）：分片级**混用**判据。
+    //   病根：行级规则「要么都不写、要么写齐」挡不住**半途而废**——同一分片里前 10 行带齐溯源、
+    //   后 10 行全缺，两半各自「合法」，而换档可审计性已破坏（这正是台海 55/55 缺 `tool/engine/query`
+    //   的后果：跨档不可逐条标注）。
+    //   判据：**同一分片 = 同一轮检索的产物** ⇒ 不可能一半有溯源一半没有。故：
+    //     · 纯旧分片（全缺）= **兼容期**，仅软提示（**不报 problem**，存量项目不被打红）；
+    //     · 纯新分片（全带齐）= 通过；
+    //     · **混用** = 报 problem（硬）——「一旦开始用新格式，就必须全分片用」。
+    //   这正是把「旧格式兼容期 → 新格式强制」做成**不回溯罚存量**的渐进路径。
+    let withProv = 0, withoutProv = 0
     // v18.78.0（反哺 F6 的脚本侧落点）：**首行剥 UTF-8 BOM**。
     //   病灶：分片若以 BOM 落盘（本仓 `.gitattributes` 要求无 BOM，但外部工具写入会带），
     //   `JSON.parse('\uFEFF{…}')` 直接抛 → 旧实现把整行报成「不是合法 JSON」，
@@ -184,11 +199,23 @@ const readShards = (p) => {
         problems.push({ line: file, line_no: i + 1, reason: `溯源字段不齐：写了 ${got.join(',')}，缺 ${PROVENANCE.filter((k) => !got.includes(k)).join(',')}（要么都不写，要么写齐）` });
       } else if (got.length === 0) {
         provenance.push({ line: file, line_no: i + 1, url: String(o.url || '').slice(0, 60) });
+        withoutProv++;
+      } else {
+        withProv++;   // 本行带齐三字段（供分片级混用判据计数）
       }
       entries.push({ line: normLine(o.line, base), shard: file,
         url: String(o.url || ''), title: String(o.title || ''), fetchedAt: String(o.fetchedAt || ''), summary: String(o.summary || ''),
         ...(got.length === PROVENANCE.length ? { tool: String(o.tool), engine: String(o.engine), query: String(o.query) } : {}) });
     });
+    // v18.86.0-prep（F-14）：分片级混用 → problem（见本循环开头的判据注释）。
+    if (withProv > 0 && withoutProv > 0) {
+      problems.push({
+        line: file, line_no: 0,
+        reason: `分片内**混用**新旧格式：${withProv} 行带齐溯源（tool/engine/query）、${withoutProv} 行全缺——`
+          + '同一分片是同轮检索产物，须**全带**或**全不带**（一旦开始写溯源字段就必须写全；'
+          + '纯旧分片属兼容期、仅软提示）。修法：给缺的行补齐三字段，或整片回退旧格式。',
+      });
+    }
     shardRows.push({ file, line: base, exists: true, lines: n, bytes: statSync(f).size });
   }
   return { entries, problems, provenance, shards: shardRows, bom };

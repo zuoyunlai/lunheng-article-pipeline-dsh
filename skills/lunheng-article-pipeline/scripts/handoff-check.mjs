@@ -582,7 +582,23 @@ if (strict && role === 'T7') {
 //   而软提示不改退出码 → **20 次都没拦住**。判据 = 「追加 agents-log」在走满 3 个角色后已是**既成约定**
 //   （模板 + AGENTS.md 都要求），首轮角色可缺（文件可能还没建）。
 if (strict) {
-  const logPath = join(project, 'agents-log.md')
+  // ── v18.86.0-prep（台海反哺 F-10）：agents-log 允许**按 Phase 拆分** ─────────────────────────
+  //   病灶：单文件 24 小时内涨到 599+ 行（台海实测），可读性与 token 成本都劣化。
+  //   处置：**允许**写成 `agents-log-P1.md` / `agents-log-Phase3.md` 等**分片**，本项改为**按族读取**
+  //   （`^agents-log.*\.md$` 全部按文件名排序拼接）——**判据一字不变**。
+  //   **「拆分后是否仍算单一留痕」的裁定（本批给出）**：**是**。判据 = **文件名前缀 `agents-log`
+  //   即同一留痕族**，与 `run/<项目>/sources/T{1,2,3}.jsonl`（分片合并由主控 `--merge`）同一思路。
+  //   ⚠️ 这条**必须与文档同批改**：若只改文档、不改本项，拆分会让 A6 **静默退回「无文件」的软提示**
+  //   ——正是本仓「删了它这条要求会静默失效」族的老病（见同文件 A8/A4c 的沿革声明）。
+  const logFiles = (() => {
+    if (!existsSync(project)) return []
+    try {
+      return readdirSync(project, { withFileTypes: true })
+        .filter((e) => e.isFile() && /^agents-log.*\.md$/.test(e.name))
+        .map((e) => e.name).sort()
+    } catch { return [] }
+  })()
+  const logLabel = logFiles.length > 1 ? `agents-log*.md（${logFiles.length} 个分片）` : (logFiles[0] || 'agents-log.md')
   // ── v18.81.0（独立审计批 2 · 2.3）：**T8 不适用本项**（修掉「记录越勤越扣分」的逆向激励）─────────
   // 病灶（实测两项目对照）：
   //   · `run/test-v18-78-2-县中塌陷`（agents-log 有 T1/T2/T3/T7 四条记录）→ 缺 `### T8 执行记录`
@@ -600,20 +616,20 @@ if (strict) {
   if (role === 'T8') {
     notes.push('A6（agents-log 执行记录）：T8 **不 spawn 子代理**（主控亲执行），'
       + '本项面向子代理的留痕约定不适用 → 不判；T8 的留痕由 `final/` 产物（M-Gate-Report / 交付说明）核。')
-  } else if (existsSync(logPath)) {
-    const log = readFileSync(logPath, 'utf8')
+  } else if (logFiles.length) {
+    const log = logFiles.map((n) => readFileSync(join(project, n), 'utf8')).join('\n')
     const token = role === 'G14' ? 'G14' : role
     if (!new RegExp(`###\\s*${token}\\s*执行记录`).test(log)) {
       const others = new Set([...log.matchAll(/^###\s*(T\d+|G14)\s*执行记录/gm)]
         .map((m) => m[1]).filter((t) => t !== token))
       if (others.size >= 3) {
-        addHard('A6', 'agents-log.md', `缺「### ${token} 执行记录」——项目已有 ${others.size} 个角色的记录（≥3），追加 agents-log 已是既成约定，缺节判硬（v18.62.7 A12；` + '`00-主控-扩展职责.md` §子系统巡检 的派发话术含可粘贴模板）', 21)
+        addHard('A6', logLabel, `缺「### ${token} 执行记录」——项目已有 ${others.size} 个角色的记录（≥3），追加 agents-log 已是既成约定，缺节判硬（v18.62.7 A12；` + '`00-主控-扩展职责.md` §子系统巡检 的派发话术含可粘贴模板）', 21)
       } else {
-        addSoft('A6', 'agents-log.md', `缺「### ${token} 执行记录」段落（中断续接快照不全；项目已有 ${others.size} 个角色记录，达 3 个后本项升硬）`)
+        addSoft('A6', logLabel, `缺「### ${token} 执行记录」段落（中断续接快照不全；项目已有 ${others.size} 个角色记录，达 3 个后本项升硬）`)
       }
     }
   } else {
-    addSoft('A6', 'agents-log.md', '项目无 agents-log.md（中断续接快照缺失）')
+    addSoft('A6', 'agents-log.md', '项目无 agents-log 流水（中断续接快照缺失）')
   }
 }
 

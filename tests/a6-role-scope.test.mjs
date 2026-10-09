@@ -69,3 +69,40 @@ test('A6-4：T9 与 T8 不同——它**是被 spawn 的角色**，缺记录仍�
       'T9 不得继承 T8 的例外：' + JSON.stringify(j.hard))
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
+
+// ── v18.86.0-prep（台海反哺 F-10）：agents-log **按 Phase 拆分**后 A6 仍须生效 ────────────────
+//   「拆分后是否仍算单一留痕」的裁定 = **是**（判据 = 文件名前缀 `agents-log`，同 sources 分片思路）。
+//   两条钉子：① 记录散在**分片**里、`agents-log.md` 不存在时，A6 仍能数到「已有 ≥3 个角色」→ 判硬；
+//             ② 只改文档不改脚本会让 A6 **静默退回**「项目无 agents-log 流水」软提示 —— 本钉防这一退。
+/** 造一个「只有分片、没有 agents-log.md」的项目。 */
+const mkWithSplitLog = (roles) => {
+  const d = tmp('lunheng-a6-split-')
+  mkdirSync(join(d, 'final'), { recursive: true })
+  // 按 Phase 拆成两个分片（T1/T2 在 P1、T3/T7 在 P4）——单文件形态**不存在**
+  writeFileSync(join(d, 'agents-log-P1.md'),
+    '# agents-log（Phase 1）\n\n' + ['T1', 'T2'].map((r) => `### ${r} 执行记录\n\n- 做了什么：x\n`).join('\n'))
+  writeFileSync(join(d, 'agents-log-P4.md'),
+    '# agents-log（Phase 4）\n\n' + roles.map((r) => `### ${r} 执行记录\n\n- 做了什么：x\n`).join('\n'))
+  return d
+}
+
+test('A6-5【F-10】：只有**分片**（无 `agents-log.md`）时，A6 仍按族读取并判硬（拆分不使留痕失效）', () => {
+  const d = mkWithSplitLog(['T3', 'T7'])
+  try {
+    const j = runH(d, 'T4')   // 分片里已有 T1/T2/T3/T7 = 4 个角色 → 缺 T4 应判硬
+    assert.ok(a6(j).some((x) => /缺「### T4 执行记录」/.test(x.detail)),
+      '分片形态下 A6 必须仍判硬（判据按 `agents-log*.md` 族读取）：' + JSON.stringify(j.hard))
+    assert.ok(a6(j).some((x) => /agents-log\*\.md（2 个分片）/.test(x.subject || '')),
+      '硬项应标明读的是**分片族**（避免读者以为在读单文件）：' + JSON.stringify(a6(j)))
+    assert.doesNotMatch((j.notes || []).join('\n'), /项目无 agents-log 流水/,
+      '不得退回「无流水」软提示——那正是「拆分让 A6 静默失效」的形态')
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
+test('A6-6【F-10】：分片里**已有该角色**记录 → 不报 A6（正例，防「拆分后被误判缺记录」）', () => {
+  const d = mkWithSplitLog(['T3', 'T7'])
+  try {
+    const j = runH(d, 'T3')   // T3 的记录在 P4 分片里
+    assert.equal(a6(j).length, 0, 'T3 记录已在分片中，不得判缺：' + JSON.stringify(a6(j)))
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
