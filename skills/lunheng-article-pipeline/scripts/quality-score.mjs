@@ -30,12 +30,13 @@
 //   只把仓库里既有的机械门结果聚合成一个 0–100 的分数 + 逐项明细。
 //
 // ── 分量与权重真表（v18.57.x 审计修订：**旧表已过期**，与代码不符，现按实测重写）──────────────
-//   共 **8 个**分量。**同一分量的权重随分支不同**——这不是漂移，而是刻意**按「预算总和 ≈ 100」标定**：
+//   共 **7 个计分分量 + 1 个观测分量**（readability 纯观测、不进总分）。**同一分量的权重随分支不同**——这不是漂移，而是刻意**按「预算总和 ≈ 100」标定**：
 //   某分量判定不了时，其 N/A 权重与其它分支互补，使（适用 + N/A）合计仍落在 100 附近。
 //   ⚠️ 因此**不要**把「同一 id 出现多个权重」当成笔误去"统一"——那会把 100 的预算打破。
-//   实测（本机三场景，`quality-score.mjs <项目> --report`）：
-//     · 场景 A（证据+简报+G14 齐备）：合计 **97.6**（g-audit 部分 SKIP 时按比例降权，见下）
-//     · 场景 B（仅证据）/ C（缺证据）：合计 **100**
+//   实测（本机三场景，`quality-score.mjs <项目> --report`；**v18.95.0 readability 降纯观测后合计须重测**）：
+//     · 场景 A（证据+简报+G14 齐备）：原合计 **97.6**（g-audit 部分 SKIP 时按比例降权，见下）
+//     · 场景 B（仅证据）/ C（缺证据）：原合计 **100**
+//     readability 权重 10 → 0（纯观测，不进总分/coverage），故新合计 ≈ 原值 − 10（适用场景），精确值以 `--report` 实测为准。
 //
 //   | id | 分量 | 适用权重 | N/A 权重 | 说明 |
 //   |---|---|---|---|---|
@@ -45,7 +46,7 @@
 //   | cite-coverage | 引用实质相关性（强度 / 冗余 / 年代分布） | 8 | 10 | 无参考文献节 → N/A |
 //   | g-audit | G 项机检 6 项（G8/G2/G11/G2.5/G0.5/G15） | 12 ×(已检/适用) | 12（全部 SKIP / 缺输入）· 15（拿不到 JSON） | **唯一按比例降权者**：SKIP 是「适用但缺输入」，与 N/A 分清（见下） |
 //   | G14 | G14 中文 AI 痕迹终闸 | 10 | 10 | 读 `audits/G14-检测报告-v*.md`；无报告 → N/A |
-//   | readability | 可读性剖面（4 指标，21 份定稿标定） | 10 | 10 | 句数 < 20 → N/A |
+//   | readability | 可读性剖面（4 指标，21 份定稿标定） | 0 | 0 | **纯观测**，不进总分/coverage（v18.95.0 反哺 W3·W7） |
 //   | handoff | 交付完整性（T8 交接门 + 四门留痕） | 10 | 10 | 缺 `final/交付说明.md` → N/A |
 //
 //   **N/A 与 SKIP 必须分清**（这是本脚本最重要的一条口径，v18.41.0 起）：
@@ -68,7 +69,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { installExitGuard, requireExistingDir } from './_lib/exit-guard.mjs';
 import { h2Headings, titleMatches, firstEndnoteIndex, bodyStartAfterAbstract } from './_lib/sections.mjs';
-import { evaluate as readabilityEvaluate } from './_lib/readability.mjs';   // v18.26.0 QLT-3：可读性剖面（第 8 分量）
+import { evaluate as readabilityEvaluate } from './_lib/readability.mjs';   // v18.26.0 QLT-3 接入 / v18.95.0 反哺 W3·W7 降纯观测
 import { evaluateQlt6 } from './_lib/qlt6.mjs';   // v18.53.0 QLT-6：论证强度（**独立于门**的第二把尺，见 F-BC）
 // v18.80.4（审计优化方向 4 落地 · 批 B）：门运行状态四态判定的**单一真源**——此前同一判据在本文件
 //   写了五遍（M 门一处 + 四个三检门各一处），形状还不一致（M 门三条件 / 四检门两条件）。
@@ -383,11 +384,14 @@ if (existsSync(evidence) && existsSync(brief)) {
   }
 }
 
-// ⑧ 可读性剖面（权重 10）——v18.26.0 QLT-3 接入（报告 §三.4 QLT-3 + §五.1 步骤 7）
+// ⑧ 可读性剖面（纯观测，不进总分）——v18.26.0 QLT-3 接入 / v18.95.0 反哺 W3·W7 降纯观测
 //   **为什么要有它**：G14 是**禁用式**链路（禁词/禁式），检测不到「为过门而写得机械」；分布式指标补这一维。
 //   口径：四个指标（句长标准差 / >60 字长句占比 / 每 300 字新术语数 / 被动句占比），阈值**由 21 份真实定稿标定**
 //   （标定表见 references/checkers/可读性-checker.md）；**最高只判 P2**（文风不是正确性）。
-//   本分量**不适用**于极短稿（<20 句时标准差无统计意义 → readabilityEvaluate 内部已按句数设阈）。
+//   **v18.95.0（反哺 W3/W7）**：本分量**降为纯观测**——weight=0、ratio=null（不进总分、不进 coverage 分母），
+//   四指标保留在 evidence.metrics 供人工读趋势。旧实现「P2 不扣分但 ratio 强制 =1」是自相矛盾的死代码：
+//   P2 不扣分的正确实现 = **不进分母**，而非「恒满分」（恒满分既灌水总分、又让 r.pass 成为死代码）。
+//   极短稿（<20 句）标准差无统计意义 → readabilityEvaluate 内部已按句数设阈，此处只改措辞不判 N/A。
 {
   const text = readFileSync(draft, 'utf8');
   const a = bodyStartAfterAbstract(text);
@@ -395,18 +399,13 @@ if (existsSync(evidence) && existsSync(brief)) {
   const body = text.slice(a.found ? a.index : 0, e === -1 ? text.length : e);
   const r = readabilityEvaluate(body);
   const m = r.metrics;
-  if (m.sentences < 20) {
-    add('readability', '可读性剖面（4 指标，阈值 = 21 份定稿标定）', 10, null, '', { metrics: m },
-      `句数不足（${m.sentences} < 20）——标准差与占比无统计意义，故不适用`);
-  } else {
-    add('readability', '可读性剖面（4 指标，阈值 = 21 份定稿标定）', 10, r.pass ? 1 : 0,
-      `句长标准差 ${m.sentenceLenStd}｜>60 字长句 ${(m.longSentenceRatio * 100).toFixed(1)}%｜每 300 字新术语 ${m.termRatePer300}｜被动句 ${(m.passiveRatio * 100).toFixed(1)}%`
-      + (r.pass ? '（四指标均在标定界内）' : `｜**P2 软提示（不扣分）**：${r.hits.join('；')}`),
-      { metrics: m, hits: r.hits, soft: r.pass ? [] : ['可读性剖面'] });
-    // **P2 不计入分母**：与其余分量同口径——分数只反映硬失败；文风异常单列给人看
-    components[components.length - 1].ratio = 1;
-    components[components.length - 1].weighted = 10;
-  }
+  add('readability', '可读性剖面（4 指标，纯观测，不进总分）', 0, null,
+    m.sentences < 20
+      ? `句数不足（${m.sentences} < 20）——标准差与占比无统计意义`
+      : `句长标准差 ${m.sentenceLenStd}｜>60 字长句 ${(m.longSentenceRatio * 100).toFixed(1)}%｜每 300 字新术语 ${m.termRatePer300}｜被动句 ${(m.passiveRatio * 100).toFixed(1)}%`
+        + (r.pass ? '（四指标均在标定界内）' : `｜**P2 软提示（观测，不扣分）**：${r.hits.join('；')}`),
+    { metrics: m, hits: r.hits, soft: r.pass ? [] : ['可读性剖面'] },
+    '纯观测分量（文风分布），不进总分、不参与 score、不进 coverage 分母——四指标见 evidence.metrics');
 }
 
 // ⑦ 交付完整性（权重 10）

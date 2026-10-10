@@ -3,7 +3,7 @@
 // 锁三条口径（错一条都会让这一维失去意义，且不会自己报错）：
 //   · 阈值**来自 21 份真实定稿的实测分布**（不是印象）——真实稿不误报、合成机械文本必红
 //   · 判定**最高只到 P2**（文风不是正确性；挂硬门会制造「为过门而写」的反向激励）
-//   · 接入 `quality-score` 为第 8 分量，八分量权重合计 100
+//   · 接入 `quality-score` 为纯观测分量（weight=0，不进总分；v18.95.0 反哺 W3·W7）
 // 运行：node --test tests/
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -101,7 +101,7 @@ test('readability：21 份真实定稿**全部在标定界内**（不误报—�
     + `阈值 长句占比 ${THRESHOLDS.longRatioMax * 100}% —— 极值必须 ≤ 阈值 且 > 阈值×85%）`)
 })
 
-test('quality-score：可读性剖面是第 8 分量，八分量权重合计 100', () => {
+test('quality-score：可读性剖面是纯观测分量（weight=0，不进总分），7 计分分量权重合计 90（本场景 structure N/A）', () => {
   const { d, proj, fin, ev } = mkProject({ audits: true })
   writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n摘要。\n\n## 一、导论\n\n'
     + Array.from({ length: 30 }, (_, i) => `第${i}句用来凑够句数并让长度有变化，长短交错才像人写的。`).join('')
@@ -111,11 +111,12 @@ test('quality-score：可读性剖面是第 8 分量，八分量权重合计 100
   const j = parseJson(run([Q, proj]))
   const rd = j.components.find((c) => c.id === 'readability')
   assert.ok(rd, '必须有 readability 分量：' + j.components.map((c) => c.id).join(','))
-  assert.equal(rd.weight, 10, '第 8 分量权重 10')
-  assert.equal(j.components.length, 8, '共 8 分量')
+  assert.equal(rd.weight, 0, 'readability 纯观测分量 weight=0（v18.95.0 反哺 W3·W7）')
+  assert.equal(rd.applicable, false, 'readability 纯观测 → 不进分母（applicable=false）')
+  assert.equal(j.components.length, 8, '共 8 个分量（含 readability 观测分量）')
   const sum = j.components.reduce((s, c) => s + c.weight, 0)
-  assert.equal(sum, 100, `八分量权重合计必须 100（八项全适用时）：实测 ${sum}｜${j.components.map((c) => c.id + ':' + c.weight).join(' ')}`)
-  assert.ok(rd.evidence.metrics && typeof rd.evidence.metrics.sentenceLenStd === 'number', '分值须带四指标原值供逐版对照')
+  assert.equal(sum, 90, `7 计分分量 + readability 观测(0) 权重合计必须 90（本场景 structure N/A 权重 8）：实测 ${sum}｜${j.components.map((c) => c.id + ':' + c.weight).join(' ')}`)
+  assert.ok(rd.evidence.metrics && typeof rd.evidence.metrics.sentenceLenStd === 'number', '观测分量须带四指标原值供逐版对照')
 })
 
 // ── v18.73.0（F-25 重标定的**源码钉**）：阈值字面量不得被静默改动 ──
@@ -163,6 +164,6 @@ test('quality-score：句数 < 20 → 可读性分量如实 N/A（不拿无统�
   writeFileSync(join(ev, '文献卡.md'), '# 文献卡\n\n### [L01] 甲\n')
   const j = parseJson(run([Q, proj]))
   const rd = j.components.find((c) => c.id === 'readability')
-  assert.equal(rd.applicable, false, '短稿不得判档：' + JSON.stringify(rd))
-  assert.match(rd.naReason, /句数不足/)
+  assert.equal(rd.applicable, false, 'readability 恒为纯观测（applicable=false）：' + JSON.stringify(rd))
+  assert.match(rd.naReason, /纯观测/, 'naReason 须说明「纯观测」；句数不足已并入 detail：' + JSON.stringify(rd))
 })

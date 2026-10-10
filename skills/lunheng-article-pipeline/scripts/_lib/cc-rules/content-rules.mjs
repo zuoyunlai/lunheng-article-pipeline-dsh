@@ -595,6 +595,38 @@ const HISTORY_TOKEN_RE = /此前|曾经|旧版|已删|已移除|已作废|历史
     }
   }
 
+  // ㊳ G14 类数口径（v18.95.0 反哺 E5 方案 B）——真源 = 14-中文AI痕迹-gate.md 的 G14-[A-H] 类表。
+  //   为什么需要：G14 的「8 类」是全库高频概念，历史从「早闸」改成「8 类」（v18.2.8），未来加类时「8 类」会漂；
+  //   而 ㉙ 只对账 G 项数（G0-G14 = 15 主项），G14 的「8 类检测维度」是另一把数，落在 ㉙ 的盲区之外。
+  //   判据：文档里「N 类」且上下文含 G14 / AI 痕迹 / 检测维度 → N 必须 == 真源（G14-[A-H] 类数）。
+  {
+    const gatePath = join(ROOT, 'references', 'gates', '14-中文AI痕迹-gate.md');
+    if (existsSync(gatePath)) {
+      const gateSrc = readFileSync(gatePath, 'utf8');
+      const letters = new Set([...gateSrc.matchAll(/\*\*G14-([A-H])\b/g)].map((m) => m[1]));
+      const N = letters.size;
+      if (N < 6) {
+        errors.push(`[P0 派生源失效] 从 14-中文AI痕迹-gate.md 只解析出 ${N} 个 G14 类（应在 8 个左右）——派生退化会让规则 ㊳ 恒真`);
+      } else {
+        const toNum = (s) => ({ 八: 8, 九: 9, 十: 10 }[s] ?? Number(s));
+        for (const f of active) {
+          const rel = relative(ROOT, f).replaceAll('\\', '/');
+          readFileSync(f, 'utf8').split('\n').forEach((l, i) => {
+            if (/旧版|旧文|历史|废止|旧口径/.test(l)) return;
+            if (!/G14|AI 痕迹|检测维度/.test(l)) return;
+            const m = /(\d+|八|九|十)\s*类\s*(?:检测|维度|判定|（|\(|，|,|\b)/.exec(l);
+            if (!m) return;
+            const pre = l.slice(Math.max(0, l.indexOf(m[0]) - 3), l.indexOf(m[0]));
+            if (/[0-9.-]$/.test(pre)) return;   // 命中区间「0-2 类 / 3-4 类」
+            if (toNum(m[1]) !== N) {
+              errors.push(`[P1 G14 类数口径漂移] ${rel}:${i + 1} 写「${m[1]} 类」，真源应为 ${N}（真源 = 14-中文AI痕迹-gate.md 的 G14-A~H 类表）`);
+            }
+          });
+        }
+      }
+    }
+  }
+
   // ㊱ 模板示例 ↔ 机检契约对照（v18.60.1，主人授权反哺 v2 §4.1 / §7.1 #9）
   //   **v18.78.2（全量审计 A2 的连带发现）：编号由 ㉚ 改为 ㊱**——原编号与 `script-rules.mjs` 的
   //   「㉚ lib/** 代码面禁当前版本字面量」撞号。该重号是新增规则 ㉟（登记表自洽）**首次运行即抓出**的，

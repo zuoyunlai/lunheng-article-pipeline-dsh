@@ -46,7 +46,7 @@ const HELP = [
   '  --report    回报原文（给了才做回报侧 B 组校验；- 表示从 stdin 读）',
   '  --report-file 回报文件路径（与 --report 二选一，--report 优先）',
   '  --summary   只回聚合 + 硬失败项（省 token；hard/soft 永不省略）',
-  '  --level     basic（默认：A0/A1/A2）/ strict（另加 A3/A4/A4b/A4c/A5/A6/A8；其中 A4b/A4c/A5/A8 仅 T7）',
+  '  --level     basic（默认：A0/A1/A2）/ strict（另加 A3/A4/A4b/A4c/A5/A6/A8/A9；其中 A4b/A4c/A5/A8/A9 仅 T7）',
   '              ⚠️ **回报侧 B1–B4 不随 level 变**（v18.43.0 更正：旧文案写「strict = 全量 A1-A6 + B1-B5」，',
   '                 而**本脚本没有 B5**，且 A7 也不由 level 触发——两处均为陈旧断言，已按代码实测改正）。',
   '  --require-gates  加验**人在环四门**（阶段确认-Phase0/2.5/3.5/5.md 四份齐备 + §6 主人回复段五项字段已回填）——**A7 只在此旗标下判**。',
@@ -563,6 +563,25 @@ if (strict && role === 'T7') {
       if (!cand.some((p) => existsSync(p))) {
         addHard('A4c', '审计报告', `「被审正文：${decl[1]}」指向的文件**不在盘**（声明与实际不符）——声明必须指向真实存在的那一版正文；若旧版已归档，改成现版本并重跑 M 门（v18.36.0 起判硬）`, 21)
       }
+    }
+  }
+}
+
+// A9 审计视图刷新（strict；v18.95.0 反哺 E4）——软约束转硬门禁
+//   判据：status.md 的「审计视图刷新时间」必须晚于最新初稿的 mtime。
+//   为什么：审计视图是 T7 审计的共同输入；视图陈旧 → T7 基于旧视图审新稿（实测 4 次派发全漏刷新）。
+if (strict && role === 'T7') {
+  const statusPath = join(project, 'status.md')
+  let statusTxt = ''
+  try { statusTxt = existsSync(statusPath) ? readFileSync(statusPath, 'utf8') : '' } catch { /* 不可读按缺失处理 */ }
+  const m = /审计视图刷新时间[^\n]*?(\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2})/.exec(statusTxt)
+  if (!m) {
+    addHard('A9', '审计视图刷新', 'status.md 缺「审计视图刷新时间」行（或时间戳不可解析）——派 T7 前主控必须刷新审计视图并落盘时间（v18.95.0 E4 软约束转硬门禁）', 21)
+  } else if (latestDraft && latestDraft.path && existsSync(latestDraft.path)) {
+    const refreshMs = new Date(m[1].replace(' ', 'T')).getTime()
+    const draftMs = statSync(latestDraft.path).mtimeMs
+    if (refreshMs < draftMs) {
+      addHard('A9', '审计视图刷新', `审计视图刷新时间（${m[1]}）早于最新初稿 mtime（${new Date(draftMs).toISOString().slice(0, 16).replace('T', ' ')}）——视图陈旧，须重跑 \`build-evidence-bundle --summary\` 刷新后重收 T7`, 21)
     }
   }
 }

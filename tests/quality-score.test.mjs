@@ -60,7 +60,7 @@ test('quality-score：分量权重是**显式契约**——各分支权重与 10
     ['M-Gate', 'structure', 'methodology', 'cite-coverage', 'g-audit', 'G14', 'readability', 'handoff'],
     '分量集合与顺序是契约：' + JSON.stringify(jFull.components.map((c) => c.id)))
   assert.deepEqual(wOf(jFull),
-    { 'M-Gate': 38, structure: 8, methodology: 4, 'cite-coverage': 8, 'g-audit': 12, G14: 10, readability: 10, handoff: 10 },
+    { 'M-Gate': 38, structure: 8, methodology: 4, 'cite-coverage': 8, 'g-audit': 12, G14: 10, readability: 0, handoff: 10 },
     `权重表已漂移（改权重必须同步改本契约与本文件头部权重真表）：${JSON.stringify(wOf(jFull))}`)
 
   // ② 缺证据包 → M-Gate 转 N/A，但**权重仍为 38**（旧版此处写 40，把预算撑到 102）

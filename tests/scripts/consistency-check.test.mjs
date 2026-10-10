@@ -494,6 +494,21 @@ test('v18.78.2 ㉟：一致性规则登记表必须自洽（未登记标签 / �
   rmSync(d, { recursive: true, force: true })
 })
 
+// v18.95.0（反哺 E5 方案 B）—— ㊳ G14 类数口径负向用例：
+//   注入「9 类检测维度」→ 必报 P1 G14 类数口径漂移（真源 = 14-中文AI痕迹-gate.md 的 G14-[A-H] 类表）。
+test('v18.95.0 ㊳：G14 类数口径漂移必须报（8 类 → 9 类注入）', () => {
+  const { d, R } = mkRepo()
+  const cc = join(R, 'scripts', 'consistency-check.mjs')
+  const glossary = join(R, 'references', 'glossary.md')
+  assert.ok(existsSync(glossary), '夹具缺少 glossary.md（本用例会空转）')
+  const src = readFileSync(glossary, 'utf8')
+  assert.match(src, /8 类检测维度/, '夹具基线须含「8 类检测维度」才能注入')
+  writeFileSync(glossary, src.replace('8 类检测维度', '9 类检测维度'))
+  const out = run([cc]).out
+  assert.match(out, /\[P1 G14 类数口径漂移\]/, '㊳ 必须抓到 G14 类数漂移：' + out.slice(-400))
+  rmSync(d, { recursive: true, force: true })
+})
+
 // v18.85.0（CONTRIBUTING §26 扩面落地）—— ⑫ 仓库级版本头负向用例：
 //   **旧实现硬编码 3 文件**（README.md / docs/introduction.md / skills/README.md）= SECURITY.md 等
 //   「必同步」文件版本漂移**门看不见**（v18.2.5 C-3 抓到 SECURITY.md + troubleshooting.md 双双

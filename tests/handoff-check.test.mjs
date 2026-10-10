@@ -28,6 +28,7 @@ function makeProject(extra = {}) {
   w('audits/审稿报告-v1.md', '# 审稿报告\n## 总评分\n24/30。\n')
   w('audits/G14-检测报告-v1.md', '# G14 检测报告\n## 判定\n0 类。\n')
   w('agents-log.md', '### T1 执行记录\n开始\n### T1 执行记录\n结束\n')
+  w('status.md', '- **审计视图刷新时间**: 2099-01-01 00:00 ｜ 视图源: drafts/初稿-v1.md\n')
   for (const [rel, content] of Object.entries(extra)) w(rel, content)
   return d
 }
@@ -465,4 +466,33 @@ test('A6：复核报告「首轮可缺」只在修订尚未发生时成立——
   assert.equal(j2.exit, 20, '缺产物走 20 档：' + a1.detail)
   assert.match(a1.detail, /复核报告-v2\.md/, '必须给出目标文件名（N = 审计轮次）：' + a1.detail)
   rmSync(d2, { recursive: true, force: true })
+})
+
+// A9 审计视图刷新（v18.95.0 反哺 E4）——软约束转硬门禁的三条反例
+test('A9：status.md 缺「审计视图刷新时间」行 → 硬 21', () => {
+  const d = makeProject({ 'status.md': '# status\n（无刷新时间行）\n' })
+  const r = run([SCRIPT, '--project', d, '--role', 'T7', '--level', 'strict'])
+  const j = parseJson(r)
+  const h = j.hard.find((x) => x.check === 'A9')
+  assert.ok(h, '缺刷新时间必须判硬 A9：' + JSON.stringify(j.hard))
+  assert.equal(r.code, 21, 'A9 走 21 档（结构不合）：' + (h && h.detail))
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('A9：刷新时间早于最新初稿 mtime → 硬 21', () => {
+  const d = makeProject({ 'status.md': '- **审计视图刷新时间**: 2000-01-01 00:00 ｜ 视图源: drafts/初稿-v1.md\n' })
+  const r = run([SCRIPT, '--project', d, '--role', 'T7', '--level', 'strict'])
+  const j = parseJson(r)
+  const h = j.hard.find((x) => x.check === 'A9')
+  assert.ok(h, '刷新时间早于初稿必须判硬 A9：' + JSON.stringify(j.hard))
+  assert.match(h.detail, /早于最新初稿/)
+  assert.equal(r.code, 21)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('A9：刷新时间晚于初稿（夹具默认 2099）→ 不报 A9', () => {
+  const d = makeProject()
+  const j = parseJson(run([SCRIPT, '--project', d, '--role', 'T7', '--level', 'strict']))
+  assert.ok(!j.hard.some((x) => x.check === 'A9'), '刷新时间新鲜不得报 A9：' + JSON.stringify(j.hard))
+  rmSync(d, { recursive: true, force: true })
 })
