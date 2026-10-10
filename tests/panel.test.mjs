@@ -540,7 +540,25 @@ const SNAPSHOT = {
   project: 'p1', at: new Date().toISOString(), status: { phaseLine: 'Phase 3（T5 写手出初稿 v1）', started: '2026-10-01 10:00', hasStatus: true },
   agents: { roles: [{ role: 'T1', count: 2 }], logAge: '5m' },
   artifacts: { newest: [{ rel: 'drafts/初稿-v1.md', bytes: 2048, age: '5m' }], drafts: 1, audits: 3, hasFinal: false, hasEvidence: false },
-  report: { generatedAt: '2026-10-01T12:00:00.000Z', mGate: { total: 24, pass: 23, p0: 0, p1: 0, p2: 1, exit: 1 }, score: 87.1, rounds: 5, gates: 4, words: [{ label: 'v1', han: 100 }, { label: '定稿', han: 120 }] },
+  report: {
+    generatedAt: '2026-10-01T12:00:00.000Z', mGate: { total: 24, pass: 23, p0: 0, p1: 0, p2: 1, exit: 1 },
+    score: 87.1, rounds: 5, gates: 4, words: [{ label: 'v1', han: 100 }, { label: '定稿', han: 120 }],
+    // v18.92.0 六张新图的输入
+    gateItems: [
+      { id: 'M-Form-1', gate: 'M-Form-1 引用标注完整性', severity: '通过' },
+      { id: 'M-Exist-4', gate: 'M-Exist-4 复核裁定', severity: 'P0' },
+      { id: 'M-Form-9', gate: 'M-Form-9 图件闭环', severity: 'P2' },
+    ],
+    scoreComponents: [
+      { id: 'M-Gate', name: 'M 门机械项', weight: 38, ratio: 0.8333, applicable: true, note: '' },
+      { id: 'structure', name: '学术结构', weight: 8, ratio: null, applicable: false, note: '非 IMRaD 体例' },
+    ],
+    qlt6: {
+      score: 0, coverage: 0.5, coverageWarning: '适用权重 50/100——本条只覆盖了 1/2 个分量，不得当整体论证强度结论',
+      na: [{ id: 'panel', weight: 50, reason: '无审稿整合报告' }],
+      components: [{ id: 'closure', name: '论证缺陷闭合率', weight: 50, ratio: 0, applicable: true }],
+    },
+  },
 }
 
 test('客户端半边（v18.91.0）：insights 到位时渲染出**图表**（KPI / 阶段带 / 条形图 / 节律柱 / 草稿折线）', async () => {
@@ -556,6 +574,22 @@ test('客户端半边（v18.91.0）：insights 到位时渲染出**图表**（KP
       activity: [0, 0, 50, 21, 0, 0, 0, 0, 43, 25, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
       activityMeta: { bucketMs: 7200000, from: Date.now() - 48 * 3600000, to: Date.now(), peak: 50, total: 140, activeBuckets: 5, scanned: 140, windowHours: 48 },
       failures: 3, handoffs: { ok: 9, retry: 0 },
+      deliverables: {
+        figures: [{ name: '图1_x.svg', kb: 3, mtime: Date.now() - 3600000, rel: 'final/图件/图1_x.svg' }],
+        finalFiles: [
+          { rel: 'final/定稿.md', label: '定稿（Markdown 主交付）', kb: 64, mtime: Date.now() - 7200000 },
+          { rel: 'final/运行报告.json', label: '运行报告边车（JSON）', kb: 36, mtime: Date.now() - 3600000 },
+        ],
+        process: [{ rel: 'drafts', label: '草稿', count: 3, newest: { name: '初稿-v6.md', mtime: Date.now(), kb: 64 } }],
+      },
+      exportCmds: [
+        { format: 'HTML', cmd: 'node scripts/md2html.mjs run/x/final/定稿.md run/x/final/定稿.html', note: '仓内转换器' },
+        { format: 'Word', cmd: 'pandoc run/x/final/定稿.md -o run/x/final/定稿.docx', note: '需 pandoc' },
+        { format: 'PDF', cmd: 'pandoc run/x/final/定稿.md -o run/x/final/定稿.pdf --pdf-engine=xelatex', note: '需 pandoc + XeLaTeX' },
+        { format: 'LaTeX', cmd: 'pandoc run/x/final/定稿.md -o run/x/final/定稿.tex --standalone', note: '需 pandoc' },
+      ],
+      evidence: { draft: '初稿-v6.md', sections: [{ title: '1 引言', L: 6, D: 12, C: 3 }, { title: '2 理论框架', L: 9, D: 4, C: 0 }], totals: { L: 15, D: 16, C: 3 } },
+      review: { report: '审稿整合报告-v6.md', views: [{ view: 'T9-d 领域学者', dims: [{ name: '理论贡献', score: 4 }, { name: '文献对话', score: 4 }, { name: '论证逻辑', score: 4 }, { name: '领域准确性', score: 4 }, { name: '学术规范', score: 5 }], total: 21, max: 25, verdict: '小修' }, { view: 'T9-m 方法学', dims: [{ name: '识别策略', score: 4 }, { name: '案例选择', score: 4 }, { name: '反事实设计', score: 5 }, { name: '可证伪预测', score: 5 }, { name: '方法论披露', score: 4 }], total: 22, max: 25, verdict: '接收' }, { view: 'T9-s 学界编辑', dims: [{ name: '贡献度', score: 4 }, { name: '引用规范', score: 4 }, { name: '学术伦理披露', score: 4 }, { name: '文末声明完整性', score: 5 }, { name: '整体可发表性', score: 4 }], total: 21, max: 25, verdict: '小修' }] },
       active: { ms: 6503754, spanMs: 77103123, segs: 5, gapMinutes: 15, files: 140 },
       drafts: [{ name: '初稿-v2', kb: 62, kind: 'draft', mtime: Date.now() - 7200000 }, { name: '修订说明-v2', kb: 9.4, kind: 'revision', mtime: Date.now() - 5400000 }, { name: '初稿-v6', kb: 64.1, kind: 'draft', mtime: Date.now() - 3600000 }],
     },
@@ -579,7 +613,9 @@ test('客户端半边（v18.91.0）：insights 到位时渲染出**图表**（KP
   assert.match(t, /当前 Phase 3/, '阶段带应写明当前阶段')
   // 条形图：角色段 + 产物分布（含人类可读体积）
   assert.match(t, /角色段（按 agents-log/, '角色段条形图标题应渲染')
-  assert.match(t, /产物分布（文件数 \/ 体积）/, '产物分布条形图标题应渲染')
+  assert.match(t, /产物分布（体积）/, '产物分布卡应在场（已拆成单项卡）')
+  assert.match(t, /各目录文件数/, '文件数应独立成卡（一张卡只放一项）')
+  assert.match(t, /T9 三视角审稿/, 'T9 三视角审稿应独立成卡')
   assert.match(t, /694 KB/, '产物分布应给出体积（组成条图例）')
   assert.match(t, /17 文件/, '产物分布应给出文件数（条形图）')
   // 活动节律：柱状图 = svg + 多个 rect
@@ -607,8 +643,30 @@ test('客户端半边（v18.91.0）：insights 到位时渲染出**图表**（KP
   assert.match(t, /阶段门/, '阶段门应进统计格')
   assert.match(t, /M 门通过率/, '环形应保留（左）')
   assert.match(t, /不是论证质量/, '合规分必须保留这句限定（避免被读成论证质量）')
+  // v18.92.0 六张新图：准出门 / 合规分构成 / QLT-6 / 证据密度 / 证据热力 / 三视角雷达
+  assert.match(t, /M 门准出门/, 'M 门准出门应在场')
+  assert.ok((t.match(/<title>[^<]*M-[A-Za-z]+-\d[^<]*<\/title>/g) || []).length >= 3, '准出门每格应有悬浮提示（项 id + 门名 + 结论）')
+  assert.match(t, /P0 ×1/, '准出门图例应给出各档计数')
+  assert.match(t, /合规分构成/, '合规分构成应在场')
+  assert.match(t, /不适用 · w8/, '不适用的分量必须画灰并标注权重，不得当 0 分')
+  assert.match(t, /论证强度 QLT-6/, 'QLT-6 应在场')
+  assert.match(t, /不得当整体论证强度结论/, 'QLT-6 必须带出覆盖率告警原话')
+  assert.match(t, /证据密度/, '证据密度图应在场')
+  assert.match(t, /章节 × 证据类型/, '章节×类型热力应在场')
+  assert.match(t, /只数标记，不判引用质量/, '热力图注必须写明口径（只数标记、不判引用质量）')
+  assert.match(t, /T9 三视角审稿/, '三视角雷达应在场')
+  // v18.93.0 交付件与图件卡：下载 / 预览 / 图件 / 四格式复制命令
+  assert.match(t, /交付件与图件应在场|交付件与图件/, '交付件与图件卡应在场')
+  assert.ok((t.match(/<a/g) || []).length >= 3, '交付件与图件应有下载/预览链接，实际 ' + (t.match(/<a/g) || []).length)
+  assert.match(t, /定稿（Markdown 主交付）/, '交付件应用标签名列出')
+  assert.match(t, /图1_x\.svg/, '图件应列出文件名')
+  for (const f of ['HTML', 'Word', 'PDF', 'LaTeX']) assert.ok(t.includes(f), '导出格式按钮应有 ' + f)
+  assert.match(t, /需 pandoc/, '缺少外部工具时必须如实标注依赖（PDF/Word/LaTeX）')
+  // 注意：测试替身渲染宿主元素时**不带属性**，故这里按 '<polygon' 计数（预览器/真浏览器才带属性）
+  assert.ok((t.match(/<polygon/g) || []).length >= 12, '三个雷达各应有环+面（≥12 个 polygon），实际 ' + (t.match(/<polygon/g) || []).length)
+  assert.match(t, /理论贡献 4/, '雷达轴标签应给出维度名 + 分数')
   // 草稿体积折线（并如实标注是字节不是字数）
-  assert.match(t, /草稿体积（KB，\*\*字节\*\*不是正文字数）/, '草稿折线图注必须如实标注口径')
+  assert.match(t, /草稿演进（KB，\*\*字节\*\*不是正文字数）/, '草稿折线图注必须如实标注口径')
   // insights 视觉（参照「上下文洞察」那类观感）：分段组成条 + 图例 + 百分比 + 环形占比
   assert.match(t, /M 门通过率/, '环形图应带图例文字')
   assert.ok((t.match(/<circle>/g) || []).length >= 2, '环形图应画「轨道 + 进度」两段圆环，实际 ' + (t.match(/<circle>/g) || []).length)
@@ -721,4 +779,48 @@ test('客户端半边：座位注册抛错 → 如实记进 SEATS.error，不静
   assert.match(String(mod.__panel.SEATS.error), /slots 服务形态漂移/)
   assert.equal(mod.__panel.SEATS.main, false)
   assert.match(h.render(mod.__panel.seatLine, {}), /注册异常/)
+})
+
+test('v18.93.0：/file 只读下载——项目内 200 + 四类越界 403 + 缺失 404 + 超限 413 + 目录 403', () => {
+  const d = tmp()
+  try {
+    mkProject(d, 'proj-file')
+    const ctx = mkCtx(d, {})
+    const base = PANEL_ROUTE + '/file?root=' + encodeURIComponent(d) + '&project=proj-file&rel='
+    // ① 正常下载：项目内已存在的产物
+    const ok = call(ctx, base + encodeURIComponent('final/运行报告.json'))
+    assert.equal(ok.code, 200)
+    assert.match(ok.headers['content-type'], /application\/json/)
+    assert.match(ok.headers['content-disposition'], /^attachment/)
+    assert.equal(ok.headers['x-content-type-options'], 'nosniff')
+    assert.ok(JSON.parse(ok.chunks.join('')).scoring, '下载内容必须是该文件本身')
+    // ② 越界四类 + 空 rel 一律 403
+    for (const bad of ['../../../etc/passwd', 'final/../../x.md', '/etc/passwd', 'final\\x.md', '']) {
+      assert.equal(call(ctx, base + encodeURIComponent(bad)).code, 403, '必须拒绝：' + JSON.stringify(bad))
+    }
+    // ③ 缺失文件 404；目录 403
+    assert.equal(call(ctx, base + encodeURIComponent('final/不存在.md')).code, 404)
+    assert.equal(call(ctx, base + encodeURIComponent('final')).code, 403)
+    // ④ 超限 413（上限 8 MB）
+    writeFileSync(join(d, 'run', 'proj-file', 'final', 'big.bin'), Buffer.alloc(9 * 1024 * 1024))
+    assert.equal(call(ctx, base + encodeURIComponent('final/big.bin')).code, 413)
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
+test('v18.93.0：交付件与导出命令派生（只读工作区内的既有产物）', () => {
+  const d = tmp()
+  try {
+    mkProject(d, 'proj-dl')
+    const snap = lightSnapshot(d, 'proj-dl')
+    const dl = snap.insights.deliverables
+    assert.ok(dl, '必须有 deliverables 派生')
+    assert.ok(dl.finalFiles.some((f) => f.rel === 'final/运行报告.json' && f.kb > 0), '边车应作为交付件列出')
+    assert.equal(dl.process.length, 7, '过程件分七组（含证据包）')
+    assert.ok(Array.isArray(dl.figures), '图件必须是数组（无图件时为空）')
+    const cmds = snap.insights.exportCmds
+    assert.equal(cmds.length, 4, '四种格式各给一条命令')
+    assert.deepEqual(cmds.map((c) => c.format), ['HTML', 'Word', 'PDF', 'LaTeX'])
+    assert.match(cmds[0].cmd, /md2html\.mjs/, 'HTML 走仓内转换器')
+    assert.match(cmds[2].cmd, /xelatex/, 'PDF 命令须含 xelatex（并已在 UI 标注需 pandoc）')
+  } finally { rmSync(d, { recursive: true, force: true }) }
 })
