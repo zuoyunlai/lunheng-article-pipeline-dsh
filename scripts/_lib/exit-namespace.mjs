@@ -119,32 +119,57 @@ const CODE_HEADER_RE = /(退出码|返回码)[：:]/
 const CODE_CLAUSE_RE = /(?:^|[：:；;，,、\s(（])(\d{1,2})\s*=/g
 
 /**
+ * **头部注释区**（v18.88.0-prep · 结构性债 P3-⑧d「自述退出码扫描面窄」落地）。
+ *   从文件首扫到**第一条非注释、非空行**；接受行注释（双斜杠）与**块注释**（C 风格）两种形态、**空行不终止**。
+ *   **为什么改**：旧实现（只认行注释 且**只扫前 40 行** 且 **首行非行注释即断**）三处**静默漏检**——
+ *     · 自述段写在第 41 行之后 → 门看不见（而本门存在的意义正是抓「文案与行为脱节」，漏检＝失效）；
+ *     · 自述写进**块注释**（C 风格）→ 门看不见；
+ *     · 头部注释里出现**真空白行**（无 `//`）→ 旧实现视为段结束，其后的码被**截断**。
+ *   改后仍保住旧实现那条保护：**遇到第一条代码行即停**（正文里的「返回码」讨论不该被当成本脚本自述）。
+ * @returns `[{ i, text }]`（`i` 为 0 基行号，`text` 为去掉注释标记的行内容）
+ */
+export function headCommentRegion(text) {
+  const lines = String(text || '').split('\n')
+  const out = []
+  let inBlock = false
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i]
+    if (inBlock) {
+      out.push({ i, text: l })
+      if (l.includes('*/')) inBlock = false
+      continue
+    }
+    if (/^#!/.test(l)) continue                                          // shebang
+    if (/^\s*\/\//.test(l)) { out.push({ i, text: l.replace(/^\s*\/\//, '') }); continue }
+    if (/^\s*\/\*/.test(l)) {
+      inBlock = !l.includes('*/')
+      out.push({ i, text: l.replace(/^\s*\/\*/, '').replace(/\*\/\s*$/, '') })
+      continue
+    }
+    if (/^\s*$/.test(l)) { out.push({ i, text: '' }); continue }          // 空行**不**终止（旧实现会截断）
+    break                                                                // 第一条代码行 → 头部结束
+  }
+  return out
+}
+
+/**
  * 解析单个脚本头部自述的退出码。
  * @returns `null` = 该脚本不自述（合法，跳过）；否则 `{ line, codes }`（line 为 1 基行号）。
  */
 export function parseScriptHeaderCodes(text) {
-  const lines = text.split('\n')
-  // 只在头部注释区找（前 40 行）——正文里的 `返回码` 讨论不该被当成本脚本的自述
-  let start = -1
-  for (let i = 0; i < Math.min(40, lines.length); i++) {
-    if (/^\s*\/\//.test(lines[i]) && CODE_HEADER_RE.test(lines[i])) { start = i; break }
-  }
-  if (start === -1) return null
-  const block = []
-  for (let i = start; i < lines.length; i++) {
-    if (!/^\s*\/\//.test(lines[i])) break
-    block.push(lines[i].replace(/^\s*\/\//, ''))
-  }
+  const region = headCommentRegion(text)
+  const at = region.findIndex((e) => CODE_HEADER_RE.test(e.text))
+  if (at === -1) return null
   const codes = new Set()
-  for (const m of block.join('\n').matchAll(CODE_CLAUSE_RE)) codes.add(Number(m[1]))
+  for (const m of region.slice(at).map((e) => e.text).join('\n').matchAll(CODE_CLAUSE_RE)) codes.add(Number(m[1]))
   if (codes.size === 0) {
     // 标记在、码却解析不出 ⇒ 形状变了。响亮报错，绝不静默放行（否则本门悄悄失效）。
     throw new Error(
-      `${lines[start].trim().slice(0, 60)} … 第 ${start + 1} 行的「退出码/返回码」段解析出 0 个码——` +
+      `${region[at].text.trim().slice(0, 60)} … 第 ${region[at].i + 1} 行的「退出码/返回码」段解析出 0 个码——` +
         '码不再写作 `N = 语义`？请同步本解析器',
     )
   }
-  return { line: start + 1, codes: [...codes].sort((a, b) => a - b) }
+  return { line: region[at].i + 1, codes: [...codes].sort((a, b) => a - b) }
 }
 
 /**

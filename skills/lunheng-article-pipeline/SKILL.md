@@ -239,6 +239,5 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 
 ## 📦 发布面（维护者向，运行期不必读）
 
-> - **npm 发布物不含** `.github/workflows/`、`tests/`、仓库级 `scripts/`、`CHANGELOG.md`、`CONTRIBUTING.md`——由 `package.json` files 白名单 + `repo-hygiene-check` 负名单 + `pack-smoke` mustNotShip **双重机械保证**（详见 [`references/maintainers.md`](references/maintainers.md) §四）。
-> - 运行时脚本（主控按需调用）：**清单与数量见上方 §执行能力边界 的「随包脚本白名单」——该行是唯一真源**（本处只留指针，不复述数量与清单）。
-> - 教训沉淀为「建议待主人 review」，不自动写入共享状态；完整设计见 GitHub 仓库：https://github.com/zuoyunlai/lunheng-article-pipeline-dsh
+> **单一真源 = [`references/maintainers.md`](references/maintainers.md) §四「发布面事实」**——npm 包**含/不含**什么、双重机械保证（files 白名单 + `repo-hygiene-check` 负清单 + `pack-smoke` mustNotShip）、`latest`/`dsh` dist-tag 由 OIDC 维护、**核验陷阱（`npm view` 读缓存/镜像 ⇒ 权威结论直查注册表 API 或跑 `node scripts/dist-tag-check.mjs`）**，全在该节。
+> 教训沉淀为「建议待主人 review」，不自动写入共享状态；完整设计见 <https://github.com/zuoyunlai/lunheng-article-pipeline-dsh>。

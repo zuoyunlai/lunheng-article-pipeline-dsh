@@ -10,31 +10,40 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { walkDir, toRepoPosix } from './_shared.mjs'
 
+// ── 阈值与基线表**提到模块顶层**（v18.88.0-prep · 结构性债 P3-r10「注解密度阈值无门」）──────────
+//   **为什么要提出来并导出**：本文件上文自称「本规则**禁止抬升**」，但那是**散文**——把
+//   `ANN_MAX_RATIO` 从 0.12 改成 0.30、或把某文件基线抬高，**全库不会有任何门变红**（所有文件都会「通过」）。
+//   现导出给 `tests/ann-density-threshold-pin.test.mjs` 做**源码钉**，判据 = **只许降**：
+//   `ANN_MAX_RATIO ≤ 0.12`、逐文件基线 **≤** 记录值；要抬必须**同批改那颗钉**（⇒ 在 review 里可见）。
+//   **位置变更属于纯搬运**：原先是 `run()` 内的 `const`，行为一字未变（仍只被本文件的判定逻辑读取）。
+export const ANN_MAX_RATIO = 0.12
+
+// ── v18.80.1（全量审查修订批 · 报告 §C3）：**表格行沿革的独立棘轮** ─────────────────────────
+//   为什么必须单列一条：上面的 `ANN_RE` 要求「版本号 **+ 24 字内的注解动词**」，而表格里的沿革
+//   常常**只有裸版本号**（「版本」列本身就是沿革）→ `ANN_RE` 在结构上看不到它。
+//   **实证「按报告原写法（给表格行豁免加『行内含版本号即计入』）是空操作」**：本批实测现行与收紧后
+//   **都是 0/80 超限**——因为那句豁免仍受 `ANN_RE` 前置约束，改不动任何文件的命中数。
+//   故此处的度量与主判据**分开**，采**计数棘轮**：以立门时实测为基线，**只许降不许升**
+//   （沿革只增长，正是 §C3 要治的病）。基线口径 = 表格行里出现 `vX.Y[.Z]` 的行数。
+//   实测（v18.80.1 立门时）：附录 26/48 · 对照表 68/135 · status-template 15/34 · 机检硬格式 17/46
+//   · case-studies 9/27 · glossary 6/18 · deliverables 12/41 · failure-modes 4/19。
+export const ANN_TABLE_BASELINE = Object.freeze({
+  'skills/lunheng-article-pipeline/references/_shared/M-Gate-Algorithm-appendix.md': 26,
+  'skills/lunheng-article-pipeline/references/_shared/规范-机械门对照表.md': 68,
+  'skills/lunheng-article-pipeline/references/templates/status-template.md': 15,
+  'skills/lunheng-article-pipeline/references/_shared/机检硬格式.md': 17,
+  'skills/lunheng-article-pipeline/references/case-studies.md': 9,
+  'skills/lunheng-article-pipeline/references/glossary.md': 6,
+  'skills/lunheng-article-pipeline/references/deliverables.md': 12,
+  'skills/lunheng-article-pipeline/references/_shared/failure-modes.md': 4,
+})
+
 export function run(ctx) {
   const { note, ROOT } = ctx
   const ANN_RE = /v\d+\.\d+(?:[-.\d]*[a-z]*)?\s*[^，。\n]{0,24}(新增|修订|修复|更正|补充|扩展|抬升|登记)/
   const EXEMPT_RE = /注解聚合|git log|CHANGELOG|maintainers\.md|版本头|v18\.8\.0/
   const ANCHOR_LINK_RE = /\]\(#/
-  const ANN_MAX_RATIO = 0.12
-  // ── v18.80.1（全量审查修订批 · 报告 §C3）：**表格行沿革的独立棘轮** ─────────────────────────
-  //   为什么必须单列一条：上面的 `ANN_RE` 要求「版本号 **+ 24 字内的注解动词**」，而表格里的沿革
-  //   常常**只有裸版本号**（「版本」列本身就是沿革）→ `ANN_RE` 在结构上看不到它。
-  //   **实证「按报告原写法（给表格行豁免加『行内含版本号即计入』）是空操作」**：本批实测现行与收紧后
-  //   **都是 0/80 超限**——因为那句豁免仍受 `ANN_RE` 前置约束，改不动任何文件的命中数。
-  //   故此处的度量与主判据**分开**，采**计数棘轮**：以立门时实测为基线，**只许降不许升**
-  //   （沿革只增长，正是 §C3 要治的病）。基线口径 = 表格行里出现 `vX.Y[.Z]` 的行数。
-  //   实测（v18.80.1 立门时）：附录 26/48 · 对照表 68/135 · status-template 15/34 · 机检硬格式 17/46
-  //   · case-studies 9/27 · glossary 6/18 · deliverables 12/41 · failure-modes 4/19。
-  const ANN_TABLE_BASELINE = Object.freeze({
-    'skills/lunheng-article-pipeline/references/_shared/M-Gate-Algorithm-appendix.md': 26,
-    'skills/lunheng-article-pipeline/references/_shared/规范-机械门对照表.md': 68,
-    'skills/lunheng-article-pipeline/references/templates/status-template.md': 15,
-    'skills/lunheng-article-pipeline/references/_shared/机检硬格式.md': 17,
-    'skills/lunheng-article-pipeline/references/case-studies.md': 9,
-    'skills/lunheng-article-pipeline/references/glossary.md': 6,
-    'skills/lunheng-article-pipeline/references/deliverables.md': 12,
-    'skills/lunheng-article-pipeline/references/_shared/failure-modes.md': 4,
-  })
+// v18.88.0-prep：阈值与基线表已**提到模块顶层并导出**（见文件头，供 `tests/ann-density-threshold-pin.test.mjs` 钉住）。
   const ANN_TABLE_VER_RE = /v\d+\.\d+(?:\.\d+)?/
   const ANN_TABLE_SEP_RE = /^\s*\|[\s:|-]+\|\s*$/
   const annOver = []

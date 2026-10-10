@@ -77,6 +77,38 @@ test('parseScriptHeaderCodes：取头部自述段、跨行续注、不自述则�
   assert.equal(parseScriptHeaderCodes('// 一个不自述退出码的脚本\ncode()\n'), null, '不自述 ⇒ null（合法，跳过）')
 })
 
+// v18.88.0-prep（结构性债 P3-⑧d「自述退出码扫描面窄」）：旧实现三处**静默漏检**，本组把它们钉住。
+//   ⚠️ 这组的价值在于**反例**：旧实现在这四种输入上分别会（a）漏检（b）漏检（c）截断（d）误吞——
+//   全部是「看起来通过了、其实没看」的形态（本仓最忌讳的一类）。
+test('P3-⑧d：自述段写在**第 40 行之后**仍须被扫到（旧实现的硬上限会静默漏检）', () => {
+  const head = Array.from({ length: 60 }, (_, i) => `// 说明第 ${i + 1} 行`).join('\n')
+  const src = `${head}\n// 退出码：0 = 通过 / 10 = 参数错\ncode()\n`
+  const r = parseScriptHeaderCodes(src)
+  assert.ok(r, '第 61 行的自述段必须被扫到——旧实现只扫前 40 行 ⇒ 该门在这类脚本上**静默失效**')
+  assert.deepEqual(r.codes, [0, 10], '码集合应完整取到')
+  assert.equal(r.line, 61, '行号须报告**真实**所在行（不是被截断的位置）')
+})
+
+test('P3-⑧d：**块注释**里的自述段须被扫到（旧实现只认行注释）', () => {
+  const src = '/* 本脚本说明\n   退出码：0 = 通过 / 3 = 仅软提示\n*/\ncode()\n'
+  const r = parseScriptHeaderCodes(src)
+  assert.ok(r, '块注释里的自述段必须被扫到——旧实现只认行注释 ⇒ 漏检')
+  assert.deepEqual(r.codes, [0, 3])
+})
+
+test('P3-⑧d：头部注释里的**空行不终止**自述段（旧实现会在空行处截断）', () => {
+  const src = '// 退出码：0 = 通过\n\n// 10 = 参数错 / 70 = 内部错误\ncode()\n'
+  const r = parseScriptHeaderCodes(src)
+  assert.ok(r)
+  assert.deepEqual(r.codes, [0, 10, 70], '空行之后的码也须计入——旧实现到空行即断 ⇒ 只拿到 [0]')
+})
+
+test('P3-⑧d 保护未被放宽：**遇代码行即停**，正文里的「返回码 N =」不得被当成本脚本自述', () => {
+  const src = '// 一个不自述退出码的脚本\nconst s = "返回码：3 = 某门自有语义"\n// 退出码：9 = 正文里的讨论\n'
+  assert.equal(parseScriptHeaderCodes(src), null,
+    '头部注释区在第一行代码处结束——正文/字符串里的「返回码/退出码」讨论不是本脚本的自述（旧保护必须仍在）')
+})
+
 test('parseScriptHeaderCodes：标记在但码解析不出 ⇒ 响亮抛错（防门静默失效）', () => {
   assert.throws(
     () => parseScriptHeaderCodes('// 退出码：见 troubleshooting §8\ncode()\n'),

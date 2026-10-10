@@ -98,3 +98,102 @@ test('lib 静态自检 ②：不得存在**孤儿模块**（`lib/*.js` 必须被
   )
   assert.ok(libFiles.includes('index.js') && existsSync(join(LIB, 'index.js')), '入口必须存在（否则本判据退化为空集断言）')
 })
+
+// ── `lib/**` **文案门**（v18.88.0-prep · 结构性债「lib/** 文案门」落地）──────────────────────────
+//   **为什么需要**：`lib/tools.js` 里工具的 `description` 是**调用方实际读到的文案**，而它声明的
+//   「本工具面未暴露哪些旗标」与 `TOOL_FACE_FLAG_GAPS` 表**此前无任何对账**。两处漂移的后果已在真实
+//   报告里出现过：台海反哺（综合版）F-9 把**从未注册为工具**的 `g-audit-check` / `disproofs-check`
+//   列为「工具面未暴露的 flag gap」——正是因为**没有任何一条判据**问过「表里的工具真的注册了吗」。
+//   本组三条判据（零依赖、纯源码解析；与既有两条同址，同属「lib 静态自检」归属）：
+//     ① **集合对账**：`TOOL_FACE_FLAG_GAPS` 的键集合 == 实际注册的 `lunheng_*` 工具名集合
+//        （防「表里列了不存在的工具」与「注册了新工具忘了登记」两个方向）；
+//     ② **文案 ↔ 表一致**：表里登记的非空旗标，必须在**该工具的描述文本**里以 CLI 形态出现
+//        （`figDir` → `--fig-dir`）；表里为**空**的工具，描述**不得**出现「工具面未暴露」字样
+//        （防反向漂移：描述说没暴露、从而误导调用方绕开工具）；
+//     ③ **文案不得与实现矛盾**：表里登记的旗标**不得**出现在该工具的 `parameters` 里
+//        （「说没暴露却真能传」是最坏的一种——调用方按文案绕开、而实际支持）。
+//   **边界（如实）**：只核这三类**可机械判定**的关系，不判描述的自然语言质量、不判措辞风格。
+const TOOLS_SRC = readFileSync(join(LIB, 'tools.js'), 'utf8')
+
+/** 解析 `TOOL_FACE_FLAG_GAPS`：`{ 工具名: ['旗标', …] }`。 */
+function parseFlagGaps() {
+  const block = TOOLS_SRC.match(/TOOL_FACE_FLAG_GAPS = Object\.freeze\(\{([\s\S]*?)\n\}\)/)
+  assert.ok(block, '未能定位 TOOL_FACE_FLAG_GAPS 表——解析失效时本组用例必须红，不得静默空集')
+  const out = {}
+  for (const line of block[1].split('\n')) {
+    const m = /(?:'([\w]+)'|(\w+)):\s*Object\.freeze\(\[([^\]]*)\]\)/.exec(line)
+    if (!m) continue
+    out[m[1] || m[2]] = m[3].split(',').map((s) => s.trim().replace(/^'|'$/g, '')).filter(Boolean)
+  }
+  return out
+}
+
+/** 每个注册工具的 `{ name, slice }`（slice = 从该工具 name 起、到下一个工具 name 前）。 */
+function toolSlices() {
+  const names = [...TOOLS_SRC.matchAll(/\bname:\s*'(lunheng_\w+)'/g)]
+  return names.map((m, i) => ({
+    name: m[1],
+    slice: TOOLS_SRC.slice(m.index, i + 1 < names.length ? names[i + 1].index : TOOLS_SRC.length),
+  }))
+}
+
+/** 取某工具 `parameters: { … }` 块的键名（花括号配对，避免误取 output.schema.properties）。 */
+function paramKeys(slice) {
+  const at = slice.indexOf('parameters: {')
+  if (at < 0) return []
+  const open = slice.indexOf('{', at)
+  let depth = 0
+  let end = -1
+  for (let i = open; i < slice.length; i++) {
+    if (slice[i] === '{') depth++
+    else if (slice[i] === '}') { depth--; if (depth === 0) { end = i; break } }
+  }
+  assert.ok(end > 0, '未能定位 parameters 块结束（解析失效必须红）')
+  return [...slice.slice(open, end).matchAll(/^\s{4,8}(\w+):\s*\{/gm)].map((m) => m[1])
+}
+
+const dash = (s) => '--' + s.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase())
+
+test('lib 文案门①：TOOL_FACE_FLAG_GAPS 的键集合 == 实际注册的工具名集合（两个方向都判）', () => {
+  const gaps = parseFlagGaps()
+  const registered = new Set(toolSlices().map((t) => t.name))
+  const tabled = new Set(Object.keys(gaps))
+  assert.ok(registered.size >= 4, `注册工具数异常（${registered.size}）——本判据会退化为空集断言`)
+  const tabledNotRegistered = [...tabled].filter((n) => !registered.has(n))
+  const registeredNotTabled = [...registered].filter((n) => !tabled.has(n))
+  assert.deepEqual(tabledNotRegistered, [],
+    `TOOL_FACE_FLAG_GAPS 列了**未注册**的工具：${tabledNotRegistered.join(', ')}——`
+    + '正是台海反哺 F-9 把 `g-audit-check` / `disproofs-check` 误列为「工具面 flag gap」的那一类')
+  assert.deepEqual(registeredNotTabled, [],
+    `注册了工具但未登记旗标缺口：${registeredNotTabled.join(', ')}——新增工具须同批登记（表是调用方的唯一提示面）`)
+})
+
+test('lib 文案门②：描述里声明的「未暴露旗标」必须与表逐项一致（空表不得声称未暴露）', () => {
+  const gaps = parseFlagGaps()
+  for (const { name, slice } of toolSlices()) {
+    const declared = gaps[name] || []
+    const claimsGap = /工具面未暴露/.test(slice)
+    if (declared.length === 0) {
+      assert.ok(!claimsGap,
+        `${name} 在表中**无**旗标缺口，描述却声称「工具面未暴露」——反向漂移会误导调用方绕开工具`)
+      continue
+    }
+    for (const flag of declared) {
+      assert.ok(slice.includes(dash(flag)),
+        `${name} 的旗标缺口 ${flag}（CLI 形态 ${dash(flag)}）未出现在描述里——`
+        + '表与**调用方实际读到的文案**漂移；两处必须同批改')
+    }
+  }
+})
+
+test('lib 文案门③：表中登记的「未暴露」旗标不得出现在该工具的 parameters（说没有却真能传）', () => {
+  const gaps = parseFlagGaps()
+  for (const { name, slice } of toolSlices()) {
+    const keys = paramKeys(slice)
+    const declared = gaps[name] || []
+    const leaked = declared.filter((f) => keys.includes(f))
+    assert.deepEqual(leaked, [],
+      `${name} 的 parameters 里出现了表称「未暴露」的旗标：${leaked.join(', ')}——`
+      + '「文案说没有、实现却支持」是最坏漂移（调用方按文案绕开工具去直调脚本）')
+  }
+})
