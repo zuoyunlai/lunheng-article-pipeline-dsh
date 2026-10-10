@@ -283,6 +283,34 @@ test('入口行为（v18.90.3）：配置非法（resolveConfig 抛错）也必�
   assert.equal(readPanelStatus().stage, 'apply-enter', '标记必须在 resolveConfig 之前写——否则「入口没跑 vs 跑一半死了」仍无法区分')
 })
 
+test('客户端半边（v18.90.4）：侧栏图标席位渲染**纯 SVG 图标**，且跟随 size / active（不再是方块按钮）', async () => {
+  // 主人实测反馈：「论衡运行前面没有图标，只有一个方块」——根因是旧版在**图标席位**里渲染了
+  // 带 border+background 的 `<button>论衡</button>`（`S.btn`）。官方席位目录写明：the sidebar owns the
+  // button and resolves its label from list metadata；icon 席位的 ownerProps = `{size, active}`。
+  const h = makeReactStub()
+  const mod = await loadClient(h, { fetch: fetchStub({}) })
+  const regs = {}
+  const slots = { inject: (n, cb) => { regs[n] = cb; return () => {} }, register: (def, comp) => { regs[def.name + '|' + (def.key || def.id)] = comp; return () => {} } }
+  mod.apply({ inject: (deps, cb) => cb({ slots, get: () => undefined }) })
+  const icon = mod.__panel.PanelIcon
+  assert.equal(typeof icon, 'function', '图标席位必须注册')
+  assert.equal(mod.__panel.PANEL_ID, 'lunheng-run', '席位 id 是稳定契约（侧栏按钮与主面板靠它配对）')
+  const tree = h.render(icon, { size: 18, active: true })
+  assert.ok(tree.startsWith('<svg'), '渲染根节点必须是 svg（图标），实际：' + tree.slice(0, 40))
+  assert.ok(!tree.includes('<button'), '不得再渲染 button——图标席位只给图标，按钮与标签归侧栏')
+  const el = icon({ size: 18, active: true })
+  assert.equal(el.type, 'svg')
+  assert.equal(el.props.width, 18, '必须跟随席位给的 size')
+  assert.equal(el.props.height, 18)
+  assert.equal(el.props.stroke, 'currentColor', '必须跟随主题色（侧栏在深/浅色下都能用）')
+  assert.equal(el.props.strokeWidth, 2.1, 'active 态加粗')
+  assert.deepEqual(el.children.map((c) => c.type), ['rect', 'path'])
+  const idle = icon({ active: false })
+  assert.equal(idle.props.width, 20, '缺 size 时用 20 兜底')
+  assert.equal(idle.props.strokeWidth, 1.7)
+  assert.equal(idle.props.style.opacity, 0.72)
+})
+
 test('面板：lightSnapshot 缺 status.md 时如实标记（不编造）', () => {
   const d = tmp()
   try {

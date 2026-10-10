@@ -1,4 +1,4 @@
-# 论衡速查卡（v18.90.3）
+# 论衡速查卡（v18.90.4）
 
 > **定位**：新人「第一眼需要知道的硬数字」**单一真源**——所有用户文档**只引本卡**、不在自己文档里复述数字。本卡是 `audit-report-v18.78.0.md` §7.2 立项的落地产物。
 >
@@ -12,8 +12,8 @@
 
 | 项 | 值 | 真源 |
 |---|---|---|
-| 当前版本 | **v18.90.3** | `package.json#version` |
-| 引擎锚定（子技能 `lunheng-commands`） | **v18.90.3**（规则 ㉖ 机械对账） | `skills/lunheng-commands/SKILL.md` description + L8 |
+| 当前版本 | **v18.90.4** | `package.json#version` |
+| 引擎锚定（子技能 `lunheng-commands`） | **v18.90.4**（规则 ㉖ 机械对账） | `skills/lunheng-commands/SKILL.md` description + L8 |
 
 ## 角色与 Phase
 

@@ -2,6 +2,38 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.90.4 — 2026-10-10
+
+> **主题**：**侧栏图标改为纯内联 SVG**——主人实测反馈「论衡运行前面没有图标，只有一个方块」。
+> **版本判据 = patch**：零包面变更、零新工具、零新退出码；仅 `lib/client.js` 的 `PanelIcon` + 1 条测试。
+> **授权**：主人「dsh 面板左侧 论衡运行前面没有图标，只有一个方块，可以改成图标吗」。
+
+### 一、根因：我在**图标席位**里渲染了一个按钮
+
+旧版 `PanelIcon` 返回 `h('button', { style: S.btn, title: … , onClick: … }, '论衡')`——而 `S.btn` 带
+`border: 1px solid #cbd5e0` + `background: #f7fafc` + `borderRadius: 6px`：塞进侧栏那个**图标格**里，
+视觉上正好就是一个**空心方块**（方块的边框就是它自己的 border）。
+
+官方席位目录写明（本包 `lib/client.js` 头注释亦引用）：**侧栏自己就是那个按钮、并自己解析 `label`**；
+icon 席位的 `ownerProps` = `{size, active}`。所以点击与选中所属侧栏管，**占位者只该给图标**。
+
+### 二、修法
+
+- `PanelIcon` 改为**纯内联 SVG**（零依赖，延续本包「UI 只走 `React.createElement` + 内联 style」的规矩）：
+  24 格 viewBox 随 `size` 缩放、`stroke: currentColor` 跟随主题（深/浅色都能用）、`active` 反映选中态
+  （描边 1.7 → 2.1、透明度 0.72 → 1）。图案 = 圆角方框内三根柱——面板本体就是 M 门 / 合规分 / 字数序列，
+  一眼可读作「运行图表」。
+- 去掉 `onClick` / `layout.selectPanel` / `S.btn` 用法（按钮与标签归侧栏，不再越权）。
+
+### 三、测试（`tests/panel.test.mjs` 19 → **20**）
+
+新增：图标组件**必须渲染 `svg` 根节点、不得再出现 `button`**，并跟随 `size`（缺省 20）/ `active`（描边与透明度）/
+`currentColor`，子节点为 `rect` + `path`。
+
+### 四、验证（本版终态）
+
+> **验证（本版终态）**：全量套 **1004 / 1004 全绿**（1003 pass / 0 fail / 1 skip；**本版新增 1 用例** = 侧栏图标契约）；`consistency-check` **0 处漂移**；`repo-hygiene-check` **全部通过**；`plugin-surface-check` **11 项通过 0 失败**；`self-check` **15 项全 PASS**；`docs-facts` **19 项全 PASS**。
+
 ## 18.90.3 — 2026-10-10
 
 > **主题**：**面板热修 #3（第三层，也是最后一层）**——18.90.2 把注册放进 `ctx.effect(() => …)` 的**同步段**后，宿主里**仍然**一行诊断都没写、路由 404。
