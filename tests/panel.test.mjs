@@ -377,7 +377,10 @@ test('客户端半边（v18.90.8）：配色只用 DSH 语义 token（随明暗�
   assert.ok(S.dim.color.includes('--dsw-alias-label-secondary'), '次要文字色必须是语义 token')
   assert.ok(S.card.border.includes('--dsw-alias-border-l1'), '描边必须是语义 token')
   assert.ok(S.btn.background.includes('--dsw-alias-bg-layer-2'), '控件底色必须是语义 token')
-  assert.ok(String(S.chart).includes('--dsw-alias-brand-primary'), '折线用品牌色 token')
+  assert.ok(String(S.chart).includes('--dsw-alias-state-success-primary'), '图表主系列必须用**有色**的状态 token')
+  // v18.91.2 回归钉：曾用 brand-primary 当图表主色，而本机主题里它是**墨色（近黑）** ⇒ 整片图变黑（主人实测）
+  assert.ok(!String(S.chart).includes('brand-primary'), '图表主系列**不得**再用 brand-primary（本机主题里是墨色）')
+  assert.ok(!String(S.segNow.background).includes('brand-primary'), '「进行中」片段不得用 brand-primary')
   assert.ok(S.ok.color.includes('--dsw-alias-state-success-primary') && S.bad.color.includes('--dsw-alias-state-error-primary'), '状态色必须是状态 token')
   // 兜底值：宿主未定义 token 时退化成浅色旧观感，而不是不可读
   for (const k of ['card', 'wrap', 'dim', 'k']) {

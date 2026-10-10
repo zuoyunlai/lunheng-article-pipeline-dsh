@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // stats-cli.mjs — /lunheng -stats 薄壳 wrapper
-// 版本：v1.0.3（论衡 v18.91.1；v18.67.0 全量审计批 2 起「引擎版本锚定」纳入规则 ㉖ 机检）｜v18.7.1（v18.7.0 bug fix：补注册原 v18.5.0 已有的论衡运行时遥测看板命令）
+// 版本：v1.0.3（论衡 v18.91.2；v18.67.0 全量审计批 2 起「引擎版本锚定」纳入规则 ㉖ 机检）｜v18.7.1（v18.7.0 bug fix：补注册原 v18.5.0 已有的论衡运行时遥测看板命令）
 //
 // 真实看板由论衡 v18.5.0 的 skills/lunheng-article-pipeline/scripts/lunheng-stats.mjs 实现
 // 本脚本仅做：参数透传 + 工作目录定位 + 错误回传
