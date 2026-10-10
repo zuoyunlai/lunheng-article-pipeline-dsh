@@ -2,6 +2,47 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.90.1 — 2026-10-10
+
+> **主题**：**运行面板热修**——v18.90.0 在主人真实宿主上「入口 active、工具齐全、浏览器半边已挂上，**但路由 404**」。本版修掉根因，并补上**唯一可读的证据通道**（状态文件）。
+> **执行留痕**：`audits/机制文件修订记录-2026-10-10-运行面板批.md` §七。
+> **授权（如实标注）**：主人「先发版，然后我再安装」＋「已经装好最新版」＋按诊断指引实测——修的是主人授予的同一功能。
+> **版本判据 = patch**：零包面变更、零新工具、零新退出码；仅 `lib/panel.mjs` 的注册时序 + 诊断落点。
+
+### 一、根因（**两轮错判的完整留痕，不删**）
+
+真实宿主上按顺序取证得到的事实链：
+
+| 观测 | 结论 |
+|---|---|
+| 已装包 `lib/*` 与仓库**逐字节一致**；`include:lunheng-article-pipeline` **enabled + active**；`lunheng_*` 工具可用 | 入口 `apply` 跑到底 ✅ |
+| 实时槽位树里 `sidebar.panellist` 出现 `id: lunheng-run` | **浏览器半边已挂上** ✅ |
+| `/modsearch/config`（同 host 另一插件的路由）**200 + JSON** | 宿主**确实在**提供插件路由 ✅ → 问题在本插件的注册 |
+| 用户级 `LUNHENG_PANEL=1` 已设 + 应用重启（进程时间晚于 `setx`）后仍 404；而**三档分档工具可用**（`cordis.patch.yml` 的 `disabled: !!js process.env.LUNHENG_*` 求值 ⇒ 宿主读得到用户级 env） | **不是开关没到**、也不是配置通道问题 ✅ |
+| `ctx.webServer` 只在 `registerPanel` 里**读一次**，而那次读取发生在 `apply` 异步尾段（前面 await 了若干动态 import） | ⇒ 读到 undefined ⇒ 按设计「如实跳过」⇒ **路由永不注册** ← **根因** |
+
+**两条被推翻的错误推论（如实登记）**：① 曾判「patch 行的 `- id:` 必须带 `include:` 前缀」——错，官方 `architecture.zh.md`：patch **按 id 定位并替换其整个 config**，宿主 `patchId` 即裸 id，主人 profile 里同形的 `llm-pi-ai`/`mnemon`/`permission` 全都生效；② 曾判「文件里有重复行」——错，那是 `Select-String -Context` 的重叠视窗假象。
+
+### 二、修法
+
+- `registerPanel` 改为 **`ctx.inject(['webServer'], cb)`**：**等服务可用再注册**（服务迟到也接得住；fiber 被处置时回调不执行，不泄漏到死上下文）。仍**不**把 `webServer` 写成硬依赖——headless / 无 Web 组合下插件照常工作，只是没有面板。
+- 保留「无 `inject`（最小 ctx）」退路：退回一次性探测并在状态文件里写明原因，而不是静默。
+- `/ping` 与挂载播报带**开关来源**（`config.panel` / `LUNHENG_PANEL`）。
+
+### 三、证据通道：`os.tmpdir()/lunheng-panel-status.json`
+
+写入「开关来源 / 服务是否就绪 / 注册结果 / 错误原文 / 版本 / pid / 工作区根名」——**不含项目内容**。**为什么必须有**：宿主 `ctx.logger` 在桌面版**不落盘**（`%APPDATA%\@deepseek-ai\dsh-desktop\logs\` 只有旧 crash 日志），`say()` 说的那句话没人看得到——v18.90.0 正因缺它而只能靠猜。披露见 `SECURITY.md` §运行面板。
+
+### 四、测试（`tests/panel.test.mjs` 14 → **16**）
+
+新增：① **服务迟到**（`inject` 回调延迟触发 → 仍注册；处置器同时注销等待与路由）；② **状态文件分支**（未启用 / config / env 三态 + 版本/时间/pid 必填）。
+**同时修掉一处测试设计缺陷（实测踩到）**：主人 `setx LUNHENG_PANEL 1` 后，**跑测试的 shell 也继承该变量** → 「默认关」断言被静默变成「开启」。现在测试文件加载时先摘掉该变量，需要 env 通道的用例自己显式设、用完即删——**测试必须与环境无关**。
+
+### 五、验证（本版终态）
+
+> **验证（本版终态）**：全量套 **1000 / 1000 全绿**（999 pass / 0 fail / 1 skip；**本版新增 2 用例** = 服务迟到注册 + 状态文件分支）；`consistency-check` **0 处漂移**；`repo-hygiene-check` **全部通过**；`plugin-surface-check` **11 项通过 0 失败**；`self-check` **15 项全 PASS**；`docs-facts` **19 项全 PASS**（含 `link-check`）。
+> **一处链接门纠错（留痕）**：SECURITY.md 里把状态文件写成反引号路径后，`link-check` 判「未归类断链」（仓库外的运行期文件按五候选根解析必然失败）→ 改为**不加反引号的散文写法**并在文中写明原因，避免后人再踩。
+
 ## 18.90.0 — 2026-10-10
 
 > **主题**：**运行面板批（B 批）**——把 A 批的报告能力搬进 DSH Web GUI：**宿主半边** `lib/panel.mjs`（只读 HTTP 路由 + SSE）+ **浏览器半边** `lib/client.js`（手写 lazy-CJS，零构建链），在 GUI 里实时显示 `run/<项目>/` 的阶段 / 角色 / 门 / 产物。

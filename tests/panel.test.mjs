@@ -18,7 +18,15 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { pathToFileURL } from 'node:url'
+
+// ⚠️ **测试必须与环境无关**（v18.90.1 实测教训）：主人一旦 `setx LUNHENG_PANEL 1`，
+//   跑测试的 shell 也会继承该变量 → 「默认关」那条断言会被静默变成「开启」。
+//   故本文件在加载时先把该变量摘掉；需要验 env 通道的用例自己显式设、用完即删。
+delete process.env.LUNHENG_PANEL
+const PANEL_STATUS_FILE = join(tmpdir(), 'lunheng-panel-status.json')
+const readPanelStatus = () => JSON.parse(readFileSync(PANEL_STATUS_FILE, 'utf8'))
 import { tmp } from './_fixtures.mjs'
 import { registerPanel, handlePanelRequest, lightSnapshot, listProjects, panelRoots, PANEL_ROUTE, PANEL_HEARTBEAT_MS } from '../lib/panel.mjs'
 
@@ -167,6 +175,53 @@ test('面板：listProjects / panelRoots 的读面边界', () => {
     assert.deepEqual(names, ['p1'], '只列含 status.md 的直接子目录')
     assert.ok(panelRoots({ workspaceRegistry: { list: () => [{ path: d }] } }).includes(d))
     assert.ok(panelRoots({}).length >= 1, 'registry 不可用时兜底到 cwd（不抛）')
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
+// ── v18.90.1：服务迟到 + 状态文件（来自一次真实盲区：入口 active、工具齐全、浏览器半边也挂上，路由却 404）──
+
+test('面板（v18.90.1）：webServer 迟到也接得住 —— ctx.inject 等服务就绪再注册', () => {
+  const d = tmp()
+  try {
+    mkProject(d)
+    const sink = {}
+    let cb = null
+    const ctx = {
+      workspaceRegistry: { list: () => [{ path: d }] },
+      inject: (deps, fn) => { assert.deepEqual(deps, ['webServer'], '只等 webServer 一个服务'); cb = fn; return () => { sink.off = true } },
+    }
+    const dispose = registerPanel(ctx, { panel: true }, () => {})
+    assert.equal(sink.route, undefined, '服务未就绪时不得注册（也不得放弃等待）')
+    assert.equal(typeof cb, 'function', '必须挂上等待（旧版在这里直接放弃 → 路由永不注册）')
+    cb({ webServer: { register: (r) => { sink.route = r; return () => { sink.disposed = true } } }, workspaceRegistry: ctx.workspaceRegistry })
+    assert.equal(sink.route.path, PANEL_ROUTE, '服务到达即注册')
+    assert.equal(sink.route.kind, 'prefix')
+    dispose()
+    assert.ok(sink.off && sink.disposed, '处置器应同时注销等待与路由')
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
+test('面板（v18.90.1）：状态文件如实记录分支（未启用 / config / env），供宿主日志不可读时取证', () => {
+  const d = tmp()
+  try {
+    mkProject(d)
+    registerPanel({ workspaceRegistry: { list: () => [{ path: d }] } }, { panel: false }, () => {})
+    assert.equal(readPanelStatus().stage, 'disabled')
+    const sink = {}
+    registerPanel(mkCtx(d, sink), { panel: true }, () => {})
+    const st = readPanelStatus()
+    assert.equal(st.stage, 'registered')
+    assert.equal(st.source, 'config', '来源必须是 config.panel（另一种是 env）')
+    assert.equal(st.registered, true)
+    assert.ok(st.version && st.at && st.pid, '版本 / 时间 / pid 必填——「装错了要看得见」')
+    // env 通道：不设 config、只设 LUNHENG_PANEL
+    const sink2 = {}
+    process.env.LUNHENG_PANEL = '1'
+    try {
+      registerPanel(mkCtx(d, sink2), { panel: false }, () => {})
+      assert.equal(readPanelStatus().source, 'env')
+      assert.ok(sink2.route, 'env 通道也必须真的注册')
+    } finally { delete process.env.LUNHENG_PANEL }
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
 
