@@ -1,6 +1,6 @@
 # 论衡 × DSH 能力面集成方案
 
-> 版本：v18.90.1
+> 版本：v18.90.2
 > **用途**：把论衡的既有机制（**随包脚本** / 并行阶段 / 状态机 / 人在环闸门）**对齐 DSH 已有能力面**，替代平行自建。§一–§六 是**实施方案**，§七 是**落地状态表**，§八 是**可选配方**。**脚本清单与数量真源 = `SKILL.md` §执行能力边界 的「随包脚本白名单」行**（本文件不复述数字）。
 > **依据**：DSH 官方文档 `docs/cookbook/adding-a-tool.md`、`docs/tool-execution-pipeline.md`、`docs/subsystems/*.md`、`docs/capability-seams.md`（知识库副本见 `dsh-plugin-guide/references/official-docs/`；行号对快照 commit `d347e703…`）。
 > **当前状态（v18.76.0 对账）**：**C 组 9 项已启用 + 1 项仅配方（C-2）+ D2 workflow 配方已落地（可选）**：原生只读工具 + `executionMode` 声明 / `ctx.tools.guard()` 写保护 / `/lunheng-status` / 词预算门 / `tools/post-execute` 伦理脱敏自动挂载（命中标记经 `decision.additionalContexts` 送达，v18.76.0 · R1 修复） / `system-prompt/assemble` 钩子 / `examples/preset/agent-tiered/cordis.yml` preset 化（**C-9 `file-watcher:change`、C-10 `assistant/chunk`、C-12 `agent/request` 三条死监听器已移除**，见 §七）。**D2（Phase 内并行→`workflow`）配方已落地**（v18.71.0，`examples/workflow/phase1-retrieval.md`，**可选、不默认替换 subagent**，见 §三）。**未做（Backlog）**：**H8** `session-log` 投影 / **H9** `session-query-sqlite` / **H10** `web_profile`（主人 2026-09-30 裁定**不做**）；**H11** `goals` / `jobs`（仍禁接）。

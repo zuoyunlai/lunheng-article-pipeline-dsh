@@ -225,6 +225,24 @@ test('面板（v18.90.1）：状态文件如实记录分支（未启用 / config
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
 
+// ── v18.90.2：入口结构钉（真实宿主根因：注册落在异步链尾段，被 fiber reconcile 的 early-return 吞掉）──
+
+test('入口结构钉（v18.90.2）：registerPanel 必须在**同步段**调用，且只有一处', () => {
+  const src = readFileSync(join(ROOT, 'lib', 'index.js'), 'utf8')
+  const call = 'registerPanel(ctx, cfg, say)'
+  const count = src.split(call).length - 1
+  assert.equal(count, 1, `registerPanel 只允许一处调用（异步链里那处会被 early-return 吞掉，重复挂载同样有害），实际 ${count} 处`)
+  const callIdx = src.indexOf(call)
+  const firstAwaitImport = src.search(/await import\(/)
+  assert.ok(firstAwaitImport > 0, '入口应仍用动态 import（本钉的参照点）')
+  assert.ok(
+    callIdx < firstAwaitImport,
+    'registerPanel 必须出现在**第一个 `await import(` 之前**（同步段）。放进异步链会在宿主启动期反复 reconcile 处置 fiber 时'
+    + '被 `if (!alive) return` 早退吞掉 ⇒ 面板永不注册（v18.90.0/18.90.1 现场：条目 active、工具齐全、浏览器半边已挂上，'
+    + '路由 404 且诊断文件连 enter 都没写）。',
+  )
+})
+
 test('面板：lightSnapshot 缺 status.md 时如实标记（不编造）', () => {
   const d = tmp()
   try {

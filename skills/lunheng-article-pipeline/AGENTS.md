@@ -1,4 +1,4 @@
-> 版本：v18.90.1（DSH bundle 插件）
+> 版本：v18.90.2（DSH bundle 插件）
 
 # AGENTS.md — 论文流水线操作手册
 
