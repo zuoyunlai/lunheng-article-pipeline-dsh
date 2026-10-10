@@ -593,6 +593,7 @@ test('客户端半边（v18.91.0）：insights 到位时渲染出**图表**（KP
         { format: 'PDF', cmd: 'pandoc run/x/final/定稿.md -o run/x/final/定稿.pdf --pdf-engine=xelatex', note: '需 pandoc + XeLaTeX' },
         { format: 'LaTeX', cmd: 'pandoc run/x/final/定稿.md -o run/x/final/定稿.tex --standalone', note: '需 pandoc' },
       ],
+      compare: { root: 'E:\\tmp', scanned: 3, self: 'p1', items: [{ name: 'p1', pass: 23, total: 24, p0: 0, score: 87.1, words: 7, at: null }, { name: 'p2', pass: 22, total: 24, p0: 0, score: 89.1, words: 6, at: null }] },
       evidence: { draft: '初稿-v6.md', sections: [{ title: '1 引言', L: 6, D: 12, C: 3 }, { title: '2 理论框架', L: 9, D: 4, C: 0 }], totals: { L: 15, D: 16, C: 3 } },
       review: { report: '审稿整合报告-v6.md', views: [{ view: 'T9-d 领域学者', dims: [{ name: '理论贡献', score: 4 }, { name: '文献对话', score: 4 }, { name: '论证逻辑', score: 4 }, { name: '领域准确性', score: 4 }, { name: '学术规范', score: 5 }], total: 21, max: 25, verdict: '小修' }, { view: 'T9-m 方法学', dims: [{ name: '识别策略', score: 4 }, { name: '案例选择', score: 4 }, { name: '反事实设计', score: 5 }, { name: '可证伪预测', score: 5 }, { name: '方法论披露', score: 4 }], total: 22, max: 25, verdict: '接收' }, { view: 'T9-s 学界编辑', dims: [{ name: '贡献度', score: 4 }, { name: '引用规范', score: 4 }, { name: '学术伦理披露', score: 4 }, { name: '文末声明完整性', score: 5 }, { name: '整体可发表性', score: 4 }], total: 21, max: 25, verdict: '小修' }] },
       active: { ms: 6503754, spanMs: 77103123, segs: 5, gapMinutes: 15, files: 140 },
@@ -621,6 +622,8 @@ test('客户端半边（v18.91.0）：insights 到位时渲染出**图表**（KP
   assert.match(t, /产物分布（体积）/, '产物分布卡应在场（已拆成单项卡）')
   assert.match(t, /各目录文件数/, '文件数应独立成卡（一张卡只放一项）')
   assert.match(t, /T9 三视角审稿/, 'T9 三视角审稿应独立成卡')
+  assert.match(t, /跨项目对比/, 'v18.94.0：跨项目对比卡应在场')
+  assert.match(t, /不是质量排序/, '跨项目对比必须写明口径（不是质量排序）')
   assert.match(t, /694 KB/, '产物分布应给出体积（组成条图例）')
   assert.match(t, /17 文件/, '产物分布应给出文件数（条形图）')
   // 活动节律：柱状图 = svg + 多个 rect
@@ -827,5 +830,6 @@ test('v18.93.0：交付件与导出命令派生（只读工作区内的既有产
     assert.deepEqual(cmds.map((c) => c.format), ['HTML', 'Word', 'PDF', 'LaTeX'])
     assert.match(cmds[0].cmd, /md2html\.mjs/, 'HTML 走仓内转换器')
     assert.match(cmds[2].cmd, /xelatex/, 'PDF 命令须含 xelatex（并已在 UI 标注需 pandoc）')
+    assert.ok(snap.insights.compare && Array.isArray(snap.insights.compare.items), 'v18.94.0：应派生跨项目对比（同根各项目边车摘要）')
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
