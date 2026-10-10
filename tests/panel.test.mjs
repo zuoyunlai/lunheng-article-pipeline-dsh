@@ -387,6 +387,26 @@ test('客户端半边（v18.90.8）：配色只用 DSH 语义 token（随明暗�
   assert.ok(!String(S.chart).includes('brand-primary'), '图表主系列**不得**再用 brand-primary（本机主题里是墨色）')
   assert.ok(!String(S.segNow.background).includes('brand-primary'), '「进行中」片段不得用 brand-primary')
   assert.ok(!String(S.barFill.background).includes('brand-primary'), '条形图填充不得用 brand-primary（主人实测：那一排条全变黑）')
+  // v18.94.1：产物分布色板必须 9 项且互不相同（主人实测：不同项同色 → 分不清）。
+  //   注：渲染桩不带属性，故此处对**客户端源码**做机械断言（色板是源码里的显式数组）。
+  {
+    const src = readFileSync(join(ROOT, 'lib', 'client.js'), 'utf8')
+    const m = /var palette = \[(.*)\];/m.exec(src)
+    assert.ok(m, '产物分布必须有显式色板数组')
+    let depth = 0
+    let cur = ''
+    const parts = []
+    for (const ch of m[1]) {
+      if (ch === '(' || ch === '[') depth += 1
+      else if (ch === ')' || ch === ']') depth -= 1
+      if (ch === ',' && depth === 0) { parts.push(cur.trim()); cur = ''; continue }
+      cur += ch
+    }
+    if (cur.trim()) parts.push(cur.trim())
+    assert.equal(parts.length, 9, '色板须 9 项（9 个目录一一对色，不再取模撞色），实际 ' + parts.length)
+    assert.equal(new Set(parts).size, parts.length, '色板各项不得重复')
+    assert.match(src, /color-mix\(in srgb/, '浅色变体须由 color-mix 派生（随明暗主题走）')
+  }
   assert.ok(S.ok.color.includes('--dsw-alias-state-success-primary') && S.bad.color.includes('--dsw-alias-state-error-primary'), '状态色必须是状态 token')
   // 兜底值：宿主未定义 token 时退化成浅色旧观感，而不是不可读
   for (const k of ['card', 'wrap', 'dim', 'k']) {

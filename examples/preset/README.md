@@ -1,6 +1,6 @@
 # examples/preset/ — 论衡分档安装指南
 
-> 版本：v18.94.0
+> 版本：v18.94.1
 
 > **v18.62.4 更正（全量审计-v18.62.3 P1-12）**：本目录现有 **3 个条目**——`preset.yml`（给主人读的分档说明）
 > + 本文件（安装指南）+ **`agent-tiered/cordis.yml`**（v18.61.0/H6 落地的**可加载 preset 配置**，见 §6）。
@@ -19,7 +19,7 @@
 ```sh
 # 1. 在 profile 里声明 bundle 依赖（DSH 读 dsh.bundle.patch 找到 cordis.patch.yml 加载）
 dsh plugin --profile web add lunheng-article-pipeline@dsh   # 推荐：跟随最新 DSH 迭代版
-# 锁定具体版本：dsh plugin --profile web add lunheng-article-pipeline@18.94.0
+# 锁定具体版本：dsh plugin --profile web add lunheng-article-pipeline@18.94.1
 
 # 2. （可选，但要让三档工具真的挂上就必做）设三档 subagent 工具的 provider/model 环境变量
 #    v18.2.6 起：不设任何变量 = 三档行**根本不装载**（不再是「装载但全继承」）
