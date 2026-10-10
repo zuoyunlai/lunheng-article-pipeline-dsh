@@ -48,14 +48,35 @@
 | `docs/quick-facts.md` | 词预算登记数 50 → **51 条** / 合计上限 1489 → **1505 KB** | `consistency-check` 规则㊲（**实测抓出「1489 vs 1505 KB」漂移**） |
 | 五语 README 命令声明行 | 移除 `lunheng-panel` 字面 token（会被命令集派生器当成「不存在的命令」） | `docs-facts` C-1 命令集（**实测抓出 `README-es.md:44` 列出不存在的命令**） |
 
-### 六、测试 `tests/panel.test.mjs`（**8 用例**）
+### 六、测试 `tests/panel.test.mjs`（初版 **8 用例**；＋§七 自审修正新增 6 条 = **14**）
 
 默认关不注册路由 / 开启后 `/ping`·`/projects`·`/snapshot` 形状 / **围栏**（`../` 越界 403、越界 root 403、缺参 400、未知端点 404、非 GET 405）/ **SSE**（头 + `retry` + 首帧 + 断连清理）/ 客户端半边是 lazy-CJS 且**零外部 http(s) 引用**、只打同源面板路由 / 包面 `dsh.client` + `exports["./client"]` 在盘 / `listProjects`·`panelRoots` 读面边界 / 缺 `status.md` 时如实标 `hasStatus:false`（不编造）。
 
 
-### 七、验证（本版终态）
+### 七、自审修正（主人裁定「先不动部署，自审渲染逻辑」后的第二轮）
 
-> **验证（本版终态）**：全量套 **992 / 992 全绿**（991 pass / 0 fail / 1 skip；**本版新增 8 用例** = 运行面板契约 8）；`consistency-check` **0 处漂移**；`repo-hygiene-check` **全部通过**（含词预算 ㊲ 对账）；`plugin-surface-check` **11 项通过 0 失败**（**证明 `dsh.client` + `exports` 形态合法**）；`self-check` **15 项全 PASS**；`docs-facts` **19 项全 PASS**。
+`lib/client.js` 逐行自审发现 **8 处**问题（**2 处 P1**），全部已修，且**每一处都由新测试锁住**：
+
+| 编号 | 级别 | 问题 | 处置 |
+|---|---|---|---|
+| **F1** | **P1** | 「座位」用 `seats.length > 1` 猜——该数组只会被压入 `main`，于是**无论右栏是否真的可用，面板都写「（右栏服务不可用）」**：一句**不实自述** | 改为模块级 `SEATS` 记录**实际注册结果**；`seatLine()` 逐座位如实写「已注册 / 未注册」+ 异常原因 |
+| **F2** | **P1** | `ctx.inject` 回调里若 `slots` 形态漂移会抛 `TypeError` → **整个浏览器半边 `apply` 崩掉、面板彻底不出现且没有任何提示**（静默失效） | 两处注册各包 `try/catch`；失败只影响该座位，原因写进 `SEATS.error`（页脚可见）+ `console.error` |
+| F3 | P2 | 不显示宿主半边版本 → 用户无法分辨「装没装 / 装的是哪版」（正是当前 profile 里 v18.84.0 vs 仓库 v18.90.0 的现实问题） | 页头显示 `宿主 v<version>`（取自 `/ping`） |
+| F4 | P2 | 无 `run/` 项目时永远停在「加载中…」 | 新增 `empty` 态 + 可执行提示（先跑一次流水线 / 确认工作区根） |
+| F5 | P2 | `/snapshot`（非流式端点）**从未被使用**；SSE 一断就只能一直显示旧帧 | 断流即挂 **5 s 兜底轮询**（主人裁定的节拍），收到 SSE 帧或手动重连即停——**兜底不是口号，测试会验证它真的去拉** |
+| F6 | P3 | `seats` 数组在 React 18 StrictMode 双调用 effect 下会重复压栈 | 改为固定字段（幂等） |
+| F7 | P3 | 右栏 tab 未声明 `keepMounted` → 切走再切回即卸载重建（重连 SSE、丢当前项目） | 按官方定义加 `keepMounted: true` |
+| F8 | P3 | 断流时只标「已断」，而 EventSource 其实会**自动重连** → 呈现与实际不符 | 三态如实区分：`live` ／ `stale`（正在重连**且**已开兜底轮询）／ `poll`（当前由轮询供给） |
+
+**新增 6 条逻辑级渲染测试**（`tests/panel.test.mjs` 8 → **14**）：本机**没有 `react` 包**（实测 profile 与仓库 `node_modules` 均无），故自建**最小 React 替身**（`createElement`/`useState`/`useEffect`/`useCallback`/`useRef` + 按「实例序号 + 实例内 hook 序号」保存状态 + effect 提交后 drain），**真正执行** `lib/client.js` 的 factory，以桩 `fetch` / `EventSource` / `localStorage` 驱动状态机，对**渲染出的文本**断言：实时帧渲染（项目 / 状态行 / M 门 / 合规分 / 宿主版本 / 座位如实）｜未启用 → 可执行提示｜空态｜**断流兜底**（并验证兜底定时器真的去拉 `/snapshot`）｜右栏可用时座位如实 + `keepMounted`｜注册抛错不静默。
+> **这补上了本批此前唯一未被验证的面**（浏览器内渲染**逻辑**）。**仍未验证**（如实保留）：真实 DOM/CSS 观感、真实 `EventSource` 的重连行为、客户端模块系统实际送出 bundle 的加载过程——三者都要装进 profile 并刷新 GUI 才能看。
+> **替身自身的一处坑（留痕）**：`useState` 的 setter 必须**闭包捕获本实例的 hook 数组**（惰性读 `inst[i]` 会在渲染趟结束后读到 `null`）——首版替身即栽在这里（4 条用例同时红），修好后才跑通；真 React 同样按实例保存状态，故这不是「为过测试而改」。
+
+
+
+### 八、验证（本版终态）
+
+> **验证（本版终态）**：全量套 **998 / 998 全绿**（997 pass / 0 fail / 1 skip；**本版新增 14 用例** = 运行面板契约 8 + 自审修正 6）；`consistency-check` **0 处漂移**；`repo-hygiene-check` **全部通过**（含词预算 ㊲ 对账）；`plugin-surface-check` **11 项通过 0 失败**（**证明 `dsh.client` + `exports` 形态合法**）；`self-check` **15 项全 PASS**；`docs-facts` **19 项全 PASS**。
 > **如实登记的未验证面**：① `lib/client.js` 的**浏览器内渲染**未在本机真机验证（需重载插件让客户端模块系统送出浏览器半边）；② 右栏落点未验证——**本机客户端服务目录没有 `sidebarRightTabs` / `sidebarRight`**，代码走 feature-detect 降级并在面板页脚注明。
 > **一处自我纠错（留痕）**：批量替换 `docs/quick-facts.md` 时用 `Set-Content` 注入了 UTF-8 BOM → `consistency-check` P1「BOM 污染」当场抓出（连带 P2 标题口径失配），已二进制剔除前 3 字节。**教训**：机制/文档文件的批量替换一律走 `edit`。
 
