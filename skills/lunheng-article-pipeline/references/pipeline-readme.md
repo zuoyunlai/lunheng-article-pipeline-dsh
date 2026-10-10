@@ -1,4 +1,4 @@
-> 版本：v18.90.5（DSH bundle 插件）
+> 版本：v18.90.6（DSH bundle 插件）
 
 
 # 论衡（lunheng-article-pipeline）— 通用深度长文多 Agent 流水线 运行手册

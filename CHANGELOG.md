@@ -2,6 +2,60 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.90.6 — 2026-10-10
+
+> **主题**：**面板真根因（第五版，已在真宿主端到端验证）**——`ctx.webServer` 的**裸属性读**在宿主里抛
+> `cannot get property "webServer" without inject`，`registerPanel` **第一行就死**；18.90.0–18.90.5 五版全栽在这。
+> **版本判据 = patch**：零包面变更、零新工具、零新退出码；`lib/panel.mjs`（服务读取 + 步骤历史）+ 1 条根因回归测试。
+
+### 一、根因（**在隔离宿主里复现得到原文，不再是推断**）
+
+用**隔离 DSH_HOME**（`$env:TEMP\dsh-scratch-lunheng`，绝不动主人 profile）走官方链路复现：
+`dsh --profile scratch --from-default-profile web` 初始化 → `dsh plugin add <真 tarball>` → 起宿主 →
+`GET /lunheng-panel/ping` **404**，而步骤文件直接给出错因：
+
+```
+stage: "panel-threw"
+error: cannot get property "webServer" without inject
+```
+
+**本 Cordis 版本对「未在 `inject` 声明里列出的服务」做裸属性读会抛**。本插件 `inject = ['skills']`，
+而 `registerPanel` 第一行就写 `hasWebServerNow: !!ctx?.webServer?.register` ⇒ **必抛**，注册逻辑一行都跑不到。
+这解释了全部历史现象：技能正常（宿主自己注册）、浏览器半边正常（与 apply 无关）、
+面板 18.90.0–18.90.5 **五版全挂**、诊断文件只剩 `apply-enter`。
+
+### 二、修法
+
+- 新增 **`peekService(ctx, name)`**：优先 `ctx.get(name)`，拿不到再**包着 try** 兜底读属性——真宿主的严格抛错
+  被吞成 `undefined`，绝不外传；`panelRoots` 的 `workspaceRegistry` 同样改走它。
+- 注册两条路：**当场能拿到服务就立即注册**（`register-direct`）；拿不到才 `ctx.inject(['webServer'], …)`
+  等服务（`inject-wait` → 服务到达即注册）。注册用**服务对象本身**，不再裸读 `ctx`。
+- 诊断升级为**追加式步骤历史**（`steps[]`，封顶 30 步）：单值 `stage` 会被后续写入覆盖
+  （实测踩过：`apply-skill` 把 `registerPanel` 的判定盖掉，导致「走了哪一支」无从判断）。
+
+### 三、真机端到端验证（本版最强证据，可复算）
+
+隔离宿主（新 profile + 真 tarball + 真 loader + 真 HTTP）：
+
+| 请求 | 结果 |
+|---|---|
+| `GET /lunheng-panel/ping` | **200** `{"ok":true,"version":"18.90.6","roots":["<工作区根>"],"heartbeatMs":5000}` |
+| `GET /lunheng-panel/projects` | **200** `{"root":"…","projects":[]}` |
+| `GET /lunheng-panel/snapshot`（缺参） | **400** |
+| `GET /lunheng-panel/nope` | **404** |
+| `GET /lunheng-panel/snapshot?project=..%2Fetc`（穿越） | **403**（围栏在真宿主上生效） |
+| 步骤历史 | `apply-enter → apply-panel → enter → inject-wait → registered` |
+
+### 四、测试（`tests/panel.test.mjs` 20 → **21**）
+
+新增**根因回归**：把宿主行为做成桩——`ctx.webServer` 的 getter **直接抛**
+`cannot get property "webServer" without inject`，且 `ctx.get` 也拿不到 → 仍必须经 `inject` 回调注册成功，
+且步骤历史留下 `inject-wait` / `registered`。这条用例锁的正是五版全挂的那一行。
+
+### 五、验证（本版终态）
+
+> **验证（本版终态）**：全量套 **1005 / 1005 全绿**（1004 pass / 0 fail / 1 skip；**本版新增 1 用例** = 严格 ctx 根因回归）；`consistency-check` **0 处漂移**；`repo-hygiene-check` **全部通过**；`plugin-surface-check` **11 项通过 0 失败**；`self-check` **15 项全 PASS**；`docs-facts` **19 项全 PASS**。
+
 ## 18.90.5 — 2026-10-10
 
 > **主题**：**面板热修 #4（真凶落网）**——18.90.4 在真实宿主留下的标记只有 `stage:"apply-enter"` 一行。

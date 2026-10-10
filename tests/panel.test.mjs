@@ -313,6 +313,33 @@ test('客户端半边（v18.90.4）：侧栏图标席位渲染**纯 SVG 图标**
   assert.equal(idle.props.style.opacity, 0.72)
 })
 
+test('面板（v18.90.6 根因回归）：宿主式严格 ctx（裸读服务直接抛）也必须经 inject 注册成功', () => {
+  // 隔离宿主实测原文：`cannot get property "webServer" without inject` —— 本 Cordis 版本对
+  // **未在 inject 声明里列出的服务**做裸属性读会抛。18.90.0–18.90.5 就是因为 registerPanel 第一行
+  // 裸读 `ctx?.webServer?.register`，四版全部在「注册」之前就死。本用例把该行为做成桩（getter 抛错）。
+  const d = tmp()
+  try {
+    mkProject(d)
+    const sink = {}
+    const ctx = {
+      get: () => undefined,
+      inject: (deps, cb) => {
+        assert.deepEqual(deps, ['webServer'], '只等 webServer')
+        cb({ get: () => ({ register: (r) => { sink.route = r; return () => { sink.disposed = true } } }) })
+        return () => { sink.off = true }
+      },
+    }
+    Object.defineProperty(ctx, 'webServer', { get() { throw new TypeError('cannot get property "webServer" without inject') } })
+    Object.defineProperty(ctx, 'workspaceRegistry', { get() { return { list: () => [{ path: d }] } } })
+    registerPanel(ctx, { panel: true }, () => {})
+    assert.equal(sink.route?.path, PANEL_ROUTE, '裸读会抛也必须在 inject 回调里注册成功')
+    assert.equal(sink.route?.kind, 'prefix')
+    const st = readPanelStatus()
+    assert.equal(st.stage, 'registered', '步骤历史必须落 registered')
+    assert.ok(st.steps.some((s) => s.stage === 'inject-wait'), '必须留下 inject-wait 这一步（可判读）')
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
 test('面板：lightSnapshot 缺 status.md 时如实标记（不编造）', () => {
   const d = tmp()
   try {
