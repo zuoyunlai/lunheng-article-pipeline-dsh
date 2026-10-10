@@ -1,10 +1,10 @@
-> 版本：v18.91.0（DSH bundle 插件）
+> 版本：v18.91.1（DSH bundle 插件）
 
 # 派发开工卡（dispatch-cards）
 
 > **历史叙事已外移**：正文只留现行规则；历史成因 / 逐版明细 / 教训编号见 CHANGELOG.md 对应版本段与 `memory/lessons.md`。
 
-> 用途：主控 spawn 子代理时的**最小 prompt 模板**（配合读取纪律，禁长篇复制）。每卡 ≤12 行；角色卡全文按需 `read` 指定小节。版本：v18.91.0。
+> 用途：主控 spawn 子代理时的**最小 prompt 模板**（配合读取纪律，禁长篇复制）。每卡 ≤12 行；角色卡全文按需 `read` 指定小节。版本：v18.91.1。
 >
 > **派发前置**：Phase 2 / 3.6 / 4 / 4.6 / 4.7 / 5 各闸门派发前，主控先跑 `node scripts/build-evidence-bundle.mjs <项目> --summary`（源自动取 `final/定稿.md` → `drafts/` 最高版本正文；要锁定某轮稿用 `--source <路径>`）生成/刷新 `audits/审计视图-v0.md`，再按各卡「读」清单把它列入派发话术。**视图缺失时该优化不成立**——不要声称「已用视图省 token」。
 >

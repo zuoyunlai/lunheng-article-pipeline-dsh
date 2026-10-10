@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // history-cli.mjs — 读 run/<id>/history.jsonl + 输出 --diff
-// 版本：v1.0.3（论衡 v18.91.0；v18.67.0 全量审计批 2 起「引擎版本锚定」纳入规则 ㉖ 机检）｜v18.62.5 P2-6 引入 run-path-fence 三层收口
+// 版本：v1.0.3（论衡 v18.91.1；v18.67.0 全量审计批 2 起「引擎版本锚定」纳入规则 ㉖ 机检）｜v18.62.5 P2-6 引入 run-path-fence 三层收口
 
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { resolve, join } from 'node:path';

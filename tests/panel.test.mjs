@@ -550,8 +550,10 @@ test('客户端半边（v18.91.0）：insights 到位时渲染出**图表**（KP
       phases: { current: 3, closed: [1, 1.5, 2, 2.5] },
       dirs: [{ name: 'drafts', files: 17, kb: 694 }, { name: 'audits', files: 32, kb: 345 }, { name: 'final', files: 47, kb: 621 }],
       activity: [0, 0, 50, 21, 0, 0, 0, 0, 43, 25, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      activityMeta: { bucketMs: 7200000, from: Date.now() - 48 * 3600000, to: Date.now(), peak: 50, total: 140, activeBuckets: 5, scanned: 140, windowHours: 48 },
       failures: 3, handoffs: { ok: 9, retry: 0 },
-      drafts: [{ name: '初稿-v2', kb: 62 }, { name: '初稿-v3', kb: 65 }, { name: '初稿-v6', kb: 64.1 }],
+      active: { ms: 6503754, spanMs: 77103123, segs: 5, gapMinutes: 15, files: 140 },
+      drafts: [{ name: '初稿-v2', kb: 62, kind: 'draft', mtime: Date.now() - 7200000 }, { name: '修订说明-v2', kb: 9.4, kind: 'revision', mtime: Date.now() - 5400000 }, { name: '初稿-v6', kb: 64.1, kind: 'draft', mtime: Date.now() - 3600000 }],
     },
   })
   const mod = await loadClient(h, {
@@ -565,7 +567,8 @@ test('客户端半边（v18.91.0）：insights 到位时渲染出**图表**（KP
   for (let i = 0; i < 3; i++) { t = h.render(mod.__panel.Panel, { ctx: null }); await new Promise((r) => setTimeout(r, 0)) }
   // KPI 行（先给结论）
   assert.match(t, /当前阶段/, 'KPI 行应渲染')
-  assert.match(t, /已用时长/, 'KPI 行应含时长')
+  assert.match(t, /活跃时长（不含人在环）/, 'KPI 行应含「活跃时长（不含人在环）」')
+  assert.match(t, /间隔≤15min 计连续/, 'KPI 提示必须写明活跃时长的算法口径（启发式，不是精确工时）')
   assert.match(t, /异常\/收报/, 'KPI 行应含失败/收报')
   // 阶段带：已闭合的阶段片段必须真的出现（1 / 1.5 / 2 / 2.5 + 当前 3）
   for (const s of ['1.5', '2.5', '3']) assert.ok(t.includes('>' + s + '<'), '阶段带应含 Phase ' + s + ' 片段')
@@ -579,7 +582,27 @@ test('客户端半边（v18.91.0）：insights 到位时渲染出**图表**（KP
   assert.match(t, /活动节律（近 48 小时的文件改动）/, '活动节律标题应渲染')
   const rects = (t.match(/<rect>/g) || []).length
   assert.ok(rects >= 20, '节律柱应画满 24 格，实际 rect ' + rects)
-  assert.match(t, /峰值 50 次改动/, '节律图注应给出峰值（不编造）')
+  assert.match(t, /峰值 50/, '节律图例应给出峰值（不编造）')
+  // v18.91.1 细化：坐标轴 / 悬浮提示 / 工作段色带 / 草稿双系列——**图要真的给出信息**，不是几根光秃秃的柱子
+  assert.ok((t.match(/<title>[^<]*次改动<\/title>/g) || []).length >= 20, '每格都应有悬浮提示（时间窗 + 次数）')
+  assert.match(t, /\d\d-\d\d \d\d:\d\d/, 'x 轴应给绝对时钟刻度，而不是「48h 前」这种模糊说法')
+  assert.match(t, /工作段（mtime 会话化）/, '活动图应画出工作段（机器真在干活的时间）')
+  assert.match(t, /改动次数（每格 2h）/, '活动图应有图例')
+  assert.match(t, /初稿 ×2/, '草稿图应按系列统计（初稿 / 修订说明）')
+  assert.match(t, /修订说明 ×1/, '草稿图应把「修订说明」单独成系列')
+  // v18.91.1 字数图细化：目标走廊（硬阈 + 纠偏线色带）/ 目标线 / 逐点提示 / 起→终增减与末版判定
+  assert.match(t, /G8 硬阈/, '字数图应画出 G8 硬阈走廊')
+  assert.match(t, /纠偏线/, '字数图应画出纠偏线走廊')
+  assert.match(t, /目标 13000 字/, '字数图应标出目标篇幅（来自 status.md）')
+  assert.ok(/<title>[^<]*字（距目标[^<]*<\/title>/.test(t), '每个版本点应有悬浮提示：字数 + 距目标')
+  assert.match(t, /Δ [+\-]?\d+/, '应给出起 → 终的增减')
+  assert.match(t, /末版(在纠偏线内|越纠偏线|破 G8 硬阈)/, '应给出末版相对目标走廊的判定（只做区间比较，不做质量评价）')
+  // v18.91.1 版式：质量数字层从「一列靠左长文字」改成「环形 + 统计格 + 计量条」
+  assert.match(t, /P0（必须为 0）/, 'M 门应拆成统计格（P0/P1/P2/跳过），而不是一行顿号文字')
+  assert.match(t, /修订轮次/, '轮次应进统计格')
+  assert.match(t, /阶段门/, '阶段门应进统计格')
+  assert.match(t, /M 门通过率/, '环形应保留（左）')
+  assert.match(t, /不是论证质量/, '合规分必须保留这句限定（避免被读成论证质量）')
   // 草稿体积折线（并如实标注是字节不是字数）
   assert.match(t, /草稿体积（KB，\*\*字节\*\*不是正文字数）/, '草稿折线图注必须如实标注口径')
   // insights 视觉（参照「上下文洞察」那类观感）：分段组成条 + 图例 + 百分比 + 环形占比
