@@ -17,32 +17,26 @@
 > **本处不复述**——同一事实两处维护必然再漂（v18.2.2 / v18.81.0 两次收敛同一类问题）。派发话术直接从 `references/pipeline-readme.md` §派发话术 复制。
 
 ## 关键规则
+
+> **v18.88.0「多宿主收口」**（主人 2026-10-10 裁定）：本条集合中凡与 `SKILL.md` **同事实**者，已收为**指针**——角色编号 / 模型分配 / 阶段闸门 + 闸门留证 / 图件链路 / G14 / T9 / 写保护的授权五步（该五步落 `references/maintainers.md` §十四）。**内容未丢**（真源皆在两个常驻面文件内），代价是读者一跳；本条集合**刻意保留原文**的是「子代理失败三段式」（唯一宿主）、「M 门行」（有机械消费者：`consistency-check` ⑥b + `docs-facts`）、「注解聚合」等策略行，以及各条**一句话判据**。
 - **派发话术**：直接从 `references/pipeline-readme.md` 复制，改项目名即可
 - **每个项目一个目录**：`run/<项目名>/`，产物路径见任务简报
-- **角色编号（v2.3.0 重构，v2.5.2 延续，v2.5.2-dsh.8 语义定案）**：**9 个独立角色 T1-T9 不可相互替代**——T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / **T8 终检（独立角色，主控 T0 亲执行）** / **T9 同行评审（**v18.75.0 起按文类档案决定启用与否**；`academic-cn`/`-hum`/`-case` 必选、`lit-review` 可选、其余默认不选）**（编号 = 流水线 Phase 顺序）
-- **模型分配**：`subagent` 默认继承会话模型（零配置可用）；要按角色分档时**先跑 `node scripts/model-routing.mjs`**（只读）探测本机 provider×模型给「档位→模型」建议。四档能力表 / 兜底链 / 配置方式（`LUNHENG_*_MODEL` + `_PROVIDER`，不设 = 三档全继承）/ 主控工作流**单一真源 = [`references/_shared/模型路由.md`](references/_shared/模型路由.md)**；**禁止写死厂商默认值**（宿主无模型级回退，写错模型 = 该档工具不可用）。
+- **角色编号 / 模型分配**：9 角色 T1-T9 **不可互替**、**T9 启用按文类档案**、四档能力表与兜底链、配置方式——**真源 = [`SKILL.md`](SKILL.md) §⚡ 启动速查表 与 [`references/_shared/模型路由.md`](references/_shared/模型路由.md)**。派生前跑 `node scripts/model-routing.mjs`（只读探测）；**禁止写死厂商默认值**（写错模型 = 该档工具不可用）。
 - **子代理产出必须交交接报告**：六要素缺一不可（做了什么/产物在哪/怎么验证/已知问题/下一步 + 状态更新）——**定义真源 = `references/glossary.md` §执行韧化协议，字段形态 = `references/templates/交接报告-template.md`**（本行只给名称，不再展开）；长时间无产出则主控用 `list_agents` 查看并介入
 - **子代理失败三段式处理**：① **落盘校验**——子代理 settle 后主控必跑 `read`/`ls` 检查关键产物是否存在+非空+结构完整，区分「写盘前失败」vs「写盘后失败」vs「任务完成」；② **产物完整 → `send_message` 续接原子代理**（DSH continuable，让它读已落盘产物确认后继续，**不是整任务重派**）；③ **产物缺失 → 才 spawn 新子代理重派**。**连续失败**：先查 DSH 环境（`list_agents` 看是否 `[ready]` 可续接；全失败可能 = DSH 进程状态问题，重启 dsh web 再试）。
   > **⚠️ 重派前先做「失败自诊断三步」（v18.79.0 反哺-v18.78.2 §七 T0-3）**：DSH 子代理失败是**零信息失败**（实测两次**同形而不同因**：`429` 配额墙／`402` 额度墙）——不诊断就重派，两次都白跑。**三步细则与判据见 [`references/errors.md`](references/errors.md) §七**（本处只留指针）。
   > **⚠️ 假死判据与平台级熔断（检索审计反哺 R4）**：① `send_message` 不接受 `subagent` 子代理 id（只认 `spawn_teammate` 队友）——「续接失败 / not found」是**结构限制而非死亡证据**，判断存活以**落盘产物**为准（实测：T2 v1 已落盘 28 条仍被误判已死重派）。② 同档连续 ≥2 次、或多档同时零产物失败 = 疑似平台级故障 → **熔断等待 / 查 DSH 环境**，不盲目重派。
-- **status.md / agents-log.md 分文件写入约定（v2.5.2-dsh.5 修订，教训：T1/T2 与主控并发写冲突）**：**状态文件分两层**——① `status.md` 由**主控独占写**（纯状态机表，不允许子代理直接 edit）；② `agents-log.md`（v2.5.2-dsh.5 新增，项目根目录）由**子代理追加写**（每完成一个角色任务追加一段 `### Tn 执行记录` 节）。子代理的进度/完成状态通过「交接报告 + 产物落盘」回报，主控在收到交接报告后统一更新 status.md。**两文件分离目的**：避免子代理追加触发主控 edit status.md 报「file changed since it was read」。冲突已发生时：主控先 re-read 再 edit。
+- **状态文件分两层**：`status.md` **主控独占写**（纯状态机表，子代理禁 edit）；`agents-log.md`（项目根，**可按 Phase 拆分**）**子代理追加写**（每完成一角色追加一段 `### Tn 执行记录`）。**目的**：避免子代理追加触发主控 `edit status.md` 报「file changed since it was read」。**两轨各司其职的完整口径 + 冲突处置（先 re-read 再 edit）见 [`references/pipeline-readme.md`](references/pipeline-readme.md) §两轨各司其职**。
 - **执行约定（DSH 精简版）**：状态机 + 交接报告六要素 + G8 自检 + **进度播报三播报**（派发即播报 / 完成即转播 / 卡住即告警，防主人干等；无需心跳/分阶段 ack/预检/8 分钟硬卡；现行规则即本执行约定）
-- **阶段闸门（v2.2.1，v2.3.0 改 T5.5→T7.5）**：T2.5（检索→分析）与 T7.5（审计→终检）两道主控 checkpoint，用 `todo_write` + `read` 实现，**不绕过交接直接派发**
-- **闸门留机械证据（v2.5.2-dsh.13；v18.0.2 统一退出码）**：两道闸门与 M 门**不得只凭自述**——交接报告须附**脚本 exit code + 产物路径**（`m-gate-check.mjs … --report <项目>/final/M-Gate-Report.json`）。**exit 语义真源 = `SKILL.md` §执行能力边界 的「闸门必须留机械证据」行**（本处不复述，防两处漂移）；`handoff-check.mjs` 用 `20`/`21`/`22`、`model-routing.mjs` 用 `4`，**均与 M 门的 1/2/3 刻意分离**（复用会重演「exit 10 被读成 P1」事故）。**判据一句话**：**只要脚本不做内容判定，它的 `1` 就一定是撞码**。
+- **阶段闸门 / 闸门留机械证据**：T2.5（检索→分析）与 T7.5（审计→终检）两道主控 checkpoint，**不得只凭自述**——交接报告须附**脚本 exit code + 产物路径**。**exit 语义真源 = [`SKILL.md`](SKILL.md) §执行能力边界 的「闸门必须留机械证据」行**（本条自 v2.5.2-dsh.13 起即如此声明）；`handoff-check.mjs` 用 `20/21/22`、`model-routing.mjs` 用 `4`，**均与 M 门的 1/2/3 刻意分离**。
+  > **判据一句话（保留）：只要脚本不做内容判定，它的 `1` 就一定是撞码。**
 - **机制文件写保护（v2.5.2-dsh.13；v18.0.0 补授权例外；v18.1.0 部分机械化）**：`SKILL.md` / `AGENTS.md` / `references/**` / `scripts/**` / `cordis.patch.yml` 任何角色（含子代理）**默认禁写**；改进动议只写 `audits/反哺报告-vN.md`，由主人在 host shell 手工 apply（**agent 自主改机制文件 = P0 违规，本次交付作废**）。**v18.1.0**：bundle 部署下入口注册全局 `ctx.tools.guard()`，write/edit 类工具命中机制路径**在分发前即被拒**（官方 `docs/subsystems/tools.md` 的 `guard()` 语义：只收紧、后续监听器无法改回允许；主人授权例外走 `LUNHENG_ALLOW_MECH_EDIT=1`）。**残余缺口如实声明**：guard 只看**工具调用**，`pwsh`/子进程不经此门（官方无 per-path 只读声明），故为「比 prompt 强、比机制强制弱」——机制文件的可信度仍靠 `git` + 四道门 + 主人 review，不靠 guard。
-  > **⚠️ 唯一例外：主人显式授权（v18.0.0）**：当**主人直接指令**要求修订机制文件时（如「你依次全部修订吧」），**不构成越权**——主人是机制文件的所有者，该指令即授权。此时仍须遵守：
-  > ① **改前备份**（工作区外 `<DSH_HOME>/_backup/lunheng-<日期>/`，含 `scripts/` + `references/` + `SKILL.md` + `AGENTS.md` 全量）+ 记录行数基线；
-  > ② **改中用 `edit` 精确匹配**（禁 `sed -i`）；
-  > ③ **改后验证**（逐文件语法检查 `node --check`、重跑受影响脚本、必要时 `diff` 对比备份）；
-  > ④ **全程可回滚**（备份保留；改动清单与回滚命令写入交付说明）；
-  > ⑤ **如实标注**（在改动记录中写明「本次机制文件改动依据主人显式授权」，不掩盖默认约束的突破）。
-  > **判据一句话**：**agent 自发改进 = 禁写（只出反哺报告）；主人明确下令 = 可写（走安全流程）**。
+  > **⚠️ 唯一例外：主人显式授权（v18.0.0）**：主人**直接指令**要求修订机制文件时**不构成越权**——主人是机制文件的所有者，该指令即授权；但**仍须走安全流程**（改前备份 / `edit` 精确匹配禁 `sed -i` / 改后验证 / 可回滚 / 如实标注——**五步逐条判据见 [`references/maintainers.md`](references/maintainers.md) §十四**，v18.88.0 多宿主收口）。
+  > **判据一句话（保留）**：**agent 自发改进 = 禁写（只出反哺报告）；主人明确下令 = 可写（走安全流程）**。
 - **技能来源自检（v2.5.2-dsh.13）**：启动时核对 `SKILL.md` 版本头与期望版本一致，不一致即停机报「技能来源可疑」（同名技能会按 rank 就近静默顶替）
 - **M 门**：**M 门 25 项中 24 项已脚本化**（= **M-Form 1-11 + M-Exist 1-11 + M-Integrity-1 + M-Fact-1**；人工项 = M-Integrity-2 跨文件判断，M-Form-8 承重墙质量同源由主控 LLM 兜底）——**仅 T7/T8 读** `references/_shared/M-Gate-Algorithm.md`（T1-T5/T9 不读），产出 `final/M-Gate-Report.json`，**exit 0 才返回**。**exit 语义真源 = `SKILL.md` §执行能力边界**。
   > ⚠️ **本行有 2 处机检契约字符串**（①「M 门 25 项中 24 项已脚本化」→ `consistency-check` ⑥b；② 项数枚举 → `docs-facts` M 门守卫）：本批瘦身把两句改成**语义等价但不同形**的写法 → 两条机械面**同时失明**，被 `tests/scripts/consistency-check.test.mjs` 与 `tests/docs-facts.test.mjs` 各自抓出。判据：**改文档前先查有没有机械消费者依赖该字符串**——「语义等价」不是机械面的通行证。
-- **图件链路**：写手只标 `[图N：标题]`（**独占一行**）→ 主控 Phase 4.5 写 SVG 到 `final/图件/图N_标题.svg`（**唯一口径**，图型从 `references/templates/图表-SVG-template.md` 复制填空）→ `md2html.mjs --fig-dir final/图件` → **M-Form-9** 对账（缺图 → P0/P1；孤儿图件 → P2）。详见 `references/pipeline-readme.md`。
-- **G14 中文 AI 痕迹闸**：三层防御（① T5 v1 自检 → ② 修订轮收尾自查 → ③ **终闸 Phase 4.6，唯一一次 spawn**）；**0-2 类 Pass / 3-4 类 Warning → G 环 1 轮 / 5+ 类 Fail → G 环 2 轮**，其修订走 G 环、**不占 B 轨额度**。闸门定义 `references/gates/14-中文AI痕迹-gate.md`，检测器 `references/checkers/中文AI痕迹-checker.md`。
-- **T9 同行评审**：**Phase 4.7（G14 通过并冻结正文之后）**触发，6 维度评分 + 期刊匹配 Top 3；**启用按 `_shared/文类档案.md` 决策树**（`academic-cn/-hum/-case` 必选不可关 / `lit-review` 可选 / 其余默认不选），**建议处置见该档案「T9 后处置」列**。
+- **图件链路 / G14 / T9 三段的运行期判据**：**真源 = [`SKILL.md`](SKILL.md) §⚡ 启动速查表**（图件链路「图位独占一行 → 主控写 SVG → `md2html --fig-dir` → M-Form-9 对账」那行；G14 三层防御与 Phase 4.6 时点那行；T9 按文类档案启用那行）。细则另见 `references/pipeline-readme.md` 与 `references/gates/14-中文AI痕迹-gate.md`。
 - **项目进展记入** `memory/YYYY-MM-DD.md` 和 `memory/projects.md`
 - **注解聚合（v2.5.2-dsh 补丁，token 优化）**：新机制注解**不再逐层堆叠**（v2.1.8 新增/v2.2.1 新增/v2.3.0 改…），同主题合并为单行「v2.5.2-dsh 补丁，教训：…」格式；历史分层注解聚合到卡头一行，细节见 git log——防角色卡/文档随版本膨胀。
 
