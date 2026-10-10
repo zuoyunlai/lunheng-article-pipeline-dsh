@@ -2,7 +2,7 @@
 // 运行：node --test tests/panel.test.mjs
 //
 // 覆盖（每条对应实现里的一处判断）：
-//   ① **默认关**：未配置时 `registerPanel` 不注册任何路由（新增读面必须显式开启，仓内既有口径）；
+//   ① **默认开**（v18.93.0）：未配置时也注册路由；`LUNHENG_PANEL=0` / `config.panel: false` 可显式关闭；
 //   ② 开启后路由可认领 `/lunheng-panel/*`：`/ping`、`/projects`、`/snapshot` 的 JSON 形状；
 //   ③ **围栏**：`project` 越出 `run/` 或含路径段 → 403；未知端点 404；非 GET → 405；
 //   ④ **SSE**：响应头 + 首帧 `snapshot` + `retry` 行（心跳间隔 = 主人裁定的 5 s）；
@@ -69,11 +69,16 @@ function mkReq(url, method = 'GET') {
 const body = (res) => JSON.parse(res.chunks.join(''))
 const call = (ctx, url, method) => { const res = mkRes(); handlePanelRequest(ctx, mkReq(url, method), res); return res }
 
-test('面板：默认关 —— 未配置时不注册任何 HTTP 路由', () => {
+test('面板：默认开（v18.93.0）—— 缺省即开；\`panel: false\` 显式关闭', () => {
+  // ① 缺省（未写该键）= 开：不得打印「未启用」提示。
+  //    注：注册可能走 inject-wait 异步路径，故这里只做**同步可判**的判据（同步断言"有路由"会假失败）。
+  const logs = []
+  registerPanel(mkCtx(tmp(), {}), {}, (m) => logs.push(m))
+  assert.ok(!logs.some((l) => String(l).includes('未启用')), '缺省必须视为开启（v18.93.0 起默认开）')
+  // ② 显式 false = 关：直接返回 null 且不注册任何路由
   const sink = {}
-  const ctx = mkCtx(tmp(), sink)
-  assert.equal(registerPanel(ctx, { panel: false }, () => {}), null)
-  assert.equal(sink.route, undefined, '默认不得注册路由（新增读面必须显式开启）')
+  assert.equal(registerPanel(mkCtx(tmp(), sink), { panel: false }, () => {}), null)
+  assert.equal(sink.route, undefined, '显式关闭时不得注册路由')
 })
 
 test('面板：开启后注册 prefix 路由，/ping /projects /snapshot 形状正确', () => {

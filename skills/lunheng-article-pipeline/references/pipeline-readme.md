@@ -1,4 +1,4 @@
-> 版本：v18.92.0（DSH bundle 插件）
+> 版本：v18.93.0（DSH bundle 插件）
 
 
 # 论衡（lunheng-article-pipeline）— 通用深度长文多 Agent 流水线 运行手册
@@ -268,7 +268,7 @@ Phase 4.5 配图     仅当 Phase 2.5 拍板有图位：写手已在正文标 [�
 > **v18.75.0 相位重排（主人 2026-10-04 裁定）**：**G14 终闸不再与 T9 并行**——它是**包前的最后一道闸**，**过 → 冻结一份正文（尚不是 `final/`）；不过 → 走 G 环，改完重跑 G14**。**T9 移到其后（Phase 4.7）**，`final/` 由 **T8 在 T9 之后**落盘。**依据与四条病根（P1 时序倒挂 / P2 额度冲突 / P3 相位表无位置 / P4 文类不分档）见 `audits/反哺报告-v8-相位与修订环口径统一.md`**（在仓库根 `audits/`，不建相对链接）。
   > **删除依据与完整论证见 [`gates/14-中文AI痕迹-gate.md`](gates/14-中文AI痕迹-gate.md) §触发阶段注 + 仓库根 `CHANGELOG.md` §18.2.8**（**不建相对链接**：CHANGELOG 在仓库根、不在技能目录内，而技能目录按 bundle/镜像独立分发）；依据主人显式授权（原话「G14 早闸去掉」）。三层设计保留「早发现」价值（第 1/2 层零 spawn）而省掉一次子代理。
 [🔒 **T7.5** 完整性门 v2.2.1 主控 checkpoint，v2.3.0 改 T5.5→T7.5]：审计报告最新版 + P0/P1 清单 + M 门全 exit 0 + 论文交付物 vs 操作员报告隔离 → 通过才派 **T8**（v2.3.0 改 T7→T8，不通过→触发 T7 重审或主控补审；v2.3.3 删主人签字，教训 #138）
-Phase 5 终检      **T8** 主控终检 → final/定稿.md + 图件/（如有）+ 证据包/(文献+数据+案例+审计) + 交付说明.md + M-Gate-Report.json → 高频问题反哺报告（不自动 commit 角色卡 — v2.0.2，v2.3.0 改 T7→T8）→ **v2.5.0 多格式导出**：主人选 `--format md/latex/docx/pdf`（默认 md 零额外 token），按 `_shared/format-export.md` 跑 pandoc + rsvg-convert
+Phase 5 终检      **T8** 主控终检 → final/定稿.md + 图件/（如有）+ 证据包/(文献+数据+案例+审计) + 交付说明.md + M-Gate-Report.json + **运行报告.html / 运行报告.json（`run-report.mjs` 产出：数字层＝运行面板全部图表的数据源）+ token-cost.json（`token-cost.mjs` 产出：成本实测）** → 高频问题反哺报告（不自动 commit 角色卡 — v2.0.2，v2.3.0 改 T7→T8）→ **v2.5.0 多格式导出**：主人选 `--format md/latex/docx/pdf`（默认 md 零额外 token），按 `_shared/format-export.md` 跑 pandoc + rsvg-convert
 ```
 
 **🔒 = v2.2.1 主控阶段闸门（教训 #77）**——T2.5 在 T2 → T4 间，T7.5 在 T7 → T8 间（v2.3.0 改 T3→T4/T5.5→T7.5/T7→T8）；不引入新 agent，主控用 `todo_write` + `read` 工具实现；**「不绕过交接直接派发」**。
