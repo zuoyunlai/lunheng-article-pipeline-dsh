@@ -265,7 +265,7 @@ test('入口行为（v18.90.3）：即使 ctx.effect 的回调永不执行，reg
     '面板注册不得依赖 effect 回调执行（宿主里它会不执行 ⇒ 面板永不挂载）',
   )
   const st = readPanelStatus()
-  assert.ok(['apply-enter', 'enter', 'registered', 'no-inject', 'disabled'].includes(st.stage), 'apply 必须落诊断标记')
+  assert.match(st.stage, /^(apply-|enter$|registered$|no-inject$|disabled$|skill-threw$|panel-threw$|register-failed$)/, 'apply 必须落诊断标记，实际 ' + st.stage)
   assert.ok(st.version, '标记必须带版本号')
 })
 
@@ -280,7 +280,9 @@ test('入口行为（v18.90.3）：配置非法（resolveConfig 抛错）也必�
     skills: { register: () => () => {} },
   }
   assert.throws(() => mod.apply(ctx, { 这个键不存在: 1 }), '未知配置键必须在加载期响亮失败（本包既有设计）')
-  assert.equal(readPanelStatus().stage, 'apply-enter', '标记必须在 resolveConfig 之前写——否则「入口没跑 vs 跑一半死了」仍无法区分')
+  const bad = readPanelStatus()
+  assert.equal(bad.stage, 'apply-threw', '致命错必须留下带阶段的痕迹，而不是只留 apply-enter（要能区分「没跑」与「跑一半死了」）')
+  assert.ok(bad.error && bad.error.length > 0, '错误原文必须落盘——宿主日志不落盘时这是唯一线索')
 })
 
 test('客户端半边（v18.90.4）：侧栏图标席位渲染**纯 SVG 图标**，且跟随 size / active（不再是方块按钮）', async () => {
