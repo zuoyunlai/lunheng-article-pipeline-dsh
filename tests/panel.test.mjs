@@ -243,6 +243,46 @@ test('入口结构钉（v18.90.2）：registerPanel 必须在**同步段**调用
   )
 })
 
+test('入口行为（v18.90.3）：即使 ctx.effect 的回调永不执行，registerPanel 仍必须被调用', async () => {
+  // 真实宿主实测：18.90.2 把注册放进 `ctx.effect(() => …)` 后，宿主里**连诊断状态文件都没写**、
+  // 路由 404；而本地对**同一份已装产物**调 apply 一切正常 ⇒ 差异在宿主对 effect 回调的调度上。
+  // 本用例把「effect 回调不执行」做成桩，把这条教训钉成机器判据。
+  const calls = []
+  const ctx = {
+    logger: { info() {}, warn() {}, error() {}, debug() {} },
+    effect: () => { calls.push('effect-登记但永不执行'); return () => {} },
+    on: () => () => {},
+    get: () => undefined,
+    inject: (deps) => { calls.push('inject:' + deps.join(',')); return () => {} },
+    skills: { register: () => { calls.push('skills.register'); return () => {} } },
+    tools: { register: () => () => {} },
+  }
+  const mod = await import(pathToFileURL(join(ROOT, 'lib', 'index.js')).href)
+  mod.apply(ctx, { panel: true })
+  assert.equal(
+    calls.filter((c) => c === 'inject:webServer').length,
+    1,
+    '面板注册不得依赖 effect 回调执行（宿主里它会不执行 ⇒ 面板永不挂载）',
+  )
+  const st = readPanelStatus()
+  assert.ok(['apply-enter', 'enter', 'registered', 'no-inject', 'disabled'].includes(st.stage), 'apply 必须落诊断标记')
+  assert.ok(st.version, '标记必须带版本号')
+})
+
+test('入口行为（v18.90.3）：配置非法（resolveConfig 抛错）也必须先留下诊断标记', async () => {
+  const mod = await import(pathToFileURL(join(ROOT, 'lib', 'index.js')).href)
+  const ctx = {
+    logger: { info() {}, warn() {}, error() {}, debug() {} },
+    effect: () => () => {},
+    on: () => () => {},
+    get: () => undefined,
+    inject: () => () => {},
+    skills: { register: () => () => {} },
+  }
+  assert.throws(() => mod.apply(ctx, { 这个键不存在: 1 }), '未知配置键必须在加载期响亮失败（本包既有设计）')
+  assert.equal(readPanelStatus().stage, 'apply-enter', '标记必须在 resolveConfig 之前写——否则「入口没跑 vs 跑一半死了」仍无法区分')
+})
+
 test('面板：lightSnapshot 缺 status.md 时如实标记（不编造）', () => {
   const d = tmp()
   try {
