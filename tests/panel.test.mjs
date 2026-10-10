@@ -340,6 +340,31 @@ test('面板（v18.90.6 根因回归）：宿主式严格 ctx（裸读服务直�
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
 
+test('客户端半边（v18.90.7）：多工作区根 → 逐根探测，选**真有项目**的根，并把 root 带给 SSE', async () => {
+  // 真实场景：宿主给的第一个根是「插件所在仓库」（没有 run/），主人的 39 个项目在第二个根下。
+  // 旧版只用第一个根 ⇒ 面板显示「未发现项目」。本用例锁住「逐根探测 + 选中根 + root 透传」。
+  const h = makeReactStub()
+  const es = []
+  const calls = []
+  const route = (u) => {
+    const s = String(u); calls.push(s)
+    if (s.includes('/ping')) return okJson({ ok: true, version: '18.90.6', roots: ['/repo-no-run', '/work-with-run'] })
+    if (s.includes('/projects') && s.includes(encodeURIComponent('/repo-no-run'))) return okJson({ root: '/repo-no-run', projects: [] })
+    if (s.includes('/projects')) return okJson({ root: '/work-with-run', projects: [{ name: 'p9', hasFinal: true }] })
+    if (s.includes('/snapshot')) return okJson(SNAPSHOT)
+    return Promise.reject(new Error('HTTP 404'))
+  }
+  const mod = await loadClient(h, { fetch: (u) => route(u), onES: (e) => es.push(e) })
+  let text = ''
+  for (let i = 0; i < 6; i++) { text = h.render(mod.__panel.Panel, { ctx: null }); await new Promise((r) => setTimeout(r, 0)) }
+  assert.ok(calls.some((u) => u.includes('/projects') && u.includes(encodeURIComponent('/repo-no-run'))), '必须**探测过**第一个（空）根，而不是想当然')
+  assert.equal(es.length, 1, '必须接上唯一一条实时流')
+  assert.match(es[0].url, /project=p9/, '应选中有项目的 p9')
+  assert.ok(es[0].url.includes('root=' + encodeURIComponent('/work-with-run')), 'SSE 必须带上选中的根，实际 ' + es[0].url)
+  assert.match(text, /p9/, '项目应出现在选择器里')
+  assert.match(text, /work-with-run/, '标题栏应显示当前工作区根（多根时可切换）')
+})
+
 test('面板：lightSnapshot 缺 status.md 时如实标记（不编造）', () => {
   const d = tmp()
   try {
