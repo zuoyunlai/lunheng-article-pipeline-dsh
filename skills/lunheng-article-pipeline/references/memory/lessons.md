@@ -1,4 +1,4 @@
-> 版本：v18.88.0（DSH bundle 插件）
+> 版本：v18.89.0（DSH bundle 插件）
 
 # 论衡教训库（references/memory/lessons.md）
 

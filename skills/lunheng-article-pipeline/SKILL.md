@@ -1,11 +1,11 @@
 ---
 name: "lunheng-article-pipeline"
-version: "18.88.0"
-description: "论衡 v18.88.0：DSH 原生多 Agent 深度长文流水线（学术论文 / 商业评论 / 行业分析 / 公众号）。9 个独立角色 T1-T9 + 主控；三角验证 + M 门 + G 审计 + 修订回环双轨（≤2 轮纠错 + 至多 +1 深化） + 期刊匹配 + auto_cite 预标注 + 内嵌 11 个 /lunheng 斜杠命令。适用：≥2000 字、证据须可追溯的长文（4 个人在环节点、**数小时**）。**不适用**：<2000 字短文与即时问答；文学创作；需数学推导或实验设计的理工科论文；营销软文；需一手数据而未投喂素材。版本增量见 CHANGELOG.md。"
+version: "18.89.0"
+description: "论衡 v18.89.0：DSH 原生多 Agent 深度长文流水线（学术论文 / 商业评论 / 行业分析 / 公众号）。9 个独立角色 T1-T9 + 主控；三角验证 + M 门 + G 审计 + 修订回环双轨（≤2 轮纠错 + 至多 +1 深化） + 期刊匹配 + auto_cite 预标注 + 内嵌 11 个 /lunheng 斜杠命令。适用：≥2000 字、证据须可追溯的长文（4 个人在环节点、**数小时**）。**不适用**：<2000 字短文与即时问答；文学创作；需数学推导或实验设计的理工科论文；营销软文；需一手数据而未投喂素材。版本增量见 CHANGELOG.md。"
 whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 description（v18.0.5：官方目录只渲染 name + description，本字段对模型不可见，保留仅供工具链与维护者阅读）。"
 ---
 
-> 版本：v18.88.0（DSH bundle 插件）
+> 版本：v18.89.0（DSH bundle 插件）
 > **逐版明细与历史成因外移（v18.22.1 CTX-1）**：本文件只留**现行口径**；逐版明细与成因（v18.12.1 / v18.12.0 / v18.11.0 / v18.10.0 / v18.8.0 / v18.7.x …）全部在**仓库根 `CHANGELOG.md`** 同名版本段——该文件**不在随包目录内**（npm 发布物与纯技能目录部署都没有它），读不到就跳过，**不要当成断链**。
 > **v2.5.2-dsh.8 角色语义定案（主人指令）**：**9 个角色 T1-T9 各自独立、不可相互替代**——T8 终检不是「主控兼做的杂活」而是独立角色（有独立角色卡），只是执行者由主控担任（**主控 = T0 调度 + T8 终检执行双重身份**），不 spawn 子代理；**T9 审稿启用与否按 [`references/_shared/文类档案.md`](references/_shared/文类档案.md)**（`academic-cn/-hum/-case` 必选不可关、`lit-review` 可选、其余默认不选；v18.75.0 由旧「默认选中」改）。
 
@@ -46,7 +46,7 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 - 📊 **档位 → 工具集能力**：三档 `subagent_retrieval` / `subagent_strong` / `subagent_audit` 由 `cordis.patch.yml` 的「分档闸门」段装载（配置真源 = [`references/_shared/模型路由.md`](references/_shared/模型路由.md)）。**各档的 `pwsh`/命令执行能力无机制声明**——实测**三方不一致**（T2/T5 报无 exec，T9-m 报有 exec）。
   > **判据（照此执行，不必猜）**：① **门禁类实测一律由主控代跑**——M 门 / G 审计 / 三个战略门（structure / methodology / cite-coverage）/ 字数 / 交接门；② 子代理话术里凡「跑脚本」的要求，按「能跑就跑、跑不了就**如实声明该步未跑**」写；③ 子代理若声明「已跑」，主控须以其 **exit code + 命令**为准，**不可仅凭文字采信**。
 - ✅ **可调用**：当前会话预设提供的工具（read / write / edit / web_search / web_fetch / todo_write / subagent / list_agents / pwsh 等）——DSH 无技能级白名单，工具集由 Agent 预设决定。**调用任何工具前先确认它在当前会话工具清单里**。
-- ✅ **随包脚本白名单（v18.66.0 增补 cite-format 后：共 31 个）**：`scripts/*.mjs` = consistency-check / m-gate-check / g-audit-check / fix-gates / md2html / pdfcheck / token-cost / count-chars / segment-chars / ref-get / build-evidence-bundle / final-check / refresh-gates / normalize-trust-level / model-routing / token-budget / apply-diff / lunheng-stats / handoff-check / apply-revision-cycle / apply-compression-cycle / structure-check / methodology-check / cite-coverage-check / journal-fit / meta-synthesize / quality-score / sources-index / self-check / disproofs-check / cite-format + 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等）——**受限 shell 使用**（另：`_lib` 子目录为共享库，非入口、不单独调用），非「零 exec」；其余命令须经主人同意。
+- ✅ **随包脚本白名单（v18.89.0 增补 run-report 后：共 32 个）**：`scripts/*.mjs` = consistency-check / m-gate-check / g-audit-check / fix-gates / md2html / pdfcheck / token-cost / count-chars / segment-chars / ref-get / build-evidence-bundle / final-check / refresh-gates / normalize-trust-level / model-routing / token-budget / apply-diff / lunheng-stats / handoff-check / apply-revision-cycle / apply-compression-cycle / structure-check / methodology-check / cite-coverage-check / journal-fit / meta-synthesize / quality-score / sources-index / self-check / disproofs-check / cite-format / run-report + 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等）——**受限 shell 使用**（另：`_lib` 子目录为共享库，非入口、不单独调用），非「零 exec」；其余命令须经主人同意。
   > **本行是「随包脚本清单与计数」的唯一真源**（`scripts/self-check.mjs` 拿它做**白名单 ↔ 磁盘双向对账**）——**不得外移、不得改计数**。**各脚本的用法 / exit 语义 / 边界**见 [`operations-capability.md`](operations-capability.md)。
 - ❌ **不做**：凭据访问 / 浏览器自动化 / 定时任务（除白名单脚本与验证命令外，主控默认不执行任意 shell，LLM 推理判定）。
 - ⚙️ **主控亲跑路径（v18.77.0 P-2 收口）**：`final-check.mjs` / `m-gate-check.mjs --adjudicate` / `handoff-check.mjs` / `m-gate-check.mjs`（终检期）**四条**属「主控亲跑」——**不走子代理 spawn、不经 `subagent` 代发**。`--adjudicate` 前的 `<裁定.json>` 由主控 LLM 亲写（判据：08 卡写死「T8 不 spawn」，子代理产出的"裁定 JSON"在本门禁止出现）。
@@ -94,7 +94,7 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 
 ## ⚡ 启动速查表
 
-- 版本：v18.88.0｜角色：T0 主控（= T8 终检执行者）＋ T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / T8 终检（主控亲执行）/ T9 审稿（启用按文类档案：`academic-cn/-hum/-case` 必选，其余默认不选）
+- 版本：v18.89.0｜角色：T0 主控（= T8 终检执行者）＋ T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / T8 终检（主控亲执行）/ T9 审稿（启用按文类档案：`academic-cn/-hum/-case` 必选，其余默认不选）
 - Phase：0 定题 → 1 检索(T1∥T2∥T3) → 1.5 补检索(可选,spawn T1) → 2 分析 → 2.5 大纲(人) → 3 写作 → 3.5 洞察(人) → 3.6 批判 → 4 审计 → **4.2 修订回环(≤2 轮+A 轨)** → 4.5 配图 → **4.6 G14 终闸(串行)** → 4.7 审稿 → 5 终检(人)
   > **本行的权威性**：本行是主控排 `todo_write` 的**唯一 Phase 真源**；机检规则 **㉔** 断言「流水线全景出现的 Phase 编号 ⊆ 本行」。**流水线全景仍是 1.5 / 4.2 的详述真源**（`Phase 1.5` 定向补检索 / `Phase 4.2 修订`）。
 - G14 时点（**三层防御**）：**① T5 v1 自检（零 spawn）→ ② 修订轮收尾自查（零 spawn）→ ③ 终闸 4.6（v18.75.0 起串行，不再与 T9 并行）（唯一一次 spawn，报告 = 最终版本真源）**
