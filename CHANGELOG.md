@@ -11,6 +11,8 @@
 - 回归钉再加一条：**条形图填充不得用 brand-primary**（连同 18.91.2 的「图表主系列」「进行中片段」两条，这类「整片变黑」的 bug 从此有机械门拦着）。
 - 机检留痕：`node --test tests/panel.test.mjs` **25/25**；`consistency-check` 0 漂移；`repo-hygiene-check` 全部通过。
 
+> **验证（本版终态）**：全量套 **1009 / 1009 全绿**（1008 pass / 0 fail / 1 skip）；`consistency-check` **0 处漂移**；`repo-hygiene-check` **全部通过**；`plugin-surface-check` **11 项通过 0 失败**；`self-check` **15 项全 PASS**；`docs-facts` **19 项全 PASS**。
+
 ## 18.91.2 — 2026-10-10
 
 > **主题**：**修「整片图变黑」+ 数字层版式**——主人实测：「颜色不对，蓝色变成了黑色」。
