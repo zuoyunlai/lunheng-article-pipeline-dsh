@@ -1,11 +1,11 @@
 ---
 name: "lunheng-commands"
 version: "1.0.3"
-description: "lunheng-commands v1.0.3 是论衡 v18.87.0 **内嵌子技能**——11 个 /lunheng 斜杠命令 UX（薄壳 wrapper，不引入新角色 / 新 M 门）。-status --pending = 跨项目「待我决策」聚合收件箱；-rollback 需 --confirm。版本信息见 frontmatter `version` 字段。"
+description: "lunheng-commands v1.0.3 是论衡 v18.88.0 **内嵌子技能**——11 个 /lunheng 斜杠命令 UX（薄壳 wrapper，不引入新角色 / 新 M 门）。-status --pending = 跨项目「待我决策」聚合收件箱；-rollback 需 --confirm。版本信息见 frontmatter `version` 字段。"
 whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 description（v18.0.5：官方目录只渲染 name + description，本字段对模型不可见，保留仅供工具链与维护者阅读）。v18.7.1 起：本技能随论衡 bundle 自动安装——`dsh plugin add lunheng-article-pipeline` 即获，无需单独 install。"
 ---
 
-> 版本：v1.0.3（v18.62.4 全量审计-v18.62.3 落地；2026-10-01）｜引擎版本引用当前锚定 **v18.87.0**
+> 版本：v1.0.3（v18.62.4 全量审计-v18.62.3 落地；2026-10-01）｜引擎版本引用当前锚定 **v18.88.0**
 > **v1.0.3 变更**：① **修复 CLI 入口不可用**（P1-4）——`scripts/route-command.mjs` 旧入口把 `process.argv` 直接交给 `routeCommand`，而 `argv[1]` 恒为**脚本路径** → `argv[1] !== '-lunheng'` 恒真 → **任何真实命令都只打印用法并 exit 1**，help 表与 JSON 输出从未可达（单测只传合成 argv，故测不到）。现入口改为 `['node','-lunheng', ...process.argv.slice(2)]`，并补 **6 条端到端用例**（真 spawn 进程 + 一条源码级回归钉）。② 引擎版本引用当时由 v18.62.0 更正为 **v18.62.4**——但该口径此后又随包漂移到 v18.62.5 而无人发现（规则 ㉖ 原先只管子技能自己的 1.0.x）。**v18.67.0 已把「引擎版本锚定」纳入规则 ㉖ 机检**：`论衡 vX.Y.Z **内嵌子技能**` 声明式锚点必须等于主包 `package.json` 版本，同类漂移不再可能静默存活。
 > **版本同步点（7 处，改动须同批）**：本文件 frontmatter `version` + 本行 + `README.md` 标题 + `package.json` `version` + `references/command-routing.md` 版本头 + `scripts/route-command.mjs` 头注释 + **「引擎版本引用当前锚定」行**（v18.67.0 新增，由规则 ㉖ 机检）——**v18.20.0 审计的 P1-① 正是只改了其中三处留下的漂移**，勿重演。（v18.62.4 更正：本行原写「5 处」而实际列了 6 项。）
 > **v18.7.1 升级**：从独立 npm 包**嵌入**到论衡 bundle 内——`skills/lunheng-commands/` 作为论衡第二个技能自动注册。所有 11 个 /lunheng 命令免单独安装。
