@@ -9,7 +9,7 @@
 #    ⚠️ **务必钉版本**：不写 `@<版本>` 时，装到哪个版本取决于本机包管理器**当时**的解析状态。
 #    实测过一次：同一条命令装到 **18.15.0**，而 registry 上的 `latest` 已是 18.20.4 —— 差了五个小版本，
 #    且按下面流程走下去**没有任何一步能让人察觉**。版本真源只有一处：`npm view lunheng-article-pipeline version`。
-dsh plugin --profile <profile> add lunheng-article-pipeline@18.89.0
+dsh plugin --profile <profile> add lunheng-article-pipeline@18.90.0
 
 # 1b) **核对装到的版本**（钉了版本也值得跑一次——它读的是 profile 里**实际落盘**的 package.json）
 node -e "console.log(require('<DSH_HOME>/profiles/<profile>/node_modules/lunheng-article-pipeline/package.json').version)"
@@ -105,7 +105,7 @@ dsh --profile <profile>
 | `LUNHENG_TIERING` | `on` / `off` | `on` = 显式装载三档工具行（不指定模型也可，用于确认工具可见）；`off` = 强制不装载 | 优先级最高，压过其它 `LUNHENG_*` |
 | `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_{PROVIDER,MODEL}` | provider 名 / 模型 id | 分档取值；**设任一档即同时装载三行** | 跨 provider 时才需同时给 PROVIDER + MODEL |
 
-同名的**部署开关**走插件 `config`（v18.2.6 起入口导出 `Config`，**共 8 键**，完整清单见 `SECURITY.md` §可调参数）：`allowMechanismEdit` / `quiet` / `scriptTimeoutMs` / `scriptMaxOutputBytes` / `handoffLevel`（`basic`｜`strict`，默认 `basic`）/ `ethicsHook`（H2 伦理脱敏总开关，默认 `true`；纯代码·文档工作流可置 `false` 关噪声）/ `hookRewriteContent`（H2 改写正文，默认 `false` = 只标记）/ `hookMaxBlockChars`（单块扫描上限）。写在你 profile 里本插件行上：
+同名的**部署开关**走插件 `config`（v18.2.6 起入口导出 `Config`，**共 9 键**，完整清单见 `SECURITY.md` §可调参数）：`allowMechanismEdit` / `quiet` / `scriptTimeoutMs` / `scriptMaxOutputBytes` / `handoffLevel`（`basic`｜`strict`，默认 `basic`）/ `ethicsHook`（H2 伦理脱敏总开关，默认 `true`；纯代码·文档工作流可置 `false` 关噪声）/ `hookRewriteContent`（H2 改写正文，默认 `false` = 只标记）/ `hookMaxBlockChars`（单块扫描上限）/ `panel`（**运行面板**：只读 HTTP 读面 `/lunheng-panel/*`，默认 `false` 不注册任何路由；开启后在 Web GUI 里实时看 `run/<项目>` 的阶段、角色、门与产物，披露见 `SECURITY.md`）。写在你 profile 里本插件行上：
 
 ```yaml
 - id: lunheng-article-pipeline

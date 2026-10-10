@@ -87,6 +87,17 @@ test('lib 静态自检 ②：不得存在**孤儿模块**（`lib/*.js` 必须被
       // 目录形态（如 './commands.js' 之外的可能写法）不做模糊匹配——本包 lib 内全部为同目录文件
     }
   }
+  // v18.90.0（运行面板批）：**浏览器半边不由 import 图引用**——官方契约是「客户端模块系统按
+  //   `package.json` 的 `exports["./client"]` 把构建产物送给页面」（出处：官方
+  //   `docs/cookbook/adding-a-settings-card.zh.md` §5「浏览器半侧挂在哪里」），故 manifest 声明的
+  //   lib 内文件同样算「有人引用」；否则 `lib/client.js` 会被误判成「会随包发布却永不执行」的死模块。
+  const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'))
+  for (const v of Object.values(pkg.exports || {})) {
+    const s = typeof v === 'string' ? v : (v && typeof v === 'object' ? Object.values(v)[0] : null)
+    if (typeof s !== 'string') continue
+    const base = s.replace(/\\/g, '/').split('/').pop()
+    if (base && libFiles.includes(base)) referenced.add(base)
+  }
   const orphans = libFiles.filter((f) => !referenced.has(f))
   // 入口自身必然无人 import（它是包入口）——单列，不算孤儿
   const notOrphan = new Set(['index.js'])

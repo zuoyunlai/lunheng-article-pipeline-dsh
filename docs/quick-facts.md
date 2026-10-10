@@ -1,4 +1,4 @@
-# 论衡速查卡（v18.89.0）
+# 论衡速查卡（v18.90.0）
 
 > **定位**：新人「第一眼需要知道的硬数字」**单一真源**——所有用户文档**只引本卡**、不在自己文档里复述数字。本卡是 `audit-report-v18.78.0.md` §7.2 立项的落地产物。
 >
@@ -12,8 +12,8 @@
 
 | 项 | 值 | 真源 |
 |---|---|---|
-| 当前版本 | **v18.89.0** | `package.json#version` |
-| 引擎锚定（子技能 `lunheng-commands`） | **v18.89.0**（规则 ㉖ 机械对账） | `skills/lunheng-commands/SKILL.md` description + L8 |
+| 当前版本 | **v18.90.0** | `package.json#version` |
+| 引擎锚定（子技能 `lunheng-commands`） | **v18.90.0**（规则 ㉖ 机械对账） | `skills/lunheng-commands/SKILL.md` description + L8 |
 
 ## 角色与 Phase
 
@@ -55,7 +55,7 @@
 | `consistency-check.mjs` 主规则 | **37 类主规则**（v18.80.0 实测：㊲ 速查卡硬数字派生新立；**子规则计数不再声明**——带字母后缀的标签实测十余个，旧文写的「5 个子规则」本身就是同一类手写漂移；本卡这个数字由规则 ㉟ 机械对账，其余文档只许指向登记表） | 真源 = `skills/lunheng-article-pipeline/scripts/_lib/cc-rules/rule-registry.mjs` 的 `RULE_REGISTRY`（§五 各模块按 `// <编号> ` 形态登记规则级标签） |
 | DSH 原生只读工具 | **4 个**（`lunheng_m_gate` / `lunheng_char_count` / `lunheng_handoff_check` / `lunheng_ethics_sanitize`；v18.60.1 加伦理脱敏） | `SKILL.md` §DSH 原生能力接缝 |
 | **常驻上下文面**（每会话固定开销） | `SKILL.md` + `AGENTS.md` **合计上限 54.0 KB**（v18.88.0 **下调** 56→54 KB：依主人「多宿主收口」裁定——AGENTS.md §关键规则 7 组同事实条目收为指针 → 常驻集 54,812→53,310 B〔52.1 KB〕，按定案 ① 公式重核；v18.86.0 曾下调 60→56 KB）；逐文件上限 **40.0 / 16.0 KB**。⚠️ **长期目标 51,200 B 仍未达成（差 2,110 B）**：剩余为唯一宿主承重（子代理失败三段式 / M 门行〔有机械消费者〕/ 各条一句话判据），**再压须删承重**。余量/实测**逐轮以 `repo-hygiene-check` ⑨ 输出为准、本卡不复述**（复述即漂） | `scripts/repo-hygiene-check.mjs` 的 `ALWAYS_LIMIT` + `DOC_BUDGET`（规则 ⑨）；**上限与逐文件值由规则 ㊲ 机械对账** |
-| **词预算登记数** | **50 条**（≥12 KB 的 `.md` 逐文件棘轮）；**合计上限 1489 KB**（v18.88.0 下调一条：`AGENTS.md` 19→16 KB〔多宿主收口，长期目标已达成〕/ 上调一条：`maintainers.md` 34→41 KB 承接迁入；v18.88.0-prep 首次登记 `errors.md` 14 KB）；实测合计同左**不复述**（逐轮以规则 ⑨ 输出为准） | 同规则 ⑨；报告逐轮打印「越线 N 条 / 余量 <1 KB N 条 / 建议下调」三段；**条数与上限由规则 ㊲ 机械对账** |
+| **词预算登记数** | **51 条**（≥12 KB 的 `.md` 逐文件棘轮）；**合计上限 1505 KB**（v18.90.0 首次登记 `docs/installation.md` 13 KB ＋ `SECURITY.md` 32→35 KB〔新增可选 HTTP 读面的强制披露〕；v18.88.0 下调一条：`AGENTS.md` 19→16 KB〔多宿主收口，长期目标已达成〕/ 上调一条：`maintainers.md` 34→41 KB 承接迁入；v18.88.0-prep 首次登记 `errors.md` 14 KB）；实测合计同左**不复述**（逐轮以规则 ⑨ 输出为准） | 同规则 ⑨；报告逐轮打印「越线 N 条 / 余量 <1 KB N 条 / 建议下调」三段；**条数与上限由规则 ㊲ 机械对账** |
 
 ## 退出码族（按 §真源排序）
 

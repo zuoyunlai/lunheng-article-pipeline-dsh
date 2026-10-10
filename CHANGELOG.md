@@ -2,6 +2,63 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.90.0 — 2026-10-10
+
+> **主题**：**运行面板批（B 批）**——把 A 批的报告能力搬进 DSH Web GUI：**宿主半边** `lib/panel.mjs`（只读 HTTP 路由 + SSE）+ **浏览器半边** `lib/client.js`（手写 lazy-CJS，零构建链），在 GUI 里实时显示 `run/<项目>/` 的阶段 / 角色 / 门 / 产物。
+> **执行留痕**：`audits/机制文件修订记录-2026-10-10-运行面板批.md`。
+> **授权（如实标注）**：主人 2026-10-10 直接指令「**B批开始**」（同轮已裁定：形态 = 右栏实时面板；节拍 = `fs.watch` 事件驱动 + 5s 兜底轮询；范围 = 单项目）——依 `AGENTS.md` §机制文件写保护「唯一例外：主人显式授权」。
+> **版本判据 = minor**：**新增包面**（`dsh.client` + `exports["./client"]`，首次让本包带浏览器半边）+ 1 个 `lib/**` 模块 + 1 个客户端资产 + 1 个测试文件；**零新增随包脚本**（白名单仍 32）、**零新增退出码**、零 M 门语义变更、零新增工具。
+
+### 一、先查官方资料（依 `AGENTS.md` §八「涉包形态先查官方资料」）
+
+本批**动了包形态**（`package.json` 的 `exports` / `dsh.client`），故先读官方文档（`dsh-plugin-guide` 的 `references/official-docs/`）再动手，结论逐条落进代码注释：
+
+| 官方出处 | 拿到的契约 |
+|---|---|
+| `docs/cookbook/adding-a-settings-card.zh.md` §5「浏览器半侧挂在哪里」 | 浏览器半边由客户端模块系统按 `dsh.client` + **构建好的 `./client` 导出**送出；**只挂在说明符恰为裸包名的那一行**（本包符合）；产物必须是 **lazy-CJS factory** 格式（`window.__ModuleLoader__.load({id, factory})`）；**「仓库之外的包要自己复刻这一步构建」** → 本批**手写**该文件，零构建链 |
+| `docs/subsystems/web-server.zh.md` §路由 | `ctx.webServer.register({ kind:'exact'\|'prefix', path, handler })`；**handler 拥有完整响应生命周期，可持有响应（例如 SSE）** → `/events` 属官方明确允许的用法 |
+| `docs/subsystems/sidebar-right.zh.md` §Tab 类型注册 | 右栏 tab = `ctx.sidebarRightTabs.register({id, kind, title, guide?})` + `ctx.slots.register({name:'sidebar.right.pane.tab', key:id})` + `ctx.sidebarRight.openTab(kind)` |
+
+### 二、宿主半边 `lib/panel.mjs`（只读、SSE、两道围栏）
+
+- 四个端点：`/lunheng-panel/ping`（版本 + 已知工作区根）、`/projects`（`run/*` 清单）、`/snapshot`（轻快照）、`/events`（**SSE**：`fs.watch` 去抖 300 ms 推送 + **5 s 心跳**兜底——与主人裁定的节拍逐字对应）。
+- **数据分层，刻意不重复聚合**：**数字层**（M 门汇总 / 合规分 / 字数序列 / 轮次数）= 只读 A 批边车 `final/运行报告.json` 并回传它自己的 `generatedAt`（面板上每个数字都标「截至何时」，**不冒充实时重算门**）；**实时层** = 只做两处极廉价解析（`status.md` 状态行 + `agents-log.md` 的 `### Tn` 段计数）与目录 mtime——**不做汉字统计**（那属 `_lib/han.mjs` 的随包脚本口径，另写一份必然发散）。
+- **围栏两道**：① `root` 必须在 `ctx.workspaceRegistry.list()` 给出的工作区根内（**只在 registry 一个根都给不出时**才兜底 `process.cwd()`——registry 是权威来源，无条件并入等于凭空多暴露一个读面）；② `project` 过 `lib/run-path-fence.mjs` 的 `isSafeProjectArg` + `resolveProjectDir`（单路径段 + 解析后必须在 `run/` 内）。任一不过 → **403 且不返回任何内容**。另：非 GET/HEAD → 405、未知端点 → 404。
+- **只读**：不写文件、不起子进程、不联网、不读凭据（`ws` 之外无任何 I/O 出口）。
+
+### 三、浏览器半边 `lib/client.js`（手写 lazy-CJS，零第三方依赖）
+
+- 形态：`window.__ModuleLoader__.load({ id:'lunheng-article-pipeline', factory:(require)=>… })`，`exports.apply` / `exports.inject = []`；只用 `require('react')`（UI 与样式全部 `React.createElement` + 内联 style，**不引任何 UI 包**）。
+- 座位（feature-detect）：① `sidebar.panellist` 图标 + `main` 面板（**这两个服务已在实时客户端服务目录中确认可用**）；② 若存在 `sidebarRightTabs` / `sidebarRight` 则另注册右栏 tab + 引导页入口，并在面板里给「在右栏打开」按钮。**如实报告**：本机客户端的实时服务目录里**没有**右栏服务（只有 `layout`/`locale`/`sessions`/`slots`/`theme`/`timer`/`uiWorkspace`/`workspaces`），故实际落点以运行时为准，面板页脚会写明「座位：main（右栏服务不可用）」。
+- 数据：`EventSource('/lunheng-panel/events?project=…')`（同源 SSE）；断线时保留最后一帧并**标「⚠ 连接已断」**，不谎称实时；项目选择存 `localStorage`。
+
+### 四、默认关闭：新增暴露面按既有口径「配置即开」
+
+- `config.panel`（新配置键，**默认 `false`**）或操作者开关 `LUNHENG_PANEL=1`；未开启时**不注册任何路由**，且客户端半边探测不到路由 → 面板显示「未启用」提示而非空白。
+- **为什么默认关**：本批在宿主既有的 Web 载体上**新增了一个读面**（能访问该地址者可读到 `run/**` 的产物摘要）。按本仓既有口径（新增暴露面默认关、配置即开——同三档 subagent 工具的先例），要看得显式打开。**逐项披露见 `SECURITY.md` §运行面板**（端点 / 读什么 / 不读什么 / 两道围栏 / 残余风险 / 默认关闭理由）。
+
+### 五、本版触及的机械对账面（**六处，漏一处即红**）
+
+| 面 | 改动 | 抓它的门 |
+|---|---|---|
+| `CONFIG_SPEC` 8 → **9 键** | 新增 `panel` | `docs-facts` C-1（配置集 ↔ 声明面逐项一致） |
+| 五语 README 配置声明行 | 各补 `panel`（hi 另补「कुल **नौ**」） | 同上（**实测先报 `README-hi.md:44` 漏 `panel`**） |
+| `docs/installation.md` | 8 → 9 键 + 补 `panel` 说明 | 同上（**该文件因此越过 12 KB 登记线 → 首次登记词预算 13 KB**） |
+| `SECURITY.md` | 新增「运行面板」披露行 + 可调参数 八→九 + `lib/` env 读取点 四→五（新增 `LUNHENG_PANEL`） | 人工面（安全声明）；词预算**显式抬升 32→35 KB** |
+| `docs/quick-facts.md` | 词预算登记数 50 → **51 条** / 合计上限 1489 → **1505 KB** | `consistency-check` 规则㊲（**实测抓出「1489 vs 1505 KB」漂移**） |
+| 五语 README 命令声明行 | 移除 `lunheng-panel` 字面 token（会被命令集派生器当成「不存在的命令」） | `docs-facts` C-1 命令集（**实测抓出 `README-es.md:44` 列出不存在的命令**） |
+
+### 六、测试 `tests/panel.test.mjs`（**8 用例**）
+
+默认关不注册路由 / 开启后 `/ping`·`/projects`·`/snapshot` 形状 / **围栏**（`../` 越界 403、越界 root 403、缺参 400、未知端点 404、非 GET 405）/ **SSE**（头 + `retry` + 首帧 + 断连清理）/ 客户端半边是 lazy-CJS 且**零外部 http(s) 引用**、只打同源面板路由 / 包面 `dsh.client` + `exports["./client"]` 在盘 / `listProjects`·`panelRoots` 读面边界 / 缺 `status.md` 时如实标 `hasStatus:false`（不编造）。
+
+
+### 七、验证（本版终态）
+
+> **验证（本版终态）**：全量套 **992 / 992 全绿**（991 pass / 0 fail / 1 skip；**本版新增 8 用例** = 运行面板契约 8）；`consistency-check` **0 处漂移**；`repo-hygiene-check` **全部通过**（含词预算 ㊲ 对账）；`plugin-surface-check` **11 项通过 0 失败**（**证明 `dsh.client` + `exports` 形态合法**）；`self-check` **15 项全 PASS**；`docs-facts` **19 项全 PASS**。
+> **如实登记的未验证面**：① `lib/client.js` 的**浏览器内渲染**未在本机真机验证（需重载插件让客户端模块系统送出浏览器半边）；② 右栏落点未验证——**本机客户端服务目录没有 `sidebarRightTabs` / `sidebarRight`**，代码走 feature-detect 降级并在面板页脚注明。
+> **一处自我纠错（留痕）**：批量替换 `docs/quick-facts.md` 时用 `Set-Content` 注入了 UTF-8 BOM → `consistency-check` P1「BOM 污染」当场抓出（连带 P2 标题口径失配），已二进制剔除前 3 字节。**教训**：机制/文档文件的批量替换一律走 `edit`。
+
 ## 18.89.0 — 2026-10-10
 
 > **主题**：**运行报告批**——新增随包脚本 `run-report.mjs`（单项目「运行与校验」自包含 HTML 看板），把散落在 `run/<项目>/` 的既有产物聚合成一张可离线打开 / 可打印的图表面板。
