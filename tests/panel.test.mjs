@@ -381,6 +381,7 @@ test('客户端半边（v18.90.8）：配色只用 DSH 语义 token（随明暗�
   // v18.91.2 回归钉：曾用 brand-primary 当图表主色，而本机主题里它是**墨色（近黑）** ⇒ 整片图变黑（主人实测）
   assert.ok(!String(S.chart).includes('brand-primary'), '图表主系列**不得**再用 brand-primary（本机主题里是墨色）')
   assert.ok(!String(S.segNow.background).includes('brand-primary'), '「进行中」片段不得用 brand-primary')
+  assert.ok(!String(S.barFill.background).includes('brand-primary'), '条形图填充不得用 brand-primary（主人实测：那一排条全变黑）')
   assert.ok(S.ok.color.includes('--dsw-alias-state-success-primary') && S.bad.color.includes('--dsw-alias-state-error-primary'), '状态色必须是状态 token')
   // 兜底值：宿主未定义 token 时退化成浅色旧观感，而不是不可读
   for (const k of ['card', 'wrap', 'dim', 'k']) {
