@@ -407,6 +407,46 @@ test('客户端半边（v18.90.8）：配色只用 DSH 语义 token（随明暗�
   for (const t of used) assert.ok(KNOWN.has(t), '用了不在主题目录里的 token 名：' + t)
 })
 
+test('面板（v18.91.0）：快照带 insights —— 阶段链 / 题名文类目标篇幅 / 九宫格分布 / 48h 节律（全部只读派生）', () => {
+  const d = tmp()
+  try {
+    const dir = mkProject(d)
+    // 把夹具补成「有 meta 与阶段链」的形态，并造出 3 个目录、若干文件（含 mtime 分布）
+    writeFileSync(join(dir, 'status.md'), [
+      '# Status',
+      '- 🔄 **In Progress** — Phase 3（T5 写手出初稿 v1）；**Phase 1/2/2.5 全部 ✅ 闭合**',
+      '- **题名**：路径依赖与决策时点：台海问题可预测性的边界在哪里（24 字）',
+      '- **文类**: `academic-hum`｜**目标篇幅**: 13000 字（纠偏线 12740–13260；G8 硬阈 11700–13650）',
+      '- `[Failed 20:47]` T1 首派 — 零落盘',
+      '- T3 ✅ `handoff-check --role T3 --report-file` → **exit 22（放行）**',
+      '',
+    ].join('\n'))
+    mkdirSync(join(dir, 'literature'), { recursive: true })
+    writeFileSync(join(dir, 'literature', '文献卡.md'), 'x'.repeat(2048))
+    writeFileSync(join(dir, 'audits', '反哺报告-综合-v1.md'), 'y'.repeat(1024))
+    const s = lightSnapshot(d, 'proj-p')
+    const ins = s.insights
+    assert.equal(ins.meta.title, '路径依赖与决策时点：台海问题可预测性的边界在哪里')
+    assert.equal(ins.meta.genre, 'academic-hum')
+    assert.equal(ins.meta.targetWords, 13000)
+    assert.deepEqual(ins.meta.calibrate, [12740, 13260])
+    assert.deepEqual(ins.meta.hard, [11700, 13650])
+    assert.equal(ins.phases.current, 3)
+    assert.deepEqual(ins.phases.closed, [1, 2, 2.5])
+    assert.equal(ins.failures, 1, '失败记录计数')
+    assert.equal(ins.handoffs.ok, 1, '收报放行（exit 22）计数')
+    const names = ins.dirs.map((x) => x.name)
+    for (const n of ['literature', 'data', 'cases', 'analysis', 'drafts', 'audits', 'final', 'final/图件', 'final/证据包']) {
+      assert.ok(names.includes(n), '九宫格必须每一项都在，缺 ' + n)
+    }
+    assert.equal(ins.dirs.find((x) => x.name === 'literature').files, 1)
+    assert.ok(ins.dirs.find((x) => x.name === 'literature').kb >= 2, 'literature 至少 2KB')
+    assert.equal(ins.activity.length, 24, '节律必须固定 24 格（缺格用 0 补齐，不画「不确定」）')
+    assert.ok(ins.activity.reduce((a, b) => a + b, 0) >= 1, '刚写的文件应落进最后一格')
+    assert.ok(Array.isArray(ins.drafts) && ins.drafts.length >= 1, '草稿体积序列')
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
 test('面板：lightSnapshot 缺 status.md 时如实标记（不编造）', () => {
   const d = tmp()
   try {
@@ -499,6 +539,55 @@ const SNAPSHOT = {
   report: { generatedAt: '2026-10-01T12:00:00.000Z', mGate: { total: 24, pass: 23, p0: 0, p1: 0, p2: 1, exit: 1 }, score: 87.1, rounds: 5, gates: 4, words: [{ label: 'v1', han: 100 }, { label: '定稿', han: 120 }] },
 }
 
+test('客户端半边（v18.91.0）：insights 到位时渲染出**图表**（KPI / 阶段带 / 条形图 / 节律柱 / 草稿折线）', async () => {
+  // 面板从「文字表」升级为图形面板：断言的是**图形元素真的被画出来**（svg/rect/阶段带段数/条形条目），
+  //   而不是「有没有那几个字」——图形退化成文字必须被测出来。
+  const h = makeReactStub()
+  const es = []
+  const withInsights = Object.assign({}, SNAPSHOT, {
+    insights: {
+      meta: { title: '路径依赖与决策时点', genre: 'academic-hum', targetWords: 13000, calibrate: [12740, 13260], hard: [11700, 13650] },
+      phases: { current: 3, closed: [1, 1.5, 2, 2.5] },
+      dirs: [{ name: 'drafts', files: 17, kb: 694 }, { name: 'audits', files: 32, kb: 345 }, { name: 'final', files: 47, kb: 621 }],
+      activity: [0, 0, 50, 21, 0, 0, 0, 0, 43, 25, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      failures: 3, handoffs: { ok: 9, retry: 0 },
+      drafts: [{ name: '初稿-v2', kb: 62 }, { name: '初稿-v3', kb: 65 }, { name: '初稿-v6', kb: 64.1 }],
+    },
+  })
+  const mod = await loadClient(h, {
+    fetch: fetchStub({ '/ping': () => okJson({ ok: true, version: '18.91.0', roots: ['/w'] }), '/projects': () => okJson({ root: '/w', projects: [{ name: 'p1', hasFinal: false }] }) }),
+    onES: (e) => es.push(e),
+  })
+  let text = ''
+  for (let i = 0; i < 6; i++) { text = h.render(mod.__panel.Panel, { ctx: null }); await new Promise((r) => setTimeout(r, 0)) }
+  es[0].listeners.snapshot({ data: JSON.stringify(withInsights) })
+  let t = ''
+  for (let i = 0; i < 3; i++) { t = h.render(mod.__panel.Panel, { ctx: null }); await new Promise((r) => setTimeout(r, 0)) }
+  // KPI 行（先给结论）
+  assert.match(t, /当前阶段/, 'KPI 行应渲染')
+  assert.match(t, /已用时长/, 'KPI 行应含时长')
+  assert.match(t, /异常\/收报/, 'KPI 行应含失败/收报')
+  // 阶段带：已闭合的阶段片段必须真的出现（1 / 1.5 / 2 / 2.5 + 当前 3）
+  for (const s of ['1.5', '2.5', '3']) assert.ok(t.includes('>' + s + '<'), '阶段带应含 Phase ' + s + ' 片段')
+  assert.match(t, /当前 Phase 3/, '阶段带应写明当前阶段')
+  // 条形图：角色段 + 产物分布（含人类可读体积）
+  assert.match(t, /角色段（按 agents-log/, '角色段条形图标题应渲染')
+  assert.match(t, /产物分布（文件数 \/ 体积）/, '产物分布条形图标题应渲染')
+  assert.match(t, /694 KB/, '产物分布应给出体积（组成条图例）')
+  assert.match(t, /17 文件/, '产物分布应给出文件数（条形图）')
+  // 活动节律：柱状图 = svg + 多个 rect
+  assert.match(t, /活动节律（近 48 小时的文件改动）/, '活动节律标题应渲染')
+  const rects = (t.match(/<rect>/g) || []).length
+  assert.ok(rects >= 20, '节律柱应画满 24 格，实际 rect ' + rects)
+  assert.match(t, /峰值 50 次改动/, '节律图注应给出峰值（不编造）')
+  // 草稿体积折线（并如实标注是字节不是字数）
+  assert.match(t, /草稿体积（KB，\*\*字节\*\*不是正文字数）/, '草稿折线图注必须如实标注口径')
+  // insights 视觉（参照「上下文洞察」那类观感）：分段组成条 + 图例 + 百分比 + 环形占比
+  assert.match(t, /M 门通过率/, '环形图应带图例文字')
+  assert.ok((t.match(/<circle>/g) || []).length >= 2, '环形图应画「轨道 + 进度」两段圆环，实际 ' + (t.match(/<circle>/g) || []).length)
+  assert.match(t, /\d+%/, '图例或图注应给出百分比')
+})
+
 test('客户端半边：有实时帧 → 渲染出项目/状态行/M 门/宿主版本，且座位如实写「已注册」', async () => {
   const h = makeReactStub()
   const es = []
@@ -525,7 +614,8 @@ test('客户端半边：有实时帧 → 渲染出项目/状态行/M 门/宿主�
   for (let i = 0; i < 4; i++) { t2 = h.render(mod.__panel.Panel, { ctx: null }); await new Promise((r) => setTimeout(r, 0)) }
   assert.match(t2, /p1/, '项目名应渲染')
   assert.match(t2, /Phase 3/, '状态行应渲染')
-  assert.match(t2, /exit 1｜23\/24 通过/, 'M 门摘要应来自数字层')
+  assert.match(t2, /exit 1/, 'M 门 exit 应渲染')
+  assert.match(t2, /23\/24 通过/, 'M 门摘要应来自数字层')
   assert.match(t2, /87\.1 \/ 100/, '合规分应渲染')
   assert.match(t2, /实时|fs\.watch/, '收到帧后应标实时')
   assert.match(t2, /座位：侧栏图标 \+ 主面板 = 已注册/, '座位必须如实写「已注册」')
