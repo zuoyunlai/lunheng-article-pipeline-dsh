@@ -2,6 +2,42 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.90.8 — 2026-10-10
+
+> **主题**：**暗色/亮色跟随 DSH 主题**——主人问「这个界面可以有暗色亮色模式吗？随 dsh 系统？」
+> （其 `ui-theme` 的 `preference` 是 **dark**，而面板旧版全是写死的浅色 ⇒ 暗色下发出白底刺眼）。
+> **版本判据 = patch**：零包面变更、零新工具、零新退出码；仅 `lib/client.js` 配色 token 化 + 1 条测试。
+
+### 一、官方口径（先查再改）
+
+`docs/web-styling.zh.md` 写明：**功能组件使用 `--dsw-alias-*` 语义 token**，「不得复制静态色板值或在其中
+写入颜色字面量」「功能组件 CSS 不得包含主题选择器」；明暗偏好归 `ui-theme`，由 `ui-layout` 把**解析后的
+主题快照应用到文档**。⇒ 正确做法不是自己判断 dark，而是**只用 token**——面板即随 DSH 主题自动切换。
+
+token 名不是猜的：`cordis_inspect_query client Theme.listTokens` 返回 14 个（`--dsw-alias-bg-base/layer-1/
+layer-2/overlay`、`border-l1/l2`、`brand-primary`、`label-primary/secondary`、`state-error/idle/success/warn-primary`、
+`--dsw-specific-sidebar-fill`），**全部 `requiresLightAndDark: true`**。
+
+### 二、改动
+
+- `S` 配色表全部 token 化（正文 / 次要文字 / 卡片底 / 描边 / 控件 / 徽标 / 表格行 / 四种状态色 / 折线品牌色 /
+  警示卡片）；中性实线边框按官方规则改 `0.5px` 发丝线。
+- 折线 stroke 与警示卡片不再写死颜色；侧栏图标本就用 `currentColor`（早已随主题）。
+- **每个 token 带浅色兜底**（`var(--dsw-…, #旧值)`）：宿主未定义 token 的极简客户端退化成旧观感，而不是
+  变成不可读——同时**不写任何明暗分支**（分支归主题所有方）。
+
+### 三、测试（`tests/panel.test.mjs` 22 → **23**）
+
+一条测试同时钉四件事：① 运行时断言关键样式确实是语义 token；② 每个 token **必须带兜底值**（单参 `T()`
+一律拒绝）；③ 源码层剥掉兜底值后**不得残留任何颜色字面量**，且不得出现 `prefers-color-scheme` / `dark:`
+自造分支；④ **token 名白名单**（拼错一个字母会静默退化到浅色兜底、暗色下依旧发白——这类错误必须被机器抓住）。
+
+### 四、验证（本版终态）
+
+> **验证（本版终态）**：全量套 **1007 / 1007 全绿**（1006 pass / 0 fail / 1 skip；**本版新增 1 用例** = 主题 token 契约）；`consistency-check` **0 处漂移**；`repo-hygiene-check` **全部通过**；`plugin-surface-check` **11 项通过 0 失败**；`self-check` **15 项全 PASS**；`docs-facts` **19 项全 PASS**。
+> **边界（如实）**：主题**切换**本身由 DSH 的 `ui-theme` / `ui-layout` 负责（面板不做任何监听或重绘），
+> 故本节只验证「用的是 token」；真实暗色下的观感需在 GUI 里复核。
+
 ## 18.90.7 — 2026-10-10
 
 > **主题**：**面板可见性**——18.90.6 让面板终于挂载成功（真宿主 `/ping` 200），随即暴露新缺陷：

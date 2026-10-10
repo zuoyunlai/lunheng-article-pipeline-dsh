@@ -365,6 +365,48 @@ test('客户端半边（v18.90.7）：多工作区根 → 逐根探测，选**�
   assert.match(text, /work-with-run/, '标题栏应显示当前工作区根（多根时可切换）')
 })
 
+test('客户端半边（v18.90.8）：配色只用 DSH 语义 token（随明暗主题），不写颜色字面量、不自造明暗分支', async () => {
+  // 官方口径（docs/web-styling.zh.md）：功能组件用 `--dsw-alias-*` 语义 token，「不得复制静态色板值或在
+  //   其中写入颜色字面量」「不得包含主题选择器」；明暗偏好归 ui-theme，由 ui-layout 应用到文档。
+  //   ⇒ 面板必须靠 token 自动跟随，而不是自己判断 dark。
+  const h = makeReactStub()
+  const mod = await loadClient(h, { fetch: fetchStub({}) })
+  const S = mod.__panel.S
+  assert.ok(S.card.background.includes('--dsw-alias-bg-layer-1'), '卡片底色必须是语义 token：' + S.card.background)
+  assert.ok(S.wrap.color.includes('--dsw-alias-label-primary'), '正文色必须是语义 token')
+  assert.ok(S.dim.color.includes('--dsw-alias-label-secondary'), '次要文字色必须是语义 token')
+  assert.ok(S.card.border.includes('--dsw-alias-border-l1'), '描边必须是语义 token')
+  assert.ok(S.btn.background.includes('--dsw-alias-bg-layer-2'), '控件底色必须是语义 token')
+  assert.ok(String(S.chart).includes('--dsw-alias-brand-primary'), '折线用品牌色 token')
+  assert.ok(S.ok.color.includes('--dsw-alias-state-success-primary') && S.bad.color.includes('--dsw-alias-state-error-primary'), '状态色必须是状态 token')
+  // 兜底值：宿主未定义 token 时退化成浅色旧观感，而不是不可读
+  for (const k of ['card', 'wrap', 'dim', 'k']) {
+    const v = JSON.stringify(S[k])
+    assert.match(v, /var\(--dsw-[a-z0-9-]+, #/, k + ' 的 token 必须带兜底值：' + v)
+  }
+  // 源码级：剥掉 token 兜底值后，不得残留任何颜色字面量；也不得出现自造的明暗分支
+  const src = readFileSync(join(ROOT, 'lib', 'client.js'), 'utf8')
+  const stripped = src.replace(/T\('[^']+',\s*'#[0-9a-fA-F]{3,8}'\)/g, 'T(TOKEN)')
+  const left = stripped.match(/#[0-9a-fA-F]{3,8}\b/g) || []
+  assert.deepEqual(left, [], '除 token 兜底值外不得出现颜色字面量：' + left.join(','))
+  assert.ok(!/prefers-color-scheme/.test(src), '不得用媒体查询自造明暗分支——那归主题所有方')
+  assert.ok(!/['"]dark['"]\s*:/.test(src), '不得在样式里编码 dark 分支')
+  assert.deepEqual(src.match(/T\('[^']+'\)/g) || [], [], '每个 token 都必须带兜底值（单参 T() 一律拒绝）')
+  // token 名白名单：**真源 = 本机客户端目录**（`cordis_inspect_query client Theme.listTokens`，14 个）。
+  //   拼错一个字母的后果很隐蔽——`var(--typo, #fff)` 会静默退化到浅色兜底，面板在暗色主题下依旧发白。
+  const KNOWN = new Set([
+    '--dsw-alias-bg-base', '--dsw-alias-bg-layer-1', '--dsw-alias-bg-layer-2', '--dsw-alias-bg-overlay',
+    '--dsw-alias-border-l1', '--dsw-alias-border-l2', '--dsw-alias-brand-primary',
+    '--dsw-alias-label-primary', '--dsw-alias-label-secondary',
+    '--dsw-alias-state-error-primary', '--dsw-alias-state-idle-primary',
+    '--dsw-alias-state-success-primary', '--dsw-alias-state-warn-primary',
+    '--dsw-specific-sidebar-fill',
+  ])
+  const used = new Set((src.match(/T\('(--dsw-[a-z0-9-]+)'/g) || []).map((s) => s.slice(3, -1)))
+  assert.ok(used.size >= 8, '应大量使用主题 token，实际 ' + used.size + ' 个')
+  for (const t of used) assert.ok(KNOWN.has(t), '用了不在主题目录里的 token 名：' + t)
+})
+
 test('面板：lightSnapshot 缺 status.md 时如实标记（不编造）', () => {
   const d = tmp()
   try {
