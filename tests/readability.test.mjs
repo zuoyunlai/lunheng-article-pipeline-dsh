@@ -91,8 +91,11 @@ test('readability：21 份真实定稿**全部在标定界内**（不误报—�
   //   ⚠️ 此处**仍不放宽任何阈值**：两条断言都是「标定是否仍然成立」，不是「这一篇过不过」。
   assert.ok(maxLong <= THRESHOLDS.longRatioMax,
     `标定语料长句占比极值 ${(maxLong * 100).toFixed(1)}% **已超阈值** ${THRESHOLDS.longRatioMax * 100}% —— 标定原则（阈值应略高于真实稿极值）被打破，请重新标定`)
-  assert.ok(maxLong > THRESHOLDS.longRatioMax * 0.85,
-    `标定语料长句占比极值 ${(maxLong * 100).toFixed(1)}% 距阈值 ${THRESHOLDS.longRatioMax * 100}% 过远（< 85%）—— 阈值可能**过松**，请重新标定`)
+  // v18.95.0（W6）：长句阈值已按**外部人类稿**重标定（0.30 → 0.40），论衡真实稿极值（27.6%）不再是校准锚
+  //   ——人类稿长句极值 28–56% 才是新锚。故「85% 校准」对长句维度放宽到 60%（27.6% = 40%×0.69，>60% 即通过）；
+  //   其余三维（句长 std / 术语 / 被动）仍按旧 85% 校准。
+  assert.ok(maxLong > THRESHOLDS.longRatioMax * 0.60,
+    `标定语料长句占比极值 ${(maxLong * 100).toFixed(1)}% 距阈值 ${THRESHOLDS.longRatioMax * 100}% 过远（< 60%）—— 阈值可能**过松**，请重新标定`)
   // v18.48.0（F-BD）：排除须**可见**——排了哪几个、排了几个，随用例一起报出来。
   // v18.73.0（F-25）：改为**报告实测校准量**（此前那条 `assert.ok(true, …)` 无论校准如何都恒真，
   //   等于「排除可见」但「校准不可见」）。现在把极值与语料规模一并报出，供逐版对照。
@@ -127,9 +130,9 @@ test('quality-score：可读性剖面是纯观测分量（weight=0，不进总�
 test('readability：长句占比阈值的**源码钉**（v18.73.0 F-25 重标定后不得被静默改动）', async () => {
   const { readFileSync } = await import('node:fs')
   const src = readFileSync(join(SCRIPTS, '_lib', 'readability.mjs'), 'utf8')
-  assert.match(src, /longRatioMax:\s*0\.30\b/,
-    'longRatioMax 必须逐字为 0.30（v18.73.0 由 0.25 重标定：在册语料极值 27.6% + 约 2.4pp）。'
-    + '**若确要再改，必须同批更新本断言、`readability.mjs` 的标定注释、以及 `audits/decisions/` 里的重标定记录**——'
+  assert.match(src, /longRatioMax:\s*0\.40\b/,
+    'longRatioMax 必须逐字为 0.40（v18.95.0 由 0.30 重标定：W6 外部人类稿长句占比 med 11–26%、max 28–56%，0.30 会误伤正常人类长句）。'
+    + '**若确要再改，必须同批更新本断言、`readability.mjs` 的标定注释、以及 `audits/W6-人类稿可读性标定分析-v1.md`**——'
     + '不得只改数字。')
   // 另三维仍为原标定值——一并钉住，防止"顺手调一个"。
   assert.match(src, /stdMin:\s*13\b/, 'stdMin 必须为 13（本轮未重标定）')
