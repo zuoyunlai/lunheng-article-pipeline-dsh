@@ -25,7 +25,7 @@ const DRAFT = '# 标题\n\n## 摘要\n\n正文 [L01] [D01]。\n\n## 一、论证
   + '## 参考文献\n\n- [L01] 甲. 题名[J]. 刊, 2024.\n\n## 数据来源\n\n- [D01] 机构 2024\n\n'
   + '## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\n- AI。\n'
 
-/** 批判报告：§关闭状态 自述清单 4 条 + 标题全集 10 条（strict 与 declared 故意不同，供核对透明性）。 */
+/** 批判报告：§关闭状态 自述清单 4 条（含 P1-C1-3 接受脆弱）+ 标题全集 4 条（排除接受脆弱后 3 条）。 */
 const CRIT = [
   '# 批判报告-v2', '',
   '## 二、七维批判（C1-C7）', '',
@@ -96,13 +96,13 @@ test('qlt6（口径 D）：双分量 50/50 合成，值可逐项复算', async (
     assert.equal(r.metric, 'QLT-6')
     assert.equal(comp(r, 'panel').weight, 50)
     assert.equal(comp(r, 'closure').weight, 50)
-    // ① = clamp((22 − 16) / 14) = 0.4286；② = 2/4 = 0.5 → (50×0.4286 + 50×0.5) / 100 × 100 = 46.4
+    // ① = clamp((22 − 16) / 14) = 0.4286；② = 2/3 = 0.6667 → (50×0.4286 + 50×0.6667) / 100 × 100 = 54.8
     assert.equal(comp(r, 'panel').ratio, 0.4286, '① 归一化口径：clamp((总评分 − 16) / 14, 0, 1)')
-    assert.equal(comp(r, 'closure').raw.total, 4, '② 条件集须取「§关闭状态 自述清单」（4 条）')
+    assert.equal(comp(r, 'closure').raw.total, 3, '② 条件集须取「标题全集排除接受脆弱」（3 条，v18.95.0 W8）')
     assert.equal(comp(r, 'closure').raw.closed, 2, '② 关闭数须来自绑定复核的判定')
-    assert.equal(r.score, 46.4, '双分量加权后应可复算')
+    assert.equal(r.score, 54.8, '双分量加权后应可复算')
     assert.equal(r.coverage, 1)
-    assert.equal(comp(r, 'closure').evidence.strictP01Count, 4, '同报告 P0/P1 标题全集数须一并报出（非计分）')
+    assert.equal(comp(r, 'closure').evidence.strictP01Count, 3, '同报告 P0/P1 标题全集（排除接受脆弱）数须一并报出')
   } finally { rmSync(f.d, { recursive: true, force: true }) }
 })
 
@@ -122,8 +122,8 @@ test('qlt6（反向控制组）：判定为「未关闭」不得计为关闭（�
   try {
     const r = await evalQ6(f)
     assert.equal(comp(r, 'closure').raw.closed, 1, '含「未关闭」的判定行不得计关闭；另两条按判定计')
-    // 条件集 4 条（P0-C1-1 / P1-C1-2 / P0-C2-1 / P1-C1-3），本用例的判定只覆盖前三条 → 第 4 条留在 open ✓
-    assert.deepEqual(comp(r, 'closure').evidence.open.sort(), ['P0-C1-1', 'P1-C1-2', 'P1-C1-3'].sort())
+    // 条件集 3 条（P0-C1-1 / P1-C1-2 / P0-C2-1，P1-C1-3 接受脆弱已排除），判定：P0-C1-1 否定、P1-C1-2 未关闭、P0-C2-1 关闭 → open = 前两条 ✓
+    assert.deepEqual(comp(r, 'closure').evidence.open.sort(), ['P0-C1-1', 'P1-C1-2'].sort())
   } finally { rmSync(f.d, { recursive: true, force: true }) }
 })
 
@@ -156,7 +156,7 @@ test('qlt6（纪律）：度量不是闸门 + 不得与 QLT-1 相加 + 标定状
     const r = await evalQ6(f)
     assert.match(String(r.validity.noSum), /不得与 QLT-1 相加/)
     assert.equal(r.validity.calibration.status, 'pass', '标定状态必须随产出落盘（未标定前不得用）')
-    assert.match(String(r.validity.calibration.evidence), /\+50\.0/)
+    assert.match(String(r.validity.calibration.evidence), /\+45\.5/)
     assert.match(String(r.validity.boundary), /保守按未关闭计 0/)
     assert.match(String(r.meta.notes), /不影响退出码/)
     // 端到端：quality-score 同时给出两块量尺，且 QLT-6 不并进 QLT-1 的 score
@@ -166,7 +166,7 @@ test('qlt6（纪律）：度量不是闸门 + 不得与 QLT-1 相加 + 标定状
     const j = JSON.parse(readFileSync(rep, 'utf8'))
     assert.equal(typeof j.score, 'number')
     assert.equal(j.qlt6.metric, 'QLT-6')
-    assert.equal(j.qlt6.score, 46.4, 'QLT-6 必须是独立块，不与 QLT-1 的 score 混算')
+    assert.equal(j.qlt6.score, 54.8, 'QLT-6 必须是独立块，不与 QLT-1 的 score 混算')
     assert.match(String(j.componentSemantics.handoff), /不衡量论文质量/, 'F-S ②：handoff 语义须随产出落盘')
   } finally { rmSync(f.d, { recursive: true, force: true }) }
 })

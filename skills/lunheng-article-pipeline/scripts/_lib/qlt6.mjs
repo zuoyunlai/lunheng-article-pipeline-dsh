@@ -41,10 +41,13 @@ import { createHash } from 'node:crypto';
 export const CALIBRATION = {
   status: 'pass',
   calibratedAt: '2026-09-29',
-  positiveControl: 'run/AB-共锁-B 初稿-v3 → 初稿-v4（批判报告-v2 §关闭状态 的 10 条条件：0 → 10 关闭）',
+  positiveControl: 'run/AB-共锁-B 初稿-v3 → 初稿-v4（v18.95.0 W8 起计分用「标题全集排除接受脆弱」11 条：0 → 10 关闭）',
   criterion: 'QLT-6 位移必须 ≠ 0，且位移须来自 ② 本身（不是「分量从 N/A 变适用」的假位移）',
-  evidence: 'v3 快照 QLT-6 = 21.4（① 0.4286 / ② 0.0，无绑定裁定 → 保守 0）→ v4 QLT-6 = 71.4（① 0.4286 / ② 1.0，'
-    + '复核报告-v2 绑 v4 判 10/10 关闭）；**Δ = +50.0 且全部来自 ②**；同一对上 QLT-1 **Δ = 0.0**（与冻结读数一致）。'
+  evidence: 'v3 快照 QLT-6 = 21.4（① 0.4286 / ② 0.0，无绑定裁定 → 保守 0）→ v4 QLT-6 = 66.9（① 0.4286 / ② 0.9091，'
+    + '复核报告-v2 绑 v4 判 10/11 关闭）；**Δ = +45.5 且全部来自 ②**；同一对上 QLT-1 **Δ = 0.0**（与冻结读数一致）。'
+    + '**v18.95.0（反哺 W8）重跑**：② 分母由「自述清单 10 条」改为「标题全集排除接受脆弱 11 条」——多出的 1 条 = P1-C3-1'
+    + '（T6 自述清单漏列的「未消」条目，未在复核报告判定关闭），v4 闭合率由 1.0 → 0.9091、Δ 由 +50.0 → +45.5。'
+    + '这是 W8 消除「自述清单选择偏置」的预期结果：标定判据（位移≠0 且来自 ②）仍成立，读数更保守。'
     + '记录见 `run/_AB-QLT5/QLT6-标定.md` 与 `QLT6-标定.json`',
   caveat: '标定样本 = **1 个阳性对照（单项目单对）**——足以证明「它对该类改善敏感」，**不足以**给出阈值或跨项目可比性；'
     + '跨项目比较前先对齐 ② 的条件集来源与 closureBasis（见 validity.boundary）',
@@ -62,7 +65,7 @@ export const CALIBRATION = {
     usageRule: '**① 只作单稿绝对读数**（v18.80.5 动议 C-2）：**不得用于稿间/轮次间比较**（信噪比 ≈ 1）；稿间比较走 ②（条件关闭率，指纹绑定、可复算）。低分段差异读 `evidence.ratioRaw`。**不得跨体例横比**',
     nextSteps: '① 若要用 ① 作稿间比较，判者数须先大到把离散压到待测位移之下（本批实测：n=4 仍不够——极差 7 > 位移 1.75）；'
       + '② **改 `clamp` 分段映射并重标定 = 主人 2026-10-08 明确裁定「暂不做」（冻结，不是待办）**：解冻条件 = 先具备标定手段'
-      + '（判者离散降到待测位移之下，或造出锚定质量标尺）；在此之前不得重开（理由：改映射会作废 v18.53.0 阳性对照标定 Δ=+50，'
+      + '（判者离散降到待测位移之下，或造出锚定质量标尺）；在此之前不得重开（理由：改映射会作废 v18.53.0 阳性对照标定 Δ=+45.5（v18.95.0 W8 改 ② 分母后重跑值），'
       + '而实测判者一致性不达标 ⇒ 标不出新映射。冻结记录见 `audits/反哺报告-QLT6盲评首轮-v18.80.4.md` 汇总表 B 行）；'
       + '③ 若要论「跨体例可比」，须先造**锚定质量标尺**（同稿跨体例改写或专家锚点），否则 H1 的差异永远不可归因',
   },
@@ -119,9 +122,14 @@ export const idsIn = (text, { onlyP01 = true } = {}) => {
  */
 export const conditionSet = (critText) => {
   const lines = critText.split('\n');
-  // 标题式 id（`#### [P0-C1-1] …` / `### [P1-C2-3] …`）——作为退回集与 strict 计数
+  // 标题式 id（`#### [P0-C1-1] …` / `### [P1-C2-3] …`）——作为计分分母（v18.95.0 W8）
+  //   ⚠️ 排除「接受脆弱」：那些条目 T6 明确接受、不要求关闭，计入分母会误伤闭合率（实测 AB-共锁-B 有 2 条）
   const headed = [];
-  for (const l of lines) if (/^#{2,4}\s/.test(l)) headed.push(...idsIn(l));
+  for (const l of lines) {
+    if (!/^#{2,4}\s/.test(l)) continue;
+    if (/接受脆弱|接受该脆弱/.test(l)) continue;
+    headed.push(...idsIn(l));
+  }
   // 「关闭状态」段（标题含「关闭状态」）→ 段内清单条目 `- **P0/C1-1** …`
   const sIdx = lines.findIndex((l) => /^#{2,4}\s/.test(l) && /关闭状态/.test(l));
   let declared = [];
@@ -133,8 +141,12 @@ export const conditionSet = (critText) => {
   }
   declared = [...new Set(declared)];
   const headedUniq = [...new Set(headed)];
-  if (declared.length) return { conditions: declared, source: '§关闭状态 自述清单', strictCount: headedUniq.length };
-  return { conditions: headedUniq, source: headedUniq.length ? '全文 P0/P1 攻击条目标题（无自述清单）' : '无可解析条件', strictCount: headedUniq.length };
+  // v18.95.0（反哺 W8）：计分分母改用**全文 P0/P1 攻击条目标题全集（排除接受脆弱）**（headedUniq），不再优先自述清单——
+  //   自述清单可被 T6「只挑易关条目」操纵，使闭合率虚高。declared 降级为「核对自报与全集的差异」读数。
+  const declaredCount = declared.length;
+  if (headedUniq.length) return { conditions: headedUniq, source: '全文 P0/P1 攻击条目标题全集（排除接受脆弱）', strictCount: headedUniq.length, declaredCount };
+  if (declaredCount) return { conditions: declared, source: '§关闭状态 自述清单（无标题式 id，退回自述）', strictCount: declaredCount, declaredCount };
+  return { conditions: [], source: '无可解析条件', strictCount: 0, declaredCount: 0 };
 };
 
 /**
@@ -279,7 +291,7 @@ export const evaluateQlt6 = ({ projectDir, draftPath }) => {
     na.push({ id: closure.id, weight: closure.weight, reason: closure.naReason });
   } else {
     const critText = readFileSync(crit.path, 'utf8');
-    const { conditions, source, strictCount } = conditionSet(critText);
+    const { conditions, source, strictCount, declaredCount } = conditionSet(critText);
     if (!conditions.length) {
       closure.naReason = `${crit.name} 无可解析的条件 id（§关闭状态 无清单，全文亦无 P0/P1 条目标题）`;
       na.push({ id: closure.id, weight: closure.weight, reason: closure.naReason });
@@ -308,8 +320,10 @@ export const evaluateQlt6 = ({ projectDir, draftPath }) => {
         boundReviews: bound.map((p) => basename(p)),
         unboundReviews: reviews.filter((p) => !bound.includes(p)).map((p) => basename(p)),
         strictP01Count: strictCount,
+        declaredCount: declaredCount ?? 0,
+        selectionGap: (declaredCount ?? 0) - conditions.length,   // 自报清单比标题全集少几条（>0 = 可能只挑了易关条目）
       };
-      notes.push(`② 计分用「${source}」（${conditions.length} 条）；同报告 P0/P1 条目全量为 ${strictCount} 条（非计分，供核对是否只挑了易关的条目）`);
+      notes.push(`② 计分用「${source}」（${conditions.length} 条，v18.95.0 起 = 标题全集）；自述清单 ${declaredCount ?? 0} 条，比全集少 ${(declaredCount ?? 0) - conditions.length} 条（选择偏置读数，非计分）`);
       // ── v18.65.0（C2 变体，同 ①）：**逐域明细**（按条件 id 里的 C1–C7 域聚合，不参与计分）──
       // 它回答的是「哪一类反方攻击反复出现且没被回应」——这是闭合率一个总数看不出来的定位信息。
       const byDomain = (() => {
