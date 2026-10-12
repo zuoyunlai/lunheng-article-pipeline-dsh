@@ -1208,7 +1208,15 @@ try {
     const CSEQ = '(?:\\d+(?:\\.\\d+)*\\.?\\s+)?';
     const cLine = (c) => new RegExp(`^(?:#{1,6}\\s*|[-*]\\s*|\\|\\s*)?\\*{0,2}${CSEQ}${c}(?![0-9])\\b`);
     const headLine = (c) => new RegExp(`^#{2,4}\\s*\\*{0,2}${CSEQ}${c}(?![0-9])\\b`);
-    const missing8 = CIDS.filter((c) => !rl8.some((l) => cLine(c).test(l)));
+    // v18.97.0（E3 受控 A/B 反哺 · 主人授权修订）：除「行首标题 / 列表 / 表格」写法外，
+    //   **内联括号编号**（`（P1，C1+C7）` / `(C1、C7)`）同样算该批判维度已执行。
+    //   依据：E3-ai-content-farm-B 的 T6 报告按「论点 N（P1，C1+C7）」组织——七维内容齐全，
+    //   但**无一行以 C 编号开头** → 旧口径报「批判维度缺 7 节」**P0**（T7 独立复核裁定为假阳性）。
+    //   本放宽**只增加「已出现编号」的识别方式**，**不改变「编号真缺席」的判定**：
+    //   契约用例「整节删除」（缺 C3 / 缺 4 节）中，那些编号在全文**任意形态**下都不出现 → 判定逐字不变。
+    const cInline = (c) => new RegExp(`[（(][^）)\\n]{0,20}(?<![A-Za-z0-9])${c}(?![0-9])`);
+    const hasC = (c) => rl8.some((l) => cLine(c).test(l) || cInline(c).test(l));
+    const missing8 = CIDS.filter((c) => !hasC(c));
     const thin8 = [];
     for (const c of CIDS) {
       const hi = rl8.findIndex((l) => headLine(c).test(l));

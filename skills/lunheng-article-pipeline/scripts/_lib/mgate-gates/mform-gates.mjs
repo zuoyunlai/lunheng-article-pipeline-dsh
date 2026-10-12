@@ -254,20 +254,43 @@ const forPatternText = (() => {
 })();
 const forbiddenPatterns = [
   /T[0-9] (主控|文献|数据|分析|写手|审计|案例|批判|审稿)/g,
-  /((?<!自)主控|文献检索员|数据检索员|分析员|写手|批判伙伴|审计员|审稿人|案例检索员)/g,
+  // v18.97.0（E3 受控 A/B 反哺 · 主人授权修订）：**拆为「无歧义角色」+「域歧义角色」两段**。
+  //   旧式把「分析员 / 写手 / 审稿人」与「主控 / 文献检索员 / …」同列**无条件**扫描——但本流水线
+  //   恰恰服务**研究学术不端与同行评议的稿件**：「论文工厂的写手」「期刊审稿人曾提出疑虑」是
+  //   稿件的**主题词**，不是流水线泄露。E3 四臂实测：farm-A / farm-B 各报一次**假 P0**
+  //   （T7 独立复核两次均裁定为假阳性，逐处列举 8/9 处为专业域语义）。故本段只留无歧义角色；
+  //   域歧义角色移到下方 AMBIG_ROLE_4，**仅当同一行出现流水线信号时**才计泄露。
+  /((?<!自)主控|文献检索员|数据检索员|批判伙伴|案例检索员|审计员)/g,
   // v18.0.0 修复（冲突⑥）：旧式「论衡 + 空格 + 枚举词」会漏掉「论衡 AI 写作流水线」
   //   → 改为「论衡」与枚举词**同句共现**（≤12 字间隔），是否合规披露段交由 LLM 判断
   /论衡[^\n。；]{0,12}(?:agent|流水线|技能|测试轮)/g,
   /角色卡|任务书|六要素|交接报告|反哺报告|教训 #?\d+|Phase [0-9.]+/g,
-  /批 v?\d+ 稿|初稿|草稿|定稿/g,
+  // v18.97.0（E3 反哺）：**契约锁定的无歧义词**（初稿 / 草稿 / 批 N 稿）保持无条件；
+  //   `定稿` 是域歧义的（「标题尚未定稿」「待定稿」「不以推测定稿」都是合法中文），
+  //   故收窄到**指代本流水线产物的白名单形态**——farm-A 的真缺陷 L281 正是「定稿版本」，
+  //   该形态在下方第二正则里**仍逐字命中**（放宽不掩盖真泄露）。
+  /批 v?\d+ 稿|初稿|草稿/g,
+  /定稿(?:版本|\.md|交付|路径|文件|稿)|以定稿|按定稿|定稿前/g,
   /输入材料|输出材料|任务简报第 ?\d+ ?行|修订说明-?v?\d+|scripts\//g,
   /m-gate-check\.mjs|consistency-check\.mjs|count-chars\.mjs/g,
   /\bsubagent\b|\bforeground\b|\bbackground\b|\bsubagent_fork\b/g,
 ];
+// v18.97.0（E3 反哺）**语境判据**：域歧义角色（分析员 / 写手 / 审稿人）**仅当同一行含流水线信号**时计泄露。
+//   信号取「真泄露几乎必然同现」的强标记：T 编号 / 主控 / 论衡 / spawn / Phase / 交接链术语 / 「本段由」。
+//   **已声明边界**：这是启发式——若稿件写成「本段由写手完成。」（无 T 编号、无其他信号）会漏检；
+//   契约用例「本段由 T5 写手完成。」含 `T5 写手` → 第一段正则独立命中，故用例仍红（不放宽契约）。
+const PIPELINE_SIGNAL_4 = /T[0-9]|(?<!自)主控|论衡|\bspawn\b|\bPhase\s*[0-9.]|交接报告|角色卡|任务简报|六要素|反哺报告|修订说明|流水线|本段由|本节由|本稿由/;
+const AMBIG_ROLE_4 = /(分析员|写手|审稿人)/g;
 const leakHits = [];
 for (const pat of forbiddenPatterns) {
   const m = forPatternText.match(pat);
   if (m) leakHits.push(...m);
+}
+for (const m of forPatternText.matchAll(AMBIG_ROLE_4)) {
+  const ls = forPatternText.lastIndexOf('\n', m.index) + 1;
+  const le0 = forPatternText.indexOf('\n', m.index);
+  const line = forPatternText.slice(ls, le0 === -1 ? forPatternText.length : le0);
+  if (PIPELINE_SIGNAL_4.test(line)) leakHits.push(m[0]);
 }
 
 // === M-Form-4 补充：文末节二级扫描（v18.0.0 新增，P0-4）===

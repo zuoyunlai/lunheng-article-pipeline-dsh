@@ -137,11 +137,21 @@ try {
   //   旧口径「只读数据卡」把「56 > 52 满足」误报为「12 < 38 不足」→ 假 P0 触发不存在的 T2 重检索。
   //   仅当该文件存在时追加计数（不存在 → 行为与旧版逐字等价，run/ 49 组 baseline 不受影响）；读取失败按 0 计并在下方留痕。
   let caseSetReadError = null;
+  // v18.97.0（E3 受控 A/B 反哺 · 主人授权修订）：**案例集内嵌于数据卡**的布局同样计入。
+  //   依据：E3 四臂实测（`E3-ai-content-farm-A` / `E3-ai-content-farm-B`）——30 条案例写在
+  //   `data/数据卡.md` **第二部分**（`### [D-CASE01]` 逐条），项目**没有**独立的
+  //   `data/撤稿案例数据集.md`，于是 `caseSetN` 恒为 0 → 报「数据条目 8 条 < 简报需求 38 条」
+  //   **假 P0**（T7 独立复核两次均裁定为假阳性，理由即本条）。v18.5.1 已为「独立案例集文件」
+  //   引入这一口径，本次只是把同一口径推广到「内嵌布局」——**取大不取和**，两种布局并存时不重复计数。
+  const caseIdsInCard = dataCard
+    ? new Set([...dataCard.matchAll(/\[D-CASE\d+\]/g)].map((m) => m[0])).size
+    : 0;
   try {
     const caseSetPath = join(projectRoot ?? dirname(dirname(draftPath)), 'data', '撤稿案例数据集.md');
-    if (existsSync(caseSetPath)) {
-      caseSetN = new Set([...readFileSync(caseSetPath, 'utf8').matchAll(/\[D-CASE\d+\]/g)].map((m) => m[0])).size;
-    }
+    const caseIdsInFile = existsSync(caseSetPath)
+      ? new Set([...readFileSync(caseSetPath, 'utf8').matchAll(/\[D-CASE\d+\]/g)].map((m) => m[0])).size
+      : 0;
+    caseSetN = Math.max(caseIdsInFile, caseIdsInCard);
   } catch (e) { caseSetReadError = e.message; }
   dataEntries = dataCardN + caseSetN;
   const needsT2 = briefData.minDataPoints;
