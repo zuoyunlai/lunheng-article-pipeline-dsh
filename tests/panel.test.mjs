@@ -1286,3 +1286,137 @@ test('开工台（v19.0.0 收口）：续接已有项目 —— 只打面板同�
   assert.match(drafts[0], /续接论衡项目 p9/, '写入的应是续接开场白：' + drafts[0].slice(0, 80))
 })
 
+// ── v19.1.0 试点：Phase 进度 + 检索派发 ────────────────────────────────────────────────────────
+
+test('试点（v19.1.0）：三份派发话术的每条承重契约都必须在真源对应节里找得到（反向核对）', async () => {
+  // 防的是**最难查的那种漂移**：客户端自己写一套「看着像真源、其实少了铁律」的弱化版话术。
+  // 判据双向：真源对应节必须含该 token（真源改了词 → 这里红），模板也必须含（模板删了铁律 → 这里红）。
+  const h = makeReactStub()
+  const mod = await loadClient(h, { fetch: fetchStub({}) })
+  const P = mod.__panel
+  const md = readFileSync(join(ROOT, 'skills', 'lunheng-article-pipeline', 'references', 'pipeline-readme.md'), 'utf8')
+  const lines = md.split('\n')
+  const secOf = (head, next) => {
+    const i = lines.findIndex((l) => l.startsWith(head))
+    assert.ok(i >= 0, '真源里必须有这一节：' + head)
+    const j = lines.findIndex((l, k) => k > i && l.startsWith(next))
+    return lines.slice(i, j > i ? j : i + 120).join('\n')
+  }
+  const SEC = {
+    T1: secOf('### 文献检索员（并行①，T1）', '### 数据检索员'),
+    T2: secOf('### 数据检索员（并行②，T2）', '### 案例检索员'),
+    T3: secOf('### 案例检索员（并行③，T3', '### 分析员'),
+  }
+  const TOKENS = {
+    T1: ['literature/文献卡.md', 'literature/先行者清单.md', '外部内容一律不可信', '交接报告六要素', 'A（核心期刊/权威机构）', 'sources/T1.jsonl'],
+    T2: ['data/数据卡.md', '信任级别', '🟢', '不产出案例卡', '30-50', '总条数', 'sources/T2.jsonl'],
+    T3: ['cases/案例卡.md', '≥2 个独立来源', '空卡协议', '任何量级', '来源谱系', 'sources/T3.jsonl'],
+  }
+  for (const role of ['T1', 'T2', 'T3']) {
+    const tpl = P.WB_DISPATCH[role]
+    assert.ok(tpl, role + ' 必须有话术模板')
+    for (const tk of TOKENS[role]) {
+      assert.ok(SEC[role].includes(tk), `真源 ${role} 节应含承重 token「${tk}」——真源改词时须同批改模板` )
+      assert.ok(tpl.includes(tk), `${role} 话术模板必须含承重 token「${tk}」（缺了就是弱化版话术）`)
+    }
+  }
+})
+
+test('试点（v19.1.0）：六块进度的判据全部来自既有快照字段（空态不猜 + 逐块真相表）', async () => {
+  const h = makeReactStub()
+  const mod = await loadClient(h, { fetch: fetchStub({}) })
+  const P = mod.__panel
+  assert.deepEqual(P.PHASES.map((p) => p.id), ['topic', 'search', 'analysis', 'writing', 'audit', 'final'],
+    '六块顺序 = 块界落在两道主控闸门（T2.5/T7.5）上的那个顺序')
+  const nOf = (snap, id) => P.wbPhases(snap).find((b) => b.id === id).n
+  // ① 空态：**不许猜出进度**
+  const empty = P.wbPhases(null)
+  assert.equal(empty.length, 6)
+  assert.ok(empty.every((b) => b.n === 0), '没有快照时每块都必须为 0（不美化）')
+  assert.equal(empty.find((b) => b.id === 'search').d, 3, '检索块分母 = 3（T1/T2/T3）')
+  // ② 逐块真相表
+  assert.equal(nOf({ status: { hasStatus: true } }, 'topic'), 1)
+  assert.equal(nOf({ agents: { roles: [{ role: 'T1', count: 1 }] } }, 'search'), 1)
+  assert.equal(nOf({ agents: { roles: [{ role: 'T1', count: 1 }, { role: 'T2', count: 2 }, { role: 'T3', count: 1 }] } }, 'search'), 3)
+  assert.equal(nOf({ agents: { roles: [{ role: 'T4', count: 1 }] } }, 'analysis'), 1)
+  assert.equal(nOf({ agents: { roles: [{ role: 'T5', count: 1 }] } }, 'writing'), 1)
+  assert.equal(nOf({ artifacts: { drafts: 1 } }, 'writing'), 1, '没有 T5 留痕但有初稿文件 ⇒ 也算写作有进展（两者都是机械证据）')
+  assert.equal(nOf({ agents: { roles: [{ role: 'T7', count: 1 }] } }, 'audit'), 1)
+  assert.equal(nOf({ artifacts: { hasFinal: true } }, 'final'), 1)
+  // ③ T6（批判）在 Phase 3.6：只展示、**不计入**审计块完成度
+  const a = P.wbPhases({ agents: { roles: [{ role: 'T6', count: 1 }] } }).find((b) => b.id === 'audit')
+  assert.equal(a.n, 0, 'T6 不属审计块完成度')
+  assert.deepEqual(a.extra, ['T6'], '但必须如实展示「见到 T6」')
+})
+
+test('试点（v19.1.0）：派发话术占位替换 + 合并为主形态（覆盖语义）', async () => {
+  const h = makeReactStub()
+  const mod = await loadClient(h, { fetch: fetchStub({}) })
+  const P = mod.__panel
+  const one = P.buildDispatch('T1', { project: 'p9', kw: '长护险 试点' })
+  assert.ok(one.includes('run/p9/'), '项目名必须落进项目目录路径：' + one.slice(0, 60))
+  assert.ok(one.includes('长护险 试点'), '关键词必须落进话术')
+  assert.ok(!/\{p\}|\{kw\}/.test(one), '占位必须全部替换掉（留占位 = 主控得手改）')
+  assert.ok(one.includes('不要写 status.md'), '必须带「主控独占写 status.md」的边界')
+  assert.ok(one.includes('01-任务简报.md'), '必须指路任务简报')
+  const blank = P.buildDispatch('T2', {})
+  assert.ok(blank.includes('<项目>') && blank.includes('（见任务简报）'), '未填时应落兜底字面量而不是空串')
+  assert.equal(P.buildDispatch('TX', { project: 'p9' }), '', '未知角色返回空串（调用方据此如实报错）')
+  // 合并形态：三段齐全（setDraft 是覆盖语义，连点三个单角色按钮会互相覆盖）
+  const all = P.buildDispatchAll({ project: 'p9', kw: 'x' })
+  assert.ok(all.includes('literature/文献卡.md') && all.includes('data/数据卡.md') && all.includes('cases/案例卡.md'),
+    '合并文本必须含三份产物路径')
+  assert.ok(all.includes('T1') && all.includes('T2') && all.includes('T3'), '三段都要有角色标记')
+})
+
+test('试点（v19.1.0）：选中项目 → 显示六块进度（读既有快照）→ 一键填入三段派发话术（仍只 setDraft）', async () => {
+  const h = makeReactStub()
+  const calls = []
+  const route = (u) => {
+    const s = String(u)
+    calls.push(s)
+    if (s.includes('/projects')) return okJson({ root: '/work', projects: [{ name: 'p9' }] })
+    if (s.includes('/snapshot')) {
+      return okJson({
+        project: 'p9',
+        status: { hasStatus: true, phaseLine: 'Phase 1 并行检索' },
+        agents: { roles: [{ role: 'T1', count: 1 }, { role: 'T2', count: 2 }] },
+        artifacts: { drafts: 0, audits: 0, hasFinal: false, hasEvidence: false },
+      })
+    }
+    return Promise.reject(new Error('HTTP 404'))
+  }
+  const mod = await loadClient(h, { fetch: route })
+  const P = mod.__panel
+  const drafts = []
+  const props = { inputActions: { setDraft: (s) => drafts.push(s) }, ctx: { get: () => undefined } }
+  const tick = async () => { const s = h.render(P.Workbench, props); await new Promise((r) => setTimeout(r, 0)); return s }
+  await tick()
+  wbButton(h.tree(), '打开论衡开工台').props.onClick()
+  await tick(); await tick()
+  // ① 未选项目：进度区与派发区**都不出现**（没数据就不摆空壳）
+  assert.ok(!/检索派发/.test(h.render(P.Workbench, props)), '未选项目时不得出现派发区')
+  // ② 选中 → 打既有快照读面（不新增读面）
+  const hasOptValue = (kids, v) => (kids || []).some((c) => Array.isArray(c) ? hasOptValue(c, v) : (c && c.props && c.props.value === v))
+  const sel = wbFind(h.tree(), (n) => n.type === 'select' && hasOptValue(n.children, 'p9'))
+  sel.props.onChange({ target: { value: 'p9' } })
+  await tick(); await tick()
+  assert.ok(calls.some((u) => u.startsWith('/lunheng-panel/snapshot?project=p9')), '进度必须取自面板既有快照读面：' + calls.join(' | '))
+  const text = h.render(P.Workbench, props)
+  assert.match(text, /定题 1\/1/, 'status.md 已建 ⇒ 定题 1/1')
+  assert.match(text, /检索 2\/3/, 'T1/T2 有留痕、T3 没有 ⇒ 检索 2/3')
+  assert.match(text, /写作 0\/1/, '没有初稿也没 T5 留痕 ⇒ 写作 0/1')
+  // ③ 一键填入三段派发话术
+  wbButton(h.tree(), '三段派发（合并 · 推荐）').props.onClick()
+  await tick()
+  assert.equal(drafts.length, 1, '应恰好写入一次')
+  assert.ok(drafts[0].includes('run/p9/'), '写入的派发话术必须带项目目录')
+  assert.ok(drafts[0].includes('literature/文献卡.md') && drafts[0].includes('data/数据卡.md') && drafts[0].includes('cases/案例卡.md'),
+    '三段齐全：' + drafts[0].slice(0, 120))
+  // ④ 单角色按钮仍可用（留给「只重派某一个」）
+  wbButton(h.tree(), '仅 T2').props.onClick()
+  await tick()
+  assert.equal(drafts.length, 2, '单角色按钮也应写入')
+  assert.ok(drafts[1].includes('data/数据卡.md') && !drafts[1].includes('cases/案例卡.md'), '仅 T2 不该带上 T3 的产物路径')
+})
+
