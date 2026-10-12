@@ -947,6 +947,33 @@ const assertNoColumnFlexBasis = (node, path = 'root') => {
   kids.forEach((c, i) => assertNoColumnFlexBasis(c, path + '>' + String(node.type) + '[' + i + ']'))
 }
 
+test('开工台（v19.0.4）：标题前是**纯内联 SVG 印章图标**（currentColor / 跟随 size / 装饰性）', async () => {
+  // 主人 2026-10-12 提供图形，并按页面口径落地：纯内联 SVG、`currentColor` 随主题、尺寸由属性控制、
+  //   装饰性 `aria-hidden`（标题文字已表达含义）。**路径数据逐字保留**——同一份 `d` 才决定同一观感
+  //   （它靠镂空笔画的绕向成形，「顺手简化」会把它变成一个实心圆）。
+  const h = makeReactStub()
+  const mod = await loadClient(h, { fetch: fetchStub({}) })
+  const P = mod.__panel
+  const el = P.WbIcon({ size: 18 })
+  assert.equal(el.type, 'svg', '图标根节点必须是 svg（不得用图片外链 / 字体图标）')
+  assert.equal(el.props.width, 18, '必须跟随传入的 size')
+  assert.equal(el.props.height, 18)
+  assert.equal(el.props.fill, 'currentColor', '必须跟随主题色，不得写死颜色（暗色下会变成黑块）')
+  assert.equal(el.props.viewBox, '0 0 1024 1024', '保留图形作者坐标系')
+  assert.equal(el.props['aria-hidden'], 'true', '装饰性图标：读屏不该重复念（标题文字已表达含义）')
+  assert.equal(el.children.length, 1)
+  assert.equal(el.children[0].type, 'path')
+  const d = el.children[0].props.d
+  assert.ok(d.startsWith('M512.13 66.26'), '应为主人选定的那一份图形（换图形需主人确认）')
+  assert.ok(d.length > 2500, '路径数据完整性（实测 2,942 字符；防被"顺手简化"成实心圆）')
+  assert.ok(d.endsWith('z'), '路径必须以闭合子路径结尾（原图末段）')
+  assert.equal(P.WbIcon({}).props.width, 16, '缺 size 时用 16 兜底')
+  // 组件层面：图标必须在标题文字**之前**渲染
+  const text = h.render(P.Workbench, { inputActions: { setDraft: () => {} }, ctx: { get: () => undefined } })
+  assert.ok(text.includes('<svg'), '标题行应含图标')
+  assert.ok(text.indexOf('<svg') < text.indexOf('论衡开工（Phase 0 定题）'), '图标必须在标题**前**')
+})
+
 test('开工台（v19.0.2）：列容器内不得出现 px 的 flex-basis（主人实测「大段空白」的通类根因）', async () => {
   const h = makeReactStub()
   const mod = await loadClient(h, { fetch: fetchStub({}) })
