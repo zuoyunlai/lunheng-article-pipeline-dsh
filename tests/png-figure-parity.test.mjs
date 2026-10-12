@@ -92,16 +92,48 @@ test('③ 面板链：边车 mGate.detail 三态如实透出（空态「为什�
   rmSync(c.d, { recursive: true, force: true })
 })
 
-test('④ 落盘链：--out 被识别；查不到用量记录时 exit 10 且绝不落 0 值文件', () => {
-  const { d } = mkProject()   // 空项目：没有任何可提取会话 ID 的日志
-  const outFile = join(d, 'final', 'token-cost.json')
-  const r = run([join(SCRIPTS, 'token-cost.mjs'), '--project', join(d, 'run', 'proj'), '--out', outFile])
-  assert.equal(r.code, 10, '未提取到会话 ID → exit 10（参数或路径错）')
-  assert.match(r.out, /未(提取到会话 ID|找到任何项目日志)/, '报错应是「没会话」，不是「未知参数」——即 --out 必须已被参数表接受')
-  assert.ok(!r.out.includes('未知参数'), `--out 不得被判成未知参数：${r.out.slice(0, 200)}`)
-  assert.equal(existsSync(outFile), false, '**查不到用量时绝不落盘**：0 值文件会把「查不到」写成「实测 0」')
-  // --no-write 同样必须被接受（不得报未知参数）
-  const r2 = run([join(SCRIPTS, 'token-cost.mjs'), '--project', join(d, 'run', 'proj'), '--no-write'])
-  assert.ok(!r2.out.includes('未知参数'), '--no-write 须在参数表内')
+test('④ 落盘链：成功即写盘；查不到用量记录时 exit 10 且绝不落 0 值文件', () => {
+  // **环境无关**（v19.1.9 CI 实测教训）：本机有 DSH 会话库时脚本会走到「未找到项目日志」，
+  //   而 CI 无库时会先报「找不到会话投影缓存」——**一条只在开发机绿的用例等于没钉住**。
+  //   这里改为**自带数据源夹具**：按脚本支持的「旧版单文件布局」造一次真会话，让成功路径可复现。
+  const { d } = mkProject()
+  const home = join(d, 'dshempty', 'nope')   // 先备用：一个没有会话库的 DSH_HOME
+  mkdirSync(join(d, 'dshempty'), { recursive: true })
+  const SID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+  const store = join(d, 'dshempty', 'storages')
+  mkdirSync(store, { recursive: true })
+  writeFileSync(join(store, 'session_projcache.json'), JSON.stringify({
+    tables: { sessions: { [SID]: { rows: { tokenUsage: { val: { totals: {
+      uncachedInputTokens: 1000, cacheReadTokens: 2000, cacheWriteTokens: 0, outputTokens: 500,
+    } } } } } } },
+  }))
+  const homeFixture = join(d, 'dshempty')
+
+  // ① 成功路径：--out 指定的文件必须真的被写出来（写盘是本版新增能力，必须钉住）
+  const okFile = join(d, 'out', 'token-cost.json')
+  const r1 = run([join(SCRIPTS, 'token-cost.mjs'), '--dsh-home', homeFixture, '--sessions', SID, '--out', okFile])
+  assert.equal(r1.code, 0, `应成功：${r1.out.slice(0, 300)}`)
+  assert.ok(existsSync(okFile), '--out 指定的文件必须被写出（本版新增的落盘能力）')
+  assert.equal(JSON.parse(readFileSync(okFile, 'utf8')).tokens.total, 3500, '落盘内容须与统计数据一致')
+
+  // ② --no-write：成功也不写盘（退回旧行为）
+  const noWriteFile = join(d, 'out', 'token-cost-nowrite.json')
+  const r2 = run([join(SCRIPTS, 'token-cost.mjs'), '--dsh-home', homeFixture, '--sessions', SID, '--out', noWriteFile, '--no-write'])
+  assert.equal(r2.code, 0)
+  assert.equal(existsSync(noWriteFile), false, '--no-write 须真的不落盘')
+
+  // ③ **查不到用量记录 → exit 10 且绝不落盘**：这条同时钉住「写盘块在 exit 10 之后」的顺序
+  //    （顺序反了就会留下一个 0 值文件，把「查不到」写成「实测 0」——v18.2.6 立此门要防的正是它）
+  const zeroFile = join(d, 'out', 'should-not-exist.json')
+  const r3 = run([join(SCRIPTS, 'token-cost.mjs'), '--dsh-home', homeFixture, '--sessions', 'ffffffff-0000-0000-0000-000000000000', '--out', zeroFile])
+  assert.equal(r3.code, 10, '未命中任何会话 → exit 10')
+  assert.ok(!r3.out.includes('未知参数'), `--out 不得被判成未知参数：${r3.out.slice(0, 200)}`)
+  assert.equal(existsSync(zeroFile), false, '**查不到用量时绝不落盘**：0 值文件会把「查不到」写成「实测 0」')
+
+  // ④ 完全没有会话库时（CI 形态）：仍然 exit 10，且 --out 已被参数表接受
+  const r4 = run([join(SCRIPTS, 'token-cost.mjs'), '--dsh-home', home, '--project', join(d, 'run', 'proj'), '--out', join(d, 'out', 'x.json')])
+  assert.equal(r4.code, 10)
+  assert.ok(!r4.out.includes('未知参数'), `--out 须在参数表内：${r4.out.slice(0, 200)}`)
+  assert.match(r4.out, /找不到会话投影缓存|未提取到会话 ID|未找到任何项目日志/, '失败原因须是「没数据」而不是「参数不认识」')
   rmSync(d, { recursive: true, force: true })
 })
