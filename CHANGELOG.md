@@ -2,6 +2,16 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 19.0.3 — 2026-10-12
+
+> **主题**：修开工台**槽位几何选错族**导致的「两端不齐」（主人实测「工作台这个宽度好像又窄了点，两端没对齐」）。
+> **版本判据 = patch**：单点几何修复 + 设计基准更正与契约钉更新，无机制语义变更。
+> **根因（不是数值错，是选错了几何族）**：该槽位**有两族几何**——①**叠层卡片族**（`QueueDock` / `TodoPanel`）：`width: calc(100% - 2×side-clearance - 2×dock-inset)`、`max-width: calc(card-max-width - 2×dock-inset)`、`padding: 0 dock-inset`、负下边距、**圆角只留上边**——它们**刻意**比输入框窄一圈并贴在输入框上沿；②**独立卡片 / 提示条族**（shell 自己在输入栏里的 `uV2eYG_notice`）：`width: 100%`、`max-width: var(--dsh-composer-card-max-width)`——**与输入框两端严格对齐**。开工台是**四边独立圆角的卡片**，属后者；v19.0.1 抄了前者 ⇒ 再叠一层内缩（外层容器已带 `padding: 0 side-clearance`），**右端短了约 32px**。
+> **修法**：`wbDock` 改为 `width: 100%` + `maxWidth: var(--dsh-composer-card-max-width, 100%)` + `margin: 0 auto`，**去掉**再减 `side-clearance` / `dock-inset` 与那层 `padding`。契约钉随之更新：断言 `width === '100%'`、`maxWidth` 取 card-max-width 且**不得出现** `dock-inset`、外层**不得**再有 `padding`。
+> **DESIGN.md §7.1 更正**：由「照抄 QueueDock」改为**两族对照表**，并给出判据一句话——**要跟输入框两端对齐就抄 shell 自己的 `notice`；要做「贴在输入框上的附件」才抄 QueueDock**；附两条硬纪律（外层已留白 ⇒ `width:100%` 足够，再减即双重内缩；`max-width` 必须带 `100%` fallback）。
+> **验证（本版终态）**：全量套 **1037 / 1037 全绿**（套件总 **1038** 项 / **1037 pass** / **0 fail** / **1 skip**）；`consistency-check` **0 处漂移**；`repo-hygiene-check` **全门通过**；`plugin-surface-check` **11 项通过 / 0 失败 / 0 提示**；`pack-smoke` **通过**；`no-write-check` **通过**。
+> **未做（如实登记）**：报告 §4.2 的「六 Phase 模块」形态仍只做了 Phase 0 一层（等主人拍板）；`!!js` 运行期对照实验与 preset 真机部署验证仍缺环境。
+
 ## 19.0.2 — 2026-10-12
 
 > **主题**：修掉开工台里**一处方向性布局 bug**（主人实测「全部同意和展开高级设置之间有大段空白」），并把这类错误做成**通类机检**。

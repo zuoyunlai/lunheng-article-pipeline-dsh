@@ -979,21 +979,25 @@ test('运行面板（v19.0.2）：同一「列容器 / px flex-basis」通类检
   assertNoColumnFlexBasis(h.tree())
 })
 
-test('开工台（v19.0.1）：控宽必须走 shell 的 composer 变量（主人实测：曾横向撑满窗口）', async () => {
-  // 病灶（主人实测）：「工作台样式显示太宽，横向撑满窗口，不是和下面对话框等宽」。
-  //   官方**同槽位**占据者（`@deepseek-ai/dsh-client-ui-conversation` 的 QueueDock）给出了该槽位的几何契约：
-  //   `width: calc(100% - 2×side-clearance - 2×dock-inset)`、`max-width: calc(card-max-width - 2×dock-inset)`、
-  //   `margin: 0 auto`、`padding: 0 dock-inset` —— 四个变量由 shell 提供。**照抄契约，不猜像素**。
+test('开工台（v19.0.1/v19.0.3）：控宽必须抄 shell 的**独立卡片族**（notice），不得抄叠层卡片族', async () => {
+  // 病灶沿革（两版各一次，主人实测）：
+  //   v19.0.0「横向撑满窗口」→ v19.0.1 抄了 QueueDock 的几何 → v19.0.3「又窄了点，两端没对齐」。
+  //   **根因是选错了几何族**：QueueDock / TodoPanel 是**叠层卡片**（`- 2×side-clearance - 2×dock-inset`、
+  //   负下边距、圆角只留上边，刻意比输入框窄一圈贴在上面）；而 shell 自己在输入栏里的 notice
+  //   （`uV2eYG_notice`）是 `width: 100%; max-width: var(--dsh-composer-card-max-width)`——**与输入框两端严格对齐**。
+  //   开工台是四边独立圆角的卡片 ⇒ 属 notice 族。
   const h = makeReactStub()
   const mod = await loadClient(h, { fetch: fetchStub({}) })
   const S = mod.__panel.S
   assert.ok(S.wbDock, '必须有外层几何样式 wbDock（几何与卡片分离——卡片自带边框/底色，几何归槽位契约）')
+  assert.equal(S.wbDock.width, '100%', '在外层容器内占满（外层已有 side-clearance 内边距，不得再减一次）')
   assert.match(String(S.wbDock.maxWidth), /--dsh-composer-card-max-width/, '最大宽必须取 shell 的 composer 卡片宽变量')
-  assert.match(String(S.wbDock.width), /--dsh-composer-side-clearance/, '两侧留白必须取 shell 的 side-clearance 变量')
-  assert.match(String(S.wbDock.padding), /--dsh-composer-dock-inset/, 'dock 内缩必须取 shell 的 dock-inset 变量')
+  assert.match(String(S.wbDock.maxWidth), /, 100%\)/, '变量缺失必须有 fallback（退化成满宽而不是算坏）')
+  assert.ok(!/dock-inset/.test(String(S.wbDock.maxWidth)), '**不得**再减 dock-inset——那是叠层卡片族，减了就是两端不齐（v19.0.3 实测）')
+  assert.ok(!/dock-inset/.test(String(S.wbDock.width)), 'width 里同样不得出现 dock-inset / side-clearance')
+  assert.ok(S.wbDock.padding === undefined, '不得再给外层加 dock-inset 左右内边距（会二次内缩）')
   assert.match(String(S.wbDock.margin), /auto/, '必须居中（margin auto）')
-  assert.ok(!String(S.wbWrap.flex || '').includes('1 1 100%'), '卡片本身不得再横向撑满（旧版症状）')
-  assert.match(String(S.wbDock.width), /var\(--dsh-composer-side-clearance, 0px\)/, '变量缺失必须有 fallback（极简宿主要退化成旧观感而不是算坏）')
+  assert.ok(!String(S.wbWrap.flex || '').includes('1 1 100%'), '卡片本身不得横向撑满（v19.0.0 症状）')
 })
 
 test('开工台（v19.0.0 §4.4）：zh/en 字典键集合必须逐字相同（双语平衡）', async () => {

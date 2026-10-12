@@ -1,6 +1,6 @@
 # DESIGN.md — 论衡插件界面设计基准
 
-> 版本：v19.0.2｜**读者**：改 `lib/client.js`（浏览器半边）的维护者/子代理。**本文件不进任何运行期读清单**（流水线角色不读）。
+> 版本：v19.0.3｜**读者**：改 `lib/client.js`（浏览器半边）的维护者/子代理。**本文件不进任何运行期读清单**（流水线角色不读）。
 > **为什么需要它**：客户端的样式约定此前**只活在代码注释里**（散在 `lib/client.js` 的 `T()` / `S` 与若干「v18.9x 修复」注解中）。注释会被重写、会被漏读；而 `lib/client.js` 是**单文件 1700 行 + 零构建链**的形态，没有组件库或 lint 兜底——约定一旦失守就是**静默的视觉退化**（暗色下看不见、图表全黑、文字与底色同色）。本文件把这些约定收成**唯一真源**，并在 §9 列出机械消费者（写错会红）。
 > **边界（如实声明）**：本文件**只是约定**，不是自动执行体。真正拦住越界的是 §9 的机检；本文件的作用是让「为什么这样写」在改代码之前就能查到。
 
@@ -75,22 +75,22 @@
 
 **机械约束**：`tests/panel.test.mjs` 有**通类方向钉**——扫整棵渲染树（开工台 + 运行面板），任何列容器的子元素带 `px` 的 `flex-basis` 即红。**换一处复用同类样式照样红**，不靠人工记得。
 
-### 7.1 槽位几何：`conversation.input.dock` 必须照抄 shell 的 composer 变量（v19.0.1 立）
+### 7.1 槽位几何：`conversation.input.dock` **有两族几何，先选族再抄**（v19.0.1 立，v19.0.3 更正）
 
-**教训（主人实测）**：「工作台样式显示太宽，横向撑满窗口，不是和下面对话框等宽」——该槽位是「全宽松紧」的，**默认 100% 宽 ≠ composer 卡片的宽**。
+**教训（主人两次实测，两版各一次）**：v19.0.0「横向撑满窗口」→ v19.0.1 抄了 QueueDock 的几何 → v19.0.3「又窄了点，两端没对齐」。**根因不是数值错，是选错了几何族。**
 
-**正解 = 照抄官方同槽位占据者的几何**（`@deepseek-ai/dsh-client-ui-conversation` 的 QueueDock.module.css；它是官方自己挂在这个槽位上的条目）：
+| 族 | 谁在用 | 几何 | 视觉 |
+|---|---|---|---|
+| **叠层卡片** | `QueueDock` / `TodoPanel` | `width: calc(100% - 2×--dsh-composer-side-clearance - 2×--dsh-composer-dock-inset)`、`max-width: calc(--dsh-composer-card-max-width - 2×dock-inset)`、`padding: 0 dock-inset`、**负下边距**、**圆角只留上边** | **刻意**比输入框窄一圈、贴在输入框上沿（附件感） |
+| **独立卡片 / 提示条** | shell 自己在输入栏里的 `uV2eYG_notice` | `width: 100%`、`max-width: var(--dsh-composer-card-max-width)` | **与输入框两端严格对齐** |
 
-```css
-width: calc(100% - var(--dsh-composer-side-clearance) - var(--dsh-composer-side-clearance)
-                   - var(--dsh-composer-dock-inset)       - var(--dsh-composer-dock-inset));
-max-width: calc(var(--dsh-composer-card-max-width) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset));
-margin: 0 auto;              /* 官方为贴住 composer 用负的下边距；本包用正间距（卡片是独立盒子） */
-padding: 0 var(--dsh-composer-dock-inset);
-flex: none;
-```
+**本包的开工台属「独立卡片」族**（四边独立圆角、自带边框）⇒ 抄 `notice` 的写法。
 
-**纪律**：① **照抄契约、不猜像素**（这几个变量由 shell 提供：`--dsh-composer-card-max-width` / `-dock-inset` / `-side-clearance` / `-stack-gap`）；② 每个 `var()` 都要 **fallback**（`0px` / `100%`），变量缺失时退化成旧观感而不是把 `calc()` 算坏；③ **几何与卡片分离**——外层 `wbDock` 只做几何，内层 `wbWrap` 才带边框/底色/圆角。
+**两条硬纪律**：
+1. **外层容器已经做了侧向留白**（输入栏 root 有 `padding: 0 var(--dsh-composer-side-clearance)`）——所以 **`width: 100%` 就够了；再减一次 `side-clearance` 就是双重内缩**（v19.0.3 实测：右端短了约 32px）。
+2. `max-width` 用 `var(--dsh-composer-card-max-width, 100%)`：宽窗口时靠 `margin: 0 auto` 居中、与输入框同宽；**变量缺失时 fallback 到 100%**（退化成满宽，而不是把 `calc()` 算坏）。变量的提供方是 shell（输入栏 root 定义 `--dsh-composer-card-max-width: calc(--dsh-chat-content-width + 32px)`、`-side-clearance: 16px`、`-dock-inset: 8px`）。
+
+**判据一句话**：**要跟输入框两端对齐，就抄 shell 自己的 `notice`；要做「贴在输入框上的附件」，才抄 QueueDock。**
 
 ## 八、结构与跨版本生存
 
