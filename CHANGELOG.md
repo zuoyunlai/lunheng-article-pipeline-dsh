@@ -2,6 +2,21 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 18.99.0 — 2026-10-12
+
+> **主题**：`sjkncs/dsh-research` 对比核实反哺的**核实与落地**——新立「执行面允许面三方对账」门 + 同一处安全面表述的更正 + preset 命名限定 + rank 表表源化。
+> **版本判据 = minor**：新立一条机械规则（**㊴**，进登记表 38 → 39 类主规则）并伴随**安全面披露更正**（`SECURITY.md` 的允许面此前**低报**），非纯文档润色。
+> **动因**：`audits/反哺报告-2026-10-11-dsh-research对比核实-v1.md`。该报告基准为 v18.96.0（`fa1a4981`）；**本轮在 v18.98.0（`c71150bc`）上逐条回核**（真源已前进两版，行号未漂）后落地。**授权**：主人直接指令（「对照真源核实…可以按报告开始修订」）→ 按 `AGENTS.md`「唯一例外：主人显式授权」可写机制文件，已走安全流程五步（改前备份 `%DSH_HOME%/_backup/lunheng-2026-10-12/`，163 个文件；`edit` 精确匹配；改后 `node --check` + 双门复跑；可回滚）。
+> **核实结论（先核后改）**：报告 N1 / N2 / N3 三条**全部成立，且在本版上原样复现**——① `cordis.patch.yml:37` 与 `SECURITY.md:29` 把**本包用到的子集**写成**全局排他断言**，与规则 ⑭ 的实现（黑名单，`baseUrl` / `URL` / `process.platform` 均**允许**）冲突；② 登记表里**没有一条**门把「执行面注释 ↔ SECURITY 允许面行 ↔ ⑭ 的 `FORBIDDEN`」对账，实跑 **exit 0 / 0 处漂移 = 假绿**；③ 官方判定 preset 的依据确为目录内含 `agent.cordis.yml`（`dsh-agent-presets/lib/types/discovery.js` 的 `COMPOSITION_FILE`），而 `examples/preset/` 无该文件。**报告 §6 的「rank 250 出处待核」本轮结案**：250 **确有官方出处**——`@deepseek-ai/dsh-skill/lib/index.js` 的 `const RUNTIME_RANK = 250`（它不在 filesystem provider 的 README 表内，故「自注并入官方表」的引用纪律问题仍成立）。
+> **已落地**：
+> 　· **R3 新立规则 ㊴「执行面允许面三方对账」**（`scripts/_lib/cc-rules/docs-version-rules.mjs`；登记表 + `docs/quick-facts.md` 38 → 39 同步）：判据 A1 = 允许面**不得在文档侧下无真源指针的排他断言**（含「允许」且含「只/仅」的行必须同行带 `规则 ⑭` / `docs-version-rules` 指针）；A2 = `FORBIDDEN` 标识符出现在「允许」语境行时必须同处否定/排除措辞。为使 ⑭ 与 ㊴ 共用**同一份**黑名单，`FORBIDDEN` 自 ⑭ 的块内**提到模块作用域**（两处各写一份就是下一个漂移源）。**顺序按报告 §3.2**：先写规则与负向用例（当场红，命中 N1 两处且**无假阳性**）→ 再改文档 → 转绿。
+> 　· **R1 / R2 文档侧更正**：`cordis.patch.yml` 执行面披露段与 `SECURITY.md`「允许的表达式内容」行改为「**规则 ⑭ 的允许面 = `FORBIDDEN` 补集**（真源指针）」+「**本包当前实际只用到** `process.env.*` 与 `Object.assign`——这是**本包的选择，不是规则的限制**」。判据（报告 §3.1）：旧文把**局部事实升格为全局断言**，会把官方支持的 `baseUrl` 写法误导为违规、并把官方自带 preset 正在用的 `process.platform` 描述成过时。
+> 　· **R4 preset 命名限定（含一处报告未发现的新漂移）**：`cordis.patch.yml` §5 段名改为「论衡的 preset 落地说明（本段无 patch 行）」并补「官方判定依据 = `agent.cordis.yml`；本包**没有**可被加载的 preset 目录」；`examples/preset/README.md` 顶部补同一条限定。**同批修掉报告未点到的过期句**：`cordis.patch.yml` 旧文写「examples/preset/ 目录**只保留** `preset.yml` + `README.md`」，**漏了 H6（v18.61.0）早已落地的 `agent-tiered/cordis.yml`**——与该目录 README 的 3 条目自述冲突，属同族的「文档落后于实现」。
+> 　· **R5 rank 表表源化**（`references/maintainers.md` §一）：表加「表源」列并注明 100/200/300/400/500 = filesystem provider 的 `README.zh.md` 表、600 = 同节正文、**250 = `dsh-skill` 注册面（非 filesystem 表行）**；结论方向不变（runtime 必须低于 custom 才可能出现「bundle 压过 custom」）。
+> 　· **词预算**：`SECURITY.md` 的更正初稿曾使该文件 35,360 → **36,077 B**、越过 35 KB 上限——按门给的合法出路①**先瘦身**（允许面行不再重复罗列被禁项：紧邻的「禁止的表达式内容」行已逐项列出），**未抬 DOC_BUDGET 上限**，终态 **35,663 B ≤ 35,840 B**。`references/maintainers.md` 增表源列，仍在自身棘轮内（未抬上限）。
+> **未做（如实登记，不夹带）**：报告 §4.2 / §4.4 / §4.5（交互式工作台 / 面板接宿主 `locale` / `DESIGN.md` 设计基准）与 §4.1（L4 preset 层，其落地前置是三问未答：技能来源是否唯一化、`!!js` 在 preset 平面运行期求值是否已实测、是否接受 250 压过 300）——**属功能批次，本批不动**。
+> **验证（本版终态）**：全量套 **1022 / 1022 全绿**（`node --test` 实测：套件总 **1023** 项 / **1022 pass** / **0 fail** / **1 skip**；上版 1022 项，本批新增 ㊴ 的 1 个用例）；`consistency-check` **0 处漂移**（新规则落地前实测 **exit 1 / 2 处 P1**，即 N1 的 `cordis.patch.yml:37` 与 `SECURITY.md:29`；改后 exit 0）；`repo-hygiene-check` **全门通过**（含词预算 ⑨，`SECURITY.md` 终态 35,663 B ≤ 35,840 B）；`plugin-surface-check` **11 项通过 / 0 失败 / 0 提示**；`pack-smoke` **通过**（解包 196 文件 / 3581 KB）；`link-check` 无未归类断链（2 条 ⚠ 为既存已上报项）；`no-write-check` **通过**（工具链零改写仓库）。
+
 ## 18.98.0 — 2026-10-12
 
 > **主题**：E3 受控 A/B 反哺（第 2 批）——派发前置清单落地 + 图件对账**实测否决**。

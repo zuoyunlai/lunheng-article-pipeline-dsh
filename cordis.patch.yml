@@ -1,4 +1,4 @@
-# lunheng-article-pipeline bundle patch（DSH 原生插件 v18.98.0）
+# lunheng-article-pipeline bundle patch（DSH 原生插件 v18.99.0）
 #
 # 本文件用 DSH cordis-plugin-include 的 `- insert:` 列表语法在 standard 组合树之上叠加 4 行：
 #   1. **本包入口（自注册行）**：`name: lunheng-article-pipeline` → loader 按包名解析到
@@ -34,7 +34,8 @@
 #   的 `disabledOf()`），故旧披露把加载期执行面**少报了一半**。计数口径：`^\s*[A-Za-z]+:\s*!!js` 的 YAML 值行。
 #   `!!js` 由宿主进程以完整 Node 权限在**加载期**求值，发生在 agent 沙箱与审批关卡之前——
 #   安装本包即等于允许这些表达式在启动时执行。因此：
-#   - **只允许** `process.env.*`、全局 `Object.assign` 级取值（v18.0.0 起不再需要 `baseUrl`/`URL`）；
+#   - **规则 ⑭ 的允许面**（真源 = `scripts/_lib/cc-rules/docs-version-rules.mjs` 的 `FORBIDDEN` 补集）：未命中 `getBuiltinModule` / `child_process` / `require(` / `import(` / `eval(` / `new Function` / `node:` / `fs.` 的表达式**均允许**——含 `process.env.*`、`baseUrl`、全局 `URL`、`process.platform`（v18.99.0 更正：旧文把**本包用到的子集**写成全局排他断言，比实现窄、与规则 ⑭ 冲突——反哺报告 N1）；
+#   - **本包当前实际只用到** `process.env.*` 与全局 `Object.assign`（v18.0.0 删除 skill-filesystem 挂载行后，技能路径那处 `baseUrl` 求值随之移除）——这是**本包的选择**，不是规则的限制；
 #   - **禁止** `getBuiltinModule` / `child_process` / `require(` / `import(` / `eval(` / `new Function` / `fs.` / `node:`（CI 红线：consistency-check 规则 ⑭）；
 #   - 改本文件等同于改交付物的信任边界，须主人 review。
 #   - **agentOptions 取值语义已实测**（v2.5.2-dsh.17，用宿主 schemastery 3.18.2 + 与 Config 同构的 schema）：
@@ -130,14 +131,23 @@
         backgroundMode: continuable
         agentOptions: !!js "(e => { const p = e.LUNHENG_AUDIT_PROVIDER, m = e.LUNHENG_AUDIT_MODEL; if (e.LUNHENG_TIERING === 'off' || (!p && !m)) return undefined; return Object.assign({}, p ? { provider: p } : {}, m ? { model: m } : {}); })(process.env)"
 
-# ── 5. 标准（DSH 默认）— 论衡示例预设 ────────────────────────────────────
+# ── 5. 标准（DSH 默认）— 论衡的 preset 落地说明（本段无 patch 行）─────────
 # 本段为说明性注释，不含 patch 行。
+# ⚠️ 命名限定（v18.99.0 更正，反哺报告 N3）：论衡**没有**可被 DSH preset 名单加载的 preset 目录。
+#    官方判定 preset 的依据 = 目录内含组合文件 `agent.cordis.yml`
+#    （`dsh-agent-presets/lib/types/discovery.js` 的 `COMPOSITION_FILE`；缺该文件的目录按官方诊断
+#    「still occupies the id」——占了 id 但加载不了）。`examples/preset/` 是**分档安装示例目录**
+#    （`preset.yml` 说明 + README 指南 + `agent-tiered/cordis.yml` 可加载配置片段），不是 preset 目录：
+#    照字面去找 preset 会找不到。
 # ✅ 技能可用性验证：① `tests/bundle-contract.test.mjs` 断言本文件必须插入一行
 #    `name` = 包名（v18.0.0 缺陷的机械防线）；② `tests/entry.test.mjs` 用最小 ctx 真执行
 #    `apply`，断言注册字段与 `resourceBase` 下的 SKILL.md / references / scripts 齐备；
 #    ③ 发布后用一次性 profile 实测组合树中出现 `name: lunheng-article-pipeline` 行。
 # DSH 默认包含 dsh-base / dsh-web-app / dsh-agent-presets/standard；
 # 论衡不重写 standard 全部内容，只通过上述 insert: 列表叠加分档 subagent 工具。
-# examples/preset/ 目录只保留 preset.yml（分档说明）+ README.md（安装指南）；
-# 早期版本的 examples/preset/agent.cordis.yml（standard 全量副本，~16KB）已删除——
-# DSH v5.5.0+ 的 cordis-plugin-include 用 patch 增量叠加，不再需要"凑出有效"副本。
+# examples/preset/ 目录现有 **3 个条目**：`preset.yml`（分档说明）+ `README.md`（安装指南）+
+#  `agent-tiered/cordis.yml`（v18.61.0/H6 落地的**可加载 preset 配置片段**，随包发布），见该目录 README §6。
+#  早期版本的 `examples/preset/agent.cordis.yml`（standard 全量副本，~16KB）已删除——
+#  DSH v5.5.0+ 的 cordis-plugin-include 用 patch 增量叠加，不再需要"凑出有效"副本。
+#  （v18.99.0 更正：本段旧文写「examples/preset/ 目录**只保留** preset.yml + README.md」，
+#   漏了 H6 早已落地的 `agent-tiered/cordis.yml`——与 `examples/preset/README.md` 的 3 条目自述冲突。）

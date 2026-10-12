@@ -551,6 +551,62 @@ test('consistency-check ⑫ 扩面负向：SECURITY.md 写旧版本头 → P0（
 // v18.85.0-feat ⑬ docs/ 安装 pin 负向用例：注入 `docs/introduction.md:5` 行内「当前版本 vX.Y.Z」
 //   写旧版本 → 必须报 P1；写当前版本 → 通过；**也钉**豁免面（`@scope/pkg@version` 宿主包形态不报）。
 //   注：`docs/quick-facts.md` 已被规则 ㊲ 接管（L469 `[P1 速查卡版本漂移]`），不再由 ⑬ 报——本用例用 introduction.md。
+// v18.99.0（反哺报告-2026-10-11 §3.1 N1 / §3.2 R3）—— ㊴ 执行面允许面三方对账负向用例。
+//   病灶：`!!js` 的允许面在 `cordis.patch.yml` 与 `SECURITY.md` 里各写了一份**比实现窄**的排他断言，
+//   而登记表里没有一条门把「文档文案 ↔ 规则 ⑭ 的 `FORBIDDEN`」对账 → 实跑 **exit 0 = 假绿**（报告 §3.1 末段实测）。
+//   门有效性按本仓口径「靠负向输入证明」，钉五条：
+//     ① 基线（R1/R2 修完后的现行文案已带真源指针）不得报；
+//     ② `cordis.patch.yml` 回退成 N1 的现网形态（「只允许」且无指针）→ 必报；
+//     ③ 同一形态写在 `SECURITY.md` 允许面行 → 必报；
+//     ④ 被禁标识符写进「允许」语境且无否定措辞 → 必报（防反向漂移）；
+//     ⑤ **反向钉**：带真源指针的排他断言必须放行——否则规则过宽，会把正确写法也判红。
+test('v18.99.0 ㊴：执行面允许面的「无指针排他断言 / 被禁项进允许列表」必须报（且带指针放行）', () => {
+  const { d, repo, R } = mkRepo({ extraFiles: ['SECURITY.md'] })
+  const cc = join(R, 'scripts', 'consistency-check.mjs')
+  const patch = join(repo, 'cordis.patch.yml')
+  const sec = join(repo, 'SECURITY.md')
+  assert.ok(existsSync(sec), '夹具缺少 SECURITY.md（本用例会空转）')
+  const sig = () => /执行面允许面三方对账/.test(run([cc]).out)
+  const ANCHOR = /^#[ \t]+-[ \t]+\*\*规则 ⑭ 的允许面\*\*.*$/m
+
+  // ① 基线：允许面已带真源指针（R1/R2 的修法）→ 不得报
+  assert.equal(sig(), false, '基线（允许面已带真源指针）不得报 ㊴：' + run([cc]).out.slice(-400))
+
+  // ② patch 回退成 N1 现网形态（无指针的排他断言）→ 必报
+  const patchOrig = readFileSync(patch, 'utf8')
+  const reverted = patchOrig.replace(ANCHOR,
+    '#   - **只允许** `process.env.*`、全局 `Object.assign` 级取值（v18.0.0 起不再需要 `baseUrl`/`URL`）；')
+  assert.notEqual(reverted, patchOrig, '夹具：patch 披露段应含「规则 ⑭ 的允许面」行（注入锚点）')
+  writeFileSync(patch, reverted)
+  assert.equal(sig(), true, '无真源指针的排他断言必须被 ㊴ 抓到（这正是反哺报告 N1 的现网形态）')
+  writeFileSync(patch, patchOrig)
+
+  // ③ 同一形态写在 SECURITY.md 的允许面行 → 必报
+  const secOrig = readFileSync(sec, 'utf8')
+  const secReverted = secOrig.replace(/^\| 允许的表达式内容 \|.*$/m,
+    '| 允许的表达式内容 | 仅 `process.env.*` 与全局 `Object.assign`。 |')
+  assert.notEqual(secReverted, secOrig, '夹具：SECURITY.md 应含「允许的表达式内容」行（注入锚点）')
+  writeFileSync(sec, secReverted)
+  assert.equal(sig(), true, 'SECURITY.md 允许面行的无指针排他断言必须被 ㊴ 抓到')
+  writeFileSync(sec, secOrig)
+
+  // ④ 被禁标识符写进「允许」语境且无否定措辞 → 必报（A2 反向漂移）
+  writeFileSync(patch, patchOrig.replace(ANCHOR,
+    '#   - **规则 ⑭ 的允许面**（真源 = `scripts/_lib/cc-rules/docs-version-rules.mjs` 的 `FORBIDDEN` 补集）：`getBuiltinModule` 级取值均允许；'))
+  assert.equal(sig(), true, '被禁标识符进允许列表必须被 ㊴ 抓到')
+  writeFileSync(patch, patchOrig)
+
+  // ⑤ 反向钉：带真源指针（且含否定措辞）的排他断言 → 必须放行
+  writeFileSync(patch, patchOrig.replace(ANCHOR,
+    '#   - **规则 ⑭ 的允许面**（真源 = `docs-version-rules.mjs`）：**只允许**未命中 `fs.` 的表达式；'))
+  const out5 = run([cc]).out
+  assert.doesNotMatch(out5, /执行面允许面三方对账/,
+    '带真源指针的排他断言必须放行（规则过宽会误伤正确写法）：' + out5.slice(-400))
+
+  writeFileSync(patch, patchOrig)
+  rmSync(d, { recursive: true, force: true })
+})
+
 test('consistency-check ⑬ docs/ 安装 pin + 当前版本声明（v18.85.0-feat）', () => {
   const { d, repo, R } = mkRepo({ full: true })
   const cc = join(repo, 'skills', 'lunheng-article-pipeline', 'scripts', 'consistency-check.mjs')

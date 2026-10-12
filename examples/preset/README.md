@@ -1,6 +1,13 @@
 # examples/preset/ — 论衡分档安装指南
 
-> 版本：v18.98.0
+> 版本：v18.99.0
+
+> ⚠️ **命名限定（v18.99.0，反哺报告 N3）**：**本目录不是 preset，是可加载配置片段的安装指南。**
+> 官方判定一个 preset 的依据是**目录内含组合文件 `agent.cordis.yml`**
+> （`dsh-agent-presets/lib/types/discovery.js` 的 `COMPOSITION_FILE`；缺该文件的目录按官方诊断
+> 「still occupies the id」——占了 id 却加载不了）。本目录**没有** `agent.cordis.yml`，
+> 故**不会被 DSH preset 名单加载**；目录名与 `preset.yml` 的文件名并不代表它是 preset
+> ——`preset.yml` 只是给主人读的分档说明（见 §3），真正可加载的那份是 `agent-tiered/cordis.yml`（见 §6）。
 
 > **v18.62.4 更正（全量审计-v18.62.3 P1-12）**：本目录现有 **3 个条目**——`preset.yml`（给主人读的分档说明）
 > + 本文件（安装指南）+ **`agent-tiered/cordis.yml`**（v18.61.0/H6 落地的**可加载 preset 配置**，见 §6）。
@@ -19,7 +26,7 @@
 ```sh
 # 1. 在 profile 里声明 bundle 依赖（DSH 读 dsh.bundle.patch 找到 cordis.patch.yml 加载）
 dsh plugin --profile web add lunheng-article-pipeline@dsh   # 推荐：跟随最新 DSH 迭代版
-# 锁定具体版本：dsh plugin --profile web add lunheng-article-pipeline@18.98.0
+# 锁定具体版本：dsh plugin --profile web add lunheng-article-pipeline@18.99.0
 
 # 2. （可选，但要让三档工具真的挂上就必做）设三档 subagent 工具的 provider/model 环境变量
 #    v18.2.6 起：不设任何变量 = 三档行**根本不装载**（不再是「装载但全继承」）

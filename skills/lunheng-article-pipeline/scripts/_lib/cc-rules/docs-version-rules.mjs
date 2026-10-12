@@ -150,9 +150,11 @@ if (existsSync(docsDir)) {
 //    `!!js` 在宿主进程加载期以完整 Node 权限求值，且发生在 agent 沙箱/审批之前 —— 安装即执行。
 //    因此补丁内只允许 env / baseUrl / 全局 URL 级取值，禁止模块加载、子进程与任意代码求值。
 const redlinePatchPath = join(REPO_ROOT, 'cordis.patch.yml');
+// v18.99.0（反哺报告-2026-10-11 §3.2 R3）：黑名单从 ⑭ 的块内**提到模块作用域**——它同时是
+//   ⑭（禁）与 ㊴（允许面三方对账）的**唯一真源**；两处各写一份就是下一个漂移源（本批修的正是它）。
+const FORBIDDEN = ['getBuiltinModule', 'child_process', 'require(', 'import(', 'eval(', 'new Function', 'node:', 'fs.'];
 if (existsSync(redlinePatchPath)) {
   const pt = readFileSync(redlinePatchPath, 'utf8');
-  const FORBIDDEN = ['getBuiltinModule', 'child_process', 'require(', 'import(', 'eval(', 'new Function', 'node:', 'fs.'];
   // 只检查**非注释行**（注释里会正当地列出这些被禁标识符作为说明）
   const codeLines = pt.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
   for (const bad of FORBIDDEN) {
@@ -165,5 +167,67 @@ if (existsSync(redlinePatchPath)) {
     errors.push(`[P2 执行面披露] cordis.patch.yml 用了 ${jsCount} 处 !!js，但文件头未做「执行面披露」说明`);
   }
 }
+
+// ㊴ 执行面允许面三方对账（v18.99.0 · 反哺报告-2026-10-11 **N1/N2** 落地）
+//   病灶（报告 §3.1 N1；本批在 v18.98.0 上复跑，原样存在）：
+//     `!!js`「能用什么」有三处表述，其中**两处与规则 ⑭ 的实现相反**——
+//     · 真源 = 上面的 `FORBIDDEN`（**黑名单**：不在集合内即允许，含 `baseUrl` / `URL` / `process.platform`）；
+//     · `cordis.patch.yml` 执行面披露段：「**只允许** `process.env.*`、全局 `Object.assign` 级取值（v18.0.0 起不再需要 `baseUrl`/`URL`）」；
+//     · `SECURITY.md` 允许面行：「仅 `process.env.*` 与全局 `Object.assign`」＋「`process.platform` 已不再需要」。
+//   两处把**本包当前用到的子集**升格成**全局规则**、比实现窄。后果具体而可指认：
+//     ① 维护者会据此把**官方支持**的 `baseUrl` 写法误判为违规（报告 §4.1 的采纳路径正卡在这句上）；
+//     ② 官方自带 preset 正在用的 `process.platform` 被描述成过时。
+//   根因与 `AGENTS.md`「M 门行」条同型：**局部事实被写成全局断言**。
+//   为什么此前是假绿：登记表里**没有一条**把「执行面注释 ↔ SECURITY 允许面行 ↔ ⑭ 的 `FORBIDDEN`」对账
+//     ——本规则落地前实跑 exit 0 /「0 处漂移」（报告 §3.1 末段实测，本批复跑一致）。
+//   两条判据（方向固定：**文档让位于实现**，不是反过来改 `FORBIDDEN` 去迁就文案）：
+//     A1 允许面**不得在文档侧下无指针的排他断言**——披露面中含「允许」且含「只/仅」的行，必须**同一行**带真源指针
+//        （`规则 ⑭` 或 `docs-version-rules`）。带指针 = 已把断言交还真源，放行（这正是 R1/R2 的修法）。
+//     A2 允许面行内出现 `FORBIDDEN` 标识符时，**必须**同处带否定/排除措辞（未命中/禁止/不得/不含/排除/黑名单）
+//        ——防「把被禁项直接写进允许列表」这类反向漂移。
+//   边界（如实声明，不许当万能门）：
+//     · A1 只认「同一行」这一种载体——若将来允许面被拆成多行散文，本规则会**漏**（届时须同步改判据，不是删规则）；
+//     · 本规则只判「文案 ↔ 实现是否同向」，不判「本包该不该用 `baseUrl`」（那是架构决策，不是门的事）。
+const ALLOW_FACE_SRC_RE = /规则\s*⑭|docs-version-rules/;
+const ALLOW_FACE_NEG_RE = /未命中|禁止|不得|不含|排除|黑名单/;
+(function checkAllowFaceThreeWay() {
+  const faces = [];
+  // 面 ①：`cordis.patch.yml` 的「执行面披露」注释块（自含该词的行起，到第一个非注释行止）
+  if (existsSync(redlinePatchPath)) {
+    const lines = readFileSync(redlinePatchPath, 'utf8').split('\n');
+    let inBlock = false;
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      if (!inBlock && l.includes('执行面披露')) inBlock = true;
+      if (!inBlock) continue;
+      if (!/^\s*#/.test(l)) break;
+      faces.push({ src: 'cordis.patch.yml', no: i + 1, line: l });
+    }
+  }
+  // 面 ②：`SECURITY.md` 的执行面表行（只取「允许的表达式内容」/「禁止的表达式内容」两行）
+  const secPath = join(REPO_ROOT, 'SECURITY.md');
+  if (existsSync(secPath)) {
+    readFileSync(secPath, 'utf8').split('\n').forEach((l, i) => {
+      if (/^\|\s*(?:允许|禁止)的表达式内容/.test(l)) faces.push({ src: 'SECURITY.md', no: i + 1, line: l });
+    });
+  }
+  for (const { src, no, line } of faces) {
+    // 禁止行本就该列被禁标识符——两条判据都不适用（否则规则自己制造假阳性）
+    if (line.includes('禁止') || !line.includes('允许')) continue;
+    if (/(只|仅)/.test(line) && !ALLOW_FACE_SRC_RE.test(line)) {
+      errors.push(
+        `[P1 执行面允许面三方对账] ${src}:${no} 对 \`!!js\` 的允许面下了**无真源指针**的排他断言（「只/仅…允许」）——` +
+        `允许面的唯一真源是规则 ⑭ 的 \`FORBIDDEN\` 补集，文档只许引用、不许自行收窄（反哺报告 N1）：${line.trim().slice(0, 70)}…`,
+      );
+    }
+    const bad = FORBIDDEN.find((b) => line.includes(b));
+    if (bad && !ALLOW_FACE_NEG_RE.test(line)) {
+      errors.push(
+        `[P1 执行面允许面三方对账] ${src}:${no} 在「允许」语境里出现被禁标识符「${bad}」却无否定/排除措辞——` +
+        `被禁项不得出现在允许列表里：${line.trim().slice(0, 70)}…`,
+      );
+    }
+  }
+})();
 
 }

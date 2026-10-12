@@ -1,20 +1,22 @@
 # 维护者手册（maintainers.md）
 
-> 版本：v18.98.0｜**读者**：维护者/主人。**本文件不进任何运行期读清单**（角色/主控不读）；它承接 v18.8.0 文档瘦身从 SKILL.md 迁出的维护者向元信息（rank 考证 / guard 缺口 / 更正史）。改本文件不受「同一事实多处漂移」约束——运行期事实仍以 SKILL.md 为唯一真源，此处是背景与考证。
+> 版本：v18.99.0｜**读者**：维护者/主人。**本文件不进任何运行期读清单**（角色/主控不读）；它承接 v18.8.0 文档瘦身从 SKILL.md 迁出的维护者向元信息（rank 考证 / guard 缺口 / 更正史）。改本文件不受「同一事实多处漂移」约束——运行期事实仍以 SKILL.md 为唯一真源，此处是背景与考证。
 
 ## 一、技能来源 rank 考证（v18.0.0 对齐官方；v18.0.5 修两处官方事实）
 
-同名技能按 **rank 就近取胜**，低 rank 会**静默顶替**高 rank 且无告警。官方 rank 表（`docs/subsystems/skills` 子系统契约）：
+同名技能按 **rank 就近取胜**，低 rank 会**静默顶替**高 rank 且无告警。下表是**两张不同官方表的合并视图**——并表必须标来源（v18.99.0 更正，反哺报告 R5）：
 
-| rank | source | 根目录 |
-|---|---|---|
-| 100 | `project-dsh` | `<项目根>/.dsh/skills` |
-| 200 | `project-agents` | `<项目根>/.agents/skills` |
-| **250** | **`runtime`（本包 bundle 形态）** | **`ctx.skills.register()` 注册** |
-| 300 | `custom` | `Config.customSkillDirs` |
-| 400 | `user-dsh` | `<DSH_HOME>/skills` |
-| 500 | `user-agents` | `<AGENTS_HOME>/skills` |
-| 600 | `bundled` | `Config.bundledSkillDir` / `DSH_BUNDLED_SKILL_DIR` |
+| rank | source | 根目录 | 表源 |
+|---|---|---|---|
+| 100 | `project-dsh` | `<项目根>/.dsh/skills` | filesystem 表 |
+| 200 | `project-agents` | `<项目根>/.agents/skills` | filesystem 表 |
+| **250** | **`runtime`（本包 bundle 形态）** | **`ctx.skills.register()` 注册** | **runtime 注册面（\*非\* filesystem 表行）** |
+| 300 | `custom` | `Config.customSkillDirs` | filesystem 表 |
+| 400 | `user-dsh` | `<DSH_HOME>/skills` | filesystem 表 |
+| 500 | `user-agents` | `<AGENTS_HOME>/skills` | filesystem 表 |
+| 600 | `bundled` | `Config.bundledSkillDir` / `DSH_BUNDLED_SKILL_DIR` | filesystem 表**同节正文**（非表行） |
+
+> **表源逐项（v18.99.0 补，反哺报告 R5 + §6 待核项结案）**：100/200/300/400/500 五行 = `@deepseek-ai/dsh-skill-filesystem` 的 `README.zh.md` §「根目录与优先级」表；600 出自同节正文（「`bundledSkillDir` 会按 rank 600 添加一个内置根目录」）。**250 不在该表内**——它出自 **`@deepseek-ai/dsh-skill`（技能注册表）** 的 `lib/index.js`：`const RUNTIME_RANK = 250;`，注册时写 `rank: RUNTIME_RANK`（本机实测两处）。旧表头写「官方 rank 表（`docs/subsystems/skills` 子系统契约）」把 250 行并进 filesystem 表——读者拿它去 filesystem 文档对账会**找不到依据**（**结论方向不变**：runtime 必须低于 custom，才可能出现「bundle 压过 custom」；§一 其余考证与 v18.0.5 更正均照旧）。
 
 - **实践含义**：项目级副本（100）**胜过一切**（含已装 bundle 250）——「装了 bundle 又留 `.dsh/skills/` 副本」时生效的一直是副本；自检只能靠**读到的 `SKILL.md` 绝对路径 + 版本头**，rank 表不足以反推。
 - **v18.0.5 更正**：本包走 `ctx.skills.register()`，候选 rank 恒为 `RUNTIME_RANK = 250`（非 600）；把技能拷到 `~/.dsh/skills`（400）**不能**覆盖已装 bundle（250）。
