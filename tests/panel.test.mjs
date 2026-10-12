@@ -864,9 +864,9 @@ test('v18.93.0：交付件与导出命令派生（只读工作区内的既有产
 // v19.0.0：开工台（§4.2）+ 宿主 locale 桥（§4.4）+ hover 类样式修复
 // ════════════════════════════════════════════════════════════════════════════════════════════
 
-/** L10N/DATA 块外中文字面量的**棘轮基线**（v19.0.1 实测 **268**，只许降：新文案进 L10N 块用 `t()`；
- *  派生数据 / 枚举值进 DATA 块并加逐行对账用例。v19.0.0 时该值为 340——把派生数据划出后收紧）。 */
-const OUTSIDE_CN_BASELINE = 268
+/** L10N/DATA 块外**代码行**中文字面量的**棘轮基线**（v19.0.2 实测 **267**，只许降；v19.0.1 为 268、
+ *  v19.0.0 为 340——把派生数据与注释行划出后逐步收紧）。新文案进 L10N 块用 `t()`；派生数据进 DATA 块。 */
+const OUTSIDE_CN_BASELINE = 267
 
 // ── v19.0.1：主人装新版后的三条实测反馈 ────────────────────────────────────────────────────────
 
@@ -927,6 +927,58 @@ test('开工台（v19.0.1）：目标期刊下拉必须与 期刊数据库.md �
   assert.ok(wbFind(jSel, (n) => n.type === 'optgroup' && String(n.props.label).includes('中文')), '中文期刊应按 optgroup 分组')
 })
 
+/** 通类方向钉（v19.0.2）：**列容器的子元素不得带 px 的 flex-basis**。
+ *  理由（主人实测到的真 bug）：`S.wbNote` 是**行样式**（`flex: '1 1 220px'`），被复用到**列容器**
+ *  `S.wbField`（`flexDirection: 'column'`）里时，flex-basis 在列方向被解释成**高度 220px** ⇒
+ *  界面上表现为「一大段空白」。本钉不针对某一处，而是**扫整棵渲染树**——同类错误换一处复用照样红。 */
+const assertNoColumnFlexBasis = (node, path = 'root') => {
+  if (!node || typeof node !== 'object') return
+  if (Array.isArray(node)) { node.forEach((c, i) => assertNoColumnFlexBasis(c, path + '[' + i + ']')); return }
+  const st = (node.props && node.props.style) || {}
+  const kids = node.children || []
+  if (st.flexDirection === 'column') {
+    for (const c of kids) {
+      const cs = (c && c.props && c.props.style) || {}
+      if (typeof cs.flex === 'string' && /\d+px/.test(cs.flex)) {
+        assert.fail(`${path} 的列容器里，子元素带了 px 的 flex-basis（列方向 = 高度）：flex=${cs.flex}`)
+      }
+    }
+  }
+  kids.forEach((c, i) => assertNoColumnFlexBasis(c, path + '>' + String(node.type) + '[' + i + ']'))
+}
+
+test('开工台（v19.0.2）：列容器内不得出现 px 的 flex-basis（主人实测「大段空白」的通类根因）', async () => {
+  const h = makeReactStub()
+  const mod = await loadClient(h, { fetch: fetchStub({}) })
+  const props = { inputActions: { setDraft: () => {} }, ctx: { get: () => undefined } }
+  h.render(mod.__panel.Workbench, props)
+  wbButton(h.tree(), '打开论衡开工台').props.onClick()
+  h.render(mod.__panel.Workbench, props)
+  wbButton(h.tree(), '展开高级设置').props.onClick()
+  h.render(mod.__panel.Workbench, props)
+  assertNoColumnFlexBasis(h.tree())
+  // 具体钉：同意字段的提示必须用**方向无关**的样式（无 flex）——这就是那 220px 空白的来源
+  const hint = wbFind(h.tree(), (n) => n.type === 'span'
+    && (n.children || []).some((c) => typeof c === 'string' && c.includes('默认「全部同意」')))
+  assert.ok(hint, '同意提示必须在渲染树里（它是本 bug 的当事元素）')
+  assert.equal(hint.props.style.flex, undefined, '字段列内的提示不得带 flex（列方向会被当高度）')
+  assert.ok(mod.__panel.S.wbFieldHint, '必须存在方向无关的 wbFieldHint 样式')
+  assert.equal(mod.__panel.S.wbFieldHint.flex, undefined, 'wbFieldHint 必须是方向无关的（不带 flex）')
+})
+
+test('运行面板（v19.0.2）：同一「列容器 / px flex-basis」通类检查对面板树也成立', async () => {
+  const h = makeReactStub()
+  const mod = await loadClient(h, {
+    fetch: fetchStub({
+      '/ping': () => okJson({ ok: true, version: '19.0.2', roots: ['/r'] }),
+      '/projects': () => okJson({ root: '/r', projects: [{ name: 'p1', hasFinal: false }] }),
+      '/snapshot': () => okJson(SNAPSHOT),
+    }),
+  })
+  for (let i = 0; i < 6; i++) { h.render(mod.__panel.Panel, { ctx: null }); await new Promise((r) => setTimeout(r, 0)) }
+  assertNoColumnFlexBasis(h.tree())
+})
+
 test('开工台（v19.0.1）：控宽必须走 shell 的 composer 变量（主人实测：曾横向撑满窗口）', async () => {
   // 病灶（主人实测）：「工作台样式显示太宽，横向撑满窗口，不是和下面对话框等宽」。
   //   官方**同槽位**占据者（`@deepseek-ai/dsh-client-ui-conversation` 的 QueueDock）给出了该槽位的几何契约：
@@ -960,18 +1012,23 @@ test('开工台（v19.0.0 §4.4）：zh/en 字典键集合必须逐字相同（�
 
 test('开工台（v19.0.0 §4.4）：L10N 块外的中文字面量受棘轮约束（新文案只许进块；派生数据另计）', () => {
   const src = readFileSync(join(ROOT, 'lib', 'client.js'), 'utf8')
-  const m = /\/\/ ══ L10N:BEGIN ══[\s\S]*?\/\/ ══ L10N:END ══/.exec(src)
-  assert.ok(m, '必须存在 L10N:BEGIN/END 标记块（把「文案真源」做成可机械定位的一段）')
-  const outside = src.slice(0, m.index) + src.slice(m.index + m[0].length)
-  // v19.0.1：**派生数据区也算豁免**——期刊库 28 个中文刊名是「数据」不是「文案」，
-  //   把它们计进文案棘轮只会逼人抬基线（棘轮就废了）。数据区的正确约束是**逐行对账**（见期刊/文类两条用例）。
-  const dm = /\/\/ ══ DATA:BEGIN ══[\s\S]*?\/\/ ══ DATA:END ══/.exec(outside)
-  assert.ok(dm, '必须存在 DATA:BEGIN/END 标记块（派生数据副本：文类档案表 / 期刊库）')
-  const noData = outside.slice(0, dm.index) + outside.slice(dm.index + dm[0].length)
-  const n = (noData.match(/['"][^'"\n]*[\u4e00-\u9fff][^'"\n]*['"]/g) || []).length
+  const lines = src.split('\n')
+  // v19.0.2 口径收紧：**只数会被渲染的代码行**——整行注释不参与（注释永远渲染不出来；
+  //   且实测注释里的「两个单引号片段夹中文」会被正则误判成字面量，属假阳性，别让假阳性逼人抬基线）。
+  //   同时跳过 L10N（文案）与 DATA（派生数据/枚举值）两个标记块——两者各有自己的机械约束。
+  let inL10n = false, inData = false, n = 0
+  for (const l of lines) {
+    if (l.includes('L10N:BEGIN')) { inL10n = true; continue }
+    if (l.includes('L10N:END')) { inL10n = false; continue }
+    if (l.includes('DATA:BEGIN')) { inData = true; continue }
+    if (l.includes('DATA:END')) { inData = false; continue }
+    if (inL10n || inData) continue
+    if (/^\s*\/\//.test(l)) continue
+    n += (l.match(/['"][^'"\n]*[\u4e00-\u9fff][^'"\n]*['"]/g) || []).length
+  }
   assert.ok(
     n <= OUTSIDE_CN_BASELINE,
-    `L10N/DATA 块外的中文字面量 ${n} 处 > 基线 ${OUTSIDE_CN_BASELINE}：新文案请放进 L10N 块并用 t() 取；`
+    `L10N/DATA 块外**代码行**的中文字面量 ${n} 处 > 基线 ${OUTSIDE_CN_BASELINE}：新文案请放进 L10N 块并用 t() 取；`
     + '若确属派生数据，放进 DATA 块（并加逐行对账用例）。',
   )
 })
