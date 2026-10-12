@@ -498,7 +498,10 @@ function makeReactStub() {
   // v19.0.0：记录**最近一次被调用的组件所返回的元素树**——桩的 `render()` 只回字符串，
   //   而「点击某按钮会调用哪个 handler」需要元素树本身。断言用 `h.tree()` 取树后按标签找按钮
   //   （宿主元素的 props.onClick 就在树上）。纯增量能力，不影响既有断言。
+  // v19.1.5：只记**最外层**组件返回的树。旧版是「最后一个渲染完的组件」胜出——一旦组件里有子组件
+  //   （如标题图标 `WbIcon`），`tree()` 会返回**子组件**的树，于是「在树上找按钮/输入框」会扑空。
   let lastTree = null
+  let depth = 0
   const hooksFor = () => (store[seq++] || (store[seq - 1] = []))
   const React = {
     createElement: (type, props, ...children) => ({ type, props: props || {}, children }),
@@ -519,10 +522,13 @@ function makeReactStub() {
     if (Array.isArray(node)) return node.map(renderNode).join('')
     if (typeof node.type === 'function') {
       const pInst = inst, pCur = cursor
+      const isTop = depth === 0
+      depth++
       inst = hooksFor(); cursor = 0
       const produced = node.type(Object.assign({}, node.props, { children: node.children }))
       const out = renderNode(produced)
-      lastTree = produced
+      depth--
+      if (isTop) lastTree = produced
       inst = pInst; cursor = pCur
       return out
     }
@@ -547,7 +553,13 @@ async function loadClient(reactStub, opts = {}) {
   const captured = {}
   globalThis.window = {
     __ModuleLoader__: { load: (def) => { captured.def = def } },
-    localStorage: { getItem: () => opts.saved || null, setItem: () => {} },
+    // v19.1.5：localStorage 桩升级为**按键存取**（`savedByKey`），并保留旧的 `saved`（任意键都回同一值）语义——
+    //   没有它就无法测「会话 ↔ 项目」绑定（旧桩忽略键、setItem 是空实现）。
+    localStorage: opts.localStorage || {
+      getItem: (k) => ((opts.savedByKey && Object.prototype.hasOwnProperty.call(opts.savedByKey, k)) ? opts.savedByKey[k] : (opts.saved || null)),
+      setItem: (k, v) => { if (opts.savedByKey) opts.savedByKey[k] = String(v); },
+      removeItem: (k) => { if (opts.savedByKey) delete opts.savedByKey[k] },
+    },
   }
   globalThis.EventSource = opts.EventSource || class { constructor(u) { this.url = u; this.listeners = {}; (opts.onES || (() => {}))(this) } addEventListener(t, f) { this.listeners[t] = f } close() { this.closed = true } }
   globalThis.fetch = opts.fetch || (() => Promise.reject(new Error('no fetch stub')))
@@ -1278,6 +1290,143 @@ test('开工台（v19.1.1）：**多工作区**时须逐个根探测，取第一
   assert.ok(snapUrl, '应对第二个根里的项目取快照：' + seen.join(' | '))
   assert.ok(/root=%2FrootB|root=\/rootB/.test(snapUrl), '快照请求必须带探测到的根（否则多工作区下必 404）：' + snapUrl)
   assert.match(h.render(P.Workbench, props), /检索 3\/3/, '第二个根的项目应显示真实进度')
+})
+
+test('开工台（v19.1.5）：席位注册必须声明 `inject(sessionId)` —— 并行会话各看各的**唯一**依据', async () => {
+  // 没有本会话身份，「当前项目」只能全局猜：两个会话并行时两条 bar 会显示同一个项目、并随写入来回跳。
+  // 官方同槽位占据者（队列面板）用的就是这个机制：`inject: (sessionId) => ({…})`，返回值即组件 props。
+  const h = makeReactStub()
+  const mod = await loadClient(h, { fetch: fetchStub({}) })
+  let registered = null
+  const slots = { inject: (n, cb) => { cb(); return () => {} }, register: (def, comp) => { registered = { def, comp }; return () => {} } }
+  mod.apply({ inject: (deps, cb) => cb({ slots, get: () => undefined }) })
+  assert.ok(registered, '必须注册开工台席位')
+  assert.equal(typeof registered.def.inject, 'function', '必须声明 inject（否则拿不到 sessionId）')
+  assert.deepEqual(registered.def.inject('sess-1'), { sessionId: 'sess-1' }, 'inject 的返回值就是组件 props')
+})
+
+test('进度条（v19.1.5）：**本会话绑定优先**——并行会话下不再全局猜测', async () => {
+  const h = makeReactStub()
+  const seen = []
+  const route = (u) => {
+    const s = String(u)
+    seen.push(s)
+    if (s.includes('/ping')) return okJson({ ok: true, roots: ['/rootA'] })
+    if (s.includes('/projects')) return okJson({ root: '/rootA', projects: [{ name: 'pA', mtime: 999 }, { name: 'pB', mtime: 1 }] })
+    if (s.includes('/snapshot')) {
+      const p = /project=([^&]+)/.exec(s)[1]
+      return okJson({ project: decodeURIComponent(p), status: { hasStatus: true }, agents: { roles: [{ role: 'T7', count: 1 }] }, artifacts: { drafts: 0, hasFinal: false } })
+    }
+    return Promise.reject(new Error('HTTP 404'))
+  }
+  // 本会话 s1 绑定到 pB（列表里 pA 的目录 mtime 更新 → 全局判据会选 pA）
+  const mod = await loadClient(h, { fetch: route, savedByKey: { 'lunheng.workbench.proj.s1': 'pB' } })
+  const P = mod.__panel
+  const props = { inputActions: { setDraft: () => {} }, ctx: { get: () => undefined }, sessionId: 's1' }
+  const tick = async () => { const s = h.render(P.Workbench, props); await new Promise((r) => setTimeout(r, 0)); return s }
+  await tick(); await tick(); await tick()
+  assert.ok(seen.some((u) => u.includes('/snapshot?project=pB')), '必须按**本会话绑定**取快照：' + seen.join(' | '))
+  assert.ok(!seen.some((u) => u.includes('/snapshot?project=pA')), '绑定了就不该再去全局猜 pA：' + seen.join(' | '))
+  assert.match(h.render(P.Workbench, props), /审计 1\/1/, '显示的应是绑定项目的进度')
+})
+
+test('进度条（v19.1.5）：无绑定时按**项目内最新写入时间**取最新（目录 mtime 会被子目录扰动）', async () => {
+  const h = makeReactStub()
+  const route = (u) => {
+    const s = String(u)
+    if (s.includes('/ping')) return okJson({ ok: true, roots: ['/rootA'] })
+    if (s.includes('/projects')) return okJson({ root: '/rootA', projects: [{ name: 'oldDir', mtime: 1000 }, { name: 'liveNow', mtime: 1 }] })
+    if (s.includes('/snapshot')) {
+      const p = decodeURIComponent(/project=([^&]+)/.exec(s)[1])
+      // 目录 mtime 小的那个，**文件写入时间**却是最新（实测过的真实形态：老单目录被碰过）
+      const mt = p === 'liveNow' ? 9e12 : 1e12
+      return okJson({ project: p, status: { hasStatus: true }, agents: { roles: p === 'liveNow' ? [{ role: 'T1', count: 1 }, { role: 'T2', count: 1 }, { role: 'T3', count: 1 }] : [] }, artifacts: { drafts: 0, newest: [{ rel: 'status.md', mtime: mt }] } })
+    }
+    return Promise.reject(new Error('HTTP 404'))
+  }
+  const mod = await loadClient(h, { fetch: route })
+  const P = mod.__panel
+  const props = { inputActions: { setDraft: () => {} }, ctx: { get: () => undefined }, sessionId: 's2' }
+  const tick = async () => { const s = h.render(P.Workbench, props); await new Promise((r) => setTimeout(r, 0)); return s }
+  await tick(); await tick(); await tick(); await tick()
+  assert.match(h.render(P.Workbench, props), /检索 3\/3/, '应按文件写入时间选中 liveNow（目录 mtime 判据会错选 oldDir）')
+})
+
+test('进度条（v19.1.5）：多项目才有切换器；切换即写「会话 ↔ 项目」绑定', async () => {
+  const h = makeReactStub()
+  const store = {}
+  const route = (u) => {
+    const s = String(u)
+    if (s.includes('/ping')) return okJson({ ok: true, roots: ['/rootA'] })
+    if (s.includes('/projects')) return okJson({ root: '/rootA', projects: [{ name: 'p1' }, { name: 'p2' }] })
+    if (s.includes('/snapshot')) return okJson({ project: 'p1', status: { hasStatus: true }, agents: { roles: [] }, artifacts: { drafts: 0, newest: [{ rel: 'status.md', mtime: 5 }] } })
+    return Promise.reject(new Error('HTTP 404'))
+  }
+  const mod = await loadClient(h, { fetch: route, savedByKey: store })
+  const P = mod.__panel
+  const props = { inputActions: { setDraft: () => {} }, ctx: { get: () => undefined }, sessionId: 's9' }
+  const tick = async () => { const s = h.render(P.Workbench, props); await new Promise((r) => setTimeout(r, 0)); return s }
+  await tick(); await tick(); await tick(); await tick()
+  const hasOpt = (kids, v) => (kids || []).some((c) => Array.isArray(c) ? hasOpt(c, v) : (c && c.props && c.props.value === v))
+  const selBox = wbFind(h.tree(), (n) => n.type === 'select' && hasOpt(n.children, 'p2'))
+  assert.ok(selBox, '两个项目时必须出现项目切换器')
+  selBox.props.onChange({ target: { value: 'p2' } })
+  await tick(); await tick()
+  assert.equal(store['lunheng.workbench.proj.s9'], 'p2', '切换必须写入本会话绑定：' + JSON.stringify(store))
+})
+
+test('进度条（v19.1.5）：单项目**不摆切换器**（多一个控件就是多一分噪音）', async () => {
+  const h = makeReactStub()
+  const route = (u) => {
+    const s = String(u)
+    if (s.includes('/ping')) return okJson({ ok: true, roots: ['/rootA'] })
+    if (s.includes('/projects')) return okJson({ root: '/rootA', projects: [{ name: 'solo' }] })
+    if (s.includes('/snapshot')) return okJson({ project: 'solo', status: { hasStatus: true }, agents: { roles: [] }, artifacts: { drafts: 0, newest: [{ rel: 'status.md', mtime: 5 }] } })
+    return Promise.reject(new Error('HTTP 404'))
+  }
+  const mod = await loadClient(h, { fetch: route, savedByKey: {} })
+  const P = mod.__panel
+  const props = { inputActions: { setDraft: () => {} }, ctx: { get: () => undefined }, sessionId: 's3' }
+  const tick = async () => { const s = h.render(P.Workbench, props); await new Promise((r) => setTimeout(r, 0)); return s }
+  await tick(); await tick(); await tick()
+  assert.ok(!wbFind(h.tree(), (n) => n.type === 'select'), '只有一个项目时不该出现切换器')
+  assert.match(h.render(P.Workbench, props), /solo/, '项目名仍要以文本形式显示')
+})
+
+test('开工台（v19.1.5）：点「生成开场白并填入」顺手建立**本会话 ↔ 该项目**的绑定', async () => {
+  const h = makeReactStub()
+  const store = {}
+  const route = (u) => {
+    const s = String(u)
+    if (s.includes('/ping')) return okJson({ ok: true, roots: ['/rootA'] })
+    if (s.includes('/projects')) return okJson({ root: '/rootA', projects: [] })
+    return Promise.reject(new Error('HTTP 404'))
+  }
+  const mod = await loadClient(h, { fetch: route, savedByKey: store })
+  const P = mod.__panel
+  const props = { inputActions: { setDraft: () => {} }, ctx: { get: () => undefined }, sessionId: 's7' }
+  const tick = async () => { const s = h.render(P.Workbench, props); await new Promise((r) => setTimeout(r, 0)); return s }
+  await tick()
+  wbButton(h.tree(), '打开论衡开工台').props.onClick()
+  await tick()
+  // 填最小必需项：标题 + 项目名
+  //   注意：子节点里可能是**数组**（React 支持，本包也这么用，如 `kids`）→ walk 必须展开数组，
+  //   否则走到数组那层就停住（实测踩过：`h('div', {…}, kids)` 的 children 就是 `[kids]`）。
+  const inputs = []
+  const walk = (n) => {
+    if (!n || typeof n !== 'object') return
+    if (Array.isArray(n)) { n.forEach(walk); return }
+    if (n.type === 'input' && n.props && n.props.type !== 'checkbox') inputs.push(n)
+    ;(n.children || []).forEach(walk)
+  }
+  walk(h.tree())
+  assert.ok(inputs.length >= 2, '应有题目/项目名两个输入框')
+  inputs[0].props.onChange({ target: { value: '测试题目' } })
+  inputs[1].props.onChange({ target: { value: 'proj-xyz' } })
+  await tick()
+  wbButton(h.tree(), '生成开场白并填入输入框').props.onClick()
+  await tick()
+  assert.equal(store['lunheng.workbench.proj.s7'], 'proj-xyz', '填写开场白即建立绑定：' + JSON.stringify(store))
 })
 
 test('进度条（v19.1.4）：**没有项目**时不摆空壳——不显示 chips、不报错，开工台照常可用', async () => {
