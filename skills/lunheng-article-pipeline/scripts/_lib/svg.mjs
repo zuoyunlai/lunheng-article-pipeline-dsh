@@ -190,9 +190,32 @@ export function svgTextNumbers(src) {
   return out;
 }
 
-/** 图件文件名 → 图号（`图1_x.svg` / `图1-x.svg` / `图1.svg` 均可）；非图件返回 null */
+/**
+ * **图件扩展名（唯一真源，v19.1.9）**：SVG 与**位图同权**。
+ *
+ * 为什么必须同权（实测病灶，四处同源）：本机 cairo 系统库缺失、SVG→PNG 渲染链路不可用，
+ *   **Pillow 直出 PNG 是既定工作流**（见项目交付说明「本机 Pillow-only 工作流无法生成 SVG，
+ *   改 PNG；脚本要 .svg。主控如实记录」）。而链路上有四处各自 `endsWith('.svg')` 过滤：
+ *   `figureNoOf` / `md2html` 配图 / `M-Form-9` 图件闭环 / `build-evidence-bundle` 收图——
+ *   于是**已交付的 PNG 图件在全链上等于不存在**：M 门报「缺图」P0、导出件留「缺图」占位、
+ *   证据包不收、面板显示 0 张。**假阳性会逼人无视红灯**，故按「一事实一处」收成这一份。
+ */
+export const FIGURE_EXT_RE = /\.(svg|png|jpe?g)$/i;
+
+/**
+ * 该图件是否为**位图**（PNG/JPG）。
+ *
+ * 用途：位图**不做** SVG 专属机检（良构 / 安全 / `data-grid` 几何 / 图上数字 ⊆ 数据卡）——
+ *   那些检查要解析 XML，套到位图上只会产出垃圾结论。位图改由**人工目视核验**，
+ *   调用方须把这一句写进自己的软提示（**不许静默跳过**：跳过不写 = 把「没检」读成「检过」）。
+ */
+export function isRasterFigure(filename) {
+  return /\.(png|jpe?g)$/i.test(String(filename));
+}
+
+/** 图件文件名 → 图号（`图1_x.svg` / `图1-x.png` / `图1.svg` 均可）；非图件返回 null */
 export function figureNoOf(filename) {
-  const m = String(filename).match(/^图\s*(\d+)\s*(?:[_\-.].*)?\.svg$/i);
+  const m = String(filename).match(/^图\s*(\d+)\s*(?:[_\-.].*)?\.(?:svg|png|jpe?g)$/i);
   return m ? Number(m[1]) : null;
 }
 

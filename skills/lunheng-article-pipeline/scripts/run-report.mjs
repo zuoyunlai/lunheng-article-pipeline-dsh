@@ -677,7 +677,11 @@ if (outJson) {
       path: relPath(mg.path),
       summary: { total: mg.json.total, pass: mg.json.pass, p0: mg.json.p0, p1: mg.json.p1, p2: mg.json.p2, skips: mg.json.skips, exit: mg.json.exit ?? mg.json.exit_code },
       results: mgItems.map((i) => ({ id: i.id, gate: i.label, severity: i.severity })),
-    } : null,
+      // v19.1.9：**为什么没有逐项明细** —— 给消费者（运行面板）分流用。
+      //   旧行为只有一句「重跑一次即可带上」，而源报告若是 gen-1/gen-2 旧格式（**根本没有 results[]**），
+      //   重跑 run-report **永远带不上** ⇒ 面板在教用户做无效动作（**错指引比空态更糟**）。
+      detail: mgItems.length ? 'ok' : 'legacy-no-results',
+    } : { path: null, summary: null, results: [], detail: 'no-report' },
     gAudit: ga ? { path: relPath(ga.path), overall: ga.json.overall || null, checks: gaItems.map((i) => ({ id: i.id, name: i.label, severity: i.severity })) } : null,
     words: { target, series: prog },
     rounds,

@@ -35,7 +35,7 @@ import { join, basename, relative, resolve, dirname } from 'node:path';
 import { countHan } from './_lib/han.mjs';                        // 汉字口径真源
 import { refCardPairRegex, refRegexFirst, refsOf } from './_lib/refs.mjs';   // 引用编号口径真源
 import { TRUST_COMPLIANT_RE } from './_lib/trust.mjs';            // 信任级别口径真源
-import { figurePlaceholders, figureNoOf } from './_lib/svg.mjs';  // 图位/图号口径真源（v2.5.2-dsh.16）
+import { figurePlaceholders, figureNoOf, FIGURE_EXT_RE } from './_lib/svg.mjs';  // 图位/图号口径真源（v2.5.2-dsh.16；v19.1.9 位图同权）
 import { installExitGuard, requireExistingFile, requireExistingDir } from './_lib/exit-guard.mjs'; // 退出码硬化（v18.0.5）
 import { parseArgs, USAGE_CODE } from './_lib/cli-args.mjs';   // 参数解析唯一实现（v18.2.6，与 apply-diff 共用）
 import { createHash } from 'node:crypto';                       // v18.12.0（L-15）：证据包清单逐文件 sha256
@@ -315,7 +315,9 @@ let figFiles = [];
 if (existsSync(figDir)) {
   const figDest = join(destDir, '图件');
   if (!existsSync(figDest)) mkdirSync(figDest, { recursive: true });
-  for (const f of readdirSync(figDir).filter((x) => x.toLowerCase().endsWith('.svg')).sort()) {
+  // v19.1.9：**位图与 SVG 同权**——旧实现只收 `.svg`，于是 Pillow 直出 PNG 的图件**从不进证据包**，
+  //   T7/T8 评审在审计视图里「看不见图」，M-Form-9 又判「缺图」：同一条事实两处都错。
+  for (const f of readdirSync(figDir).filter((x) => FIGURE_EXT_RE.test(x)).sort()) {
     if (copyChecked(join(figDir, f), join(figDest, f), `final/图件/${f}`)) {
       figFiles.push(f);
       copied++;

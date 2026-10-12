@@ -23,10 +23,11 @@ import os from 'node:os';
 import { zstdDecompressSync } from 'node:zlib';   // v18.48.0（F-AW）：活会话存储为**多帧 zstd**，须逐帧解
 import { installExitGuard } from './_lib/exit-guard.mjs';   // 退出码硬化（v18.0.5）：fs 类异常 → 10，内部错误 → 70
 import { parseArgs as parseCliArgs, USAGE_CODE as CLI_USAGE_CODE } from './_lib/cli-args.mjs';  // 参数解析唯一实现（v18.2.9，审计 A7）
+import { writeReport } from './_lib/destructive-write.mjs';  // 写盘唯一出口（v19.1.9：--out 落盘走同一道守卫 + .bak）
 installExitGuard();
 
 const args = process.argv.slice(2);
-const opt = { dshHome: process.env.DSH_HOME || join(os.homedir(), '.dsh'), prices: { in: 0.28, cache: 0.028, out: 0.42 }, ids: null, tree: null, top: 0, project: null };
+const opt = { dshHome: process.env.DSH_HOME || join(os.homedir(), '.dsh'), prices: { in: 0.28, cache: 0.028, out: 0.42 }, ids: null, tree: null, top: 0, project: null, out: null, write: true };
 // 用法/帮助：v2.5.2-dsh.17 补（此前 `--help` 会被「未知参数」拦下，只报错不给用法）
 const USAGE = `用法: node token-cost.mjs --sessions <id1,id2,...> 或 --project <run/项目名> 或 --tree <主会话ID> [--top N]
   --sessions <ids>   项目精确统计（主控传本项目派发的全部会话 id，逗号分隔）
@@ -34,6 +35,9 @@ const USAGE = `用法: node token-cost.mjs --sessions <id1,id2,...> 或 --projec
                      适合主控在会话内拿不到 session id 的场景——交接报告里的 session-<uuid> 会被自动提取）
   --tree <id>        整会话委托树统计（含历史项目；需 Node ≥ 22.15）
   --top N            追加 cacheRead/成本 Top N 排名（优化决策用）
+  --out <file>       落盘路径（v19.1.9 新增）。缺省：给了 --project 时写
+                     <项目>/final/token-cost.json（即面板「Token 消耗」卡读的那个文件）
+  --no-write         只打印不落盘（v19.1.9 新增；退回 v19.1.8 及以前的行为）
   --dsh-home <path>  指定 DSH_HOME（默认 $DSH_HOME 或 ~/.dsh）
   --price-in/--price-cache/--price-out <N>  覆盖默认单价（美元/百万 token）
   -h, --help         显示本帮助`;
@@ -42,17 +46,20 @@ if (args.includes('-h') || args.includes('--help')) { console.log(USAGE); proces
 //   数值校验（尾随无值/非数字 → 明确报错而非静默 NaN）保留在调用处（v2.5.2-dsh.3 审计修复的行为不变）。
 try {
   const parsed = parseCliArgs(args, {
-    flags: [],
+    flags: ['--no-write'],
     values: {
       '--dsh-home': '~/.dsh',
       '--sessions': '<id1,id2,...>',
       '--project': 'run/项目名',
       '--tree': '<主会话ID>',
       '--top': '10',
+      '--out': 'final/token-cost.json',
       '--price-in': '0.28', '--price-cache': '0.028', '--price-out': '0.42',
     },
     maxPositionals: 0,
   });
+  if (parsed.flags.has('--no-write')) opt.write = false;
+  if (parsed.opts['--out']) opt.out = parsed.opts['--out'];
   if (parsed.opts['--dsh-home']) opt.dshHome = parsed.opts['--dsh-home'];
   if (parsed.opts['--sessions']) opt.ids = parsed.opts['--sessions'].split(',').map((s) => s.trim()).filter(Boolean);
   if (parsed.opts['--project']) opt.project = parsed.opts['--project'];
@@ -362,4 +369,22 @@ if (matchedSessions === 0) {
       `  · 可改用 --project <run/项目名>（从项目日志自动提取会话 id）或 --tree <主会话ID>。`,
   );
   process.exit(10);
+}
+
+// === v19.1.9：落盘（闭合契约缺口）===
+// 病灶：`SKILL.md` §主控亲跑路径 与 `pipeline-readme.md` 一直宣称本脚本「产 final/token-cost.json」，
+//   而本脚本**只 console.log**——于是运行面板的「Token 消耗」卡在全库 31/34 个项目上恒空
+//   （数据就在会话投影缓存里，只是**没人写那个文件**）。
+// 现规则：① `--out <file>` 显式指定；② 未给 `--out` 但给了 `--project` → 默认写
+//   `<项目>/final/token-cost.json`（即文档承诺、面板要读的那个文件）；③ `--no-write` 退回只打印；
+//   ④ `--sessions` / `--tree` 模式没有项目目录 → 仍只打印（不猜路径）。
+// **位置要求（刻意）**：必须在 `matchedSessions === 0 → exit 10` **之后**——绝不能在「查不到用量」时
+//   落一个 0 值文件，那正是 v18.2.6 立那道门要防的「静默把缺失当数值」。
+const outPath = (opt.write ? (opt.out || (opt.project ? join(opt.project, 'final', 'token-cost.json') : null)) : null);
+if (outPath) {
+  // 写盘走 `_lib/destructive-write.mjs`（同文件守卫 + 时间戳 .bak），与其余报告脚本同一条出口
+  writeReport(outPath, JSON.stringify(out, null, 2), { label: '--out' });
+  console.error(`· 已落盘：${outPath}（运行面板「Token 消耗」卡读的就是它）`);
+} else if (opt.write && !opt.out && !opt.project) {
+  console.error('· 仅打印（未给 --project / --out：该模式没有可推断的落盘位置）');
 }

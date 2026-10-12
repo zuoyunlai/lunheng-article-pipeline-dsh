@@ -29,7 +29,7 @@
 // 配合：Chrome/Edge headless --print-to-pdf 生成 PDF（见 _shared/format-export.md 三-b）
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, basename } from 'node:path';
-import { analyzeSvg, figureNoOf, figurePlaceholders } from './_lib/svg.mjs';
+import { analyzeSvg, figureNoOf, figurePlaceholders, isRasterFigure } from './_lib/svg.mjs';
 import { installExitGuard, requireExistingFile, requireExistingDir } from './_lib/exit-guard.mjs'; // 退出码硬化（v18.0.5）
 import { assertNotSameFile, writeWithSafety, SAME_FILE_CODE } from './_lib/destructive-write.mjs'; // 破坏性写策略（v18.2.6）
 import { parseArgs, USAGE_CODE } from './_lib/cli-args.mjs';  // 参数解析唯一实现（v18.7.3 P1-5）
@@ -85,15 +85,37 @@ if (hasBom) {
 const md = hasBom ? rawMd.slice(1) : rawMd;
 
 // ===== 图件库：按图号解析（--fig-dir）或单图复用（位置参数）=====
+// v19.1.9：**位图（PNG/JPG）与 SVG 同权**。本机 cairo 缺失 ⇒ Pillow 直出 PNG 是既定工作流；
+//   旧实现只认 `.svg`（`figureNoOf` 硬编码扩展名）⇒ 位图**永远不会被绑到图号**，导出件对每个图位
+//   留 `<p class="fig-missing">`，读者看到的是「缺图」而图其实在盘上。现：SVG 走原路（内联标记 +
+//   结构门）；位图**内联为 data URI**（保持「零外部引用」），且**不做** SVG 专属结构/数字机检
+//   （对二进制跑 XML 解析只会产出垃圾结论），改由人工目视核验并如实告警。
 const warnings = [];
-const svgCache = new Map();  // path -> analyzeSvg 结果
-const loadSvg = (path) => {
-  if (!svgCache.has(path)) {
-    const a = analyzeSvg(readFileSync(path, 'utf8'));
-    for (const w of a.warnings) warnings.push(`${basename(path)}: ${w}`);
-    svgCache.set(path, a);
+/** 位图内联体积告警阈值（超过只告警不拦——拦住会让读者看不到图，比文件大更糟）。 */
+const RASTER_INLINE_WARN_BYTES = 1.5 * 1024 * 1024;
+const figCache = new Map();  // path -> { ok, sanitized, warnings }（svg）| { raster, mime, dataUri, name }
+const loadFig = (path) => {
+  if (figCache.has(path)) return figCache.get(path);
+  if (isRasterFigure(path)) {
+    const bytes = readFileSync(path);
+    const mime = /\.jpe?g$/i.test(path) ? 'image/jpeg' : 'image/png';
+    const r = {
+      raster: true,
+      mime,
+      name: basename(path),
+      bytes: bytes.length,
+      dataUri: `data:${mime};base64,${bytes.toString('base64')}`,
+    };
+    if (bytes.length > RASTER_INLINE_WARN_BYTES) {
+      warnings.push(`${basename(path)}: 位图 ${(bytes.length / 1048576).toFixed(1)} MB，已按 data URI 内联（导出件会显著变大）`);
+    }
+    figCache.set(path, r);
+    return r;
   }
-  return svgCache.get(path);
+  const a = analyzeSvg(readFileSync(path, 'utf8'));
+  for (const w of a.warnings) warnings.push(`${basename(path)}: ${w}`);
+  figCache.set(path, a);
+  return a;
 };
 
 const byNo = new Map();      // 图号 -> 文件路径
@@ -107,21 +129,22 @@ if (figDir) {
 const placeholders = figurePlaceholders(md);
 let reusedSingle = 0;
 const svgFor = (no) => {
-  if (figDir) return byNo.get(no) ? loadSvg(byNo.get(no)) : null;
-  if (svgFile) { reusedSingle++; return loadSvg(svgFile); }
+  if (figDir) return byNo.get(no) ? loadFig(byNo.get(no)) : null;
+  if (svgFile) { reusedSingle++; return loadFig(svgFile); }
   return null;
 };
 
-// 结构不合格 → 拒绝导出（在渲染前一次性判定，避免产出半成品文件）
+// 结构不合格 → 拒绝导出（在渲染前一次性判定，避免产出半成品文件）。
+//   **位图跳过本门**（上：不做 SVG 专属机检），故这里只对 SVG 取 `ok`。
 const structural = [];
 if (figDir) {
   for (const [, p] of byNo) {
-    const a = loadSvg(p);
-    if (!a.ok) structural.push(`${basename(p)}: ${a.problems.join('；')}`);
+    const a = loadFig(p);
+    if (!a.raster && !a.ok) structural.push(`${basename(p)}: ${a.problems.join('；')}`);
   }
 } else if (svgFile) {
-  const a = loadSvg(svgFile);
-  if (!a.ok) structural.push(`${basename(svgFile)}: ${a.problems.join('；')}`);
+  const a = loadFig(svgFile);
+  if (!a.raster && !a.ok) structural.push(`${basename(svgFile)}: ${a.problems.join('；')}`);
 }
 if (structural.length) {
   console.error('SVG 结构不合格，拒绝导出（exit 40）：');
@@ -139,9 +162,13 @@ const FIG_INLINE_TEST = /\[图\d+[:：][^\]]*\]/;
 
 const figureHtml = (svgText, no, caption) =>
   `<div class="figure">\n${svgText}\n${caption ? `<div class="figcaption">${caption}</div>\n` : ''}</div>\n`;
+/** 图件正文块：SVG 原样内联；**位图内联为 data URI**（保持导出件零外部引用）。 */
+const figureBody = (a, no) => (a && a.raster
+  ? `<img src="${a.dataUri}" alt="图${no}" style="max-width:100%"/>`
+  : a.sanitized);
 const expectedHint = (no) => figDir
-  ? `（期望文件：${figDir.replace(/[\\/]$/, '')}/图${no}_标题.svg）`
-  : '（未提供 SVG）';
+  ? `（期望文件：${figDir.replace(/[\\/]$/, '')}/图${no}_标题.svg 或 图${no}_标题.png）`
+  : '（未提供图件）';
 const missingHtml = (no) => `<p class="fig-missing">[图${no}]${expectedHint(no)}</p>\n`;
 const missingInlineHtml = (no) => `<span class="fig-missing">[图${no}]${expectedHint(no)}</span>`;
 
@@ -221,7 +248,7 @@ for (let li = 0; li < lines.length; li++) {
     if (a) {
       embedded++;
       const srcName = figDir ? basename(byNo.get(no)) : basename(svgFile);
-      html += figureHtml(a.sanitized, no, `图${no}（源：${srcName}）`);
+      html += figureHtml(figureBody(a, no), no, `图${no}（源：${srcName}）`);
     } else {
       missing++;
       html += missingHtml(no);
@@ -241,7 +268,7 @@ for (let li = 0; li < lines.length; li++) {
       const a = svgFor(no);
       inlineFigures++;
       if (!a) { missing++; out += missingInlineHtml(no); }
-      else { embedded++; out += `<span class="figure-inline">${a.sanitized}</span>`; }
+      else { embedded++; out += `<span class="figure-inline">${figureBody(a, no)}</span>`; }
       last = m.index + m[0].length;
     }
     out += inline(line.slice(last));

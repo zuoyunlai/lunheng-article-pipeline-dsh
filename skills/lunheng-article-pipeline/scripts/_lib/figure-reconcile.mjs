@@ -1,5 +1,6 @@
-// figure-reconcile.mjs — 「图位 ↔ 图件」对账（**唯一实现**）
-// 版本：v19.1.8（论衡 v19.1.8 · 解析与图件批）
+// _lib/figure-reconcile.mjs —— 「图位 ↔ 图件」对账（**共享真源**）
+// v19.1.8 新增（解析与图件批）；v19.1.9 位图同权，且扩展名/图号口径收归 `_lib/svg.mjs`
+//   （**本文件不再自带正则**——本仓最贵的一类缺陷就是同一事实两处维护后发散）。
 //
 // 为什么单独成库：同一件事有**两个消费者**——`run-report.mjs`（HTML 看板 + JSON 边车）与
 //   `lib/panel.mjs`（运行面板「交付件与图件」卡）。若各写一份正则必然发散（本仓被审计反复
@@ -28,9 +29,10 @@
 //   · 「无图理由」取到的是**项目自己的说法**，本库不核验该理由是否成立。
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-
-/** 认作图件的扩展名（PNG 与 SVG 同权）。 */
-const FIG_EXT = /\.(svg|png|jpe?g)$/i;
+// **图件口径唯一真源**（v19.1.9）：扩展名集合与「文件名→图号」都取自 `svg.mjs`。
+//   本库早先自带一份 `图\s*(\d+)` 正则——那正是本仓最贵的「同一事实两处维护」：md2html 用
+//   `figureNoOf`、本库用另一份，两边一旦分叉就会出现「导出件说缺图但面板说齐」这类互相矛盾的结论。
+import { FIGURE_EXT_RE, figureNoOf } from './svg.mjs';
 /** 「说明里写了没有图」的措辞特征（用于把「已登记理由」与「空着没说」分开）。 */
 const NO_FIG_RE = /无|不存在|N\/A|N／A|0\s*图|未产图位|未设图位|未启用配图|未拍板|不需要|不适用/;
 /** 「简报里定了要图」的措辞特征——要图却一张没落，是**真缺口**，不是「本就不需要」。 */
@@ -98,16 +100,15 @@ export function listFigureFiles(projectDir) {
   for (const name of listDir(dir)) {
     const p = join(dir, name);
     let st; try { st = statSync(p); } catch { continue; }
-    if (!st.isFile() || !FIG_EXT.test(name)) continue;
-    const m = /图\s*(\d+)/.exec(name);
+    if (!st.isFile() || !FIGURE_EXT_RE.test(name)) continue;
     files.push({
       name,
       rel: 'final/图件/' + name,
       bytes: st.size,
       kb: Math.round(st.size / 102.4) / 10,
       mtime: st.mtimeMs,
-      ext: (FIG_EXT.exec(name) || ['.'])[0].slice(1).toLowerCase(),
-      n: m ? Number(m[1]) : null,
+      ext: (FIGURE_EXT_RE.exec(name) || ['.'])[0].slice(1).toLowerCase(),
+      n: figureNoOf(name),
     });
   }
   files.sort((a, b) => ((a.n ?? 9999) - (b.n ?? 9999)) || a.name.localeCompare(b.name));

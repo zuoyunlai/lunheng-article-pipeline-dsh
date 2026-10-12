@@ -16,7 +16,7 @@ import { TRUST_COMPLIANT_RE, TRUST_LOOSE_RE } from '../trust.mjs'
 import { splitCard } from '../cards.mjs'
 import { ENDNOTE_SECTIONS, ENDNOTE_ORDER, h2Headings, titleMatches } from '../sections.mjs'
 import { countHan } from '../han.mjs'
-import { figurePlaceholders, analyzeSvg, svgTextNumbers, figureNoOf, checkGrid } from '../svg.mjs'
+import { figurePlaceholders, analyzeSvg, svgTextNumbers, figureNoOf, checkGrid, FIGURE_EXT_RE, isRasterFigure } from '../svg.mjs'
 import { indexSection, sectionRange, CARD_SPECS, entryIds, idsByToken } from '../mgate-helpers.mjs'
 
 // v2.5.2-dsh.5 修订：白名单 5 节 + AI 使用声明（M-Form-2 / M-Form-7 一致；原主文件模块级常量随门族迁入）
@@ -888,7 +888,10 @@ try {
   // v18.2.6：`figDirArg` 已在脚本头部经由 requireExistingDir 校验（不存在 → exit 10），故此处可直接采信
   const figDir = figDirArg || (existsSync(figDirDefault) ? figDirDefault : null);
   const figNos = figurePlaceholders(text);
-  const files = figDir ? readdirSync(figDir).filter((f) => f.toLowerCase().endsWith('.svg')) : [];
+  // v19.1.9：**位图与 SVG 同权**（口径真源 = `_lib/svg.mjs` 的 FIGURE_EXT_RE）。
+  //   旧实现只收 `.svg` —— 本机 cairo 缺失、Pillow 直出 PNG 是既定工作流，于是**已交付的 PNG 图件
+  //   在全链上等于不存在**：本门判「缺图」P0，而图就在盘上。**假阳性会逼人无视红灯**，故放开配对。
+  const files = figDir ? readdirSync(figDir).filter((f) => FIGURE_EXT_RE.test(f)) : [];
   const fileNos = new Map();
   for (const f of files) { const n = figureNoOf(f); if (n !== null && !fileNos.has(n)) fileNos.set(n, f); }
   // 图位数量对账（拍板数取自任务简报，best-effort 解析；解析不到则不判，避免误 P0）
@@ -930,9 +933,10 @@ try {
     const shortage = pledged > 0 && figNos.size < pledged;
     // ③ 孤儿图件
     const orphanFigs = [...fileNos.keys()].filter((n) => !figNos.has(n));
-    // ④ SVG 良构 / 安全
+    // ④ SVG 良构 / 安全（**仅 SVG**；位图跳过——见文末软提示，不静默）
     if (figDir) {
       for (const [n, f] of fileNos) {
+        if (isRasterFigure(f)) continue;   // v19.1.9：对二进制跑 XML 解析只会产出垃圾结论
         const svgTxt = readFileSync(join(figDir, f), 'utf8');
         const a = analyzeSvg(svgTxt);
         if (!a.ok) problems.push(`图${n}(${f}) 结构不合格: ${a.problems.join('；')}`);
@@ -951,6 +955,7 @@ try {
       const unionRaw = dataCard + '\n' + text;
       const union = unionRaw + '\n' + unionRaw.replace(/(\d),(?=\d{3}\b)/g, '$1');
       for (const [n, f] of fileNos) {
+        if (isRasterFigure(f)) continue;   // v19.1.9：位图没有可解析的文本节点，本项不适用
         const nums = svgTextNumbers(readFileSync(join(figDir, f), 'utf8'));
         // v18.11.0 F-10 反哺——加「数学推算白名单」：图上数字由数据卡数字加减得出（如 3196-147=3049）
         //   时不算「无出处」。旧实现只做字符串包含比对 → 推算值被判无出处（v2 反哺报告问题 10）。
@@ -968,7 +973,13 @@ try {
         }
       }
     }
-    if (missingFigs.length) problems.push(`缺图：正文标了图位但 final/图件/ 无对应文件 → 图${missingFigs.join('、图')}（期望 图N_标题.svg）`);
+    // v19.1.9：位图图件**如实声明未做 SVG 专属机检**——静默跳过会把「没检」读成「检过」
+    //   （与 v18.2.6 P1-7「对账被跳过必须显式可见」同判据）。
+    const rasterFigs = [...fileNos].filter(([, f]) => isRasterFigure(f));
+    if (rasterFigs.length) {
+      softNotes.push(`位图图件 ${rasterFigs.length} 张（${rasterFigs.map(([n, f]) => `图${n}:${f}`).join('、')}）**未做** SVG 良构 / 网格 / 图上数字机检（本机 cairo 缺失时 Pillow 直出 PNG 是既定工作流）——**须人工目视核验**（数值与口径是否与数据卡一致）`);
+    }
+    if (missingFigs.length) problems.push(`缺图：正文标了图位但 final/图件/ 无对应文件 → 图${missingFigs.join('、图')}（期望 图N_标题.svg 或 图N_标题.png）`);
     if (shortage) problems.push(`图位不足：${pledgedFrom} 记为 ${pledged} 张，正文仅 ${figNos.size} 个 [图N]（T5 卡「≥ 拍板数量」不满足）`);
     if (orphanFigs.length) softNotes.push(`孤儿图件：图${orphanFigs.join('、图')} 未被正文引用`);
     // v18.2.6（P1-7）：对账被跳过（简报缺失/解析失败）必须**显式可见**，不得与「对账通过」同形
