@@ -1342,7 +1342,16 @@ test('开工台（v19.1.7）：人在环（OOH）——四门节点名**双向�
     assert.ok(P.WB_HITL_FOUR.includes(n), `四门文案必须列全：${n}`)
     assert.ok(P.L10N.zh['wb.hitlHint'].includes(n.replace('P0 定题', 'P0 定题')), `提示应含节点名：${n}`)
   }
-  assert.match(readme, /全部必需、不设可省任一门/, '真源里「四门必须」是硬口径——本包的全自动必须写成显式授权例外')
+  assert.match(readme, /全部必需、不设可省任一门/, '真源里「四门必须」是**默认**硬口径；全自动必须写成显式授权例外')
+  // v19.1.9：机制已正式写入「全自动」例外——两处真源都要有，且必须写明「四份单照落 ⇒ A7 门不变」（留痕不破）
+  const gateReadme = readme.split('\n').find((l) => l.includes('四门「必须」')) || ''
+  assert.match(gateReadme, /全自动/, 'pipeline-readme §四门 必须写入全自动例外')
+  assert.match(gateReadme, /首个推荐项/, '全自动的替代规则必须确定（按各门首个推荐项）')
+  assert.match(gateReadme, /四份确认单仍必须落盘|四份单照落/, '必须写明四份确认单照旧落盘')
+  assert.match(gateReadme, /A7[^\n]{0,60}(无需任何改动|不变)/, '必须写明 A7 机械门零改动（留痕不破）')
+  const skillHuman = skill.split('\n').find((l) => l.includes('人在环四节点')) || ''
+  assert.match(skillHuman, /全自动/, 'SKILL.md §人在环四节点 必须写入全自动例外')
+  assert.match(skillHuman, /P0 不受此授权影响/, 'P0 必须明确不受授权影响')
   assert.match(skill, /ask_user_question/, '全自动的替代规则要落在机制已有约定（各门首个推荐项）上')
   assert.match(P.WB_HITL_AUTO, /首个推荐项/, '全自动必须写明「按首个推荐项」——不能是含糊的「自行决定」')
   assert.match(P.WB_HITL_AUTO, /交付说明/, '全自动必须要求逐门留痕（写进交付说明）')
