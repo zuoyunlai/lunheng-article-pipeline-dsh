@@ -947,26 +947,36 @@ const assertNoColumnFlexBasis = (node, path = 'root') => {
   kids.forEach((c, i) => assertNoColumnFlexBasis(c, path + '>' + String(node.type) + '[' + i + ']'))
 }
 
-test('开工台（v19.0.4）：标题前是**纯内联 SVG 印章图标**（currentColor / 跟随 size / 装饰性）', async () => {
-  // 主人 2026-10-12 提供图形，并按页面口径落地：纯内联 SVG、`currentColor` 随主题、尺寸由属性控制、
-  //   装饰性 `aria-hidden`（标题文字已表达含义）。**路径数据逐字保留**——同一份 `d` 才决定同一观感
-  //   （它靠镂空笔画的绕向成形，「顺手简化」会把它变成一个实心圆）。
+test('开工台（v19.0.5）：标题前是**纯路径「圆 + 论」标记**（无字体依赖 / currentColor / 可翻正）', async () => {
+  // 主人给了 `E:\Pictures\lunheng.svg`（CorelDRAW 导出）并问「行吗」。**不能直接用**，三条实测：
+  //   ① 它靠内嵌 SVG 字体（`@font-face{src:url("#FontID0") format(svg)}`）出「论」字——现代浏览器不支持，
+  //      实际退化成「宿主装了微软雅黑才行」；② 颜色写死为一个硬编码深色（暗色主题下几乎看不见，已实测）；
+  //   ③ 导出件带 DOCTYPE/metadata/xodm 命名空间，不适合内联。
+  //   ⇒ 重建为纯路径版：取字体里嵌的「论」轮廓 + 自绘圆，归一到 24 网格、currentColor。
   const h = makeReactStub()
   const mod = await loadClient(h, { fetch: fetchStub({}) })
   const P = mod.__panel
   const el = P.WbIcon({ size: 18 })
-  assert.equal(el.type, 'svg', '图标根节点必须是 svg（不得用图片外链 / 字体图标）')
+  assert.equal(el.type, 'svg')
   assert.equal(el.props.width, 18, '必须跟随传入的 size')
   assert.equal(el.props.height, 18)
-  assert.equal(el.props.fill, 'currentColor', '必须跟随主题色，不得写死颜色（暗色下会变成黑块）')
-  assert.equal(el.props.viewBox, '0 0 1024 1024', '保留图形作者坐标系')
+  assert.equal(el.props.viewBox, '0 0 24 24', '归一化到 24 网格（与侧栏图标同族）')
+  assert.equal(el.props.fill, 'none', '图形分件上色：圆走 stroke、字形走 fill，根节点不得整体填色')
   assert.equal(el.props['aria-hidden'], 'true', '装饰性图标：读屏不该重复念（标题文字已表达含义）')
-  assert.equal(el.children.length, 1)
-  assert.equal(el.children[0].type, 'path')
-  const d = el.children[0].props.d
-  assert.ok(d.startsWith('M512.13 66.26'), '应为主人选定的那一份图形（换图形需主人确认）')
-  assert.ok(d.length > 2500, '路径数据完整性（实测 2,942 字符；防被"顺手简化"成实心圆）')
-  assert.ok(d.endsWith('z'), '路径必须以闭合子路径结尾（原图末段）')
+  assert.equal(el.children.length, 2, '两个分件：圆 + 字形路径')
+  assert.equal(el.children[0].type, 'circle')
+  assert.equal(el.children[0].props.stroke, 'currentColor', '圆必须跟随主题色')
+  assert.equal(el.children[0].props.fill, 'none')
+  assert.equal(el.children[1].type, 'path')
+  assert.equal(el.children[1].props.fill, 'currentColor', '字形必须跟随主题色（暗色下才看得见）')
+  // **零字体依赖**：这是本图标从原文件重建出来的**唯一理由**，必须钉死
+  assert.ok(!/<text|<font|font-family|微软雅黑|FontID0/.test(JSON.stringify(el)), '不得含 <text>/内嵌字体（原文件的致命依赖）')
+  // 字形几何：轮廓路径 + **含负 y 缩放**（字体制是 y 轴向上，丢了翻转字会上下颠倒）
+  const tf = el.children[1].props.transform
+  assert.match(tf, /scale\([-\d.]+,-\d/, '变换必须带负 y 缩放（把字体制翻正）：' + tf)
+  const d = el.children[1].props.d
+  assert.ok(d.startsWith('M427.901 450.011'), '字形应为主人文件里「论」的轮廓（换图形需主人确认）')
+  assert.ok(d.length > 1200, '轮廓数据完整性（实测 1,311 字符）')
   assert.equal(P.WbIcon({}).props.width, 16, '缺 size 时用 16 兜底')
   // 组件层面：图标必须在标题文字**之前**渲染
   const text = h.render(P.Workbench, { inputActions: { setDraft: () => {} }, ctx: { get: () => undefined } })
@@ -1131,23 +1141,26 @@ test('开工台（v19.0.0 §4.2）：三处硬校验 + 结构化开场白 + 只 
   assert.match(prompt, /- 投喂材料（已在工作区内）: data\.csv/)
   assert.match(prompt, /跟随文类/, '未填项必须写明「跟随文类」而不是留空')
   assert.match(prompt, /不要启动 Phase 1/, '必须带人在环纪律（否则工作台等于绕过 Phase 0 闸门）')
-  // ③ 通道一：席位标准 props（首选），且**只 setDraft**
+  // ③ **唯一通道**：席位标准 props（v19.0.5 收口 —— 主人真机回执确认走的就是这条），且**只 setDraft**
   const calls = []
   const r1 = P.pushDraft({ inputActions: { setDraft: (s) => calls.push(['draft', s]), submit: () => calls.push(['submit']) } }, prompt)
   assert.equal(r1.ok, true)
   assert.equal(r1.channel, 'wb.channel.inputActions')
   assert.equal(calls.length, 1, '**只 setDraft，绝不自动 submit**（Phase 0 是人确认后才开工）')
   assert.equal(calls[0][1], prompt)
-  // ④ 通道二：会话作用域（root 链路）
-  const scoped = []
-  const sessions = { scope: () => ({ get: () => ({ input: { for: () => ({ setDraft: (s) => scoped.push(s) }) } }) }) }
-  const r2 = P.pushDraft({ ctx: { get: () => sessions }, sessionId: 's1' }, prompt)
-  assert.equal(r2.channel, 'wb.channel.scope')
-  assert.equal(scoped.length, 1)
-  // ⑤ 通道三：都没有 → 如实报缺（不假装写进去了）
-  const r3 = P.pushDraft({ ctx: { get: () => undefined } }, prompt)
+  // ④ 无席位 props → 如实报缺（**不假装**、也不去摸服务内部：`ctx.get` 故意设计成会抛）
+  const r2 = P.pushDraft({ ctx: { get: () => { throw new Error('不得在写入路径上摸服务') } }, sessionId: 's1' }, prompt)
+  assert.equal(r2.ok, false)
+  assert.equal(r2.channel, 'wb.channel.none')
+  assert.equal(r2.err, null, '没走到的路径不该报错——报缺就是报缺')
+  // ⑤ setDraft 自身抛错 → 如实带出**错误原文**（不吞成「未找到通道」那种似是而非的说法）
+  const r3 = P.pushDraft({ inputActions: { setDraft: () => { throw new Error('host rejected draft') } } }, prompt)
   assert.equal(r3.ok, false)
   assert.equal(r3.channel, 'wb.channel.none')
+  assert.equal(r3.err, 'host rejected draft', '错误原文必须透传（否则诊断时看不出是「没通道」还是「通道报错」）')
+  // ⑥ 旧版的第二通道（会话作用域）**已删除**：L10N 里不得再留那条文案
+  assert.equal(P.L10N.zh['wb.channel.scope'], undefined, '会话作用域通道已收口，文案应同批删除')
+  assert.equal(P.L10N.en['wb.channel.scope'], undefined)
 })
 
 test('开工台（v19.0.0 §4.2）：组件渲染 + 点「生成开场白」把文本送进 inputActions', async () => {
