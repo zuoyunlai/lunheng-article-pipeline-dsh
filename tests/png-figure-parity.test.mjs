@@ -63,8 +63,8 @@ test('② 导出链：md2html --fig-dir 把 PNG 内联为 data URI，且不再�
   rmSync(d, { recursive: true, force: true })
 })
 
-test('③ 面板链：边车 mGate.detail 三态如实透出（空态「为什么空」的唯一依据）', () => {
-  const mk = (mGate) => {
+test('③ 面板链：M 门明细三态——边车带 detail 时以边车为准，**不带时由面板自己判定**', () => {
+  const mk = (mGate, reportOnDisk = null) => {
     const { d, fin } = mkProject()
     writeFileSync(join(d, 'run', 'proj', 'status.md'), '# Status\n\n- ✅ **In Progress** — Phase 3（T5 写手出初稿 v1）\n')
     writeFileSync(join(fin, '运行报告.json'), JSON.stringify({
@@ -73,23 +73,40 @@ test('③ 面板链：边车 mGate.detail 三态如实透出（空态「为什�
       scoring: { score: 80, coverage: 0.9 },
       words: { series: [] },
     }))
+    if (reportOnDisk) writeFileSync(join(fin, 'M-Gate-Report.json'), JSON.stringify(reportOnDisk))
     return { d, snap: lightSnapshot(d, 'proj') }
   }
-  // 旧格式报告（有报告、无 results[]）→ 重跑 run-report **永远带不上**明细
+  // 边车带字段：以边车为准（同一判据，避免两处口径分叉）
   const a = mk({ path: 'final/M-Gate-Report.json', summary: { exit: 0 }, results: [], detail: 'legacy-no-results' })
   assert.equal(a.snap.report.gateDetail, 'legacy-no-results')
   assert.deepEqual(a.snap.report.gateItems, [])
   rmSync(a.d, { recursive: true, force: true })
-  // 项目里根本没有 M 门报告
   const b = mk({ path: null, summary: null, results: [], detail: 'no-report' })
   assert.equal(b.snap.report.gateDetail, 'no-report')
   assert.equal(b.snap.report.mGate, null, '无 summary 时汇总卡仍须走空态（不得渲染半成品）')
   rmSync(b.d, { recursive: true, force: true })
-  // 正常：有明细 → 客户端走灯带分支，不看空态文案
   const c = mk({ path: 'final/M-Gate-Report.json', summary: { exit: 0, total: 1 }, results: [{ id: 'M-Form-1', gate: 'M-Form-1', severity: '通过' }], detail: 'ok' })
   assert.equal(c.snap.report.gateDetail, 'ok')
   assert.equal(c.snap.report.gateItems.length, 1)
   rmSync(c.d, { recursive: true, force: true })
+
+  // ⚠ v19.1.10 回归钉：**存量边车不带 detail**（19.1.9 之前生成的边车全是这样）——
+  //   面板必须自己从项目目录判定，否则「按原因分流」对它本来要服务的那批旧格式项目完全失效，
+  //   客户端会回落到那句要修掉的错指引「重跑一次即可带上」。
+  const noField = (reportOnDisk) => mk({ path: 'final/M-Gate-Report.json', summary: { exit: 0 }, results: [] }, reportOnDisk).snap.report.gateDetail
+  assert.equal(
+    noField({ schema: 'old', exit_code: 0, summary: '终检通过' }),
+    'legacy-no-results',
+    '边车无 detail + 盘上是旧格式报告（无 results[]）→ 面板须自行判定为 legacy-no-results',
+  )
+  assert.equal(
+    noField({ date: '2026-10-01', exit: 0, results: [{ id: 'M-Form-1' }] }),
+    'ok',
+    '边车无 detail + 盘上报告有 results[] → 判定为 ok',
+  )
+  // 盘上连报告都没有 → no-report（汇总卡据此给「先跑 m-gate-check」而不是「还没有数字层边车」）
+  const d2 = mk({ path: null, summary: null, results: [] }).snap.report.gateDetail
+  assert.equal(d2, 'no-report', '盘上无任何 M 门报告 → no-report')
 })
 
 test('④ 落盘链：成功即写盘；查不到用量记录时 exit 10 且绝不落 0 值文件', () => {

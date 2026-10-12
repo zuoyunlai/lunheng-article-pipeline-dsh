@@ -896,7 +896,7 @@ test('开工台（v19.0.1）：外发同意默认「全部同意」，且下拉�
   // 组件层面：同意下拉存在、含「全部同意」、且**不含**空值项
   const props = { inputActions: { setDraft: () => {} }, ctx: { get: () => undefined } }
   h.render(P.Workbench, props)
-  wbButton(h.tree(), '打开论衡开工台').props.onClick()
+  wbButton(h.tree(), '打开').props.onClick()
   h.render(P.Workbench, props)
   const hasOpt = (kids, v) => (kids || []).some((c) => Array.isArray(c) ? hasOpt(c, v) : (c && c.props && c.props.value === v))
   const consentSel = wbFind(h.tree(), (n) => n.type === 'select' && hasOpt(n.children, '全部同意'))
@@ -926,7 +926,7 @@ test('开工台（v19.0.1）：目标期刊下拉必须与 期刊数据库.md �
   // 组件层面：下拉里三组齐全（不指定 / 中文 / 英文 / 其他手填）
   const props = { inputActions: { setDraft: () => {} }, ctx: { get: () => undefined } }
   h.render(mod.__panel.Workbench, props)
-  wbButton(h.tree(), '打开论衡开工台').props.onClick()
+  wbButton(h.tree(), '打开').props.onClick()
   h.render(mod.__panel.Workbench, props)
   wbButton(h.tree(), '展开高级设置').props.onClick()
   h.render(mod.__panel.Workbench, props)
@@ -1006,7 +1006,7 @@ test('开工台（v19.0.2）：列容器内不得出现 px 的 flex-basis（主�
   const mod = await loadClient(h, { fetch: fetchStub({}) })
   const props = { inputActions: { setDraft: () => {} }, ctx: { get: () => undefined } }
   h.render(mod.__panel.Workbench, props)
-  wbButton(h.tree(), '打开论衡开工台').props.onClick()
+  wbButton(h.tree(), '打开').props.onClick()
   h.render(mod.__panel.Workbench, props)
   wbButton(h.tree(), '展开高级设置').props.onClick()
   h.render(mod.__panel.Workbench, props)
@@ -1205,7 +1205,7 @@ test('开工台（v19.0.0 §4.2）：组件渲染 + 点「生成开场白」把�
   assert.ok(!text.includes('填写后生成结构化开场白'), 'v19.1.4：说明行在表单里，收起态不显示')
   assert.doesNotMatch(text, /生成开场白并填入输入框/, '收起态不得渲染正文按钮')
   // ② 点开
-  const toggle = findButton(h.tree(), '打开论衡开工台')
+  const toggle = findButton(h.tree(), '打开')
   assert.ok(toggle, '必须有「打开」按钮')
   toggle.props.onClick()
   text = h.render(mod.__panel.Workbench, props)
@@ -1305,7 +1305,7 @@ test('开工台（v19.1.6）：必填/可选标记**以 wbValidate 为准**（�
   const P = mod.__panel
   const props = { inputActions: { setDraft: () => {} }, ctx: { get: () => undefined } }
   h.render(P.Workbench, props)
-  wbButton(h.tree(), '打开论衡开工台').props.onClick()
+  wbButton(h.tree(), '打开').props.onClick()
   h.render(P.Workbench, props)
   wbButton(h.tree(), '展开高级设置').props.onClick()
   const text = h.render(P.Workbench, props)
@@ -1369,7 +1369,7 @@ test('开工台（v19.1.7）：人在环下拉在「外发同意」旁、两个�
   const P = mod.__panel
   const props = { inputActions: { setDraft: () => {} }, ctx: { get: () => undefined } }
   h.render(P.Workbench, props)
-  wbButton(h.tree(), '打开论衡开工台').props.onClick()
+  wbButton(h.tree(), '打开').props.onClick()
   const text = h.render(P.Workbench, props)
   assert.match(text, /人在环（OOH）/, '下拉要有标签')
   const hasOpt = (kids, v) => (kids || []).some((c) => Array.isArray(c) ? hasOpt(c, v) : (c && c.props && c.props.value === v))
@@ -1385,7 +1385,7 @@ test('开工台（v19.1.6）：标题栏的开关按钮**靠右**（`marginLeft:
   const P = mod.__panel
   const props = { inputActions: { setDraft: () => {} }, ctx: { get: () => undefined } }
   h.render(P.Workbench, props)
-  const btn = wbButton(h.tree(), '打开论衡开工台')
+  const btn = wbButton(h.tree(), '打开')
   assert.equal(btn.props.style.marginLeft, 'auto', '靠右由 flex 行的 marginLeft:auto 实现（换行时仍在本行右端）')
   btn.props.onClick()
   h.render(P.Workbench, props)
@@ -1508,7 +1508,7 @@ test('开工台（v19.1.5）：点「生成开场白并填入」顺手建立**�
   const props = { inputActions: { setDraft: () => {} }, ctx: { get: () => undefined }, sessionId: 's7' }
   const tick = async () => { const s = h.render(P.Workbench, props); await new Promise((r) => setTimeout(r, 0)); return s }
   await tick()
-  wbButton(h.tree(), '打开论衡开工台').props.onClick()
+  wbButton(h.tree(), '打开').props.onClick()
   await tick()
   // 填最小必需项：标题 + 项目名
   //   注意：子节点里可能是**数组**（React 支持，本包也这么用，如 `kids`）→ walk 必须展开数组，
@@ -1543,7 +1543,7 @@ test('进度条（v19.1.4）：**没有项目**时不摆空壳——不显示 ch
   assert.ok(!/检索 0\/3/.test(text), '没有项目时不得显示进度 chips（没数据不摆空壳）')
   assert.ok(!/进度读取失败/.test(text), '没有项目不是读面失败，不该报错')
   // 开工台本身照常可用（删掉「继续已有项目」后，表单只剩开新项目这条路径）
-  wbButton(h.tree(), '打开论衡开工台').props.onClick()
+  wbButton(h.tree(), '打开').props.onClick()
   text = await tick()
   assert.match(text, /基本设置/, '没有项目也能开新项目（不禁用整个开工台）')
   assert.ok(!text.includes('继续已有项目'), 'v19.1.4：该节已按主人裁定删除')
@@ -1609,7 +1609,7 @@ test('进度条（v19.1.3）：**在开工表单之外**——不展开也能看
   assert.ok(/root=%2Fwork|root=\/work/.test(snapCall),
     '根已知时必须带上它（v19.1.2 实测：不带 root 在多工作区下会打到别的根 ⇒ 404）：' + snapCall)
   // ② 展开后：表单在，但**表单里没有进度条**，也没有已删掉的检索派发
-  wbButton(h.tree(), '打开论衡开工台').props.onClick()
+  wbButton(h.tree(), '打开').props.onClick()
   await tick()
   text = h.render(P.Workbench, props)
   assert.match(text, /基本设置/, '展开后表单应在')
