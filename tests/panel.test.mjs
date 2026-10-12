@@ -1303,7 +1303,11 @@ test('开工台（v19.1.1）：**多工作区**时须逐个根探测，取第一
   await tick(); await tick(); await tick(); await tick()
   assert.ok(seen.some((u) => u.includes('/ping')), '必须先问 /ping 拿根清单：' + seen.join(' | '))
   assert.ok(seen.some((u) => u.includes('root=%2FrootB') || u.includes('root=/rootB')), '应问到第二个根：' + seen.join(' | '))
-  assert.ok(seen.some((u) => u.includes('/snapshot?project=realproj')), '应对第二个根里的项目取快照：' + seen.join(' | '))
+  // v19.1.2 回归钉（主人实测「快照读取失败」的真因）：**快照请求必须带上探测出来的那个根**。
+  //   不带 root ⇒ 宿主 resolveTarget 取 roots[0] ⇒ 打到另一个根 ⇒ 404 ⇒ 界面误报「读面不可用」。
+  const snapUrl = seen.find((u) => u.includes('/snapshot?project=realproj'))
+  assert.ok(snapUrl, '应对第二个根里的项目取快照：' + seen.join(' | '))
+  assert.ok(/root=%2FrootB|root=\/rootB/.test(snapUrl), '快照请求必须带探测到的根（否则多工作区下必 404）：' + snapUrl)
   assert.match(h.render(P.Workbench, props), /检索 3\/3/, '第二个根的项目应显示真实进度')
 })
 
