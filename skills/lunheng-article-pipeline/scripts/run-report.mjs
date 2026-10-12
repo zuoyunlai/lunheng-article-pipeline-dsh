@@ -53,6 +53,8 @@ import { parseArgs, USAGE_CODE } from './_lib/cli-args.mjs';
 import { writeReport } from './_lib/destructive-write.mjs';
 import { countHan } from './_lib/han.mjs';
 import { bodyStartAfterAbstract, bodyBounds } from './_lib/sections.mjs';
+// 「图位 ↔ 图件」对账的**唯一实现**（v19.1.8）：与 `lib/panel.mjs` 共用同一份口径。
+import { reconcileFigures, figureSummaryLine } from './_lib/figure-reconcile.mjs';
 
 installExitGuard();
 
@@ -200,13 +202,23 @@ const gateTimeline = gates.map((g) => {
   };
 });
 
-// ── 采集 ③：M 门报告（位置三代际：final/ → audits/M-Gate-Report-vN.json（取最大 N）→ audits/M-Gate-final.json）
+// ── 采集 ③：M 门报告（位置**四**代际：final/ → final/M-Gate-Report-vN.json（取最大 N）
+//    → audits/M-Gate-Report-vN.json（取最大 N）→ audits/M-Gate-final.json）
+//    v19.1.8 补 `final/M-Gate-Report-v*.json`：实测 `ai-cad-cam-impact` 的现行报告就叫
+//    `final/M-Gate-Report-v6.json`（有完整 results[22] + exit），旧候选清单漏掉它 →
+//    面板「M 门」整块空，而报告其实一直在盘上。
 function pickMGate() {
   const cands = [join(projectDir, 'final', 'M-Gate-Report.json')];
+  const verSort = (dir, into) => {
+    // 版本号允许带点（实测 `M-Gate-Report-v2.2.4.json`：早期按流水线版本命名）——只认 `\d+` 会把它
+    //   当成「M 门报告缺」，而报告其实在盘上（**错报比漏报更伤**：面板会写一句假话）。
+    listDir(dir).filter((f) => /^M-Gate-Report-v([\d.]+)\.json$/.test(f))
+      .sort((x, y) => Number(/v([\d.]+)/.exec(y)[1]) - Number(/v([\d.]+)/.exec(x)[1]))
+      .forEach((f) => into.push(join(dir, f)));
+  };
+  verSort(join(projectDir, 'final'), cands);
   const audits = listDir(join(projectDir, 'audits'));
-  audits.filter((f) => /^M-Gate-Report-v(\d+)\.json$/.test(f))
-    .sort((x, y) => Number(/v(\d+)/.exec(y)[1]) - Number(/v(\d+)/.exec(x)[1]))
-    .forEach((f) => cands.push(join(projectDir, 'audits', f)));
+  verSort(join(projectDir, 'audits'), cands);
   if (audits.includes('M-Gate-final.json')) cands.push(join(projectDir, 'audits', 'M-Gate-final.json'));
   for (const c of cands) { if (!existsSync(c)) continue; const j = readJson(c); if (j) return { path: c, json: j }; }
   return null;
@@ -290,7 +302,19 @@ const roleRows = [...roleCounts.entries()].map(([role, count]) => ({ role, count
 const handoffCount = listDir(join(projectDir, 'audits')).filter((f) => /^交接报告-/.test(f)).length;
 const manifest = readJson(join(projectDir, 'final', '证据包', 'manifest.json'));
 if (manifest === null) warn('final/证据包/manifest.json', '证据包 manifest 缺 —— 证据包条目数标 N/A');
-const figureNames = listDir(join(projectDir, 'final', '图件')).filter((f) => f.toLowerCase().endsWith('.svg'));
+// ── 采集 ⑦b：图位 ↔ 图件 对账（v19.1.8，与面板共用 `_lib/figure-reconcile.mjs`）
+//   旧实现只收 `.svg` —— 本机 cairo 库缺失、SVG 渲染链路不可用，Pillow 直出 PNG 是既定工作流，
+//   于是「图已交付」被如实报成「无图」（实测 `cn-llm-inference-cost-econ` 6 张 PNG 全被漏掉）。
+//   同时把「图位声明 / 实有 / 缺哪几张 / 没图时的理由」一并带出——**报告不再对无图保持沉默**。
+const figRec = reconcileFigures(projectDir);
+const figureNames = figRec.files.map((f) => f.name);
+if (figRec.status === 'missing') {
+  warn('final/图件', `正文声明 ${figRec.totals.slots} 个图位，final/图件 缺 ${figRec.missing.length} 张（${figRec.missing.map((m) => '图' + m.n).join('、')}）—— 须补图或改正文`);
+} else if (figRec.status === 'none-unreasoned') {
+  warn('final/交付说明.md', '本项 0 图位、0 图件，但交付说明未登记「为何不配图」—— 理由缺（须补）');
+} else if (figRec.status === 'orphan-files') {
+  warn('final/图件', `有 ${figRec.totals.numbered} 张已编号图件但正文无图位 —— 图件未与正文对账`);
+}
 const finalFiles = [];
 (function walkFinal(dir, rel) {
   for (const f of listDir(dir)) {
@@ -479,9 +503,23 @@ function render() {
   const mgTable = [...mgItems].sort(bySev).map((i) => `<tr><td class="mono">${esc(i.id)}</td><td><span class="sev" style="--c:${sevColor(i.severity)}">${esc(i.severity)}</span></td><td>${esc(i.label)}</td><td class="small">${esc(cut(i.detail, 150))}</td></tr>`).join('');
   const gaTable = [...gaItems].sort(bySev).map((i) => `<tr><td class="mono">${esc(i.id)}</td><td><span class="sev" style="--c:${sevColor(i.severity)}">${esc(i.severity)}</span></td><td>${esc(i.label)}</td><td class="small">${esc(cut(i.detail, 150))}</td></tr>`).join('');
   const filesTable = finalFiles.map((f) => `<tr><td class="mono">${esc(f.rel)}</td><td>${fmtBytes(f.bytes)}</td><td class="small">${esc(f.mtime)}</td></tr>`).join('');
-  const figCards = figureNames.map((f) => {
-    const raw = readText(join(projectDir, 'final', '图件', f));
-    return raw ? `<figure class="fig"><div class="figbox">${inlineSvg(raw)}</div><figcaption>${esc(f)}</figcaption></figure>` : '';
+  // 图件卡（v19.1.8）：SVG 内联为标记；PNG/JPG 内联为 data URI（本机 Pillow 工作流产物，与 SVG 同权）。
+  //   单张超上限不内联（避免报告膨胀成数十 MB），改为文字说明——**边界如实标注，不静默丢弃**。
+  const INLINE_MAX = 1.5 * 1024 * 1024;
+  const figCards = figRec.files.map((f) => {
+    const p = join(projectDir, 'final', '图件', f.name);
+    try {
+      if (f.ext === 'svg') {
+        const raw = readText(p);
+        return raw ? `<figure class="fig"><div class="figbox">${inlineSvg(raw)}</div><figcaption>${esc(f.name)}</figcaption></figure>` : '';
+      }
+      if (f.bytes > INLINE_MAX) {
+        return `<figure class="fig"><figcaption>${esc(f.name)}（${fmtBytes(f.bytes)}，超过内联上限，未内联）</figcaption></figure>`;
+      }
+      const b64 = readFileSync(p).toString('base64');
+      const mime = f.ext === 'png' ? 'image/png' : 'image/jpeg';
+      return `<figure class="fig"><div class="figbox"><img src="data:${mime};base64,${b64}" alt="${esc(f.name)}" style="max-width:100%"/></div><figcaption>${esc(f.name)}</figcaption></figure>`;
+    } catch { return ''; }
   }).join('');
   const noteRows = notes.map((n) => `<li class="n-${n.level}"><b>${esc(n.what)}</b> — ${esc(n.detail)}</li>`).join('')
     || '<li class="ok">本报告所有面板均已取到数据源。</li>';
@@ -597,7 +635,14 @@ function render() {
   <section id="artifacts"><h2>产物</h2>
     <div class="panel"><h3>交付物清单（status.md 回填）</h3>
       ${st.deliveryRows.length ? `<table><thead><tr><th>项</th><th>路径</th><th>字节</th><th>sha / 校验</th></tr></thead><tbody>${st.deliveryRows.map((r) => `<tr><td>${esc(r.item)}</td><td class="mono">${esc(r.path)}</td><td>${esc(r.bytes)}</td><td class="small">${esc(r.sha)}</td></tr>`).join('')}</tbody></table>` : '<p class="small">status.md 未解析到交付物清单</p>'}</div>
-    ${figureNames.length ? `<div class="panel"><h3>图件（内联 SVG，${figureNames.length} 张）</h3><div class="figs">${figCards}</div></div>` : ''}
+    <div class="panel"><h3>图件（图位对账）</h3>
+      <p class="small"><b>${esc(figureSummaryLine(figRec))}</b></p>
+      ${figRec.reason ? `<p class="small">项目自述（${esc(figRec.reason.source)}）：${esc(figRec.reason.text)}</p>` : ''}
+      ${figRec.missing.length ? `<p class="small n-warn">缺的图位（正文已声明，final/图件 无对应文件）：${figRec.missing.map((m) => '图' + m.n + (m.title ? '：' + esc(cut(m.title, 60)) : '')).join('；')}</p>` : ''}
+      ${figRec.status === 'none-unreasoned' ? '<p class="small n-warn">本项 0 图位、0 图件，但交付说明未登记「为何不配图」——理由缺。</p>' : ''}
+      ${figRec.orphans.length ? `<p class="small n-warn">已编号图件未匹配到图位：${esc(figRec.orphans.join('、'))}</p>` : ''}
+      ${figRec.extras.length ? `<p class="small">非正文图（封面 / 附录，不计入图位）：${esc(figRec.extras.join('、'))}</p>` : ''}
+      ${figCards ? `<div class="figs">${figCards}</div>` : ''}</div>
     <div class="panel"><h3>final/ 实体文件（${finalFiles.length} 个，证据包子目录已折叠）</h3>
       <table><thead><tr><th>相对路径</th><th>大小</th><th>修改时间</th></tr></thead><tbody>${filesTable || '<tr><td colspan="3" class="small">final/ 不存在</td></tr>'}</tbody></table></div>
   </section>
@@ -638,7 +683,22 @@ if (outJson) {
     rounds,
     sources: { shards: srcRows, mergedCount },
     roles: roleRows,
-    artifacts: { finalFiles, figures: figureNames, evidenceEntries: manifest && (manifest.entries || manifest.files) ? (manifest.entries || manifest.files).length : null },
+    artifacts: {
+      finalFiles,
+      figures: figureNames,
+      // v19.1.8：图位对账结果（面板「交付件与图件」卡直接消费；含**未配图时的理由**）
+      figuresRec: {
+        status: figRec.status,
+        summary: figureSummaryLine(figRec),
+        slots: figRec.slots.map((s) => ({ n: s.n, title: s.title })),
+        missing: figRec.missing,
+        orphans: figRec.orphans,
+        extras: figRec.extras,
+        reason: figRec.reason,
+        totals: figRec.totals,
+      },
+      evidenceEntries: manifest && (manifest.entries || manifest.files) ? (manifest.entries || manifest.files).length : null,
+    },
     scoring: qs ? { score: qs.score, coverage: qs.coverage, components: qsComp, qlt6: qs.qlt6 || null, validity: qs.validity || null } : null,
     dataSourceNotes: notes,
   };
