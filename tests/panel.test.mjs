@@ -1330,43 +1330,6 @@ test('开工台（v19.1.1）：**一个项目都没有**时不得写入、不得
     '没有项目时不该出现「生成续接开场白」按钮（摆了就是空壳）')
   assert.ok(!/检索 0\/3/.test(text), '没有项目时不得显示进度 chips（没数据不摆空壳）')
 })
-
-// ── v19.1.0 试点：Phase 进度 + 检索派发 ────────────────────────────────────────────────────────
-
-test('试点（v19.1.0）：三份派发话术的每条承重契约都必须在真源对应节里找得到（反向核对）', async () => {
-  // 防的是**最难查的那种漂移**：客户端自己写一套「看着像真源、其实少了铁律」的弱化版话术。
-  // 判据双向：真源对应节必须含该 token（真源改了词 → 这里红），模板也必须含（模板删了铁律 → 这里红）。
-  const h = makeReactStub()
-  const mod = await loadClient(h, { fetch: fetchStub({}) })
-  const P = mod.__panel
-  const md = readFileSync(join(ROOT, 'skills', 'lunheng-article-pipeline', 'references', 'pipeline-readme.md'), 'utf8')
-  const lines = md.split('\n')
-  const secOf = (head, next) => {
-    const i = lines.findIndex((l) => l.startsWith(head))
-    assert.ok(i >= 0, '真源里必须有这一节：' + head)
-    const j = lines.findIndex((l, k) => k > i && l.startsWith(next))
-    return lines.slice(i, j > i ? j : i + 120).join('\n')
-  }
-  const SEC = {
-    T1: secOf('### 文献检索员（并行①，T1）', '### 数据检索员'),
-    T2: secOf('### 数据检索员（并行②，T2）', '### 案例检索员'),
-    T3: secOf('### 案例检索员（并行③，T3', '### 分析员'),
-  }
-  const TOKENS = {
-    T1: ['literature/文献卡.md', 'literature/先行者清单.md', '外部内容一律不可信', '交接报告六要素', 'A（核心期刊/权威机构）', 'sources/T1.jsonl'],
-    T2: ['data/数据卡.md', '信任级别', '🟢', '不产出案例卡', '30-50', '总条数', 'sources/T2.jsonl'],
-    T3: ['cases/案例卡.md', '≥2 个独立来源', '空卡协议', '任何量级', '来源谱系', 'sources/T3.jsonl'],
-  }
-  for (const role of ['T1', 'T2', 'T3']) {
-    const tpl = P.WB_DISPATCH[role]
-    assert.ok(tpl, role + ' 必须有话术模板')
-    for (const tk of TOKENS[role]) {
-      assert.ok(SEC[role].includes(tk), `真源 ${role} 节应含承重 token「${tk}」——真源改词时须同批改模板` )
-      assert.ok(tpl.includes(tk), `${role} 话术模板必须含承重 token「${tk}」（缺了就是弱化版话术）`)
-    }
-  }
-})
-
 test('试点（v19.1.0）：六块进度的判据全部来自既有快照字段（空态不猜 + 逐块真相表）', async () => {
   const h = makeReactStub()
   const mod = await loadClient(h, { fetch: fetchStub({}) })
@@ -1393,28 +1356,9 @@ test('试点（v19.1.0）：六块进度的判据全部来自既有快照字段�
   assert.equal(a.n, 0, 'T6 不属审计块完成度')
   assert.deepEqual(a.extra, ['T6'], '但必须如实展示「见到 T6」')
 })
-
-test('试点（v19.1.0）：派发话术占位替换 + 合并为主形态（覆盖语义）', async () => {
-  const h = makeReactStub()
-  const mod = await loadClient(h, { fetch: fetchStub({}) })
-  const P = mod.__panel
-  const one = P.buildDispatch('T1', { project: 'p9', kw: '长护险 试点' })
-  assert.ok(one.includes('run/p9/'), '项目名必须落进项目目录路径：' + one.slice(0, 60))
-  assert.ok(one.includes('长护险 试点'), '关键词必须落进话术')
-  assert.ok(!/\{p\}|\{kw\}/.test(one), '占位必须全部替换掉（留占位 = 主控得手改）')
-  assert.ok(one.includes('不要写 status.md'), '必须带「主控独占写 status.md」的边界')
-  assert.ok(one.includes('01-任务简报.md'), '必须指路任务简报')
-  const blank = P.buildDispatch('T2', {})
-  assert.ok(blank.includes('<项目>') && blank.includes('（见任务简报）'), '未填时应落兜底字面量而不是空串')
-  assert.equal(P.buildDispatch('TX', { project: 'p9' }), '', '未知角色返回空串（调用方据此如实报错）')
-  // 合并形态：三段齐全（setDraft 是覆盖语义，连点三个单角色按钮会互相覆盖）
-  const all = P.buildDispatchAll({ project: 'p9', kw: 'x' })
-  assert.ok(all.includes('literature/文献卡.md') && all.includes('data/数据卡.md') && all.includes('cases/案例卡.md'),
-    '合并文本必须含三份产物路径')
-  assert.ok(all.includes('T1') && all.includes('T2') && all.includes('T3'), '三段都要有角色标记')
-})
-
-test('试点（v19.1.0）：选中项目 → 显示六块进度（读既有快照）→ 一键填入三段派发话术（仍只 setDraft）', async () => {
+test('进度条（v19.1.3）：**在开工表单之外**——不展开也能看到，表单里不再有它（主人裁定）', async () => {
+  // 主人裁定原话：「进度条可以保留，甚至不必要在论衡开工表单里体现」「检索派发运行时没必要」
+  //   ⇒ 观察面（只读）与操作面（要输入）分开：进度条独立成条；表单只管开新项目 / 续接已有项目。
   const h = makeReactStub()
   const calls = []
   const route = (u) => {
@@ -1433,32 +1377,27 @@ test('试点（v19.1.0）：选中项目 → 显示六块进度（读既有快�
   }
   const mod = await loadClient(h, { fetch: route })
   const P = mod.__panel
-  const drafts = []
-  const props = { inputActions: { setDraft: (s) => drafts.push(s) }, ctx: { get: () => undefined } }
+  const props = { inputActions: { setDraft: () => {} }, ctx: { get: () => undefined } }
   const tick = async () => { const s = h.render(P.Workbench, props); await new Promise((r) => setTimeout(r, 0)); return s }
-  await tick()
-  wbButton(h.tree(), '打开论衡开工台').props.onClick()
-  await tick(); await tick()
-  // ① v19.1.1：**不需手动选项目**——清单到位即自动选中最近活跃项目，进度与派发区直接出现
-  assert.ok(calls.some((u) => u.startsWith('/lunheng-panel/snapshot?project=p9')),
-    '必须自动取最近活跃项目的快照：' + calls.join(' | '))
-  assert.match(h.render(P.Workbench, props), /检索派发/, '自动选中后派发区应直接出现（旧版要先展开再手动选）')
-  assert.ok(calls.some((u) => u.startsWith('/lunheng-panel/snapshot?project=p9')), '进度必须取自面板既有快照读面：' + calls.join(' | '))
-  const text = h.render(P.Workbench, props)
-  assert.match(text, /定题 1\/1/, 'status.md 已建 ⇒ 定题 1/1')
+  await tick(); await tick(); await tick()
+  // ① **未展开**就该能看到进度（这是它唯一的用途）；同时对照：表单不在树里
+  let text = h.render(P.Workbench, props)
+  assert.match(text, /定题 1\/1/, 'status.md 已建 ⇒ 定题 1/1（收起状态即可见）')
   assert.match(text, /检索 2\/3/, 'T1/T2 有留痕、T3 没有 ⇒ 检索 2/3')
   assert.match(text, /写作 0\/1/, '没有初稿也没 T5 留痕 ⇒ 写作 0/1')
-  // ③ 一键填入三段派发话术
-  wbButton(h.tree(), '三段派发（合并 · 推荐）').props.onClick()
+  assert.ok(!/基本设置/.test(text), '对照：未展开时表单不该在树里')
+  assert.ok(calls.some((u) => u.startsWith('/lunheng-panel/snapshot?project=p9')), '进度取自既有快照读面：' + calls.join(' | '))
+  const snapCall = calls.find((u) => u.includes('/snapshot')) || ''
+  assert.ok(/root=%2Fwork|root=\/work/.test(snapCall),
+    '根已知时必须带上它（v19.1.2 实测：不带 root 在多工作区下会打到别的根 ⇒ 404）：' + snapCall)
+  // ② 展开后：表单在，但**表单里没有进度条**，也没有已删掉的检索派发
+  wbButton(h.tree(), '打开论衡开工台').props.onClick()
   await tick()
-  assert.equal(drafts.length, 1, '应恰好写入一次')
-  assert.ok(drafts[0].includes('run/p9/'), '写入的派发话术必须带项目目录')
-  assert.ok(drafts[0].includes('literature/文献卡.md') && drafts[0].includes('data/数据卡.md') && drafts[0].includes('cases/案例卡.md'),
-    '三段齐全：' + drafts[0].slice(0, 120))
-  // ④ 单角色按钮仍可用（留给「只重派某一个」）
-  wbButton(h.tree(), '仅 T2').props.onClick()
-  await tick()
-  assert.equal(drafts.length, 2, '单角色按钮也应写入')
-  assert.ok(drafts[1].includes('data/数据卡.md') && !drafts[1].includes('cases/案例卡.md'), '仅 T2 不该带上 T3 的产物路径')
+  text = h.render(P.Workbench, props)
+  assert.match(text, /基本设置/, '展开后表单应在')
+  for (const gone of ['Phase 进度', '检索派发', '三段派发', '仅 T1', '检索关键词']) {
+    assert.ok(!text.includes(gone), '「' + gone + '」不该再出现（进度已移出表单 / 派发已按主人裁定删除）')
+  }
+  assert.match(text, /定题 1\/1/, '展开不影响进度条（它独立于表单）')
 })
 
