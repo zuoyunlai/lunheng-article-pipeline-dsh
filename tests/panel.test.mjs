@@ -876,9 +876,11 @@ test('v18.93.0：交付件与导出命令派生（只读工作区内的既有产
 // v19.0.0：开工台（§4.2）+ 宿主 locale 桥（§4.4）+ hover 类样式修复
 // ════════════════════════════════════════════════════════════════════════════════════════════
 
-/** L10N/DATA 块外**代码行**中文字面量的**棘轮基线**（v19.0.2 实测 **267**，只许降；v19.0.1 为 268、
- *  v19.0.0 为 340——把派生数据与注释行划出后逐步收紧）。新文案进 L10N 块用 `t()`；派生数据进 DATA 块。 */
-const OUTSIDE_CN_BASELINE = 267
+/** L10N/DATA 块外**代码行**中文字面量的**棘轮基线**（v19.1.6 实测 **264**，只许降；v19.0.2 起口径 =
+ *  只数会被渲染的代码行——**整行注释不计**，v19.1.6 起 `//`、`/**`、`*` 三种注释开头都算注释）。
+ *  历史：v19.0.0 = 340（含派生数据）→ v19.0.1 = 268（划出 DATA 区）→ v19.0.2 = 267（只数代码行）
+ *  → v19.1.6 = 264（块注释也算注释，去掉 4 处 JSDoc 假阳性）。新文案进 L10N 块用 `t()`；派生数据进 DATA 块。 */
+const OUTSIDE_CN_BASELINE = 264
 
 // ── v19.0.1：主人装新版后的三条实测反馈 ────────────────────────────────────────────────────────
 
@@ -1079,7 +1081,10 @@ test('开工台（v19.0.0 §4.4）：L10N 块外的中文字面量受棘轮约�
     if (l.includes('DATA:BEGIN')) { inData = true; continue }
     if (l.includes('DATA:END')) { inData = false; continue }
     if (inL10n || inData) continue
-    if (/^\s*\/\//.test(l)) continue
+    // v19.1.6：**块注释行也算注释**（`/**`、`*`、`*/` 开头）——旧版只跳 `//`，于是 JSDoc 里
+    //   「两个引号片段夹中文」（如 `'req' 出「必填」、'opt' 出「可选」`）又被误判成字面量。
+    //   注释渲染不出来；别让假阳性逼人抬基线。
+    if (/^\s*(\/\/|\/\*|\*)/.test(l)) continue
     n += (l.match(/['"][^'"\n]*[\u4e00-\u9fff][^'"\n]*['"]/g) || []).length
   }
   assert.ok(
@@ -1290,6 +1295,49 @@ test('开工台（v19.1.1）：**多工作区**时须逐个根探测，取第一
   assert.ok(snapUrl, '应对第二个根里的项目取快照：' + seen.join(' | '))
   assert.ok(/root=%2FrootB|root=\/rootB/.test(snapUrl), '快照请求必须带探测到的根（否则多工作区下必 404）：' + snapUrl)
   assert.match(h.render(P.Workbench, props), /检索 3\/3/, '第二个根的项目应显示真实进度')
+})
+
+test('开工台（v19.1.6）：必填/可选标记**以 wbValidate 为准**（不靠印象标）', async () => {
+  // `wbValidate` 是真正拦人生成的判据：只有 题名 / 项目名 / 外发同意（已有默认值）三个。
+  //   其余字段（含工作区根、投喂材料、研究问题/写作要点、整块高级设置）一律可选——标错会把主人挡在门外。
+  const h = makeReactStub()
+  const mod = await loadClient(h, { fetch: fetchStub({}) })
+  const P = mod.__panel
+  const props = { inputActions: { setDraft: () => {} }, ctx: { get: () => undefined } }
+  h.render(P.Workbench, props)
+  wbButton(h.tree(), '打开论衡开工台').props.onClick()
+  h.render(P.Workbench, props)
+  wbButton(h.tree(), '展开高级设置').props.onClick()
+  const text = h.render(P.Workbench, props)
+  const count = (sn, sub) => sn.split(sub).length - 1
+  assert.equal(count(text, '必填'), 3, '必填应恰好 3 处（题名/项目名/外发同意），与 wbValidate 对齐')
+  assert.ok(count(text, '可选') >= 5, '工作区根/投喂材料/研究问题/写作要点 + 高级区标题都应带「可选」：' + count(text, '可选'))
+  assert.match(text, /高级（可选；留空＝跟随文类）/, '高级区标题要写明整块可选（旧版此文案是死的，根本没渲染）')
+  // 负向：标记集合要与 validate 一致（抽查——可选字段不该被标必填）
+  const hasReqAfter = (label) => {
+    const i = text.indexOf(label)
+    return i < 0 ? -1 : (/必填/.test(text.slice(i, i + 30)) ? 1 : 0)
+  }
+  assert.equal(hasReqAfter(P.t('wb.f.title')), 1, '题名必填')
+  assert.equal(hasReqAfter(P.t('wb.f.project')), 1, '项目名必填')
+  assert.equal(hasReqAfter(P.t('wb.f.genre')), 0, '文类可选（validate 不拦它）')
+  assert.equal(hasReqAfter(P.t('wb.f.words')), 0, '字数上限可选')
+  assert.equal(hasReqAfter(P.t('wb.f.materials')), 0, '投喂材料可选')
+  assert.equal(hasReqAfter(P.t('wb.f.brief')), 0, '研究问题/写作要点可选')
+})
+
+test('开工台（v19.1.6）：标题栏的开关按钮**靠右**（`marginLeft: auto`）', async () => {
+  const h = makeReactStub()
+  const mod = await loadClient(h, { fetch: fetchStub({}) })
+  const P = mod.__panel
+  const props = { inputActions: { setDraft: () => {} }, ctx: { get: () => undefined } }
+  h.render(P.Workbench, props)
+  const btn = wbButton(h.tree(), '打开论衡开工台')
+  assert.equal(btn.props.style.marginLeft, 'auto', '靠右由 flex 行的 marginLeft:auto 实现（换行时仍在本行右端）')
+  btn.props.onClick()
+  h.render(P.Workbench, props)
+  const btn2 = wbButton(h.tree(), '收起')
+  assert.equal(btn2.props.style.marginLeft, 'auto', '收起按钮也要靠右')
 })
 
 test('开工台（v19.1.5）：席位注册必须声明 `inject(sessionId)` —— 并行会话各看各的**唯一**依据', async () => {
