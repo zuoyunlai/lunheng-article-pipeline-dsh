@@ -1268,22 +1268,63 @@ test('开工台（v19.0.0 收口）：续接已有项目 —— 只打面板同�
   text = await tick()
   assert.ok(calls.some((u) => u.startsWith('/lunheng-panel/projects')), '项目清单必须取自面板同源读面：' + calls.join(' | '))
   assert.match(text, /p9/, '项目应出现在下拉里')
-  // ③ 未选项目就点 → 不写入，给可读原因
-  wbButton(h.tree(), '生成续接开场白').props.onClick()
-  text = await tick()
-  assert.equal(drafts.length, 0, '未选项目时**不得**写入输入框')
-  assert.match(text, /选择项目/, '必须提示要先选项目')
-  // ④ 选中后再点 → 续接开场白进输入框
-  //   注意：`select` 的 options 是以**一个数组**作为单个子节点传入的（React 支持），故查找谓词要展开数组。
-  const hasOptValue = (kids, v) => (kids || []).some((c) => Array.isArray(c) ? hasOptValue(c, v) : (c && c.props && c.props.value === v))
-  const sel = wbFind(h.tree(), (n) => n.type === 'select' && hasOptValue(n.children, 'p9'))
-  assert.ok(sel, '必须有项目下拉，且含 p9 选项')
-  sel.props.onChange({ target: { value: 'p9' } })
-  await tick()
+  // ③ v19.1.1 行为变更（主人实测「我在试跑，那里有进度条？」）：清单到位后**自动选中最近活跃的项目**；
+  //   旧版要求「先展开、再手动选」——那等于把唯一能看进度的面藏起来。
+  assert.ok(calls.some((u) => u.startsWith('/lunheng-panel/snapshot?project=p9')),
+    '应自动为最近活跃项目取快照（listProjects 按 mtime 倒序 ⇒ 第一项）：' + calls.join(' | '))
   wbButton(h.tree(), '生成续接开场白').props.onClick()
   await tick()
-  assert.equal(drafts.length, 1, '选中项目后应恰好写入一次')
+  assert.equal(drafts.length, 1, '自动选中后应能直接生成续接开场白')
   assert.match(drafts[0], /续接论衡项目 p9/, '写入的应是续接开场白：' + drafts[0].slice(0, 80))
+})
+
+test('开工台（v19.1.1）：**多工作区**时须逐个根探测，取第一个真有项目的根（主人实测踩点）', async () => {
+  // 宿主 `resolveTarget` 不带 root 时只取 `roots[0]`——若你的 run/ 在另一个根下，列表就是空的、进度不出现。
+  const h = makeReactStub()
+  const seen = []
+  const route = (u) => {
+    const s = String(u)
+    seen.push(s)
+    if (s.includes('/ping')) return okJson({ ok: true, version: '19.1.1', roots: ['/rootA', '/rootB'] })
+    if (s.includes('/projects')) {
+      const root = /root=([^&]+)/.exec(s) ? decodeURIComponent(/root=([^&]+)/.exec(s)[1]) : ''
+      if (root === '/rootA') return okJson({ root: '/rootA', projects: [] })
+      return okJson({ root: '/rootB', projects: [{ name: 'realproj' }] })
+    }
+    if (s.includes('/snapshot')) {
+      return okJson({ project: 'realproj', status: { hasStatus: true }, agents: { roles: [{ role: 'T1', count: 1 }, { role: 'T2', count: 1 }, { role: 'T3', count: 1 }] }, artifacts: { drafts: 0, hasFinal: false } })
+    }
+    return Promise.reject(new Error('HTTP 404'))
+  }
+  const mod = await loadClient(h, { fetch: route })
+  const P = mod.__panel
+  const props = { inputActions: { setDraft: () => {} }, ctx: { get: () => undefined } }
+  const tick = async () => { const s = h.render(P.Workbench, props); await new Promise((r) => setTimeout(r, 0)); return s }
+  await tick(); await tick(); await tick(); await tick()
+  assert.ok(seen.some((u) => u.includes('/ping')), '必须先问 /ping 拿根清单：' + seen.join(' | '))
+  assert.ok(seen.some((u) => u.includes('root=%2FrootB') || u.includes('root=/rootB')), '应问到第二个根：' + seen.join(' | '))
+  assert.ok(seen.some((u) => u.includes('/snapshot?project=realproj')), '应对第二个根里的项目取快照：' + seen.join(' | '))
+  assert.match(h.render(P.Workbench, props), /检索 3\/3/, '第二个根的项目应显示真实进度')
+})
+
+test('开工台（v19.1.1）：**一个项目都没有**时不得写入、不得摆空壳（如实说明）', async () => {
+  const h = makeReactStub()
+  const mod = await loadClient(h, {
+    fetch: (u) => (String(u).includes('/projects') ? okJson({ root: '/work', projects: [] }) : Promise.reject(new Error('HTTP 404'))),
+  })
+  const P = mod.__panel
+  const drafts = []
+  const props = { inputActions: { setDraft: (s) => drafts.push(s) }, ctx: { get: () => undefined } }
+  const tick = async () => { const s = h.render(P.Workbench, props); await new Promise((r) => setTimeout(r, 0)); return s }
+  await tick()
+  wbButton(h.tree(), '打开论衡开工台').props.onClick()
+  let text = await tick()
+  text = await tick()
+  assert.match(text, /没有 run\//, '没有项目时必须如实说明（而不是禁用整个开工台）')
+  assert.equal(drafts.length, 0, '没有项目可续接时不得写入输入框')
+  assert.ok(!wbFind(h.tree(), (n) => n.type === 'button' && String(n.children) === '生成续接开场白'),
+    '没有项目时不该出现「生成续接开场白」按钮（摆了就是空壳）')
+  assert.ok(!/检索 0\/3/.test(text), '没有项目时不得显示进度 chips（没数据不摆空壳）')
 })
 
 // ── v19.1.0 试点：Phase 进度 + 检索派发 ────────────────────────────────────────────────────────
@@ -1394,13 +1435,10 @@ test('试点（v19.1.0）：选中项目 → 显示六块进度（读既有快�
   await tick()
   wbButton(h.tree(), '打开论衡开工台').props.onClick()
   await tick(); await tick()
-  // ① 未选项目：进度区与派发区**都不出现**（没数据就不摆空壳）
-  assert.ok(!/检索派发/.test(h.render(P.Workbench, props)), '未选项目时不得出现派发区')
-  // ② 选中 → 打既有快照读面（不新增读面）
-  const hasOptValue = (kids, v) => (kids || []).some((c) => Array.isArray(c) ? hasOptValue(c, v) : (c && c.props && c.props.value === v))
-  const sel = wbFind(h.tree(), (n) => n.type === 'select' && hasOptValue(n.children, 'p9'))
-  sel.props.onChange({ target: { value: 'p9' } })
-  await tick(); await tick()
+  // ① v19.1.1：**不需手动选项目**——清单到位即自动选中最近活跃项目，进度与派发区直接出现
+  assert.ok(calls.some((u) => u.startsWith('/lunheng-panel/snapshot?project=p9')),
+    '必须自动取最近活跃项目的快照：' + calls.join(' | '))
+  assert.match(h.render(P.Workbench, props), /检索派发/, '自动选中后派发区应直接出现（旧版要先展开再手动选）')
   assert.ok(calls.some((u) => u.startsWith('/lunheng-panel/snapshot?project=p9')), '进度必须取自面板既有快照读面：' + calls.join(' | '))
   const text = h.render(P.Workbench, props)
   assert.match(text, /定题 1\/1/, 'status.md 已建 ⇒ 定题 1/1')
