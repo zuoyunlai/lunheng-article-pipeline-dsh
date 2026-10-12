@@ -109,6 +109,42 @@ test('③ 面板链：M 门明细三态——边车带 detail 时以边车为准
   assert.equal(d2, 'no-report', '盘上无任何 M 门报告 → no-report')
 })
 
+test('⑤ M 门复跑（次级来源）：面板能读，且**绝不**被当成交付报告（v19.1.11）', () => {
+  const { d, fin } = mkProject()
+  const aud = join(d, 'run', 'proj', 'audits')
+  mkdirSync(aud, { recursive: true })
+  writeFileSync(join(d, 'run', 'proj', 'status.md'), '# Status\n\n- ✅ **In Progress** — Phase 3（T5 写手出初稿 v1）\n')
+  // 交付时的旧格式报告：有汇总、**无 results[]**（正是那 9 个存量项目的形态）
+  writeFileSync(join(fin, 'M-Gate-Report.json'), JSON.stringify({ schema: 'gen1', '判定': '✅ 通过', '退出码': 0 }))
+  writeFileSync(join(fin, '运行报告.json'), JSON.stringify({
+    generatedAt: '2026-08-23T00:00:00.000Z',
+    mGate: { path: 'final/M-Gate-Report.json', summary: { exit: 0 }, results: [] },   // 故意**不带** detail
+    scoring: { score: 70, coverage: 0.9 }, words: { series: [] },
+  }))
+  // 复跑报告（今日规则，24 项全量）——文件名刻意不含 `-v<N>`，故不参与自动候选
+  const rerunName = 'M-Gate-Report-复跑-2026-10-12.json'
+  writeFileSync(join(aud, rerunName), JSON.stringify({
+    exit: 2, p0: 5, p1: 2, p2: 1, pass: 16, total: 24,
+    results: Array.from({ length: 24 }, (_, i) => ({ gate: `M-Form-${i + 1} 第${i + 1}项`, pass: i > 7, severity: i < 5 ? 'P0' : i < 7 ? 'P1' : i === 7 ? 'P2' : '通过' })),
+  }))
+
+  const snap = lightSnapshot(d, 'proj')
+  // ① 复跑**不得**被当成交付报告：gateDetail 仍是 legacy-no-results（交付报告无 results[]）
+  assert.equal(snap.report.gateDetail, 'legacy-no-results', '复跑文件不得被 deriveGateDetail 取用')
+  assert.deepEqual(snap.report.gateItems, [], '交付报告无明细时 gateItems 仍为空（复跑走独立字段）')
+  // ② 复跑作为**独立次级来源**透出，且 24 项 + 统计齐备
+  const r = snap.insights.gateRerun
+  assert.ok(r, '面板应读出复跑报告')
+  assert.equal(r.items.length, 24, '复跑须给全量 24 项（--summary 会裁剪，故复跑不带该旗标）')
+  assert.equal(r.exit, 2)
+  assert.equal(r.p0, 5)
+  assert.equal(r.rel, 'audits/' + rerunName, '须能报出来源路径（面板要显著标注来源）')
+  assert.equal(r.items[0].id, 'M-Form-1', 'GateStrip 的 id 取 gate 首段（报告无独立 id 字段）')
+  // ③ 文件名不得命中自动候选（否则复跑会被误当成交付结论覆盖显示）
+  assert.ok(!/^M-Gate-Report-v([\d.]+)\.json$/.test(rerunName), '复跑文件名不得匹配 audits/final 的 -vN 候选')
+  rmSync(d, { recursive: true, force: true })
+})
+
 test('④ 落盘链：成功即写盘；查不到用量记录时 exit 10 且绝不落 0 值文件', () => {
   // **环境无关**（v19.1.9 CI 实测教训）：本机有 DSH 会话库时脚本会走到「未找到项目日志」，
   //   而 CI 无库时会先报「找不到会话投影缓存」——**一条只在开发机绿的用例等于没钉住**。
