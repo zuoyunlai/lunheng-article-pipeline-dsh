@@ -1326,6 +1326,50 @@ test('开工台（v19.1.6）：必填/可选标记**以 wbValidate 为准**（�
   assert.equal(hasReqAfter(P.t('wb.f.brief')), 0, '研究问题/写作要点可选')
 })
 
+test('开工台（v19.1.7）：人在环（OOH）——四门节点名**双向钉在真源**，全自动＝按首个推荐项', async () => {
+  // 真源：`SKILL.md` §人在环四节点（P0 定题 / P2.5 大纲 / P3.5 洞察 / P5 终稿 必须主人过目）
+  //   + `pipeline-readme.md` 的「四门「必须」…全部必需、不设可省任一门」。
+  // 本包对「全自动」的表述是**主人显式授权例外**（不谎称机制已改），且替代规则落在机制已有约定上：
+  //   四门统一用 `ask_user_question`、首个选项＝主控建议 ⇒ 全自动 = 采用首个推荐项 + 逐门留痕。
+  const h = makeReactStub()
+  const mod = await loadClient(h, { fetch: fetchStub({}) })
+  const P = mod.__panel
+  const skill = readFileSync(join(ROOT, 'skills', 'lunheng-article-pipeline', 'SKILL.md'), 'utf8')
+  const readme = readFileSync(join(ROOT, 'skills', 'lunheng-article-pipeline', 'references', 'pipeline-readme.md'), 'utf8')
+  const NODES = ['P0 定题', 'P2.5 大纲', 'P3.5 洞察', 'P5 终稿']
+  for (const n of NODES) {
+    assert.ok(skill.includes(n) || readme.includes(n), `真源应含四门之一：${n}`)
+    assert.ok(P.WB_HITL_FOUR.includes(n), `四门文案必须列全：${n}`)
+    assert.ok(P.L10N.zh['wb.hitlHint'].includes(n.replace('P0 定题', 'P0 定题')), `提示应含节点名：${n}`)
+  }
+  assert.match(readme, /全部必需、不设可省任一门/, '真源里「四门必须」是硬口径——本包的全自动必须写成显式授权例外')
+  assert.match(skill, /ask_user_question/, '全自动的替代规则要落在机制已有约定（各门首个推荐项）上')
+  assert.match(P.WB_HITL_AUTO, /首个推荐项/, '全自动必须写明「按首个推荐项」——不能是含糊的「自行决定」')
+  assert.match(P.WB_HITL_AUTO, /交付说明/, '全自动必须要求逐门留痕（写进交付说明）')
+  // 默认 = 四门必须（空值即默认），且必须出现在开场白里（主控据此知道停几门）
+  const p4 = P.buildPrompt(Object.assign({}, P.WB_DEFAULT, { title: 'T', project: 'P1' }))
+  assert.match(p4, /- 人在环: 四门必须（P0 定题 \/ P2\.5 大纲 \/ P3\.5 洞察 \/ P5 终稿/, '默认四门必须：' + p4.split('\n').filter((l) => l.includes('人在环')).join(''))
+  const pAuto = P.buildPrompt(Object.assign({}, P.WB_DEFAULT, { title: 'T', project: 'P1', hitl: '全自动' }))
+  assert.match(pAuto, /- 人在环: 全自动（\*\*主人显式授权\*\*/, '选全自动要把授权语义写进开场白')
+  assert.ok(!/四门必须/.test(pAuto.split('\n').filter((l) => l.includes('人在环')).join('')), '全自动不该再写四门必须')
+})
+
+test('开工台（v19.1.7）：人在环下拉在「外发同意」旁、两个选项、并带说明', async () => {
+  const h = makeReactStub()
+  const mod = await loadClient(h, { fetch: fetchStub({}) })
+  const P = mod.__panel
+  const props = { inputActions: { setDraft: () => {} }, ctx: { get: () => undefined } }
+  h.render(P.Workbench, props)
+  wbButton(h.tree(), '打开论衡开工台').props.onClick()
+  const text = h.render(P.Workbench, props)
+  assert.match(text, /人在环（OOH）/, '下拉要有标签')
+  const hasOpt = (kids, v) => (kids || []).some((c) => Array.isArray(c) ? hasOpt(c, v) : (c && c.props && c.props.value === v))
+  const sel = wbFind(h.tree(), (n) => n.type === 'select' && hasOpt(n.children, '四门必须'))
+  assert.ok(sel, '必须有人/环下拉且含「四门必须」')
+  assert.ok(hasOpt(sel.children, '全自动'), '必须含「全自动」选项')
+  assert.match(text, /直接按各门的首个推荐项/, '说明里要讲清全自动的实际后果')
+})
+
 test('开工台（v19.1.6）：标题栏的开关按钮**靠右**（`marginLeft: auto`）', async () => {
   const h = makeReactStub()
   const mod = await loadClient(h, { fetch: fetchStub({}) })
