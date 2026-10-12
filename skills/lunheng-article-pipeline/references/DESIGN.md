@@ -1,6 +1,6 @@
 # DESIGN.md — 论衡插件界面设计基准
 
-> 版本：v19.0.0｜**读者**：改 `lib/client.js`（浏览器半边）的维护者/子代理。**本文件不进任何运行期读清单**（流水线角色不读）。
+> 版本：v19.0.1｜**读者**：改 `lib/client.js`（浏览器半边）的维护者/子代理。**本文件不进任何运行期读清单**（流水线角色不读）。
 > **为什么需要它**：客户端的样式约定此前**只活在代码注释里**（散在 `lib/client.js` 的 `T()` / `S` 与若干「v18.9x 修复」注解中）。注释会被重写、会被漏读；而 `lib/client.js` 是**单文件 1700 行 + 零构建链**的形态，没有组件库或 lint 兜底——约定一旦失守就是**静默的视觉退化**（暗色下看不见、图表全黑、文字与底色同色）。本文件把这些约定收成**唯一真源**，并在 §9 列出机械消费者（写错会红）。
 > **边界（如实声明）**：本文件**只是约定**，不是自动执行体。真正拦住越界的是 §9 的机检；本文件的作用是让「为什么这样写」在改代码之前就能查到。
 
@@ -62,12 +62,33 @@
 - **不用 media query**（理由同色彩：断点归宿主布局）。一律 `flexWrap: 'wrap'` + `minWidth: 0` + 基准宽度（如 `flex: '1 1 460px'`），容器 `maxWidth: '100%'`、`boxSizing: 'border-box'`。
 - 宽屏自适应靠 flex 基准值分裂列，不靠断点。
 
+### 7.1 槽位几何：`conversation.input.dock` 必须照抄 shell 的 composer 变量（v19.0.1 立）
+
+**教训（主人实测）**：「工作台样式显示太宽，横向撑满窗口，不是和下面对话框等宽」——该槽位是「全宽松紧」的，**默认 100% 宽 ≠ composer 卡片的宽**。
+
+**正解 = 照抄官方同槽位占据者的几何**（`@deepseek-ai/dsh-client-ui-conversation` 的 QueueDock.module.css；它是官方自己挂在这个槽位上的条目）：
+
+```css
+width: calc(100% - var(--dsh-composer-side-clearance) - var(--dsh-composer-side-clearance)
+                   - var(--dsh-composer-dock-inset)       - var(--dsh-composer-dock-inset));
+max-width: calc(var(--dsh-composer-card-max-width) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset));
+margin: 0 auto;              /* 官方为贴住 composer 用负的下边距；本包用正间距（卡片是独立盒子） */
+padding: 0 var(--dsh-composer-dock-inset);
+flex: none;
+```
+
+**纪律**：① **照抄契约、不猜像素**（这几个变量由 shell 提供：`--dsh-composer-card-max-width` / `-dock-inset` / `-side-clearance` / `-stack-gap`）；② 每个 `var()` 都要 **fallback**（`0px` / `100%`），变量缺失时退化成旧观感而不是把 `calc()` 算坏；③ **几何与卡片分离**——外层 `wbDock` 只做几何，内层 `wbWrap` 才带边框/底色/圆角。
+
 ## 八、结构与跨版本生存
 
 1. **`exports.inject = []`**：客户端半边**不声明**任何 inject 依赖；服务一律 `ctx.get(name)` 运行时探测 + 缺席降级。理由（实测）：照抄别的插件 `inject` 清单会在缺服务的宿主上**永不执行回调**（如本机无 `sidebarRightTabs`），等于静默消失。例外：`slots` 是注册席位的最小必需面，走 `ctx.inject(['slots'], …)` 并整块 try/catch。
 2. **零构建链**：手写 lazy-CJS（`window.__ModuleLoader__.load({ id, factory })`），只 `require('react')`，UI 全走 `React.createElement`。**不得新增第三方依赖**。
 3. **座位如实汇报**：注册结果写进 `SEATS`，页面页脚如实列出（已注册/未注册/注册异常），**不假装有**。
-4. **文案**：全部放 `// ══ L10N:BEGIN ══`…`// ══ L10N:END ══` 块内，经 `t('key')` 取；`zh`/`en` **键集合必须逐字相同**。块外的中文字面量受**棘轮**约束（只许降）。宿主 `locale` 服务缺席时回落到内置字典。
+4. **文案 vs 数据（两块分治，v19.0.1 明确）**：
+   - **文案** → `// ══ L10N:BEGIN ══ … L10N:END ══`，经 `t('key')` 取；`zh`/`en` 键集合必须逐字相同；宿主 `locale` 缺席时回落内置字典。
+   - **派生数据 / 枚举值** → `// ══ DATA:BEGIN ══ … DATA:END ══`（文类档案表的派生副本、期刊库、各字段的选项值）。它们是要**与流水线字面对齐**的机器可读值，不是文案 ⇒ **不进文案棘轮**，但**必须加逐行对账用例**（`文类档案.md` / `期刊数据库.md` 各一条）。
+   - **两块之外**的中文字面量受**棘轮**约束（只许降；v19.0.1 基线 268）。
+   - 判据：**这个词是给人读的，还是给程序匹配的？** 给人读的进 L10N（要能译）；给程序匹配的进 DATA（要能对账）。
 5. **写面纪律**：客户端**只写** `localStorage` 与「自己的输入框草稿」（`setDraft`）。**绝不自动 `submit()`**、不新增宿主 HTTP 路由、不读凭据。
 
 ## 九、给 AI / 维护者的禁令清单（违反即 P0，机检会红）
@@ -79,6 +100,7 @@
 | 图表主色用 `brand-primary` | 同上（`state-*` 白名单） |
 | 把 `T(...)` 当字符串拼进 CSS | `tests/panel.test.mjs`（hover 真调用钉） |
 | 新增中文文案写在 L10N 块外 | 同上（棘轮） |
+| dock 条目自定宽度 / 撑满 100%（不照抄 composer 变量） | `tests/panel.test.mjs`（控宽契约钉） |
 | zh/en 键集合不一致、空译文 | 同上（双语平衡） |
 | 扩张 `exports.inject` | 同上（`deepEqual(mod.inject, [])`） |
 | 新增宿主 HTTP 端点而不更新 `SECURITY.md` | `tests/panel.test.mjs`（面板路由数）+ 人工 review |

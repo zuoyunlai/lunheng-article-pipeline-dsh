@@ -864,8 +864,85 @@ test('v18.93.0：交付件与导出命令派生（只读工作区内的既有产
 // v19.0.0：开工台（§4.2）+ 宿主 locale 桥（§4.4）+ hover 类样式修复
 // ════════════════════════════════════════════════════════════════════════════════════════════
 
-/** L10N 块外中文字面量的**棘轮基线**（v19.0.0 实测 340）。只许降：新文案一律进 L10N 块并用 `t()`。 */
-const OUTSIDE_CN_BASELINE = 340
+/** L10N/DATA 块外中文字面量的**棘轮基线**（v19.0.1 实测 **268**，只许降：新文案进 L10N 块用 `t()`；
+ *  派生数据 / 枚举值进 DATA 块并加逐行对账用例。v19.0.0 时该值为 340——把派生数据划出后收紧）。 */
+const OUTSIDE_CN_BASELINE = 268
+
+// ── v19.0.1：主人装新版后的三条实测反馈 ────────────────────────────────────────────────────────
+
+test('开工台（v19.0.1）：外发同意默认「全部同意」，且下拉里不得再有空值项（主人实测反馈）', async () => {
+  // 病灶（主人实测）：旧版同意项的选项表是 `[''].concat(WB_CONSENT)`，空值经 `wbSelect` 渲染成「跟随文类」
+  //   ——对一个「必须显式选」的字段语义不通，而且默认空值会被 `wbValidate` 拦住 ⇒ **每次开工都先卡一下**。
+  const h = makeReactStub()
+  const mod = await loadClient(h, { fetch: fetchStub({}) })
+  const P = mod.__panel
+  assert.equal(P.WB_DEFAULT.consent, '全部同意', '默认必须是「全部同意」')
+  const prompt = P.buildPrompt(Object.assign({}, P.WB_DEFAULT, { title: 'T', project: 'P1' }))
+  assert.match(prompt, /- 外发同意: 全部同意/, '不改任何项即应能直接生成（含同意项）')
+  // 组件层面：同意下拉存在、含「全部同意」、且**不含**空值项
+  const props = { inputActions: { setDraft: () => {} }, ctx: { get: () => undefined } }
+  h.render(P.Workbench, props)
+  wbButton(h.tree(), '打开论衡开工台').props.onClick()
+  h.render(P.Workbench, props)
+  const hasOpt = (kids, v) => (kids || []).some((c) => Array.isArray(c) ? hasOpt(c, v) : (c && c.props && c.props.value === v))
+  const consentSel = wbFind(h.tree(), (n) => n.type === 'select' && hasOpt(n.children, '全部同意'))
+  assert.ok(consentSel, '同意下拉必须存在且含「全部同意」')
+  assert.ok(!hasOpt(consentSel.children, ''), '同意下拉不得再有空值项（旧版它渲染成「跟随文类」）')
+})
+
+test('开工台（v19.0.1）：目标期刊下拉必须与 期刊数据库.md 的 §一/§二 逐行一致', async () => {
+  // 主人实测反馈：目标期刊原来是填空。改选项后，**数据面必须钉住真源**（否则期刊库更新而副本没跟 = 静默漂移）。
+  const h = makeReactStub()
+  const mod = await loadClient(h, { fetch: fetchStub({}) })
+  const md = readFileSync(join(ROOT, 'skills', 'lunheng-article-pipeline', 'references', '_shared', '期刊数据库.md'), 'utf8')
+  const section = (head) => {
+    const i = md.indexOf(head)
+    assert.ok(i >= 0, '期刊数据库必须含小节 ' + head)
+    const j = md.indexOf('\n## ', i + 1)
+    return md.slice(i, j > 0 ? j : md.length)
+  }
+  const rowsOf = (t) => t.split('\n')
+    .filter((l) => /^\|\s*\S/.test(l) && !/^\|\s*期刊名/.test(l) && !/^\|\s*[-:]/.test(l))
+    .map((l) => l.split('|')[1].trim())
+  const cn = rowsOf(section('## 一、中文期刊'))
+  const en = rowsOf(section('## 二、英文 SSCI'))
+  assert.ok(cn.length >= 20 && en.length >= 10, `期刊库解析：中文 ${cn.length} / 英文 ${en.length}——派生源形变（表头或分隔符改了？）`)
+  assert.deepEqual(mod.__panel.JOURNALS_CN, cn, '中文期刊副本与期刊数据库 §一 不一致')
+  assert.deepEqual(mod.__panel.JOURNALS_EN, en, '英文期刊副本与期刊数据库 §二 不一致')
+  // 组件层面：下拉里三组齐全（不指定 / 中文 / 英文 / 其他手填）
+  const props = { inputActions: { setDraft: () => {} }, ctx: { get: () => undefined } }
+  h.render(mod.__panel.Workbench, props)
+  wbButton(h.tree(), '打开论衡开工台').props.onClick()
+  h.render(mod.__panel.Workbench, props)
+  wbButton(h.tree(), '展开高级设置').props.onClick()
+  h.render(mod.__panel.Workbench, props)
+  const hasOpt = (kids, v) => (kids || []).some((c) => {
+    if (Array.isArray(c)) return hasOpt(c, v)
+    if (c && c.props && c.props.value === v) return true
+    return !!(c && Array.isArray(c.children) && hasOpt(c.children, v))   // 递归进 <optgroup>
+  })
+  const jSel = wbFind(h.tree(), (n) => n.type === 'select' && hasOpt(n.children, mod.__panel.JOURNAL_CUSTOM))
+  assert.ok(jSel, '目标期刊下拉必须存在，且带「其他（手填）」出口')
+  assert.ok(hasOpt(jSel.children, '管理世界'), '中文刊名应在选项里')
+  assert.ok(wbFind(jSel, (n) => n.type === 'optgroup' && String(n.props.label).includes('中文')), '中文期刊应按 optgroup 分组')
+})
+
+test('开工台（v19.0.1）：控宽必须走 shell 的 composer 变量（主人实测：曾横向撑满窗口）', async () => {
+  // 病灶（主人实测）：「工作台样式显示太宽，横向撑满窗口，不是和下面对话框等宽」。
+  //   官方**同槽位**占据者（`@deepseek-ai/dsh-client-ui-conversation` 的 QueueDock）给出了该槽位的几何契约：
+  //   `width: calc(100% - 2×side-clearance - 2×dock-inset)`、`max-width: calc(card-max-width - 2×dock-inset)`、
+  //   `margin: 0 auto`、`padding: 0 dock-inset` —— 四个变量由 shell 提供。**照抄契约，不猜像素**。
+  const h = makeReactStub()
+  const mod = await loadClient(h, { fetch: fetchStub({}) })
+  const S = mod.__panel.S
+  assert.ok(S.wbDock, '必须有外层几何样式 wbDock（几何与卡片分离——卡片自带边框/底色，几何归槽位契约）')
+  assert.match(String(S.wbDock.maxWidth), /--dsh-composer-card-max-width/, '最大宽必须取 shell 的 composer 卡片宽变量')
+  assert.match(String(S.wbDock.width), /--dsh-composer-side-clearance/, '两侧留白必须取 shell 的 side-clearance 变量')
+  assert.match(String(S.wbDock.padding), /--dsh-composer-dock-inset/, 'dock 内缩必须取 shell 的 dock-inset 变量')
+  assert.match(String(S.wbDock.margin), /auto/, '必须居中（margin auto）')
+  assert.ok(!String(S.wbWrap.flex || '').includes('1 1 100%'), '卡片本身不得再横向撑满（旧版症状）')
+  assert.match(String(S.wbDock.width), /var\(--dsh-composer-side-clearance, 0px\)/, '变量缺失必须有 fallback（极简宿主要退化成旧观感而不是算坏）')
+})
 
 test('开工台（v19.0.0 §4.4）：zh/en 字典键集合必须逐字相同（双语平衡）', async () => {
   // 官方 locale 服务的**类型化**形态即「bilingual balance enforced at registration」；本包走未类型化
@@ -881,16 +958,21 @@ test('开工台（v19.0.0 §4.4）：zh/en 字典键集合必须逐字相同（�
   assert.ok(zh.length >= 40, '字典规模下限 = 40 键（防「文案又写回组件里」），实际 ' + zh.length)
 })
 
-test('开工台（v19.0.0 §4.4）：L10N 块外的中文字面量受棘轮约束（新文案只许进块）', () => {
+test('开工台（v19.0.0 §4.4）：L10N 块外的中文字面量受棘轮约束（新文案只许进块；派生数据另计）', () => {
   const src = readFileSync(join(ROOT, 'lib', 'client.js'), 'utf8')
   const m = /\/\/ ══ L10N:BEGIN ══[\s\S]*?\/\/ ══ L10N:END ══/.exec(src)
   assert.ok(m, '必须存在 L10N:BEGIN/END 标记块（把「文案真源」做成可机械定位的一段）')
   const outside = src.slice(0, m.index) + src.slice(m.index + m[0].length)
-  const n = (outside.match(/['"][^'"\n]*[\u4e00-\u9fff][^'"\n]*['"]/g) || []).length
+  // v19.0.1：**派生数据区也算豁免**——期刊库 28 个中文刊名是「数据」不是「文案」，
+  //   把它们计进文案棘轮只会逼人抬基线（棘轮就废了）。数据区的正确约束是**逐行对账**（见期刊/文类两条用例）。
+  const dm = /\/\/ ══ DATA:BEGIN ══[\s\S]*?\/\/ ══ DATA:END ══/.exec(outside)
+  assert.ok(dm, '必须存在 DATA:BEGIN/END 标记块（派生数据副本：文类档案表 / 期刊库）')
+  const noData = outside.slice(0, dm.index) + outside.slice(dm.index + dm[0].length)
+  const n = (noData.match(/['"][^'"\n]*[\u4e00-\u9fff][^'"\n]*['"]/g) || []).length
   assert.ok(
     n <= OUTSIDE_CN_BASELINE,
-    `L10N 块外中文字面量 ${n} 处 > 基线 ${OUTSIDE_CN_BASELINE}：新文案请放进 L10N 块并用 t() 取；`
-    + '若确属数据表（如文类档案派生副本），同批上调基线并写明理由。',
+    `L10N/DATA 块外的中文字面量 ${n} 处 > 基线 ${OUTSIDE_CN_BASELINE}：新文案请放进 L10N 块并用 t() 取；`
+    + '若确属派生数据，放进 DATA 块（并加逐行对账用例）。',
   )
 })
 
