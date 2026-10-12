@@ -9,7 +9,7 @@
 #    ⚠️ **务必钉版本**：不写 `@<版本>` 时，装到哪个版本取决于本机包管理器**当时**的解析状态。
 #    实测过一次：同一条命令装到 **18.15.0**，而 registry 上的 `latest` 已是 18.20.4 —— 差了五个小版本，
 #    且按下面流程走下去**没有任何一步能让人察觉**。版本真源只有一处：`npm view lunheng-article-pipeline version`。
-dsh plugin --profile <profile> add lunheng-article-pipeline@18.99.0
+dsh plugin --profile <profile> add lunheng-article-pipeline@19.0.0
 
 # 1b) **核对装到的版本**（钉了版本也值得跑一次——它读的是 profile 里**实际落盘**的 package.json）
 node -e "console.log(require('<DSH_HOME>/profiles/<profile>/node_modules/lunheng-article-pipeline/package.json').version)"
@@ -78,7 +78,7 @@ dsh --profile <headless-profile> "请调用 skill 工具列出你可见的技能
 | `subagent_strong` | T4 分析 / T5 写作 | 推理强 | 继承父会话（设 `LUNHENG_STRONG_*` 才分档） |
 | `subagent_audit` | T6 批判 / T7 审计 / T9 审稿 / G14 检测 | 顶配防漏判 | 继承父会话（设 `LUNHENG_AUDIT_*` 才分档） |
 
-**分档随 bundle 生效，无需复制任何预设目录**（`examples/preset/agent-tiered/cordis.yml` 是**随包**的可加载预设，已随 bundle 生效，**无需复制**）：**v18.2.6 起三档工具行默认不装载**——未设任何 `LUNHENG_*` 时它们不挂载（三档全继承时它们与内置 `subagent` 完全同义，无条件装载等于每会话白付 3 份工具 schema）；设任一档的 `PROVIDER`/`MODEL`，或 `LUNHENG_TIERING=on`，才装载；`LUNHENG_TIERING=off` 优先级最高（强制不装载）。
+**分档随 bundle 生效，无需复制任何预设目录**（三档行由包根 `cordis.patch.yml` 承载、已随 bundle 生效，**无需复制**；`examples/preset/agent.cordis.yml` 自 v19.0.0 起是**可选**的作用域收窄配方——落在官方契约名上，把它放进你的 preset 根即可让三档只在选定预设的会话里出现）：**v18.2.6 起三档工具行默认不装载**——未设任何 `LUNHENG_*` 时它们不挂载（三档全继承时它们与内置 `subagent` 完全同义，无条件装载等于每会话白付 3 份工具 schema）；设任一档的 `PROVIDER`/`MODEL`，或 `LUNHENG_TIERING=on`，才装载；`LUNHENG_TIERING=off` 优先级最高（强制不装载）。
 
 ```sh
 # 换模型：设环境变量后重启 dsh（模型在挂载期求值一次，改完必须重启）

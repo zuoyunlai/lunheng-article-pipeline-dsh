@@ -1,9 +1,9 @@
 # 论衡 × DSH 能力面集成方案
 
-> 版本：v18.99.0
+> 版本：v19.0.0
 > **用途**：把论衡的既有机制（**随包脚本** / 并行阶段 / 状态机 / 人在环闸门）**对齐 DSH 已有能力面**，替代平行自建。§一–§六 是**实施方案**，§七 是**落地状态表**，§八 是**可选配方**。**脚本清单与数量真源 = `SKILL.md` §执行能力边界 的「随包脚本白名单」行**（本文件不复述数字）。
 > **依据**：DSH 官方文档 `docs/cookbook/adding-a-tool.md`、`docs/tool-execution-pipeline.md`、`docs/subsystems/*.md`、`docs/capability-seams.md`（知识库副本见 `dsh-plugin-guide/references/official-docs/`；行号对快照 commit `d347e703…`）。
-> **当前状态（v18.76.0 对账）**：**C 组 9 项已启用 + 1 项仅配方（C-2）+ D2 workflow 配方已落地（可选）**：原生只读工具 + `executionMode` 声明 / `ctx.tools.guard()` 写保护 / `/lunheng-status` / 词预算门 / `tools/post-execute` 伦理脱敏自动挂载（命中标记经 `decision.additionalContexts` 送达，v18.76.0 · R1 修复） / `system-prompt/assemble` 钩子 / `examples/preset/agent-tiered/cordis.yml` preset 化（**C-9 `file-watcher:change`、C-10 `assistant/chunk`、C-12 `agent/request` 三条死监听器已移除**，见 §七）。**D2（Phase 内并行→`workflow`）配方已落地**（v18.71.0，`examples/workflow/phase1-retrieval.md`，**可选、不默认替换 subagent**，见 §三）。**未做（Backlog）**：**H8** `session-log` 投影 / **H9** `session-query-sqlite` / **H10** `web_profile`（主人 2026-09-30 裁定**不做**）；**H11** `goals` / `jobs`（仍禁接）。
+> **当前状态（v18.76.0 对账）**：**C 组 9 项已启用 + 1 项仅配方（C-2）+ D2 workflow 配方已落地（可选）**：原生只读工具 + `executionMode` 声明 / `ctx.tools.guard()` 写保护 / `/lunheng-status` / 词预算门 / `tools/post-execute` 伦理脱敏自动挂载（命中标记经 `decision.additionalContexts` 送达，v18.76.0 · R1 修复） / `system-prompt/assemble` 钩子 / `examples/preset/agent.cordis.yml` preset 化（**C-9 `file-watcher:change`、C-10 `assistant/chunk`、C-12 `agent/request` 三条死监听器已移除**，见 §七）。**D2（Phase 内并行→`workflow`）配方已落地**（v18.71.0，`examples/workflow/phase1-retrieval.md`，**可选、不默认替换 subagent**，见 §三）。**未做（Backlog）**：**H8** `session-log` 投影 / **H9** `session-query-sqlite` / **H10** `web_profile`（主人 2026-09-30 裁定**不做**）；**H11** `goals` / `jobs`（仍禁接）。
 
 ---
 
@@ -241,7 +241,7 @@ return { gate: 'T2.5', pass: gatePass, literature: lit, data: dat, cases: cas }
 | C-10 `assistant/chunk` G14 启发式预筛监听器 | ❌ **已移除**（v18.62.1 全量审计 P1-1：`assistant/chunk` 是 session 日志事件、无 ctx 派发方，监听器永不触发） | 原 `lib/index.js` 里的 `ctx.on('assistant/chunk', listener)` 已删除；G14 检测由 G14 终闸（三层防御第 3 层 LLM 推理判定）完整覆盖 | v18.2.8 G14 修订（§A/§B 类判据） |
 | C-11 `system-prompt/assemble` 钩子 | ✅ **已启用**（**3 参 `(assembly, context, next)`**——v18.62.1 全量审计 P1-2 修正旧 2 参截断下游缺陷；**v18.76.0 · S7 修复**：尾注版本号改为**每次装配现读** `package.json`，不再用 apply 期快照——原地升级也能看到真实版本） | `lib/index.js` 新增 `ctx.on('system-prompt/assemble', listener)`；监听 prompt 装配 → `await next()` 后向 `sections` **只追加不覆盖** dsh 默认 prompt（附加「论衡技能加载中」提示段 + 版本自证行，**最保守模式**）| dsh agent-loop 文档（system-prompt/assemble waterfall 模式）|
 | C-12 `agent/request` waterfall 模型路由 | ❌ **已移除**（v18.76.0 · v18.75.1 全量架构审计 R2：该事件 payload **只有 `{turn, step, signal}`**，监听器读的 `request.toolName` 恒 `undefined` → 判别键缺失的死监听器，且挂在每个模型请求的 waterfall 上。继 C-9「无派发方」、C-10「session 日志事件」之后第三例） | 原 `lib/index.js` 里的 `ctx.on('agent/request', listener)` 已删除（删的是**注册**，不是该事件的契约记录——`scripts/_lib/host-contract.mjs` 的表项保留，由 `host-contract-probe` 持续断言 payload 键集合）。分档路由由 C-13 preset 单独承载，**改 env 后需重载插件行** | ~~dsh x.dev「agent/request waterfall」~~（不再使用）；改由 C-13 + `docs/capability-seams.md`（agent preset）承载 |
-| C-13 H6 agent preset 化 + `modelSelectionSettings:true` | ✅ **已落地**（preset 文件已写） | 新增 `examples/preset/agent-tiered/cordis.yml`；按 §八 第 2 步配方，论衡三档 subagent 工具行开 `modelSelectionSettings:true` → 该 preset 内可用 `list_subagent_models` 工具 + per-call `provider`/`model`/`reasoning_effort`。**真源 roles**：retrieval = T1/T2/T3、strong = T4/T5、audit = T6/T7/T9/G14 | dsh 官方文档（DSH 仓库 `docs/subsystems/tools.md` + `docs/capability-seams.md`，本仓未随包）|
+| C-13 H6 agent preset 化 + `modelSelectionSettings:true` | ✅ **已落地**（**v19.0.0 改名到官方契约名**） | `examples/preset/agent.cordis.yml`（v18.61.0 落地时目录名为 `agent-tiered`；改名理由与契约依据见 §八 第 2 步）；按 §八 第 2 步配方，论衡三档 subagent 工具行开 `modelSelectionSettings:true` → 该 preset 内可用 `list_subagent_models` 工具 + per-call `provider`/`model`/`reasoning_effort`。**真源 roles**：retrieval = T1/T2/T3、strong = T4/T5、audit = T6/T7/T9/G14 | dsh 官方文档（DSH 仓库 `docs/subsystems/tools.md` + `docs/capability-seams.md`，本仓未随包）|
 
 ### 7.1 C-1 的关键设计（为什么不是 patch 行、也不要 `exports`）
 
@@ -271,11 +271,12 @@ return { gate: 'T2.5', pass: gatePass, literature: lit, data: dat, cases: cas }
 
 > ✅ **状态：已落地**（主人授权）——
 > **第 1 步**实测验证 ✅：`dsh --profile web --patch <临时 patch> --dump-config` 三档工具行 `disabled: true` 加载成功（exit=0）；详见 `audits/反哺报告-H6验证报告-2026-09-30.md` §一。
-> **第 2 步**实测落地 ✅：`examples/preset/agent-tiered/cordis.yml` 已写（按本节第 2 步配方，三档 subagent 工具行开 `modelSelectionSettings:true`）。
+> **第 2 步**实测落地 ✅：`examples/preset/agent.cordis.yml` 已写（按本节第 2 步配方，三档 subagent 工具行开 `modelSelectionSettings:true`；v19.0.0 §4.1 把目录名从 `agent-tiered` 改到官方契约名）。
 > **第 3 步**待主人部署环境实测：本机缺 `DEEPSEEK_API_KEY`，`dsh headless` 起不了真会话；按本节第 3 步配方在有 LLM key 的环境跑真会话，验证 `list_subagent_models` 出现 + per-call `provider`/`model` 切换生效。
 >
 > **注意**：原 §八 "未验证配方" 已**部分不再成立**（第 1/2 步已实测验证 + 落地），但本节保留作为**完整配方**给主人参考，并按主人 review 后**可选**做第三步真会话验证。
-> 官方文档只描述机制，**知识库中没有任何 preset 组合文件的完整示例**（快照范围含 `docs/`、根 `AGENTS.md`、`packages/AGENTS.md|README.md`，**不含** `packages/preset/agent-presets/README.md`）。本节保留第 1-3 步配方供**需要独立 preset 化的主人**复用（已在真源 `examples/preset/agent-tiered/` 落地的版本是推荐默认）。
+> 官方文档只描述机制，**知识库中没有任何 preset 组合文件的完整示例**（快照范围含 `docs/`、根 `AGENTS.md`、`packages/AGENTS.md|README.md`，**不含** `packages/preset/agent-presets/README.md`）。本节保留第 1-3 步配方供**需要独立 preset 化的主人**复用（已在真源 `examples/preset/` 落地的版本是推荐默认）。
+> ✅ **v19.0.0 结案**：下方 §八 第 2 步的「组合文件叫什么」**唯一不确定点已解**（实测 = `agent.cordis.yml`，见该处），本包示例已改名并留机检钉（`tests/scripts/cordis-patch.test.mjs`）。
 
 ### 8.1 为什么考虑（收益与依据）
 
@@ -310,7 +311,7 @@ return { gate: 'T2.5', pass: gatePass, literature: lit, data: dat, cases: cas }
 **第 2 步：写一个预设目录**（目录名 = 预设 id，见 `docs/capability-seams.md:564`「the new preset's id, which becomes its directory name」），放入官方所称的 **「preset cordis.yml」**（`capability-seams.md:507`）：
 
 ```yaml
-# <预设目录>/<preset cordis.yml>
+# <预设目录>/agent.cordis.yml
 - insert:
     - id: tool-subagent-retrieval
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -323,8 +324,8 @@ return { gate: 'T2.5', pass: gatePass, literature: lit, data: dat, cases: cas }
     # strong / audit 两行同构：换 id、toolName 与 LUNHENG_* 前缀
 ```
 
-> ⚠️ **文件名是本配方唯一的不确定点**：官方正文只写「preset cordis.yml」（`capability-seams.md:507`），知识库自有摘要称 `<预设目录>/agent.cordis.yml`（`references/harness-repo.md:459`，其引用的 `packages/preset/agent-presets/README.md` **不在快照内**）。**先 `ls` 你部署里已存在的预设目录照抄文件名**（预设根由 `@deepseek-ai/dsh-agent-presets` 的 `roots: PresetRoot[]` + `default` 决定，见 `config-catalog.md:123-157`）。
-> ⚠️ **`!!js` 在 preset 平面是否允许，未经验证**：官方只规定 `!!js` 可用于 `config`/`disabled`（`docs/cordis-tutorial/05-config.md:80`），与平面无关，但**没有** preset 内的实例。若宿主拒绝，退路是**不写 `agentOptions`**，改为会话内用 `list_subagent_models` + per-call 选模型——这正是开 `modelSelectionSettings` 的目的。
+> ✅ **文件名（v19.0.0 结案）**：官方正文只写「preset cordis.yml」（`capability-seams.md:507`）。**实测已定 = `agent.cordis.yml`**：`@deepseek-ai/dsh-agent-presets` 包的 `discovery.js` 有 `COMPOSITION_FILE = 'agent.cordis.yml'`，缺它的目录「still occupies the id」（占了 id 却加载不了）。预设根由同包的 `roots: PresetRoot[]` + `default` 决定（`config-catalog.md:123-157`）——**本包不自动注册预设根**，请把 `examples/preset/` 放进/软链到你的预设根。
+> ⚠️ **`!!js` 在 preset 平面**：**许可面已证**——preset 经 `Include` 挂载（`dsh-agent-presets` 包的 `mount.js` 有 `class PresetTree extends Include`），嵌套行的 `!!js` 在该行自己的 fiber 惰性求值；且**官方自带 preset 正在用**（其标准预设写着 `!!js process.platform === 'win32'`）。**本机「运行时确实求值」仍未做对照实验**（`--dump-config` 只打印声明行）——退路是**不写 `agentOptions`**，改为会话内用 `list_subagent_models` + per-call 选模型（这正是开 `modelSelectionSettings` 的目的）。
 > ⚠️ **服务行需要 `isolate` realm**（`architecture.md:131`）；本包插入的是 **tool 行不是 service 行**，按现有语义不需要；若宿主要求，按提示加。
 
 **第 3 步：选预设并验证**

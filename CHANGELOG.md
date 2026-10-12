@@ -2,6 +2,30 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 19.0.0 — 2026-10-12
+
+> **主题**：反哺报告 §4.1/§4.2/§4.4/§4.5 落地——**preset 层升格**（示例目录成为真 preset）+ **开工台**（客户端 Phase 0 定题入口）+ **宿主 locale 桥** + **`DESIGN.md` 界面设计基准**。
+> **版本判据 = 新迭代（19）**：三项新能力（可加载 preset 组合 / 客户端新写入口 / 多语言桥）＋一份新的机制真源文件（`references/DESIGN.md`），超出 minor 增量。
+> **动因**：`audits/反哺报告-2026-10-11-dsh-research对比核实-v1.md`（§4.1 preset 层 / §4.2 工作台 / §4.4 locale / §4.5 DESIGN.md）；**开工台的字段集**另参照主人另一项目（论衡 CLI 的 web 面板 `web.yily.top`）的「新建项目」表单——**借鉴其字段完备性与交互形态，不借鉴其提交路径**（见下 §4.2）。**授权**：主人直接指令（「开始报告 §4.1/§4.2/§4.4/§4.5 的修订」）→ 按 `AGENTS.md`「唯一例外：主人显式授权」可写机制文件，走安全流程五步（备份在仓库外 `_backup/`，含 `lib/`）。
+> **§4.1 preset 层（升格，含三问的答复）**：
+> 　· `examples/preset/agent-tiered/cordis.yml` → **`examples/preset/agent.cordis.yml`**（`git mv`；空目录已移除）。理由：官方 preset 发现以 `COMPOSITION_FILE = 'agent.cordis.yml'`（`dsh-agent-presets`）为准，旧名不落在契约上 ⇒ 当时的「本目录不是 preset」是对的（v18.99.0 已如实登记）；**改名后契约面闭合**，`examples/preset/` 成为一份合法 preset 目录（仍需放进/软链到你的 preset 根才被扫描——本包不自动注册预设根）。
+> 　· **报告三问的答复（写进 `agent.cordis.yml` 头注释，非口头纪律）**：① **技能来源唯一化 = 包入口**（`ctx.skills.register()`，runtime rank 250）；② **`baseUrl` 携带技能 = 不做**（故该问不适用）；③ **250 压过 300 的静默冲突 = 通过「不带技能」从根上避开**。理由两条：产品语义（论衡技能须对**任意会话**可用——面板/命令/原生工具都挂在包入口）＋ rank 冲突是**静默**的（`customSkillDirs` 走 300，同名技能低 rank 顶替 ⇒ preset 自带技能看起来「没生效」，两处正文还可能漂移）。
+> 　· **`!!js` 在 preset 平面的状态更新（如实分级）**：**许可面已证**（preset 经 `Include` 挂载、嵌套行在自己 fiber 求值；且官方自带 `standard/agent.cordis.yml` **正在用** `!!js process.platform === 'win32'`）；**本机「运行时确实求值」仍未做对照实验**（`--dump-config` 只打印声明行）——退路现成（`modelSelectionSettings` + 会话内 `list_subagent_models`），不假装已实测。
+> 　· **同源钉**：`tests/scripts/cordis-patch.test.mjs` 新增用例，逐字比对 preset 组合与包根 patch 的 3 条 `disabled` + 3 条 `agentOptions`（改一处不改另一处当场红），并钉住「文件名必须是契约名」「不得复活 `agent-tiered/` 双份」。
+> 　· 同步更新引用点：`SKILL.md`（H6 行）、`SECURITY.md`（H7 行）、`docs/installation.md`、`examples/preset/README.md`（命名状态由「限定」改为「已闭合」）、`cordis.patch.yml` §5。
+> **§4.2 开工台（新能力，落点 `conversation.input.dock`）**：
+> 　· **形态**：输入框上方的通栏条目，默认收起；展开=五段渐进披露（基本 / 素材与工作区 / 外部检索与外发同意 / 高级 / 预览），字段集含**论衡特有**的 `项目名`（`[\w\-一-鿿]{1,32}`，将建 `run/<项目名>/`）与 `工作区根`（复用面板已选根），**删**借鉴源的「运行后端四选」（论衡是纯 skill，无此概念），**不做**「人在环开关」（论衡四门不设可省，做成开关会诱导绕过）。
+> 　· **产物 = 结构化开场白**（`- 键: 值` 块，不是散文）：让主控零歧义照抄进 `阶段确认-Phase0.md` §6 与 `01-任务简报.md` 头部；末段写死两条纪律（「未经确认不要启动 Phase 1 / 不要 spawn」）。
+> 　· **写入口径（关键安全设计）**：三通道探测——① 席位标准 props `inputActions.setDraft`（首选）→ ② 会话作用域 `sessions.scope(id).get('conversation').input.for(actx).setDraft` → ③ 都没有则**如实报缺**并保留可复制的预览文本。**只 `setDraft`，永不 `submit()`**（Phase 0 是人在环硬闸），测试逐条钉住（含「不得调用 submit」）。
+> 　· **复用而非新增**：注册在**已就绪的 `slots` 作用域**内 ⇒ `exports.inject` **仍为 `[]`**；不新增宿主 HTTP 路由、不写文件、不联网；持久化只用 `localStorage`（`lunheng.workbench.last_cfg` / `.open`，裸 try/catch；「↺ 填充上次配置」照借鉴源做）。
+> 　· **文类表（11 文类）**内置为**受钉的派生副本**：`tests/panel.test.mjs` 逐列回读 `references/_shared/文类档案.md` 并 `deepEqual`（档案改而副本没跟=当场红）。**不做** host 派生端点——那会新增一条读面（要动 SECURITY 与词预算），11 行的稳定性不值这个代价（已记入边界）。
+> 　· **续接出口（本批收口）**：从**面板既有的只读读面** `/lunheng-panel/projects` 拉项目清单 → 选一个 → 生成「续接开场白」（先读 `status.md`/`agents-log.md`、汇报当前 Phase 与下一步、等确认再继续）。同样**只 `setDraft` 不 `submit`**；读面不可用或该根无项目时**如实说明**，**不禁用**开工台本体。不新增宿主路由、不读文件系统（浏览器做不到）。
+> **§4.4 宿主 locale 桥**：运行时探测 `ctx.get('locale')`（**不进 `inject`**），双字典注册（`register(ns,'zh'|'en',dict)`，ns=`lunheng`）+ `bind`；**缺席降级**为内置字典（绝不阻断渲染）；优先级四档 = 宿主译文 > 当前语言内置 > 中文内置 > 键名。文案集中到 `// ══ L10N:BEGIN/END ══` 块，**zh/en 键集合必须逐字相同**（官方类型化形态的 bilingual balance 本包用测试等价保证），块外中文字面量设**棘轮**（只许降）。座位行**如实汇报** `locale = 已接入(active)` / `未接入`。
+> **§4.5 `DESIGN.md`（新真源）**：`skills/lunheng-article-pipeline/references/DESIGN.md`——把此前**只活在代码注释里**的界面约定收成唯一真源（色彩只用 11 个 `--dsw-alias-*` 语义 token / 字体与字号七级 / 间距与圆角四档 / 组件口径 / 唯一动效 / 无 media query 的响应式 / 跨版本生存结构 / **给 AI 的禁令清单与其机械消费者** / 变更流程）。**位置理由**：`references/**` 本就在机制写保护范围内（`lib/guard.js` 的受保护根 = 技能副本根），故**无需改 guard** 即达成报告 §4.5 的「纳入保护范围」要求；同批进版本头与词预算门视野。
+> **顺带修复（本批实测发现的真 bug）**：`lib/client.js` 注入的 hover 类样式，自 v18.92.0 起**从未生效**——`T(...)` 的实参被写成**字符串字面量**，注入的 CSS 是 `border-color:T(<token>, <兜底>) !important`，浏览器整条声明丢弃（**静默失效**）。已改为真调用并加回归钉（注入的 CSS 必须含 `var(--dsw-alias-` 且不含 `T(`）。
+> **验证（本版终态）**：全量套 **1032 / 1032 全绿**（套件总 **1033** 项 / **1032 pass** / **0 fail** / **1 skip**；较上版 1023 增加本批 10 条：`panel.test.mjs` 9 条 + `cordis-patch.test.mjs` 1 条）；`consistency-check` **0 处漂移**；`repo-hygiene-check` **全门通过**；`plugin-surface-check` **11 项通过 / 0 失败 / 0 提示**；`pack-smoke` **通过**；`no-write-check` **通过**（工具链零改写仓库）。
+> **未做（如实登记）**：① 报告 §4.1 的「`!!js` 在 preset 平面运行时求值」**对照实验**（本机无 headless 对照环境，退路已写明）；② **面板深层文案**未全量接入 L10N（本批只接外壳 6 处 + 开工台全量；块外中文字面量以 340 处为棘轮基线，**只许降**）；③ 开工台**尚未在真机 GUI 里点过一次**（本批验证到「桩渲染 + 点击 handler + 三通道」这一层，真实宿主是否给 dock 传 `inputActions` 仍属**已知未知**——三通道设计正是为它留的退路）。
+
 ## 18.99.0 — 2026-10-12
 
 > **主题**：`sjkncs/dsh-research` 对比核实反哺的**核实与落地**——新立「执行面允许面三方对账」门 + 同一处安全面表述的更正 + preset 命名限定 + rank 表表源化。

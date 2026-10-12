@@ -21,7 +21,8 @@ const evalIn = (expr, env) => new Function('process', `return (${expr})`)({ env 
 
 test('第3批①：preset 的三行门控与三档 kill switch 必须与包根 patch 同源', () => {
   const patch = read('cordis.patch.yml')
-  const preset = read('examples/preset/agent-tiered/cordis.yml')
+  // v19.0.0 §4.1：preset 组合文件改名到官方契约名 `agent.cordis.yml`（原 `agent-tiered/cordis.yml`）。
+  const preset = read('examples/preset/agent.cordis.yml')
 
   // (a) 行级门控：preset 必须有三行 `disabled`，且表达式与 patch 的逐字相同
   const gates = (yaml) => [...yaml.matchAll(/disabled:\s*!!js\s+"([^"]+)"/g)].map((m) => norm(m[1]))

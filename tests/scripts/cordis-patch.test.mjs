@@ -37,3 +37,21 @@ test('cordis.patch.yml：三档 agentOptions 表达式形态正确（未设=unde
   }
 })
 
+// v19.0.0（§4.1 preset 层升格）：示例目录自本版起是**真 preset 目录**。三条 `disabled` / 三条
+//   `agentOptions` 与包根 patch 的**同源比对**由 `tests/batch22-structural-v18-80-1.test.mjs` 第3批①
+//   承担（v18.80.1 起就在钉，且它还做行为求值）——**同一事实不设两道门**，本用例只补该处没有的三条：
+//   ① 组合文件名必须是官方契约名（`COMPOSITION_FILE = 'agent.cordis.yml'`），否则目录「占着 id 却加载不了」；
+//   ② 不得复活 `agent-tiered/` 双份（一处事实两处文件 = 下一个漂移源）；
+//   ③ 头注释必须写明「为什么叫这个名字」与「preset 不携带技能」这一决定（防后人改回去）。
+test('agent.cordis.yml（v19.0.0 §4.1）：preset 组合文件名与头注释契约', () => {
+  const presetPath = join(ROOT, 'examples', 'preset', 'agent.cordis.yml')
+  assert.ok(existsSync(presetPath), 'preset 组合文件必须叫 agent.cordis.yml（官方 COMPOSITION_FILE 契约名）')
+  assert.ok(
+    !existsSync(join(ROOT, 'examples', 'preset', 'agent-tiered')),
+    'v18.61.0 的 agent-tiered/ 目录已并入 agent.cordis.yml——不得复活成双份',
+  )
+  const preset = readFileSync(presetPath, 'utf8')
+  assert.ok(preset.includes('COMPOSITION_FILE'), '头注释必须写明它为何叫这个名字（防后人改名回 agent-tiered）')
+  assert.match(preset, /不携带技能/, '头注释必须写明「preset 不携带技能」这一决定（含 rank 250 vs 300 的静默冲突理由）')
+})
+

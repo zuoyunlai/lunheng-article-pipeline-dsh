@@ -1,4 +1,23 @@
-# 论衡分档 agent preset（v18.61.0 反哺 v4，主人显式授权落地）
+# 论衡分档 agent preset（v18.61.0 H6 落地；**v19.0.0 §4.1 升格为真 preset 组合文件**）
+#
+# ── 本文件的身份（v19.0.0 明确）──────────────────────────────────────────────────────────
+# 文件名 `agent.cordis.yml` **不是随意的**：官方 preset 发现机制以它为准 ——
+#   `@deepseek-ai/dsh-agent-presets/lib/types/discovery.js` 的 `COMPOSITION_FILE = 'agent.cordis.yml'`；
+#   同文件对缺该文件的目录给出的诊断是「the composition file … is missing — the directory still
+#   occupies the id」（**占了 id 却加载不了**）。v18.61.0–18.99.0 期间本目录叫 `agent-tiered/`，
+#   目录名与文件名都不匹配该契约 ⇒ **它不是可被加载的 preset，只是一份配置片段**（v18.99.0 的
+#   反哺报告 N3 已如实登记）。v19.0.0 改名落到契约名上：**本目录（`examples/preset/`）自本版起
+#   是一份合法 preset 目录**（含 `agent.cordis.yml` + `preset.yml`），可被复制/软链到你的 preset 根后
+#   由 DSH 加载（本包**不**自动注册预设根——见 README §6 的三个要点）。
+#
+# ── 刻意不做的事：preset **不携带技能**（v19.0.0 决定，理由入档）──────────────────────────
+#   报告 §4.1 提出过「用 `customSkillDirs` + `baseUrl` 相对携带技能」；本包**不采纳**，两条理由：
+#   ① **产品语义**：论衡技能必须对**任意会话**可用（面板 / 斜杠命令 / 原生工具都挂在包入口的
+#      `ctx.skills.register()` 上）；把它们收进某个 preset 会让「切了预设才有论衡」成为默认体验。
+#   ② **rank 冲突是静默的**：包入口注册走 **runtime rank 250**（真源 = `@deepseek-ai/dsh-skill` 的
+#      `RUNTIME_RANK`），而 `customSkillDirs` 走 **rank 300**；同名技能**低 rank 静默顶替** ⇒
+#      preset 自带的技能目录看起来「没生效」，两处技能正文还可能版本漂移。技能来源**唯一化** =
+#      包入口一处（本决定即报告 §4.1 三问的答案：① 唯一化＝包入口；② `baseUrl` 携带＝不做，故该问不适用）。
 #
 # 按 `references/_shared/DSH-集成方案.md` §八 第 2 步配方落地：
 #   把 bundle 的三档 subagent 工具行从 profile 全局移到 preset scope，让
@@ -10,6 +29,8 @@
 #    装了本 preset 的 profile 会让 `subagent_retrieval/strong/audit` 三档**从 profile 全局
 #    沉到 preset 层**（agent-preset 的 standing composition 覆盖其 join 的 agent —— dshx.dev
 #    "Nearest scope on the chain wins"）。
+#    ⚠️ **两处副本必须同批改**（`tests/panel.test.mjs` 之外由 `tests/scripts/cordis-patch.test.mjs`
+#    的同源钉保证：三条 `disabled` / `agentOptions` 表达式逐字相同）。
 #
 # **真源 roles**（必须配套写明，否则 consistency-check 规则⑩c 判 P1）：
 #   - `subagent_retrieval` → T1 文献 / T2 数据 / T3 案例（**检索档**）
@@ -26,10 +47,15 @@
 #   该字段在 dsh 0.1.7-rc.2 上**已在 dsh 自带 subagent 工具默认开**（实测见
 #   `audits/反哺报告-H6验证报告-2026-09-30.md`），但本包 patch 三档独立写明才能**让论衡三档也继承**。
 #
-# ⚠️ **`!!js` 在 preset 平面是否允许**（DSH-集成方案 §八 §八.3 不确定点 3）：
-#   官方只规定 `!!js` 可用于 `config`/`disabled`（`cordis-tutorial/05-config.md:80`），与平面无关；
-#   若宿主拒绝，退路是**不写 `agentOptions`**——改用会话内 `list_subagent_models` + per-call 选模型，
-#   这正是开 `modelSelectionSettings` 的目的。本批先按官方字面写法落地，实测时若宿主拒绝再降级。
+# ⚠️ **`!!js` 在 preset 平面**（v19.0.0 状态更新）：
+#   · **语义与许可面已证**：preset 组合经 `Include` 挂载（`mount.js` 的 `class PresetTree extends Include`
+#     与 `mount.js:349` 的 `pathToFileURL(preset.path)`），嵌套行的 `!!js` 在该行自己的 fiber 里惰性求值；
+#     且**官方自带 preset 正在用**（`dsh-agent-presets/presets/standard/agent.cordis.yml` 的
+#     `!!js process.platform === 'win32'`）——官方不会 ship 自己加载器拒绝的写法。
+#   · **本机「运行时确实求值」仍未做对照实验**（如实声明）：本机 `--dump-config` 只打印声明行
+#     （`cordis.patch.yml` 已记录同一观测限制）。**退路现成**：若宿主拒绝 `agentOptions` 的 `!!js`，
+#     改用会话内 `list_subagent_models` + per-call 选模型（这正是开 `modelSelectionSettings` 的目的）。
+#     本包按官方字面写法落地，不假装已实测。
 
 - insert:
     # ── 检索档 subagent（T1/T2/T3 便宜快）──

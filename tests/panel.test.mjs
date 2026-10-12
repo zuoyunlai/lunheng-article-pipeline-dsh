@@ -495,6 +495,10 @@ test('面板：lightSnapshot 缺 status.md 时如实标记（不编造）', () =
 function makeReactStub() {
   const store = []           // 每个组件实例的 hook 槽位（跨趟持久）
   let inst = null, cursor = 0, seq = 0, effects = [], dirty = false
+  // v19.0.0：记录**最近一次被调用的组件所返回的元素树**——桩的 `render()` 只回字符串，
+  //   而「点击某按钮会调用哪个 handler」需要元素树本身。断言用 `h.tree()` 取树后按标签找按钮
+  //   （宿主元素的 props.onClick 就在树上）。纯增量能力，不影响既有断言。
+  let lastTree = null
   const hooksFor = () => (store[seq++] || (store[seq - 1] = []))
   const React = {
     createElement: (type, props, ...children) => ({ type, props: props || {}, children }),
@@ -516,7 +520,9 @@ function makeReactStub() {
     if (typeof node.type === 'function') {
       const pInst = inst, pCur = cursor
       inst = hooksFor(); cursor = 0
-      const out = renderNode(node.type(Object.assign({}, node.props, { children: node.children })))
+      const produced = node.type(Object.assign({}, node.props, { children: node.children }))
+      const out = renderNode(produced)
+      lastTree = produced
       inst = pInst; cursor = pCur
       return out
     }
@@ -533,7 +539,7 @@ function makeReactStub() {
     }
     return text
   }
-  return { React, render }
+  return { React, render, tree: () => lastTree }
 }
 
 /** 装载 `lib/client.js`（每次全新实例）并返回其 factory 产物。 */
@@ -853,3 +859,247 @@ test('v18.93.0：交付件与导出命令派生（只读工作区内的既有产
     assert.ok(snap.insights.compare && Array.isArray(snap.insights.compare.items), 'v18.94.0：应派生跨项目对比（同根各项目边车摘要）')
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
+
+// ════════════════════════════════════════════════════════════════════════════════════════════
+// v19.0.0：开工台（§4.2）+ 宿主 locale 桥（§4.4）+ hover 类样式修复
+// ════════════════════════════════════════════════════════════════════════════════════════════
+
+/** L10N 块外中文字面量的**棘轮基线**（v19.0.0 实测 340）。只许降：新文案一律进 L10N 块并用 `t()`。 */
+const OUTSIDE_CN_BASELINE = 340
+
+test('开工台（v19.0.0 §4.4）：zh/en 字典键集合必须逐字相同（双语平衡）', async () => {
+  // 官方 locale 服务的**类型化**形态即「bilingual balance enforced at registration」；本包走未类型化
+  //   单语形态（`register(ns, locale, dict)`）绕开了那道编译期检查 ⇒ 必须用测试等价保证。
+  //   失衡的后果是**静默的**：某个 key 只写了中文，英文宿主下回落成中文而不是报错。
+  const h = makeReactStub()
+  const mod = await loadClient(h, { fetch: fetchStub({}) })
+  const zh = Object.keys(mod.__panel.L10N.zh).sort()
+  const en = Object.keys(mod.__panel.L10N.en).sort()
+  assert.deepEqual(en, zh, 'en 与 zh 的键集合必须完全一致（差异 = 静默双语失衡）')
+  assert.deepEqual(zh.filter((k) => mod.__panel.L10N.zh[k] === ''), [], '不得有空译文')
+  assert.deepEqual(en.filter((k) => mod.__panel.L10N.en[k] === ''), [], '不得有空译文')
+  assert.ok(zh.length >= 40, '字典规模下限 = 40 键（防「文案又写回组件里」），实际 ' + zh.length)
+})
+
+test('开工台（v19.0.0 §4.4）：L10N 块外的中文字面量受棘轮约束（新文案只许进块）', () => {
+  const src = readFileSync(join(ROOT, 'lib', 'client.js'), 'utf8')
+  const m = /\/\/ ══ L10N:BEGIN ══[\s\S]*?\/\/ ══ L10N:END ══/.exec(src)
+  assert.ok(m, '必须存在 L10N:BEGIN/END 标记块（把「文案真源」做成可机械定位的一段）')
+  const outside = src.slice(0, m.index) + src.slice(m.index + m[0].length)
+  const n = (outside.match(/['"][^'"\n]*[\u4e00-\u9fff][^'"\n]*['"]/g) || []).length
+  assert.ok(
+    n <= OUTSIDE_CN_BASELINE,
+    `L10N 块外中文字面量 ${n} 处 > 基线 ${OUTSIDE_CN_BASELINE}：新文案请放进 L10N 块并用 t() 取；`
+    + '若确属数据表（如文类档案派生副本），同批上调基线并写明理由。',
+  )
+})
+
+test('开工台（v19.0.0 §4.4）：接宿主 locale —— 缺席降级 / 命中注册双语 / 优先级四档', async () => {
+  const h = makeReactStub()
+  const mod = await loadClient(h, { fetch: fetchStub({}) })
+  const P = mod.__panel
+  // ① 缺席（无 locale 服务）：**绝不抛**，t() 回落内置中文
+  assert.doesNotThrow(() => P.installLocale({ get: () => undefined }))
+  assert.equal(P.t('wb.fill'), '生成开场白并填入输入框', '缺席时必须回落内置中文（不是键名、不是空）')
+  // ② 命中：两套字典都注册到同一命名空间；bind 拿到译文
+  const reg = []; let bound = null
+  const svc = {
+    register: (ns, loc, dict) => { reg.push([ns, loc, Object.keys(dict).length]); return () => {} },
+    bind: (ns) => { bound = ns; return (k) => (k === 'wb.fill' ? 'FROM-HOST' : k) },
+    getLocale: () => ({ active: 'en' }),
+    subscribe: () => () => {},
+  }
+  assert.doesNotThrow(() => P.installLocale({ get: (n) => (n === 'locale' ? svc : undefined) }))
+  assert.deepEqual(reg.map((r) => r[1]), ['zh', 'en'], 'zh/en 都要注册（否则英文宿主会看到键名）')
+  assert.equal(reg[0][0], 'lunheng', '命名空间是跨版本契约（宿主字典与插件字典在此对齐）')
+  assert.equal(bound, 'lunheng')
+  // ③ 优先级：宿主译文 > 当前语言内置字典 > 键名（逐档验证）
+  assert.equal(P.t('wb.fill'), 'FROM-HOST', '宿主有译文时必须优先用宿主')
+  assert.equal(P.t('panel.label'), 'Lunheng Runs', '宿主未覆盖的键 → 用当前语言（en）的内置字典')
+  assert.equal(P.t('wb.nope'), 'wb.nope', '宿主与内置都没有 → 回落键名（可诊断，不静默变空）')
+})
+
+test('开工台（v19.0.0 §4.2）：注册进 conversation.input.dock，且 exports.inject 仍为空', async () => {
+  const h = makeReactStub()
+  const mod = await loadClient(h, { fetch: fetchStub({}) })
+  // 本包的跨版本生存策略 = **零 inject + 全 ctx.get 探测**（照抄别人的 inject 清单会在缺服务的宿主上挂死）
+  assert.deepEqual(mod.inject, [], 'exports.inject 必须保持空数组')
+  const regs = {}
+  let registered = null
+  const slots = {
+    inject: (n, cb) => { regs[n] = cb; return () => {} },
+    register: (def, comp) => { registered = { def, comp }; return () => {} },
+  }
+  mod.apply({ inject: (deps, cb) => cb({ slots, get: () => undefined }) })
+  assert.equal(typeof regs['conversation.input.dock'], 'function', '必须 inject 到 conversation.input.dock 席位')
+  regs['conversation.input.dock']()
+  assert.equal(registered.def.name, 'conversation.input.dock')
+  assert.equal(registered.def.id, 'lunheng-workbench', 'id 是稳定契约（同名席位唯一）')
+  assert.equal(typeof registered.comp, 'function')
+  assert.equal(mod.__panel.SEATS.dock, true, '注册成功必须置位')
+  assert.match(h.render(mod.__panel.seatLine, {}), /开工台 = 已注册/, '座位行必须**如实**汇报开工台落点')
+  assert.match(h.render(mod.__panel.seatLine, {}), /locale = 未接入/, 'locale 未接入也要如实写出（不假装接上了）')
+})
+
+test('开工台（v19.0.0 §4.2）：三处硬校验 + 结构化开场白 + 只 setDraft 不 submit', async () => {
+  const h = makeReactStub()
+  const mod = await loadClient(h, { fetch: fetchStub({}) })
+  const P = mod.__panel
+  // ① 校验：题目 / 项目名（正则，含路径穿越）/ 外发同意（必须显式选）
+  assert.equal(P.wbValidate({ title: '', project: 'p', consent: '全部同意' }), 'wb.need.title')
+  assert.equal(P.wbValidate({ title: 't', project: '', consent: '全部同意' }), 'wb.need.project')
+  assert.equal(P.wbValidate({ title: 't', project: '../escape', consent: '全部同意' }), 'wb.need.projectChars')
+  assert.equal(P.wbValidate({ title: 't', project: 'a'.repeat(33), consent: '全部同意' }), 'wb.need.projectChars')
+  assert.equal(P.wbValidate({ title: 't', project: 'p', consent: '' }), 'wb.need.consent')
+  assert.equal(P.wbValidate({ title: 't', project: '我的项目-1', consent: '全部同意' }), null, '中文/连字符合法')
+  // ② 开场白：结构化字段块（**不是散文**）+ 两条人在环纪律
+  const prompt = P.buildPrompt(Object.assign({}, P.WB_DEFAULT, { title: 'T', project: 'P1', genre: 'academic-cn', consent: '全部同意', materials: 'data.csv' }))
+  assert.match(prompt, /- 项目名: P1/)
+  assert.match(prompt, /- 题目: T/)
+  assert.match(prompt, /academic-cn（期刊投稿（社科实证））/, '选文类必须带出它的场景（一选定 11 项）')
+  assert.match(prompt, /- 外发同意: 全部同意/)
+  assert.match(prompt, /- 投喂材料（已在工作区内）: data\.csv/)
+  assert.match(prompt, /跟随文类/, '未填项必须写明「跟随文类」而不是留空')
+  assert.match(prompt, /不要启动 Phase 1/, '必须带人在环纪律（否则工作台等于绕过 Phase 0 闸门）')
+  // ③ 通道一：席位标准 props（首选），且**只 setDraft**
+  const calls = []
+  const r1 = P.pushDraft({ inputActions: { setDraft: (s) => calls.push(['draft', s]), submit: () => calls.push(['submit']) } }, prompt)
+  assert.equal(r1.ok, true)
+  assert.equal(r1.channel, 'wb.channel.inputActions')
+  assert.equal(calls.length, 1, '**只 setDraft，绝不自动 submit**（Phase 0 是人确认后才开工）')
+  assert.equal(calls[0][1], prompt)
+  // ④ 通道二：会话作用域（root 链路）
+  const scoped = []
+  const sessions = { scope: () => ({ get: () => ({ input: { for: () => ({ setDraft: (s) => scoped.push(s) }) } }) }) }
+  const r2 = P.pushDraft({ ctx: { get: () => sessions }, sessionId: 's1' }, prompt)
+  assert.equal(r2.channel, 'wb.channel.scope')
+  assert.equal(scoped.length, 1)
+  // ⑤ 通道三：都没有 → 如实报缺（不假装写进去了）
+  const r3 = P.pushDraft({ ctx: { get: () => undefined } }, prompt)
+  assert.equal(r3.ok, false)
+  assert.equal(r3.channel, 'wb.channel.none')
+})
+
+test('开工台（v19.0.0 §4.2）：组件渲染 + 点「生成开场白」把文本送进 inputActions', async () => {
+  const h = makeReactStub()
+  const mod = await loadClient(h, { fetch: fetchStub({}) })
+  const drafts = []
+  const props = { inputActions: { setDraft: (s) => drafts.push(s) }, ctx: { get: () => undefined } }
+  const findButton = (node, label) => {
+    if (!node || typeof node !== 'object') return null
+    if (Array.isArray(node)) { for (const c of node) { const r = findButton(c, label); if (r) return r } return null }
+    if (node.type === 'button' && node.props && typeof node.props.onClick === 'function') {
+      const txt = (node.children || []).map((c) => (typeof c === 'string' ? c : '')).join('')
+      if (txt.includes(label)) return node
+    }
+    for (const c of node.children || []) { const r = findButton(c, label); if (r) return r }
+    return null
+  }
+  // ① 收起态：只有开关按钮，正文不渲染（默认收起 = 不占输入框上方的空间）
+  let text = h.render(mod.__panel.Workbench, props)
+  assert.match(text, /论衡开工（Phase 0 定题）/, '标题常显')
+  assert.doesNotMatch(text, /生成开场白并填入输入框/, '收起态不得渲染正文按钮')
+  // ② 点开
+  const toggle = findButton(h.tree(), '打开论衡开工台')
+  assert.ok(toggle, '必须有「打开」按钮')
+  toggle.props.onClick()
+  text = h.render(mod.__panel.Workbench, props)
+  assert.match(text, /项目名/, '展开后必须出现项目名（论衡特有：run/<项目名>/ 必须主人给）')
+  assert.match(text, /外发同意/, '展开后必须出现外发同意（Phase 0 硬闸）')
+  // ③ 未填必填项时点击 → 不写入，且给出**具体**原因
+  const fill0 = findButton(h.tree(), '生成开场白并填入输入框')
+  assert.ok(fill0, '展开后必须有生成按钮')
+  fill0.props.onClick()
+  text = h.render(mod.__panel.Workbench, props)
+  assert.equal(drafts.length, 0, '缺必填项时**不得**写入输入框')
+  assert.match(text, /请先填题目/, '必须给出可读的具体原因（不是静默禁用）')
+})
+
+test('开工台（v19.0.0 §4.2）：内置文类表必须与 references/_shared/文类档案.md 逐列一致', async () => {
+  // 客户端读不到文件系统 ⇒ 文类表只能是**内置副本**。按本仓纪律，「同一事实两处」必须机械对账：
+  //   本用例逐列回读真源表（`文类档案.md`）并 deepEqual —— 档案改了而副本没跟，当场红。
+  const h = makeReactStub()
+  const mod = await loadClient(h, { fetch: fetchStub({}) })
+  const md = readFileSync(join(ROOT, 'skills', 'lunheng-article-pipeline', 'references', '_shared', '文类档案.md'), 'utf8')
+  const rows = md.split('\n').filter((l) => /^\|\s*`[a-z0-9-]+`\s*\|/.test(l)).map((l) => l.split('|').map((c) => c.trim()))
+  assert.ok(rows.length >= 11, '文类档案表解析出 ' + rows.length + ' 行——派生源形变（表头/分隔符改了？）')
+  const parsed = rows.map((c) => ({
+    code: c[1].replace(/`/g, ''), scene: c[2], cite: c[4], structure: c[6],
+    sections: c[10], t9: c[11], journal: c[13], minLit: Number(c[14]),
+  }))
+  assert.deepEqual(mod.__panel.GENRES, parsed, '内置文类表与文类档案.md 不一致（客户端副本必须同批同步）')
+})
+
+test('客户端半边（v19.0.0）：注入的 hover 类样式必须是真调用（不得再拼出 T(...) 源码文本）', async () => {
+  // v18.92.0 起该 hover 规则**从未生效**：旧版把实参写成字符串字面量，注入的 CSS 是
+  //   `border-color:T(<token>, <兜底>) !important` —— 浏览器整条声明丢弃（静默失效）。
+  //   本钉把「必须是真调用」钉死：CSS 里出现 `T(` 字样即红。
+  const h = makeReactStub()
+  const mod = await loadClient(h, { fetch: fetchStub({}) })
+  const css = []
+  const stylesSvc = { insert: (s) => css.push(s) }
+  mod.apply({
+    inject: (deps, cb) => cb({ slots: { inject: () => () => {}, register: () => () => {} }, get: () => undefined }),
+    get: (n) => (n === 'styles' ? stylesSvc : undefined),
+  })
+  assert.equal(css.length, 1, '应注入恰好一条类样式')
+  assert.match(css[0], /var\(--dsw-alias-border-l2, #/, 'hover 描边必须是 var(token, 兜底)')
+  assert.match(css[0], /color-mix\(in srgb/, 'hover 阴影须由 color-mix 派生（随明暗主题）')
+  assert.ok(!/T\(/.test(css[0]), '不得把 T(...) 源码文本拼进 CSS：' + css[0])
+})
+
+/** 元素树遍历：按**按钮文案**或**元素类型**找节点（v19.0.0 起用于点击级断言）。 */
+const wbFind = (node, pred) => {
+  if (!node || typeof node !== 'object') return null
+  if (Array.isArray(node)) { for (const c of node) { const r = wbFind(c, pred); if (r) return r } return null }
+  if (pred(node)) return node
+  for (const c of node.children || []) { const r = wbFind(c, pred); if (r) return r }
+  return null
+}
+const wbButton = (node, label) => wbFind(node, (n) => n.type === 'button' && typeof n.props.onClick === 'function'
+  && (n.children || []).map((c) => (typeof c === 'string' ? c : '')).join('').includes(label))
+
+test('开工台（v19.0.0 收口）：续接已有项目 —— 只打面板同源只读读面，生成续接开场白并填入', async () => {
+  const h = makeReactStub()
+  const calls = []
+  const route = (u) => {
+    const s = String(u)
+    calls.push(s)
+    if (s.includes('/projects')) return okJson({ root: '/work', projects: [{ name: 'p9' }, { name: 'p2' }] })
+    return Promise.reject(new Error('HTTP 404'))
+  }
+  const mod = await loadClient(h, { fetch: (u) => route(u) })
+  const P = mod.__panel
+  // ① 模板：占位替换（含项目名/根）+ 人在环纪律
+  const rs = P.buildResume('p9', '/work')
+  assert.match(rs, /p9/, '续接开场白必须含项目名')
+  assert.match(rs, /\/work/, '必须带工作区根（多根环境下主控要知道去哪个根找）')
+  assert.match(rs, /不要自行 spawn/, '必须带人在环纪律')
+  // ② 组件：展开 → 自动拉取项目清单（**只打面板既有的同源只读路由**）
+  const drafts = []
+  const props = { inputActions: { setDraft: (s) => drafts.push(s) }, ctx: { get: () => undefined } }
+  const tick = async () => { const s = h.render(P.Workbench, props); await new Promise((r) => setTimeout(r, 0)); return s }
+  await tick()
+  wbButton(h.tree(), '打开论衡开工台').props.onClick()
+  let text = await tick()
+  text = await tick()
+  assert.ok(calls.some((u) => u.startsWith('/lunheng-panel/projects')), '项目清单必须取自面板同源读面：' + calls.join(' | '))
+  assert.match(text, /p9/, '项目应出现在下拉里')
+  // ③ 未选项目就点 → 不写入，给可读原因
+  wbButton(h.tree(), '生成续接开场白').props.onClick()
+  text = await tick()
+  assert.equal(drafts.length, 0, '未选项目时**不得**写入输入框')
+  assert.match(text, /选择项目/, '必须提示要先选项目')
+  // ④ 选中后再点 → 续接开场白进输入框
+  //   注意：`select` 的 options 是以**一个数组**作为单个子节点传入的（React 支持），故查找谓词要展开数组。
+  const hasOptValue = (kids, v) => (kids || []).some((c) => Array.isArray(c) ? hasOptValue(c, v) : (c && c.props && c.props.value === v))
+  const sel = wbFind(h.tree(), (n) => n.type === 'select' && hasOptValue(n.children, 'p9'))
+  assert.ok(sel, '必须有项目下拉，且含 p9 选项')
+  sel.props.onChange({ target: { value: 'p9' } })
+  await tick()
+  wbButton(h.tree(), '生成续接开场白').props.onClick()
+  await tick()
+  assert.equal(drafts.length, 1, '选中项目后应恰好写入一次')
+  assert.match(drafts[0], /续接论衡项目 p9/, '写入的应是续接开场白：' + drafts[0].slice(0, 80))
+})
+

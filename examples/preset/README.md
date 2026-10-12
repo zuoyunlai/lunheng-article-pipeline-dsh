@@ -1,16 +1,19 @@
 # examples/preset/ — 论衡分档安装指南
 
-> 版本：v18.99.0
+> 版本：v19.0.0
 
-> ⚠️ **命名限定（v18.99.0，反哺报告 N3）**：**本目录不是 preset，是可加载配置片段的安装指南。**
+> ✅ **命名状态（v19.0.0 更新；原 v18.99.0 为「命名限定」）**：**本目录自 v19.0.0 起是一份合法 preset 目录。**
 > 官方判定一个 preset 的依据是**目录内含组合文件 `agent.cordis.yml`**
 > （`dsh-agent-presets/lib/types/discovery.js` 的 `COMPOSITION_FILE`；缺该文件的目录按官方诊断
-> 「still occupies the id」——占了 id 却加载不了）。本目录**没有** `agent.cordis.yml`，
-> 故**不会被 DSH preset 名单加载**；目录名与 `preset.yml` 的文件名并不代表它是 preset
-> ——`preset.yml` 只是给主人读的分档说明（见 §3），真正可加载的那份是 `agent-tiered/cordis.yml`（见 §6）。
+> 「still occupies the id」——占了 id 却加载不了）。v18.61.0–18.99.0 期间那份组合文件叫
+> `agent-tiered/cordis.yml`，**名字不落在契约上** ⇒ 当时的正确说法是「本目录不是 preset，只是一份配置片段」
+> （反哺报告 N3 如实登记过）。v19.0.0 **改名到契约名**：`agent.cordis.yml` —— 契约面就此闭合。
+> 注意两件事：① 本目录**不会**被自动扫描（DSH 只扫它配置的 preset 根），要**放进/软链到你的 preset 根**才生效（见 §6）；
+> ② **预设不携带技能**——论衡技能由包入口 `ctx.skills.register()` 注册（runtime rank 250），刻意不做 `customSkillDirs`
+> / `baseUrl` 携带（双注册会**静默**由 250 压过 300；理由见 `agent.cordis.yml` 头注释）。
 
-> **v18.62.4 更正（全量审计-v18.62.3 P1-12）**：本目录现有 **3 个条目**——`preset.yml`（给主人读的分档说明）
-> + 本文件（安装指南）+ **`agent-tiered/cordis.yml`**（v18.61.0/H6 落地的**可加载 preset 配置**，见 §6）。
+> **v18.62.4 更正（全量审计-v18.62.3 P1-12）+ v19.0.0 路径更新**：本目录现有 **3 个条目**——`preset.yml`（给主人读的分档说明）
+> + 本文件（安装指南）+ **`agent.cordis.yml`**（v18.61.0/H6 落地的组合配置；v19.0.0 由 `agent-tiered/cordis.yml` 改名而来，见 §6）。
 > 本行此前写「只有两个文件…**不含任何可加载的 cordis 配置**」——**该断言已被 H6 推翻**，而那份配置
 > **随包发布**（`package.json` 的 `files` 含 `examples`）→ 照旧文判断会以为分档只能靠环境变量、
 > **永远发现不了这份 preset**。分层行为来自包根 `cordis.patch.yml` 的 **4 段 `- insert:` 行**
@@ -19,14 +22,14 @@
 >
 > 历史变更（v2.5.2-dsh.12）：早期版本的 `agent.cordis.yml`（≈16KB standard 全量副本）**已删除**——
 > DSH 5.5.0+ 的 `cordis-plugin-include` 真正支持 `- insert:` 局部 patch 增量叠加，不再需要"凑出有效"副本
-> （凑副本有版本漂移风险：standard 一更新，副本就过期了）。
+> （凑副本有版本漂移风险：standard 一更新，副本就过期了）。**故此文件现在只含三条 `- insert:` 行**（`- ` 增量，不是全量副本）。
 
 ## 1. 装论衡分档的 3 步（DSH 5.5.0+ 推荐路径）
 
 ```sh
 # 1. 在 profile 里声明 bundle 依赖（DSH 读 dsh.bundle.patch 找到 cordis.patch.yml 加载）
 dsh plugin --profile web add lunheng-article-pipeline@dsh   # 推荐：跟随最新 DSH 迭代版
-# 锁定具体版本：dsh plugin --profile web add lunheng-article-pipeline@18.99.0
+# 锁定具体版本：dsh plugin --profile web add lunheng-article-pipeline@19.0.0
 
 # 2. （可选，但要让三档工具真的挂上就必做）设三档 subagent 工具的 provider/model 环境变量
 #    v18.2.6 起：不设任何变量 = 三档行**根本不装载**（不再是「装载但全继承」）
@@ -116,13 +119,15 @@ agentOptions: !!js "(e => { const p = e.LUNHENG_RETRIEVAL_PROVIDER, m = e.LUNHEN
 若希望「**只有选定了该预设的会话**才有这三个工具」，官方机制是**把同样的行挂到 preset 组合里**（工具注册落在该 preset 的作用域层：`docs/subsystems/tools.md:484-504`、`docs/subsystems/skills.md:13`；`docs/architecture.md:131` 是入口判据）。完整配方（三步 + 每步验证 + 回滚 + 五条已知限制）见
 [`../../skills/lunheng-article-pipeline/references/_shared/DSH-集成方案.md`](../../skills/lunheng-article-pipeline/references/_shared/DSH-集成方案.md) **§八**。
 
-> **本目录里已有一份现成配方：`agent-tiered/cordis.yml`**（v18.61.0 反哺 v4 / H6 落地）。它把三档 subagent 工具行
-> 写进 preset 作用域，并开 `modelSelectionSettings: true`（该 preset 内可用 `list_subagent_models` + per-call
-> `provider`/`model`/`reasoning_effort`）。**字段形态与包根 `cordis.patch.yml` 逐条对应**，改动须两处同批。
-> 安装方式：把它按你部署里的 preset 目录结构放好（先照抄一个已存在的预设目录，见下方要点①），
+> **本目录里已有一份现成配方：`agent.cordis.yml`**（v18.61.0 反哺 v4 / H6 落地；v19.0.0 由 `agent-tiered/cordis.yml`
+> 改名到官方契约名）。它把三档 subagent 工具行写进 preset 作用域，并开 `modelSelectionSettings: true`（该 preset 内可用
+> `list_subagent_models` + per-call `provider`/`model`/`reasoning_effort`）。**字段形态与包根 `cordis.patch.yml` 逐条对应**，
+> 改动须两处同批——这条**不再是口头纪律**：`tests/scripts/cordis-patch.test.mjs` 逐字比对两处的三条 `disabled`
+> 与三条 `agentOptions` 表达式，改一处不改另一处**当场红**。
+> 安装方式：把**整个 `examples/preset/` 目录**按你部署里的 preset 目录结构放好（先照抄一个已存在的预设目录，见下方要点①），
 > 再在会话空白期切到该预设（要点②）。**回退**：切回原预设即恢复包级行为。
 
-**三个要点先看**：① 官方知识库里**没有任何 preset 组合文件的完整示例**，且预设组合文件名（「preset cordis.yml」vs `agent.cordis.yml`）只有摘要级依据——**照抄你部署里已存在的预设目录**；② **预设只在会话空白期可切**（跑了就别换）；③ 本包**默认不动** patch（「装了不坏」优先），换作用域需要你自己选预设。
+**三个要点先看**：① 官方知识库里**没有任何 preset 组合文件的完整示例**——**照抄你部署里已存在的预设目录**（文件名必须是 `agent.cordis.yml`，这是官方 `COMPOSITION_FILE` 契约；见本文件顶部的命名状态说明）；② **预设只在会话空白期可切**（跑了就别换）；③ 本包**默认不动** patch（「装了不坏」优先），换作用域需要你自己选预设；**预设不携带技能**（技能始终由包入口注册，理由见 `agent.cordis.yml` 头注释）。
 
 ---
 

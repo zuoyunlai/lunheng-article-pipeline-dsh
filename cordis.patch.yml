@@ -1,4 +1,4 @@
-# lunheng-article-pipeline bundle patch（DSH 原生插件 v18.99.0）
+# lunheng-article-pipeline bundle patch（DSH 原生插件 v19.0.0）
 #
 # 本文件用 DSH cordis-plugin-include 的 `- insert:` 列表语法在 standard 组合树之上叠加 4 行：
 #   1. **本包入口（自注册行）**：`name: lunheng-article-pipeline` → loader 按包名解析到
@@ -133,12 +133,16 @@
 
 # ── 5. 标准（DSH 默认）— 论衡的 preset 落地说明（本段无 patch 行）─────────
 # 本段为说明性注释，不含 patch 行。
-# ⚠️ 命名限定（v18.99.0 更正，反哺报告 N3）：论衡**没有**可被 DSH preset 名单加载的 preset 目录。
+# ✅ 命名状态（v19.0.0 更新；v18.99.0 曾为「命名限定」）：论衡**有**一份合法 preset 目录 = `examples/preset/`。
 #    官方判定 preset 的依据 = 目录内含组合文件 `agent.cordis.yml`
 #    （`dsh-agent-presets/lib/types/discovery.js` 的 `COMPOSITION_FILE`；缺该文件的目录按官方诊断
-#    「still occupies the id」——占了 id 但加载不了）。`examples/preset/` 是**分档安装示例目录**
-#    （`preset.yml` 说明 + README 指南 + `agent-tiered/cordis.yml` 可加载配置片段），不是 preset 目录：
-#    照字面去找 preset 会找不到。
+#    「still occupies the id」——占了 id 但加载不了）。v18.61.0–18.99.0 期间那份组合文件叫
+#    `agent-tiered/cordis.yml`，**名字不落在契约上** ⇒ 当时「本包没有可加载的 preset 目录」是对的（反哺报告 N3）；
+#    v19.0.0 改名到 `agent.cordis.yml`，契约面闭合。注意：`examples/preset/` 在 **node_modules 内**，
+#    DSH 只扫它配置的 preset 根 ⇒ 要**放进/软链到你的 preset 根**才生效（本包不自动注册预设根）。
+#    **预设不携带技能**（刻意决定）：技能始终由包入口 `ctx.skills.register()` 注册（runtime rank 250），
+#    不做 `customSkillDirs`/`baseUrl` 携带——双注册会**静默**由 250 压过 300，且两处正文可能漂移；理由见
+#    `examples/preset/agent.cordis.yml` 头注释。
 # ✅ 技能可用性验证：① `tests/bundle-contract.test.mjs` 断言本文件必须插入一行
 #    `name` = 包名（v18.0.0 缺陷的机械防线）；② `tests/entry.test.mjs` 用最小 ctx 真执行
 #    `apply`，断言注册字段与 `resourceBase` 下的 SKILL.md / references / scripts 齐备；
@@ -146,8 +150,8 @@
 # DSH 默认包含 dsh-base / dsh-web-app / dsh-agent-presets/standard；
 # 论衡不重写 standard 全部内容，只通过上述 insert: 列表叠加分档 subagent 工具。
 # examples/preset/ 目录现有 **3 个条目**：`preset.yml`（分档说明）+ `README.md`（安装指南）+
-#  `agent-tiered/cordis.yml`（v18.61.0/H6 落地的**可加载 preset 配置片段**，随包发布），见该目录 README §6。
-#  早期版本的 `examples/preset/agent.cordis.yml`（standard 全量副本，~16KB）已删除——
-#  DSH v5.5.0+ 的 cordis-plugin-include 用 patch 增量叠加，不再需要"凑出有效"副本。
-#  （v18.99.0 更正：本段旧文写「examples/preset/ 目录**只保留** preset.yml + README.md」，
-#   漏了 H6 早已落地的 `agent-tiered/cordis.yml`——与 `examples/preset/README.md` 的 3 条目自述冲突。）
+#  `agent.cordis.yml`（v18.61.0/H6 落地、v19.0.0 改名为契约名的**组合配置**，随包发布），见该目录 README §6。
+#  早期版本的同名文件（standard 全量副本，~16KB）曾删除——
+#  DSH v5.5.0+ 的 cordis-plugin-include 用 patch 增量叠加，不再需要"凑出有效"副本（故现文件只含三条 `- insert:` 行）。
+#  （沿革：v18.99.0 本段旧文写「目录只保留 preset.yml + README.md」，漏了 H6 的配置片段；同版已更正为 3 条目，
+#   v19.0.0 续把该条目的**文件名**更正到契约名。）
