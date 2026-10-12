@@ -981,7 +981,10 @@ test('开工台（v19.0.5）：标题前是**纯路径「圆 + 论」标记**（
   // 组件层面：图标必须在标题文字**之前**渲染
   const text = h.render(P.Workbench, { inputActions: { setDraft: () => {} }, ctx: { get: () => undefined } })
   assert.ok(text.includes('<svg'), '标题行应含图标')
-  assert.ok(text.indexOf('<svg') < text.indexOf('论衡开工（Phase 0 定题）'), '图标必须在标题**前**')
+  assert.ok(text.indexOf('<svg') < text.indexOf('论衡开工'), '图标必须在标题**前**')
+  // v19.1.4（主人裁定）：标题去掉「（Phase 0 定题）」后缀；Phase 0 的说明移进表单、标题栏不挂
+  assert.ok(!text.includes('（Phase 0 定题）'), '标题不该再带 Phase 0 后缀')
+  assert.ok(text.includes('填写后生成结构化开场白') === false, '说明行不该出现在标题栏（未展开时）：' + text.slice(0, 120))
 })
 
 test('开工台（v19.0.2）：列容器内不得出现 px 的 flex-basis（主人实测「大段空白」的通类根因）', async () => {
@@ -1180,7 +1183,9 @@ test('开工台（v19.0.0 §4.2）：组件渲染 + 点「生成开场白」把�
   }
   // ① 收起态：只有开关按钮，正文不渲染（默认收起 = 不占输入框上方的空间）
   let text = h.render(mod.__panel.Workbench, props)
-  assert.match(text, /论衡开工（Phase 0 定题）/, '标题常显')
+  assert.match(text, /论衡开工/, '标题常显')
+  assert.ok(!text.includes('（Phase 0 定题）'), 'v19.1.4：标题不再带 Phase 0 后缀')
+  assert.ok(!text.includes('填写后生成结构化开场白'), 'v19.1.4：说明行在表单里，收起态不显示')
   assert.doesNotMatch(text, /生成开场白并填入输入框/, '收起态不得渲染正文按钮')
   // ② 点开
   const toggle = findButton(h.tree(), '打开论衡开工台')
@@ -1242,42 +1247,6 @@ const wbFind = (node, pred) => {
 const wbButton = (node, label) => wbFind(node, (n) => n.type === 'button' && typeof n.props.onClick === 'function'
   && (n.children || []).map((c) => (typeof c === 'string' ? c : '')).join('').includes(label))
 
-test('开工台（v19.0.0 收口）：续接已有项目 —— 只打面板同源只读读面，生成续接开场白并填入', async () => {
-  const h = makeReactStub()
-  const calls = []
-  const route = (u) => {
-    const s = String(u)
-    calls.push(s)
-    if (s.includes('/projects')) return okJson({ root: '/work', projects: [{ name: 'p9' }, { name: 'p2' }] })
-    return Promise.reject(new Error('HTTP 404'))
-  }
-  const mod = await loadClient(h, { fetch: (u) => route(u) })
-  const P = mod.__panel
-  // ① 模板：占位替换（含项目名/根）+ 人在环纪律
-  const rs = P.buildResume('p9', '/work')
-  assert.match(rs, /p9/, '续接开场白必须含项目名')
-  assert.match(rs, /\/work/, '必须带工作区根（多根环境下主控要知道去哪个根找）')
-  assert.match(rs, /不要自行 spawn/, '必须带人在环纪律')
-  // ② 组件：展开 → 自动拉取项目清单（**只打面板既有的同源只读路由**）
-  const drafts = []
-  const props = { inputActions: { setDraft: (s) => drafts.push(s) }, ctx: { get: () => undefined } }
-  const tick = async () => { const s = h.render(P.Workbench, props); await new Promise((r) => setTimeout(r, 0)); return s }
-  await tick()
-  wbButton(h.tree(), '打开论衡开工台').props.onClick()
-  let text = await tick()
-  text = await tick()
-  assert.ok(calls.some((u) => u.startsWith('/lunheng-panel/projects')), '项目清单必须取自面板同源读面：' + calls.join(' | '))
-  assert.match(text, /p9/, '项目应出现在下拉里')
-  // ③ v19.1.1 行为变更（主人实测「我在试跑，那里有进度条？」）：清单到位后**自动选中最近活跃的项目**；
-  //   旧版要求「先展开、再手动选」——那等于把唯一能看进度的面藏起来。
-  assert.ok(calls.some((u) => u.startsWith('/lunheng-panel/snapshot?project=p9')),
-    '应自动为最近活跃项目取快照（listProjects 按 mtime 倒序 ⇒ 第一项）：' + calls.join(' | '))
-  wbButton(h.tree(), '生成续接开场白').props.onClick()
-  await tick()
-  assert.equal(drafts.length, 1, '自动选中后应能直接生成续接开场白')
-  assert.match(drafts[0], /续接论衡项目 p9/, '写入的应是续接开场白：' + drafts[0].slice(0, 80))
-})
-
 test('开工台（v19.1.1）：**多工作区**时须逐个根探测，取第一个真有项目的根（主人实测踩点）', async () => {
   // 宿主 `resolveTarget` 不带 root 时只取 `roots[0]`——若你的 run/ 在另一个根下，列表就是空的、进度不出现。
   const h = makeReactStub()
@@ -1311,24 +1280,23 @@ test('开工台（v19.1.1）：**多工作区**时须逐个根探测，取第一
   assert.match(h.render(P.Workbench, props), /检索 3\/3/, '第二个根的项目应显示真实进度')
 })
 
-test('开工台（v19.1.1）：**一个项目都没有**时不得写入、不得摆空壳（如实说明）', async () => {
+test('进度条（v19.1.4）：**没有项目**时不摆空壳——不显示 chips、不报错，开工台照常可用', async () => {
   const h = makeReactStub()
   const mod = await loadClient(h, {
     fetch: (u) => (String(u).includes('/projects') ? okJson({ root: '/work', projects: [] }) : Promise.reject(new Error('HTTP 404'))),
   })
   const P = mod.__panel
-  const drafts = []
-  const props = { inputActions: { setDraft: (s) => drafts.push(s) }, ctx: { get: () => undefined } }
+  const props = { inputActions: { setDraft: () => {} }, ctx: { get: () => undefined } }
   const tick = async () => { const s = h.render(P.Workbench, props); await new Promise((r) => setTimeout(r, 0)); return s }
-  await tick()
-  wbButton(h.tree(), '打开论衡开工台').props.onClick()
-  let text = await tick()
-  text = await tick()
-  assert.match(text, /没有 run\//, '没有项目时必须如实说明（而不是禁用整个开工台）')
-  assert.equal(drafts.length, 0, '没有项目可续接时不得写入输入框')
-  assert.ok(!wbFind(h.tree(), (n) => n.type === 'button' && String(n.children) === '生成续接开场白'),
-    '没有项目时不该出现「生成续接开场白」按钮（摆了就是空壳）')
+  await tick(); await tick()
+  let text = h.render(P.Workbench, props)
   assert.ok(!/检索 0\/3/.test(text), '没有项目时不得显示进度 chips（没数据不摆空壳）')
+  assert.ok(!/进度读取失败/.test(text), '没有项目不是读面失败，不该报错')
+  // 开工台本身照常可用（删掉「继续已有项目」后，表单只剩开新项目这条路径）
+  wbButton(h.tree(), '打开论衡开工台').props.onClick()
+  text = await tick()
+  assert.match(text, /基本设置/, '没有项目也能开新项目（不禁用整个开工台）')
+  assert.ok(!text.includes('继续已有项目'), 'v19.1.4：该节已按主人裁定删除')
 })
 test('试点（v19.1.0）：六块进度的判据全部来自既有快照字段（空态不猜 + 逐块真相表）', async () => {
   const h = makeReactStub()
