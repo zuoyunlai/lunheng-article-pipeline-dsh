@@ -1,4 +1,4 @@
-﻿// 修订轮次额度回归（v18.81.0 · 独立审计批 2 · 2.1）
+// 修订轮次额度回归（v18.81.0 · 独立审计批 2 · 2.1）
 //
 // **为什么需要**：审计实测「审计打回 ≤2 轮」**零机械强制**——
 //   `apply-revision-cycle.mjs` 对目标版本号只要求「≥2 的整数」（v9/v99 都放行）；
@@ -87,12 +87,20 @@ test('L4：A 轨用 1/2 → 放行，且**脚本自己落账**（新行 2/2）�
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
 
-test('L4b：账本**损坏**（轮次不是 n/m 形态）→ exit 10（额度不可判时不得当通过）', () => {
+test('L4b：账本**一行坏**（轮次不是 n/m 形态）→ 不阻塞开轮，但坏行必须进 `ledgerMalformed` 留痕', () => {
+  // v19.5.0（反哺-merge清单-19条 §二.8）**改断言（理由）**：旧断言要求 exit 10（「账本损坏时额度不可判
+  //   → 不得当通过」）。该口径把**局部**良构错误放大成**全局**失能——实测 9 处此类报错会连
+  //   **格式完全正确的 B/G 行**一并作废。现口径 = **逐行降级**：坏行记 malformed 后跳过，其余行照判，
+  //   额度判定照常进行（**不是静默跳过**：坏行清单必须出现在 `ledgerMalformed` 里）。
   const d = mkProj({ ledgerRows: ['A | 已用两轮 | drafts/初稿-v1.md | x | y | 2026-10-07'] })
   try {
     const r = runArc(d, ['--track', 'A'])
-    assert.equal(r.code, 10, '损坏账本必须阻塞：' + r.out)
-    assert.match(r.out, /不可解析|不是/, r.out.slice(0, 300))
+    assert.equal(r.code, 0, '一行坏不得阻塞开轮（逐行降级）：' + r.out)
+    const j = parseJson(r)
+    assert.ok(Array.isArray(j.ledgerMalformed) && j.ledgerMalformed.length > 0,
+      '坏行必须进 ledgerMalformed 留痕（不得读成「账本干净」）：' + JSON.stringify(j.ledgerMalformed))
+    assert.match(j.ledgerMalformed.join('；'), /不可解析|不是/, JSON.stringify(j.ledgerMalformed))
+    assert.ok((j.ledgerNotes || []).some((n) => /逐行降级/.test(n)), '须在 notes 里说明已按逐行降级处理：' + JSON.stringify(j.ledgerNotes))
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
 
@@ -111,20 +119,33 @@ test('L5【核心】：§6 轮次计数写 **A 3/2**（越额）→ 硬 21（此
 test('L6：§6 把额度分母写错（A 轨 1/5）→ 硬 21（分母是额度真源，不许自定）', () => {
   const d = mkProj()
   try {
-    mkGates(d, 'A 轨 1/5')
+    // v19.5.0（§二.8）**改断言（理由）**：旧版靠 `parseLedger` 把「账本行的分母 ≠ 额度」记成
+    //   **整表级** malformed → 本门一律硬 21。逐行降级后，「账本行**自述**的分母写错」被**推断纠正**
+    //   （`capInferred`，不影响判定）→ 不再进 `malformed`。但 §6 与账本累计的**不一致**是**另一条**
+    //   判据（A7 的「两处必须同源」），它**仍然判硬**——故本用例改为钉住那条：账本记 A 1 轮、
+    //   §6 写 0/2 → 不一致硬 21；同时反向钉住「账本行分母写错**不得**牵动整表」。
+    mkGates(d, 'A 轨 0/2')   // §6 说 A 用 0，而账本累计 1 → 不一致
+    writeFileSync(join(d, 'drafts', '轮次账本.md'),
+      '# 轮次账本\n\n| 轨 | 轮次 | 正文版本 | 触发来源 | 复核报告 | 时间 |\n|---|---|---|---|---|---|\n'
+      + '| A | 1/5 | drafts/初稿-v1.md | x | —（同轮无独立复核：本轮为压缩轮，无独立审计对象） | 2026-10-07 |\n')
     const j = parseJson(run([H(), '--project', d, '--role', 'T8', '--require-gates', '--summary']))
-    assert.equal(j.exit, 21)
-    assert.ok(j.hard.some((x) => /分母写成 5/.test(x.detail)), JSON.stringify(j.hard))
+    assert.equal(j.exit, 21, '§6 与账本不一致必须判硬：' + JSON.stringify(j.hard))
+    assert.ok(j.hard.some((x) => /不一致/.test(x.detail)), JSON.stringify(j.hard))
+    assert.ok(!j.hard.some((x) => /分母/.test(x.detail)),
+      '账本行自述分母写错应被**推断纠正**并照判该行，不得据此判硬（v19.5.0 §二.8）：' + JSON.stringify(j.hard))
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
 
-test('L7：账本存在但**损坏** → 硬 21（额度不可判 ≠ 通过）', () => {
+test('L7：账本存在但**一行都解析不出**（未知轨名）→ 仍须可见，但不得据此判硬', () => {
+  // v19.5.0（§二.8）**改断言（理由）**：旧断言要求「未知轨名 → 硬 21（不可解析 ⇒ 额度不可判 ⇒ 不得当通过）」。
+  //   该口径与逐行降级**不可兼得**：既然坏行只跳过自己，就不能用「有坏行」当整表作废的理由。
+  //   新口径：坏行进 `soft`（22，**可见**、不阻塞交付）——否则「逐行降级」会退化成「静默丢弃」。
   const d = mkProj({ ledgerRows: ['X | 1/2 | drafts/初稿-v1.md | x | y | 2026-10-07'] })
   try {
-    mkGates(d, 'A 轨 1/2')
+    mkGates(d, 'A 轨 0/2')
     const j = parseJson(run([H(), '--project', d, '--role', 'T8', '--require-gates', '--summary']))
-    assert.equal(j.exit, 21, '未知轨名须判硬：' + JSON.stringify(j.hard))
-    assert.ok(j.hard.some((x) => /不可解析/.test(x.detail)))
+    assert.notEqual(j.exit, 21, '坏行不得作废整表解析（v19.5.0 §二.8）：' + JSON.stringify(j.hard))
+    assert.ok((j.soft || []).some((x) => /不可解析/.test(x.detail)), '坏行必须可见（软提示，不得静默丢弃）：' + JSON.stringify(j.soft))
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
 

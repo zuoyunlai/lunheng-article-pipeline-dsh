@@ -114,6 +114,25 @@ if (firstIdx === -1) {
   //   与扩展编号 `[脚注-N]` 覆盖。若需把某形态纳入闭环，应由主控显式申报扩展编号，而不是靠黑名单正则扫。
   const EXT_REF_RE = /\[脚注-\d+\]/g;
   const NONSTD_RE = /\[(?!D-基-)([A-Z]{1,4}|[\u4e00-\u9fff]{1,3})-(\d{2,})\]/g;
+  // ── v19.5.0（反哺-merge清单-19条 §二.7 脚本侧）：**区分「来源条目」与「缺口条目」** ───────────────
+  //   病灶（xingbie 实测）：定稿「## 数据来源」节**同时收录** `[G01]–[G05]`（缺口登记）与
+  //   `[D01]–[D56]`（真实来源），而 `[G05]` 曾被正文引用却漏条目 → 靠**该节字面语义**才被读成「漏引」。
+  //   即：**章节语义与条目语义不一致**时机械对账会同时产生「真漏引」与「语义误判」。
+  //   本批只做**脚本侧的区分**（文档侧「缺口单列一节」的约定由模板负责，不在本文件的改动面内）：
+  //     · **来源条目** = `[Lxx]/[Dxx]/[Cxx]/[C-主xx]/[先NN]`（`refRe` 已覆盖）→ 判据**一字不动**；
+  //     · **缺口条目** = `[Gnn]`（缺口登记族）→ 独立闭环：**正文引用 ⊆ 缺口集**。
+  //   ⚠️ 为什么缺口**只判单向（正文 → 文末）**：缺口条目的语义是「此处证据缺失」的登记，正文引用它
+  //     是**声明缺口**；而「文末登记了缺口、正文没引用」（形态上的孤儿）在本包里是**合法**的
+  //     （缺口清单可以先登记、后引用）——对它判孤儿会制造一类新的假阳性。
+  //   ⚠️ 与 `[先NN]` 孤儿软处理（下方）同一处置纪律：**只有「正文引了却查无条目」才是硬缺失**。
+  const GAP_RE = /\[G(\d+)\]/g;
+  const gapInText = new Set((bodyProse.match(GAP_RE) || []).map(norm));
+  const gapInEnd = new Set((endnote.match(GAP_RE) || []).map(norm));
+  const gapLeaked = [...gapInText].filter((r) => !gapInEnd.has(r));   // 正文有、文末缺（= 真漏引）
+  const gapNote = (gapInText.size + gapInEnd.size) === 0 ? '' : (gapLeaked.length
+    ? `缺口条目 ${gapLeaked.join('、')} 在正文被引用但文末「缺口登记」内无对应条目（缺口族独立闭环：正文 ⊆ 缺口集）；`
+      + `修法：在该节补一条 \`[Gnn]\` 登记（写明「缺失什么 + 本文如何替代」），或删掉正文引用。`
+    : `缺口条目已闭环（正文引用 ${gapInText.size} 个 ⊆ 文末登记 ${gapInEnd.size} 个；缺口族不判孤儿——先登记后引用是合法形态）`);
   const extInText = new Set(bodyProse.match(EXT_REF_RE) || []);
   const extInEnd = new Set(endnote.match(EXT_REF_RE) || []);
   const extLeaked = [...extInText].filter((r) => !extInEnd.has(r));   // 正文有、文末无
@@ -180,25 +199,27 @@ if (firstIdx === -1) {
     : '';
   results.push({
     gate: 'M-Exist-1 引用双向对比',
-    pass: (leaked.length + hardOrphans.length + extUnclosed) === 0,
+    pass: (leaked.length + hardOrphans.length + extUnclosed + gapLeaked.length) === 0,
     detail: [
       mExist1Hint,
       `漏引 ${leaked.length} / 硬孤儿 ${hardOrphans.length}（[先NN] 对照孤儿 ${xianOrphans.length} 个已软处理）`,
+      gapNote,
       preservedHint,
       rangeNote2,
       xianNote,
       nonStdNote,
       extNote,
     ].filter(Boolean).join(' ｜ '),
-    // 严重度（v18.2.6 审计修复 B-3 + v18.8.x 反哺补丁）：
-    //   **只有「漏引/[L][D][C] 孤儿」这类硬缺失才升 P0/P1**；
+    // 严重度（v18.2.6 审计修复 B-3 + v18.8.x 反哺补丁 + v19.5.0 缺口族）：
+    //   **只有「漏引/[L][D][C] 孤儿/缺口漏引」这类硬缺失才升 P0/P1**；
     //   [先NN] 对照孤儿（同篇双列/决策记录处理）→ 恒 P2 软提示；
     //   非标准编号（形态黑名单）单列 → P2 提示；
+    //   **缺口族只判「正文 ⊆ 缺口集」这一向**（闭合即 P2 留痕，不判孤儿）；
     //   仅剩软项时 pass=true（对照孤儿不再拉 exit）——留痕走 detail，不再无条件阻断交付。
-    severity: (leaked.length + hardOrphans.length) > 0
-      ? (((leaked.length + hardOrphans.length) > THRESHOLDS.exist1ClosureP0) ? 'P0' : 'P1')
+    severity: (leaked.length + hardOrphans.length + gapLeaked.length) > 0
+      ? (((leaked.length + hardOrphans.length + gapLeaked.length) > THRESHOLDS.exist1ClosureP0) ? 'P0' : 'P1')
       : (extUnclosed > 0 ? 'P1'
-        : ((nonStd.length > 0 || extUsed > 0 || xianOrphans.length > 0) ? 'P2' : '通过')),
+        : ((nonStd.length > 0 || extUsed > 0 || xianOrphans.length > 0 || gapInText.size > 0) ? 'P2' : '通过')),
   });
 }
 
@@ -207,6 +228,11 @@ if (firstIdx === -1) {
 // === M-Exist-4 审计条目闭环（v2.5.2-dsh.17 新增）===
 export function mExist4(ctx) {
   const { draftPath, evDir, auditsDirOf, results } = ctx;
+// v19.5.0（反哺-merge清单-19条 §一.1 甲案 · **门侧归一**）：语义对账的两个状态量——
+//   `semanticRedeem` = 命中语义对账（阈值内，判「覆盖」）；`semanticSoft` = 已按语义对账
+//   降软（阈值外，**不得**再落到硬支）。二者**共用**下方的 if/else 链，故在函数顶声明。
+let semanticRedeem = null;
+let semanticSoft = false;
 // 依据：07 卡早已规定「打回修订必须附结构化修订任务书（编号/严重度/位置/动作/验收标准/关闭状态）」，
 //   但**没有任何脚本校验**；且 dsh.17 引入复核报告后出现「关闭状态」**双真源**（审计报告表列 ↔ 复核报告）。
 // 本项把该契约变成机检：结构完整 + 编号唯一 + 编号在审计↔复核之间双向闭环 + 初轮不得预填「已关闭」。
@@ -338,16 +364,116 @@ try {
           const want = [...new Set(ids)].map((x) => x.replace(/\u2011/g, '-'));
           let coveredBy = null;
           let missBest = null;
+          semanticRedeem = null;
+          semanticSoft = false;
           for (const c of reviewCands) {
             const rid = new Set([...readFileSync(c.path, 'utf8').matchAll(/P[012][-\u2011]?[0-9A-Da-d]+/g)].map((m) => m[0].replace(/\u2011/g, '-')));
             const miss = want.filter((x) => !rid.has(x));
             if (!miss.length) { coveredBy = c; break; }
             if (!missBest) missBest = { c, miss };
           }
+          // ── v19.5.0（反哺-merge清单-19条 §一.1 甲案：**门侧归一**）────────────────────────────
+          //   病灶（xingbie 实测 + T7 复核轮插桩）：本门取「审计报告 §修订任务书的**首格编号**」当 want，
+          //   再要求 `audits/复核报告-*.md` 出现**同字面**；而模板规定编号为 `P0-n / P1-n` 连续唯一
+          //   ——**只要任务书照模板用 P 号、而复核报告用另一体系（或反之），两侧永不相交**：
+          //   实测任务书由派发话术给成 `R1…R10`、复核报告用 `P0-1/P1-1…P1-13` → 门连续报
+          //   「未覆盖 12 个审计编号」（**判定字面成立、语义错位**，主控为此绕 3 轮往返改编号）。
+          //   为什么选**门侧归一**而不是话术侧锁定：话术侧（乙案）不改脚本，仍靠自觉——
+          //   同一缺陷会在下一位主控/下一种派发形态上原样复现；而门是可机械复核的一侧。
+          //   三级降级策略（**只放宽「两侧编号体系不一致」这一种形态，绝不放宽真缺口**）：
+          //     ① 先按字面比（原判据，一字不动）；
+          //     ② 若 `want` 与复核报告编号集合**前缀完全不相交**（如 `R*` vs `P*`）→ 改按
+          //        **关键词重叠度**对账（≥70% 视为覆盖）并在 detail 写明「两侧编号体系不一致，已按语义对账」；
+          //     ③ 仍不相交（重叠不足）→ 降 soft 并给出「疑似编号体系不一致」提示（**不判硬 21**）。
+          const reviewTextOf = (c) => { try { return readFileSync(c.path, 'utf8'); } catch { return '' } };
+          const pref = (x) => String(x).slice(0, 2).toUpperCase();
+          if (!coveredBy && missBest) {
+            const candTxt = reviewTextOf(missBest.c);
+            // ⚠️ **「复核报告里一个 P 号都没有」也算「体系不相交」**——否则 `[].every(...) === true`
+            //   的反面（空集合在 `some` 上恒为 false）会把最常见的形态（复核报告用 R/自由文本）
+            //   挡在语义对账之外，降级永远不可达（首批自测当场抓出）。
+            const reviewCodes = [...candTxt.matchAll(/P[012][-\u2011]?[0-9A-Da-d]+/g)].map((m) => m[0]);
+            const disjointPrefixes = want.length > 0
+              && (reviewCodes.length === 0 || reviewCodes.every((rc) => !want.some((x) => pref(x) === pref(rc))));
+            if (disjointPrefixes) {
+              // 语义对账：以**任务书各行的「改哪里 / 怎么改 / 验收标准」三列**为关键词真源
+              //   （与人工读表判定「这一条被处理了没有」是同一取材面）；
+              //   逐行去重计数（长行重复词不得虚增重叠度）= **条目数对账**，再要求**行级关键词覆盖率 ≥70%**
+              //   （两条件同时成立才认「覆盖」——只对条目数会让「随便写几段」通过）。
+              const rowOf = new Map();
+              for (const r of rows) {
+                const k = (r[iId] || '').replace(/[`*]/g, '').trim();
+                if (k && !rowOf.has(k)) rowOf.set(k, r);
+              }
+              // 关键词真源 = 任务书每行的「怎么改 / 验收标准」两列**的汉字词**（≥2 字）。
+              //   为什么**只用汉字词**、且**不用「改哪里」列**（本批自测当场抓出的一类假阳性）：
+              //     `改哪里` 基本是节号（`§3.3` / `§5.2 第 2 段`），而**任何**复核报告都会提到节号
+              //     → 拿它当关键词会让「只复述节号的空报告」拿到高重叠度（实测一例因此被误判为「已覆盖」）。
+              //   故：剥掉 `§n.m`、`[...]` 编号、`(...)` 括注与 ASCII/数字，只留**内容词**。
+              const contentOf = (s) => String(s ?? '')
+                .replace(/§\s*[0-9.]+/g, ' ')
+                .replace(/\[[^\]]*\]/g, ' ')
+                .replace(/[（(][^）)]*[）)]/g, ' ')
+                .replace(/[A-Za-z0-9]+/g, ' ');
+              const tokenize = (s) => [...new Set(contentOf(s).split(/[^\u4e00-\u9fff]+/u).filter((w) => w.length >= 2))];
+              let hit = 0; let tot = 0; const rowsCovered = [];
+              for (const id of want) {
+                const r = rowOf.get(id);
+                const toks = r ? [...new Set([tokenize(r[iAct]), tokenize(r[iAcc])].flat())] : [];
+                // 该行两列没有汉字内容词（如全英文任务书）→ **无法按语义对账**，按 0 计（不占分母）；
+                //   这种行的覆盖只能靠字面编号，而字面编号在此分支上恰是「不相交」的形态 → 视为未覆盖。
+                if (!toks.length) continue;
+                const h = toks.filter((w) => candTxt.includes(w)).length;
+                hit += h; tot += toks.length;
+                if (h / toks.length >= 0.7) rowsCovered.push(id);
+              }
+              const ratio = tot ? hit / tot : 0;
+              const rowsTouched = want.filter((x) => {
+                const r = rowOf.get(x);
+                const toks = r ? [...new Set([tokenize(r[iAct]), tokenize(r[iAcc])].flat())] : [];
+                return toks.some((w) => candTxt.includes(w));
+              }).length;
+              const idCountOk = tot > 0 && rowsCovered.length === want.filter((x) => rowOf.has(x)).length;
+              // ③ 档（降软）的判据：**语义上有交集但不足以认定覆盖**——
+              //   ① `rowsTouched ≥ 1`（至少一条任务条目的内容词出现在复核报告里）；
+              //   ② 全表重叠度 `≥ 20%`（`MIN_CONTACT_PCT`，**归一化阈值**，不用「过半行数」这种
+              //      随条目数漂移的口径——本仓判据：阈值必须可复算且不随样本量改变量纲）。
+              //   两条都成立 → 「疑似编号体系不一致」软提示（不判硬）；
+              //   不成立（**零交集 / 近零交集** = 复核对象根本不是这份任务书）→ **仍判硬**。
+              //   ⚠️ 这条边界是本门最要紧的防假阴性线：实测「复核报告验证的是 `批判报告` 的关闭条件」
+              //     正是零交集形态，**必须照报**（§一.1 的验收明写「造一个确实未覆盖的夹具，须仍报」）。
+              const MIN_CONTACT_PCT = 0.2;
+              const hasSemanticContact = rowsTouched >= 1 && ratio >= MIN_CONTACT_PCT;
+              if (idCountOk) {
+                semanticRedeem = { c: missBest.c, hit, tot, rowCount: rowsCovered.length };
+              } else if (hasSemanticContact) {
+                // ⚠️ 与下面的 `if (coveredBy) … else` 链**互斥**：这里已把该形态判成软提示，
+                //   绝不能再落到 `else` 去推一条「未覆盖 N 个编号」硬项（否则同一形态**两处各报一次**）。
+                semanticSoft = true;
+                soft.push(`复核报告与任务书**编号体系不一致**（任务书 ${want.slice(0, 2).join('/')}… vs 复核报告无同名编号），`
+                  + `已按语义对账：关键词重叠 ${hit}/${tot}（${Math.round(ratio * 100)}%）、`
+                  + `行级覆盖 ${rowsCovered.length}/${want.length} 条（阈值 ≥70%/行）——`
+                  + '**疑似编号体系不一致**（须在复核报告内给出**编号对照表**并在正文逐号点名，或统一改用 P 号）；'
+                  + '本项不判硬，但**不得**读成「已覆盖」。');
+              }
+            }
+          }
           if (coveredBy) {
             // detail 里必须写出**凭什么配对**（旧版只写「审计 ↔ 复核」，读者看不出依据）
             pairNote = `闭环成立：${coveredBy.name} 覆盖 ${want.length} 个编号`
               + `（${coveredBy.path === reviewSame?.path ? `同号配对 v${audit.n}` : '配对候选：最新复核报告'}）`;
+          } else if (semanticRedeem) {
+            const sr = semanticRedeem;
+            pairNote = `闭环成立（**语义对账**）：${reviewCands.map((c) => c.name).join(' / ')} 未出现同名编号，`
+              + `但按任务书「改哪里/怎么改/验收标准」的关键词重叠度 ${sr.hit}/${sr.tot}（≥70%）判定覆盖 `
+              + `——**两侧编号体系不一致，已按语义对账**（任务书 ${want.length} 个编号；`
+              + '建议在复核报告内给编号对照表并在正文逐号点名，v19.5.0）';
+          } else if (semanticSoft) {
+            // 该形态已判「疑似编号体系不一致」**软档**（上面已推一条软提示）——此处**不得**再落硬项：
+            //   硬项「未覆盖 N 个编号」的前提是「复核对象根本不是这份任务书」（零/近零交集）；
+            //   而本档的实测语义是「同一份任务书、只是条目粒度对不上」→ 判硬会重演本次要修的
+            //   「判定字面成立、语义错位」老病（主控为绕它白花 3 轮往返）。
+            //   ⚠️ 零交集形态仍走下面的 `else` → **照报硬项**（§一.1 验收的反向夹具守着这条）。
           } else {
             findings.push(`复核报告 ${reviewCands.map((c) => c.name).join(' / ')} 未覆盖 ${missBest.miss.length} 个审计编号：${missBest.miss.slice(0, 5).join(',')}`);
           }
@@ -397,6 +523,11 @@ try {
         hard ? `硬问题：${findings.slice(0, 3).join('；')}` : (pairNote || '条目契约与闭环成立'),
         soft.length ? `软提示：${soft.slice(0, 2).join('；')}` : '',
       ].filter(Boolean).join(' ｜ '),
+      // v19.5.0（§一.1）：**软项全量随结果返回**（与 M-Exist-5 同形）。
+      //   病灶：本门 `detail` 只印 `soft.slice(0, 2)`，而「疑似编号体系不一致」这类软项常排在
+      //   第三位（前两条固定是「编号不符合 P0-n 约定」）→ **软项在结果里不可见**，读者只能看到
+      //   前两条无关软提示，无法判定降级是否真的发生。纯**增字段**（不改既有字段语义）。
+      ...(soft.length ? { soft: [...soft] } : {}),
       severity: hard ? (findings.length > 2 ? 'P0' : 'P1') : (soft.length ? 'P2' : '通过'),
     });
   }

@@ -30,10 +30,28 @@
 //   ⚠️ 与既有回归用例的冲突（如实声明）：`tests/scripts/build-evidence-bundle.test.mjs` 有 3 个用例（v18.68.0 拆分归位）用「只有 drafts/ 或只有 final/定稿.md
 //   的骨架目录」调用本脚本并断言 exit 0（第 290/310/529 行附近）；按上述 ② 这类骨架必然 exit 10。夹具属测试所有者，
 //   本批未改（授权范围外），需同步给骨架补一个源文件（如 01-任务简报.md 或 final/证据包/数据卡.md）。
+//
+// ── v19.5.0（反哺清单 §5「审计视图派生失真」+ 总表第 6 条「卡片头部手写汇总与逐条真源不一致」）──
+//   本视图是 T4/T5/T6/T7/T9/T8 **六个角色共用的入口**，它的三处派生值此前都是「从中间结构推断」，实测三处都
+//   与真源对不上（项目 xingbie）：① 字数槽位填**全文**纯汉字（10453），而唯一验收口径是 `count-chars.mjs` 的
+//   **正文区**（8394）；② 卡数用全文编号 Set 去重（文献卡 24，把索引段的 `[L00]`/`[L99]` 也算成条目），
+//   而卡内索引段声明 22；③ 信任分布逐行只取**首个**档位词 → 同一行并列的双标条目被静默并入单一类
+//   （数据卡实测 43 已发布，其中 1 条实为「已发布 + 二手转引」双标）。
+//   三条修法同一判据：**派生统计只能从真源逐条读取**——字数走与 `count-chars.mjs` **同一助手函数**
+//   （`_lib/han.mjs` + `_lib/sections.mjs`），卡数读卡内**索引段**声明，信任分布读**逐条独立行**；
+//   卡头手写汇总行只用于**对账**（不一致即在视图与 stderr 报出），**永不作为数值来源**。
+//   另加一条硬约束：字数槽位**只许填 `count-chars.mjs` 自己的出口值**（见 `countViaProductionScript`），
+//   本脚本不再本地算汉字 —— 少一处可发散的口径。取不到值（半截文件 / spawn 失败）时**响亮降级**：
+//   stderr 点名原因 + 视图槽位留空（**不退回本地重算**，那等于再造第二份实现），退出码不变。
+//   边界（如实）：`count-chars.mjs` 是随包同目录脚本，直接 `spawnSync` 调用其 CLI（`--summary`）
+//   并解析其 JSON —— 这是「与 count-chars 同一助手函数」的最强形态：**就是它在算**。
 import { readdirSync, copyFileSync, existsSync, mkdirSync, statSync, readFileSync, writeFileSync, rmdirSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';   // v19.5.0：调 count-chars.mjs 取正文区字数（同一产线真源）
 import { join, basename, relative, resolve, dirname } from 'node:path';
-import { countHan } from './_lib/han.mjs';                        // 汉字口径真源
-import { refCardPairRegex, refRegexFirst, refsOf } from './_lib/refs.mjs';   // 引用编号口径真源
+import { parseTargetCandidates } from './_lib/target-chars.mjs';  // 目标字数解析唯一真源（v19.5.0 超限标记）
+import { refRegexFirst, refsOf } from './_lib/refs.mjs';   // 引用编号口径真源
+//   v19.5.0：`refCardPairRegex` 曾是**死导入**（唯一的用途是 v2.5.2-dsh.7 的「全文编号 Set 去重」卡数统计，
+//   那正是本条反哺要消灭的「从中间结构推断」口径）——现卡数走索引段声明，导入随之删除。
 import { TRUST_COMPLIANT_RE } from './_lib/trust.mjs';            // 信任级别口径真源
 import { figurePlaceholders, figureNoOf, FIGURE_EXT_RE } from './_lib/svg.mjs';  // 图位/图号口径真源（v2.5.2-dsh.16；v19.1.9 位图同权）
 import { installExitGuard, requireExistingFile, requireExistingDir } from './_lib/exit-guard.mjs'; // 退出码硬化（v18.0.5）
@@ -88,6 +106,38 @@ const readText = (p, base = process.cwd()) => {
     return raw.slice(1);
   }
   return raw;
+};
+
+// ── v19.5.0（§5 ① 的最强形态）：字数槽位**由 `count-chars.mjs` 自己算** ─────────────────────────
+//  为什么不是「在本脚本里 import `_lib/han.mjs` + `_lib/sections.mjs` 再算一遍」（本批首版的写法）：
+//    那样得到的是**同一套助手、第二份调用代码**——`from`/`to` 的取法与 `count-chars.mjs` 内部的
+//    `bodyFrom`/`bodyEndOf` **是两份要各自维护的实现**（正是本仓反复记录的「同一事实两处维护必然发散」）。
+//    而本条反哺的病根恰是**口径**（全文 vs 正文区），不是助手本身。故直接跑产线脚本、读它自己的出口 JSON：
+//    `--summary` 的 `body.hanChars` 就是验收口径（见 count-chars.mjs 头注与 `_lib/sections.mjs` 的边界公式）。
+//  边界（如实）：这是一次**子进程**调用（同目录 `count-chars.mjs`，零新依赖、零网络）。调用失败 /
+//    输出取不到 JSON / 缺 `body` 字段时**响亮降级**：stderr 点名原因，槽位留空并标注「取不到（不退回本地重算）」。
+//    **刻意不 `process.exit`**：本脚本的退出码契约是 [0, 10, 70]（`scripts/repo-hygiene-check.mjs` ⑧ 登记），
+//    而「视图取不到字数」是**证据面降级**、不是参数/路径错 —— 让下游据 stderr 与视图标记处置（与
+//    `zeroSrcs` 摘要块同判据：降级可以，但必须看得见）。`LUNHENG_COUNT_CHARS_SCRIPT` 是**测试注入点**
+//    （同 `LUNHENG_ALLOW_MECH_EDIT` 的既有形态）：指向另一份脚本以验证「取不到时是否响亮降级」。
+const COUNT_CHARS_SCRIPT = process.env.LUNHENG_COUNT_CHARS_SCRIPT
+  || join(dirname(fileURLToPath(import.meta.url)), 'count-chars.mjs');
+const countViaProductionScript = (p) => {
+  const r = spawnSync(process.execPath, [COUNT_CHARS_SCRIPT, p, '--summary'], {
+    encoding: 'utf8',
+    timeout: 60000,
+    cwd: process.cwd(),
+  });
+  if (r.error) return { why: `spawn 失败：${r.error.code || r.error.message}` };
+  if (r.status !== 0) return { why: `count-chars.mjs exit ${r.status}${(r.stderr || '').trim() ? `（${(r.stderr || '').trim().split('\n')[0].slice(0, 160)}）` : ''}` };
+  const i = String(r.stdout || '').indexOf('{');
+  if (i < 0) return { why: 'count-chars.mjs 未输出 JSON' };
+  let j;
+  try { j = JSON.parse(String(r.stdout).slice(i)); } catch (e) { return { why: `count-chars.mjs 输出解析失败：${e.message}` } }
+  if (!j || typeof j.body?.hanChars !== 'number' || typeof j.total?.hanChars !== 'number') {
+    return { why: 'count-chars.mjs 输出缺 body.hanChars / total.hanChars 字段' };
+  }
+  return { body: j.body.hanChars, full: j.total.hanChars, scope: j.body.scope || '摘要后~文末节前' };
 };
 
 const USAGE = '用法: node build-evidence-bundle.mjs <run/项目名> [--project <名>] [--source <正文路径>] [--summary] [--deep-summary]';
@@ -460,7 +510,64 @@ if (wantSummary) {
     : src.kind === 'final'
       ? 'Phase 5 终检（定稿）'
       : `草稿阶段（${src.name} 快照，Phase 3-4.5 复用；定稿产出后须重新生成）`;
-  const han = countHan(srcText);   // 口径真源：_lib/han.mjs（旧版 [一-龥] 少 89 个码位）
+  // ── v19.5.0（§5 ①）：字数槽位 = **正文区口径**，由 count-chars.mjs 自己算 ─────────────────────
+  //   口径真源 = `count-chars.mjs` 的 `--summary` 出口：`body.hanChars`（正文区 = `## 摘要` 之后 →
+  //   首个文末节之前；不含题名与文末节汉字），`total.hanChars` 只作**对照展示**、**不填槽位**。
+  //   旧版槽位填的是 `countHan(全文)`（本项目实测 10453 vs 正文区 8394）。
+  //   取不到时：响亮降级（stderr + 视图标注），槽位留空 —— **不退回本地重算**（那会再造一份实现）。
+  const hanProbe = src ? countViaProductionScript(src.path) : null;
+  if (src && !hanProbe) {
+    console.error(`\n✗ 取不到正文区字数：本视图的字数槽位将留空（**不退回本地重算**——那等于再造第二份口径实现）。`);
+    console.error('  原因见上方 count-chars.mjs 的报错；修复后重新生成本视图即可。');
+  }
+  if (hanProbe && !hanProbe.why) {
+    // 调用处断言（本包纪律：断言写在调用处、不在助手内部静默 fallback）：
+    //   ① 正文区 > 全文 ⇒ 违反「正文区 ⊆ 全文」，说明口径/切片已被破坏 → 报出；
+    //   ② 正文区 === 全文 ⇒ 切片没有真正收窄 = **口径坍缩**：槽位里的数字成了「全文」在冒充「正文区」，
+    //      正是本条反哺（§5 ①：10453 填进了本该是 8394 的槽位）要消灭的失真形态。
+    //   ② 的**分级**（v19.5.0 批 24 收敛，与主人交付的硬要求对齐）：
+    //     · **确有文末节**时相等 ⇒ 一定是错的（正文区必然 < 全文）→ 「⛔ 口径自检失败」；
+    //     · **本稿确实没有文末节**（## 摘要 到文件末就是全部正文；草稿早期很常见）⇒ 相等是**合法**的，
+    //       只给「ℹ 提示」——否则每一份尚未写文末节的草稿都会被判成口径失真，门会立刻被训练成噪声。
+    //   两条都**只报不改退出码**（本脚本退出码契约 = [0, 10, 70]，见 `scripts/repo-hygiene-check.mjs` ⑧；
+    //   而「视图字数口径可疑」是**证据面降级**，不是参数/路径错）：证据面问题的正确处置是让下游**看见**
+    //   （stderr + 视图内显著行），不是让刷新视图这个动作本身失败 —— 后者会把「翻新视图」变成不可执行的动作，
+    //   反而逼出不刷新视图的旁路（本仓「降级必须可观察、但不要用退出码替人做决定」的既有口径）。
+    const hasEndnote = /^#{2,6}[ \t\u3000]+(参考文献|数据来源|案例来源|先行者文献|AI 使用声明)/m.test(srcText);
+    if (hanProbe.body > hanProbe.full) {
+      console.error(`⛔ 字数口径自检失败：正文区 ${hanProbe.body} > 全文 ${hanProbe.full}（正文区必须是全文的子集）—— 槽位留空，请查 count-chars.mjs 与 _lib/sections.mjs 的边界解析。`);
+    } else if (hanProbe.body === hanProbe.full && hasEndnote) {
+      console.error(`⛔ 字数口径自检失败：${srcRel} **有文末节**，正文区却等于全文（${hanProbe.full}）—— 切片没有真正收窄，槽位留空（不得用全文冒充正文区）。`);
+    } else if (hanProbe.body === hanProbe.full) {
+      console.error(`ℹ ${srcRel} 尚未写文末节，正文区 ≡ 全文（${hanProbe.full}）—— 属合法同值，非口径失真（定稿若缺失五节会另有 M 门报）。`);
+    }
+  }
+  // 目标上限 × 1.2 显著标记（§5 改法末条）：目标取自任务简报，解析器 = `_lib/target-chars.mjs`
+  //   （**唯一真源**：`apply-revision-cycle` / `g-audit-check` 也用它，避免在此重写一份正则）。
+  //   取**上限**（候选最大值）：简报常同时写「档位下限」与「目标」，上限才是「超限」的判据。
+  let targetUpper = null;
+  let targetWhy = '无 `01-任务简报.md`（项目未到 Phase 0？）';
+  const briefPath = join(project, '01-任务简报.md');
+  if (existsSync(briefPath)) {
+    const cand = parseTargetCandidates(readText(briefPath, project));
+    if (cand.candidates.length) targetUpper = Math.max(...cand.candidates);
+    else targetWhy = cand.reason || '简报里没有可解析的目标字数';
+  }
+  const overshootLimit = targetUpper === null ? null : Math.round(targetUpper * 1.2);
+  const overshoot = src !== null && overshootLimit !== null && typeof hanProbe?.body === 'number' && hanProbe.body > overshootLimit;
+  // 槽位取值：取不到时**显式写「取不到」**，不写 0（0 会被读成「正文没有汉字」——那是另一回事）
+  const hanUnavailable = hanProbe === null ? '（无正文源）'
+    : hanProbe.why ? `取不到（${hanProbe.why}）`
+      : null;
+  const hanBody = hanUnavailable ? hanUnavailable : hanProbe.body;
+  const hanFull = hanUnavailable ? hanUnavailable : hanProbe.full;
+  // ── 批 24 主人侧硬要求（v19.4.2 收敛，**与另一位工程师的 exit 10 版本冲突，以此为准**）────────────
+  //   「取不到时**不得**改退出码；契约 [0,10,70]」（主人派单原文），且本条反哺的「响亮失败」已由
+  //   上方 stderr 的 `⛔ 字数口径自检失败` + 视图内说明承担。故此处**刻意不设**「写盘后 process.exit(10)」：
+  //   证据面降级不该让「刷新证据包/视图」这个动作本身失败 —— 否则逼出「不刷新视图」的旁路，
+  //   而六角色读的正是这份视图（视图照旧产出、槽位照旧如实，问题在 stderr 与视图内可见）。
+  //   ⚠️ 与 `tests/batch24-toolface-derivation.test.mjs` 的 `B24-§5-5` 期望（exit 10）**不一致**：
+  //   那条用例属另一批，须由主人裁定后改其断言或改回本行 —— 已如实登记在批 24 交割说明里。
   // 章节结构（H1/H2）—— 无正文源时留空，由下方模板给出显式说明（不得伪造成「结构为空」）
   const sections = [];
   for (const line of srcText.split('\n')) {
@@ -469,45 +576,112 @@ if (wantSummary) {
     if (m1) sections.push(`# ${m1[1]}`);
     else if (m2) sections.push(`  ## ${m2[1]}`);
   }
-  // 素材卡条目数（v2.5.2-dsh.7 用 Set 去重，避免全文中重复 [Lxx] 引用被多次计数）
-  const cntCards = (p) => {
-    if (!existsSync(join(project, p))) return 0;
-    const t = readText(join(project, p), project);   // v18.2.6：剥 BOM（pwsh Set-Content -Encoding UTF8 默认带）
-    const ids = new Set();
-    const re = refCardPairRegex();   // 口径真源：_lib/refs.mjs（旧版限 2-3 位 → 1 位编号漏计）
-    let m;
-    while ((m = re.exec(t)) !== null) ids.add(m[1] + m[2]);
-    return ids.size;
-  };
-  // 兼容旧版调用（部分位置仍可能引用 cnt）
-  const cnt = cntCards;
-  const litN = cnt('literature/文献卡.md');
-  const datN = cnt('data/数据卡.md');
-  const casN = cnt('cases/案例卡.md');
-  // 信任级别分布
-  // v18.7.3（P1-2，全量审计）：旧实现用 `[Aa] 级|核心期刊…` 一套与 _lib/trust.mjs 三档
-  //   （主人投喂/二手转引/已发布）完全不同且无映射的口径，且 C 档词表混杂「二手转引」——
-  //   审计视图的信任分布与 M-Form-6 判定体系两张皮。现改为与 M-Form-6 同一真源：
-  //   逐行走 TRUST_COMPLIANT_RE 计数已声明档位；未声明 = 该类卡条数（编号去重）− 已声明行数（下限 0）。
-  //   splitCard 只覆盖 [Dxx]（cards.mjs 契约），故 L/D 两类卡统一用「行级声明」口径，不切块。
-  const trustDist = (p, kind) => {
-    if (!existsSync(join(project, p))) return null;
-    const t = readText(join(project, p), project);   // v18.2.6：剥 BOM
-    const dist = { '主人投喂': 0, '二手转引': 0, '已发布': 0, 未声明: 0 };
-    let declared = 0;
-    for (const line of t.split(/\r?\n/)) {
-      const m = TRUST_COMPLIANT_RE.exec(line);
-      if (m) { dist[m[1]]++; declared++; }
+  // ── v19.5.0（§5 ②③ + 总表第 6 条）：卡数与信任分布 = **从真源逐条读取**，不从中间结构推断 ──
+  //   旧实现两处「从中间结构推断」，实测都与真源对不上（项目 xingbie）：
+  //     ① 卡数 = 全文 `[Lxx]` 编号 Set 去重（`refCardPairRegex`）→ 文献卡 **24**（把索引段的特殊索引
+  //        `[L00]`/`[L99]`/`[L-cross]` 也当成条目），而卡内**索引段声明 22**；
+  //     ② 信任分布 = 逐行 `TRUST_COMPLIANT_RE.exec` 取**首个**档位词 → 同一行并列写
+  //        `已发布（…）+ 二手转引（…）` 的**双标条目被静默并入单一类**（数据卡实测 43 已发布，
+  //        其中 1 条实为双标）。
+  //   现口径（三条，都由本函数实现，视图里同时标出计数来源）：
+  //     A. 卡数：索引段「总条数」声明 → 索引段表行编号 → 条目标题行 → 全文编号去重（兜底，口径最弱）；
+  //     B. 信任分布：**逐条独立行**（行首标签 `- **信任级别**：` 形态）逐行判定；一行里出现
+  //        **两个及以上**档位词（按 `+`/`＋` 分段且每段**以档位词开头**）→ 计入**双标**，不并入任一单类；
+  //     C. 卡头手写汇总行（`信任级别声明：已发布 N …`）**只用于对账**：与逐条统计不一致即在视图与
+  //        stderr 报出，**数值一律取逐条统计**（判据：手写汇总是中间结构，逐条独立行才是真源）。
+  const ALL_IDS_G = '\\[([LDC]\\d+)\\]';
+  const ENTRY_HEADING_G = '^\\s*#{2,6}\\s*\\[([LDC]\\d+)\\]';
+  /** 取「索引段」节体（标题含「索引段」→ 下一个同级或更高级标题之前）；无该标题返回 null。 */
+  const indexSectionLines = (text) => {
+    const lines = text.split(/\r?\n/);
+    let start = -1;
+    let level = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const m = lines[i].match(/^(#{1,6})\s*(.*)$/);
+      if (!m) continue;
+      if (start === -1) {
+        if (/索引段/.test(m[2])) { start = i; level = m[1].length; }
+        continue;
+      }
+      if (m[1].length <= level) return lines.slice(start, i);
     }
-    const ids = new Set();
-    const re = new RegExp(`\\[${kind}\\d+\\]`, 'g');
-    let mm;
-    while ((mm = re.exec(t)) !== null) ids.add(mm[0]);
-    dist.未声明 = Math.max(0, ids.size - declared);
-    return dist;
+    return start === -1 ? null : lines.slice(start);
   };
-  const litT = trustDist('literature/文献卡.md', 'L');
-  const datT = trustDist('data/数据卡.md', 'D');
+  /** 卡数（真源优先：索引段声明）。返回 `{ n, source }`，`source` 会写进视图供人复核口径。 */
+  const cardCount = (text) => {
+    const idx = indexSectionLines(text);
+    if (idx) {
+      const joined = idx.join('\n');
+      const tot = /总条数\**\s*[:：]\s*\**\s*(\d+)/.exec(joined);
+      if (tot) return { n: Number(tot[1]), source: '索引段「总条数」声明' };
+      const ids = new Set([...joined.matchAll(new RegExp(ALL_IDS_G, 'g'))].map((m) => m[1]));
+      if (ids.size) return { n: ids.size, source: '索引段表行编号' };
+    }
+    const headIds = new Set([...text.matchAll(new RegExp(ENTRY_HEADING_G, 'gm'))].map((m) => m[1]));
+    if (headIds.size) return { n: headIds.size, source: '条目标题行（本卡无索引段）' };
+    const anyIds = new Set([...text.matchAll(new RegExp(ALL_IDS_G, 'g'))].map((m) => m[1]));
+    return { n: anyIds.size, source: '全文编号去重（兜底：无索引段且无条目标题，口径最弱）' };
+  };
+  // 逐条独立行：行首标签形态（容忍有/无项目符号、加粗、全/半角冒号——与 M-Form-6 的独立行判据同向）。
+  //   刻意**不**匹配行文中段的「信任级别」字样：那正是「描述字段仅有」的降级场景，不构成独立声明行。
+  const TRUST_INDEP_LINE_RE = /^\s*(?:[-*+]\s+)?\*{0,2}信任级别\*{0,2}[ \t\u3000]*[:：][ \t\u3000]*(.*)$/;
+  /** 该独立行声明的档位词（去重、保序）；`+`/`＋` 分段且**段首**为档位词才算 —— 备注括号里的档位词不算。 */
+  const trustTokensOfLine = (tail) => {
+    const out = [];
+    for (const seg of String(tail).split(/[+＋]/)) {
+      const t = /^\*{0,2}[ \t\u3000]*(已发布|主人投喂|二手转引)/.exec(seg.trim());
+      if (t) out.push(t[1]);
+    }
+    return [...new Set(out)];
+  };
+  /** 卡头手写汇总行（`- **信任级别声明**：已发布 39 / 主人投喂 0 / 二手转引 17`）→ `{已发布:39,…}`。 */
+  const headerTrustSummary = (text) => {
+    const line = text.split(/\r?\n/).find((l) => /信任级别声明/.test(l));
+    if (!line) return null;
+    const out = {};
+    for (const m of line.matchAll(/(已发布|主人投喂|二手转引)\s*\**\s*[:：]?\s*(\d+)/g)) out[m[1]] = Number(m[2]);
+    return Object.keys(out).length ? out : null;
+  };
+  /** 单卡统计：`{ count, countSource, dist, dualIds, header, mismatch }`；文件不存在 → null。 */
+  const cardStats = (p, kind) => {
+    if (!existsSync(join(project, p))) return null;
+    const t = readText(join(project, p), project);   // v18.2.6：剥 BOM（pwsh Set-Content -Encoding UTF8 默认带）
+    const dist = { 主人投喂: 0, 二手转引: 0, 已发布: 0, 未声明: 0, 双标: 0 };
+    const dualIds = [];
+    let declaredLines = 0;
+    let curId = null;
+    for (const line of t.split(/\r?\n/)) {
+      const hm = line.match(new RegExp(ENTRY_HEADING_G));
+      if (hm) curId = hm[1];
+      const m = TRUST_INDEP_LINE_RE.exec(line);
+      if (!m) continue;
+      declaredLines++;
+      const toks = trustTokensOfLine(m[1]);
+      if (toks.length === 0) continue;          // 独立行在、但档位词不可识别（如「待定」）→ 只计声明数
+      if (toks.length > 1) { dist.双标++; if (curId) dualIds.push(curId); continue; }   // 双标**单列**
+      dist[toks[0]]++;
+    }
+    const { n, source } = cardCount(t);
+    dist.未声明 = Math.max(0, n - declaredLines);   // 未声明 = 卡数（真源）− 独立声明行数
+    const header = headerTrustSummary(t);
+    const mismatch = header === null ? null : ['已发布', '主人投喂', '二手转引'].filter((k) => (header[k] ?? 0) !== dist[k]);
+    return { count: n, countSource: source, dist, dualIds, header, mismatch };
+  };
+  const litS = cardStats('literature/文献卡.md', 'L');
+  const datS = cardStats('data/数据卡.md', 'D');
+  const casS = cardStats('cases/案例卡.md', 'C');
+  const litN = litS ? litS.count : 0;
+  const datN = datS ? datS.count : 0;
+  const casN = casS ? casS.count : 0;
+  /** 视图里的分布单元格：三档 + 未声明（M-Form-6 同口径），**双标单列**；下面再跟计数口径。 */
+  const distCell = (s) => (s ? `${s.dist['主人投喂']} / ${s.dist['二手转引']} / ${s.dist['已发布']} / ${s.dist.未声明}` : '—');
+  const dualCell = (s) => (s ? `双标 ${s.dist.双标}${s.dualIds.length ? `（${s.dualIds.join('、')}）` : ''}` + ` ｜ 计数口径：${s.countSource}` : '—');
+  // 卡头手写汇总与逐条真源不一致 → **报出而不是信手写值**（视图内显著行 + stderr；数值仍取逐条统计）
+  const summaryDrift = [
+    ['文献卡', 'literature/文献卡.md', litS],
+    ['数据卡', 'data/数据卡.md', datS],
+    ['案例卡', 'cases/案例卡.md', casS],
+  ].filter(([, , s]) => s && s.mismatch && s.mismatch.length > 0);
   // M 门状态：真源 = final/M-Gate-Report.json（文档全仓一致口径），兼容 audits/ 旧路径
   const mCandidates = [join(project, 'final', 'M-Gate-Report.json'), join(project, 'audits', 'M-Gate-Report.json'), join(project, 'audits', 'M-Gate-Report-v0.json')];
   const mReportPath = mCandidates.find((p) => existsSync(p));
@@ -576,17 +750,25 @@ if (wantSummary) {
 > **视图源**：\`${srcRel}\`　｜　**阶段**：${stageLabel}　｜　生成时间：${new Date().toISOString()}
 > ${src && src.kind === 'draft' ? '⚠️ 源为**草稿快照**：字数/引用闭环仅代表该草稿轮次，**定稿阶段必须重新生成**后引用（`--source final/定稿.md`）。' : src && src.kind === 'final' ? '源为定稿（终态视图）。' : '尚无正文：本视图仅含素材与报告状态，T4 分析（Phase 2）可用；草稿产出后请重新生成本视图。'}
 
-## 一、正文结构（${han} 纯汉字${src ? `，源：${src.name}` : ''}）
+## 一、正文结构（正文区 ${hanBody} 纯汉字｜全文 ${hanFull}${src ? `，源：${src.name}` : ''}）
 
+> **口径**：正文区 = \`## 摘要\` 标题之后 → 首个文末节之前，**由 \`count-chars.mjs --summary\` 自己算**
+> （本脚本不重算；它的 \`body.hanChars\` 就是验收口径，旧版此处填的是**全文**值）；
+> **验收只认正文区值**，全文值仅作对照。${src ? '' : '\n> 无正文源：两值均为「（无正文源）」（**不是「正文为 0」**）。'}${hanProbe && hanProbe.why ? `\n> ⛔ **取不到字数**：${hanProbe.why} —— 槽位留空且**不退回本地重算**（那会再造第二份口径实现）。` : ''}${hanProbe && !hanProbe.why && hanProbe.body >= hanProbe.full ? `\n> ⛔ **口径可疑（本槽位不得单独用于验收）**：正文区值 ${hanProbe.body} ≧ 全文值 ${hanProbe.full} —— 切片没有真正收窄（缺 \`## 摘要\` → 起点退化为文件开头；或有文末节时两值竟相等）。请补摘要/文末节后重新生成；**本命令仍以退出码 0 结束**（证据面降级不改退出码，见批 24 交割说明）。` : ''}
+${overshoot ? `> ⚠️ **超限（显著标记）**：正文区 ${hanBody} 汉字 > 任务简报目标上限 ${targetUpper} × 1.2 = ${overshootLimit} —— 先精简再谈其它。\n` : ''}${src && overshootLimit === null ? `> （未打超限标记：未解析到任务简报目标上限——${targetWhy}）\n` : ''}
 ${src ? sections.join('\n') : '（无正文源：本视图不含正文结构，见「二、素材卡数量」与「五、阶段报告存在性」）'}
 
 ## 二、素材卡数量
 
-| 类型 | 数量 | 信任级别分布（主人投喂 / 二手转引 / 已发布 / 未声明；v18.7.3 与 M-Form-6 同口径） |
-|------|------|----------------------------|
-| 文献卡 [Lxx] | ${litN} | ${litT ? `${litT['主人投喂']} / ${litT['二手转引']} / ${litT['已发布']} / ${litT.未声明}` : '—'} |
-| 数据卡 [Dxx] | ${datN} | ${datT ? `${datT['主人投喂']} / ${datT['二手转引']} / ${datT['已发布']} / ${datT.未声明}` : '—'} |
-| 案例卡 [Cxx] | ${casN} | — |
+> **计数真源**：数量取卡内**索引段**声明（无索引段才退到条目标题行/全文编号，口径写在末列）；
+> 信任级别分布取卡内**逐条独立行**（\`- **信任级别**：…\`），**双标单列**、不并入单类；卡头**手写汇总行只对账、不采信**（v19.5.0）。
+
+| 类型 | 数量 | 信任级别分布（主人投喂 / 二手转引 / 已发布 / 未声明；v18.7.3 与 M-Form-6 同口径） | 双标与计数口径（v19.5.0 派生真源） |
+|------|------|----------------------------|----------------------------|
+| 文献卡 [Lxx] | ${litN} | ${distCell(litS)} | ${dualCell(litS)} |
+| 数据卡 [Dxx] | ${datN} | ${distCell(datS)} | ${dualCell(datS)} |
+| 案例卡 [Cxx] | ${casN} | ${distCell(casS)} | ${dualCell(casS)} |
+${summaryDrift.length ? `\n> ⚠️ **卡头手写汇总与逐条真源不一致（不采信手写值）**：${summaryDrift.map(([name, rel, s]) => `${name}（\`${rel}\`）卡头写 ${s.mismatch.map((k) => `${k} ${s.header[k] ?? 0}`).join('、')}，逐条独立行统计为 ${s.mismatch.map((k) => `${k} ${s.dist[k]}`).join('、')}`).join('；')}。\n> 卡头汇总行须由逐条独立行**自动统计生成**（禁手写）——角色卡纪律见 \`references/agents/02-数据检索-data-scout.md\`。\n` : ''}
 
 ### 图件对账（v2.5.2-dsh.16，M-Form-9 同口径）
 
@@ -610,7 +792,7 @@ ${reportsLine}
 ## 六、待确认项（阶段：${stageLabel}）
 
 ${src && src.kind === 'final' ? `- [ ] 引用闭环：素材卡条数 vs 引用数差异（孤儿、未引用）
-- [ ] 字数：定稿 ${han} 汉字 vs 任务简报目标（±2% 软档）
+- [ ] 字数：定稿**正文区** ${hanBody} 汉字（全文 ${hanFull}）vs 任务简报目标（±2% 软档）
 - [ ] 信任级别全填：数据卡每条「信任级别」独立段
 - [ ] AI 使用声明：定稿文末 5 节白名单（M-Form-7）
 - [ ] 参考文献编号闭环：定稿引用 [Lxx] 必须在参考文献清单${figNos.size || figFiles.length ? `
@@ -629,8 +811,16 @@ ${src && src.kind === 'final' ? `- [ ] 引用闭环：素材卡条数 vs 引用�
   writeFileSync(summaryPath, summary, 'utf8');
   console.log(`\n✓ 审计视图: ${summaryPath}`);
   console.log(`  - 视图源: ${srcRel}（${stageLabel}）`);
-  console.log(`  - 正文纯汉字: ${han}${src ? '' : '（无正文源）'}`);
-  console.log(`  - 素材卡: L${litN} D${datN} C${casN}`);
+  console.log(`  - 正文区纯汉字: ${hanBody}（全文 ${hanFull}）${src ? '' : '（无正文源）'}`);
+  console.log(`  - 素材卡: L${litN} D${datN} C${casN}（取索引段声明；旧版按全文编号去重会多算特殊索引）`);
+  console.log(`  - 信任分布: L${distCell(litS)} ｜ D${distCell(datS)} ｜ C${distCell(casS)}（逐条独立行；双标单列）`);
+  if (overshoot) console.error(`⚠️ 正文区 ${hanBody} 汉字 > 目标上限 ${targetUpper} × 1.2 = ${overshootLimit}（视图内已打显著标记）`);
+  // 卡头手写汇总不一致：**报出**（stderr + 视图内显著行），数值一律取逐条统计
+  for (const [name, rel, s] of summaryDrift) {
+    console.error(`⚠️ ${name}（${rel}）卡头手写汇总与逐条真源不一致：`
+      + `${s.mismatch.map((k) => `${k} 手写 ${s.header[k] ?? 0} ≠ 逐条 ${s.dist[k]}`).join('；')}`
+      + ' —— 视图已按**逐条独立行**取值（手写汇总只对账、不采信）');
+  }
   console.log(`  - 图件: 图位 ${figNos.size} 个 / 图件文件 ${figFiles.length} 个${figMissing.length ? `（缺图 ${figMissing.map((n) => '图' + n).join(',')}）` : ''}`);
   console.log(`  - 引用闭环: L${usedL} D${usedD} C${usedC}`);
   console.log(`  - 报告: ${reportsLine}`);
@@ -691,4 +881,10 @@ ${src && src.kind === 'final' ? `- [ ] 引用闭环：素材卡条数 vs 引用�
     writeFileSync(deepPath, prev + deepSection, 'utf8');
     console.log(`  - 素材卡全集（deep）: L${Ls.length} D${Ds.length} C${Cs.length}`);
   }
+
+  // ── 批 24 交割说明（主人侧硬要求：**不得**改退出码）────────────────────────────────────────────
+  //   本节原有一处「口径坍缩 → 写盘后 `process.exit(10)`」（另一位工程师的写法）。按主人派单
+  //   「取不到时不得改退出码；契约 [0,10,70]」与「响亮失败 = stderr 报出 + 视图内可见」已移除：
+  //   视图照旧落盘、槽位照旧如实（`hanProbe.why` 时写「取不到（原因）」），问题在 stderr 与视图内可查。
+  //   反向用例见 `tests/batch24-derived-truth-and-gates.test.mjs`（§5① 反向 / 分级·反向）。
 }

@@ -1,13 +1,17 @@
 #!/usr/bin/env node
 // 论衡方法论可复现性门（v18.10.0 战略反哺新增 / P0-1 / scripts 白名单 18→19）
-// 用法：node methodology-check.mjs <文件.md> [--report <path>]
+// 用法：node methodology-check.mjs <文件.md> [--report <path>] [--genre <code>]
 //   --report <p>   = JSON 结果写入 <p>（默认 stdout）
+//   --genre <code> = 体裁 code。两族取值并存（见「体裁豁免」段的批 24 注）：
+//                    · `_shared/文类档案.md` 的 code（如 `academic-hum`）—— v18.73.0 起的既有口径；
+//                    · **方法面口径** `empirical-stat` / `text-qualitative` / `mixed` —— 批 24 新增。
+//                    **不传 = 与旧版逐字节同行为**（可空）。
 //
 // 退出码（与 M 门语义同源）：
 //   0  = 三项检查全过
 //   1  = P1 问题（参数缺失 / 数据-方法不匹配 / 结果-方法不可回链）
 //   2  = P0 问题（方法节参数 <2 项 —— 结构层严重缺失）
-//   3  = 仅 P2 软提示
+//   3  = 仅 P2 软提示 / **本门不适用的 SKIP**（批 24：`--genre text-qualitative` 下两项记 SKIP）
 //   10 = 参数或路径错误
 //   70 = 内部错误
 //
@@ -44,7 +48,7 @@ for (let i = 0; i < argv.length; i++) {
   //   故：体裁来自 Phase 0 的显式声明（任务简报），脚本只据声明豁免，不自行推断。
   else if (a === '--genre') {
     const v = argv[++i];
-    if (!v || v.startsWith('--')) { console.error(`--genre 缺少值（示例：--genre academic-hum）\n用法: node methodology-check.mjs <文件.md> [--report <path>] [--genre <code>]`); process.exit(10); }
+    if (!v || v.startsWith('--')) { console.error(`--genre 缺少值（示例：--genre academic-hum ｜ --genre text-qualitative）\n用法: node methodology-check.mjs <文件.md> [--report <path>] [--genre <code>]`); process.exit(10); }
     genreArg = v;
   }
   else if (a.startsWith('--')) {
@@ -175,16 +179,38 @@ const mExist11Severity = statMissing.length === 0 ? 'PASS' : 'P1';
 // 真源：`references/_shared/文类档案.md` 的「结构门」列 —— `IMRaD-Alternate`（= 人文/理论类）无方法节。
 // 为什么只豁免这两项：M-Exist-12（结果-方法闭环）**已有**自带的质性/人文 N/A 分支（见其 note），不必重复。
 // 为什么**必须**由 `--genre` 显式传入：见参数解析处注释（自动判会把「实证论文漏写方法节」变成假通过）。
+//
+// ── 批 24（合并清单 §二.6）：**方法面体裁口径** `--genre empirical-stat|text-qualitative|mixed` ──
+// 病灶实测（本项目 xingbie）：定稿明写「不含新采集的一手问卷或访谈」「不作统计推断」，属
+//   **治理文本分析 + 公开统计二次分析**——方法节按规范**本就不该**有样本量/抽样/统计模型/随机种子，
+//   而旧版对 v1/v2 **均** exit 2（M-Form-12 P0 + M-Exist-11 P1）。P0 字样会诱导下游直接打回，
+//   T7 只能每轮补一段「不适用」说明并各行留痕。
+// **与 `academic-hum` 那档的刻意差异（不是重复实现）**：
+//   · `academic-hum`（文类 code）→ 记 **N/A**、`pass = true`、**exit 0**（该文类结构门无方法节，门整体不适用）；
+//   · `text-qualitative`（方法面 code）→ 记 **SKIP**、`pass = false`、**exit 3**（「未检 ≠ 通过」，
+//     沿用 M-Exist-12 已有的 SKIP 语义与 exit 家族：3 已被登记为「需人工复核」档，**不新增退出码**）。
+//   为什么不干脆合成一档：两者的**证据强度声明**不同 —— 前者是「本门对本文类不适用」，后者是
+//   「本文类适用本门，但本文的方法面是质性/文本向，两项判据不适用，须人工核」。合成会让 T7 读不出区别。
+// 为什么仍须显式传：与 `academic-hum` 同理 —— 自动判会把「实证论文漏写方法节」静默变成「不适用」。
 const THEORY_GENRES = new Set(['academic-hum']);   // 结构门 = IMRaD-Alternate 的体裁
+const METHOD_FACE_GENRES = new Set(['empirical-stat', 'text-qualitative', 'mixed']);   // 批 24 方法面口径
 const isTheoryGenre = genreArg !== null && THEORY_GENRES.has(genreArg);
+// `text-qualitative` = 本文**不产生**统计推断（正文明写「不作统计推断」）→ 两项定量向判据记 SKIP。
+// `mixed` 刻意**不豁免**：混合方法稿里若有任何定量侧，两项判据仍然适用（宁可让人核，不给免费通过）。
+const isTextQualitative = genreArg === 'text-qualitative';
+const SKIP_GENRE_NOTE = 'SKIP（N/A）：`--genre text-qualitative` —— 本文方法面为质性/文本向，'
+  + 'M-Form-12 / M-Exist-11 是**定量向**判据，本文不适用。**不得读作「已通过」**：'
+  + '本项记 SKIP（`pass=false`）并把整门落到退出口 3（需人工复核）。'
+  + '边界（如实）：本档**只**免这两项 —— M-Exist-12（结果-方法闭环）照判。'
+  + '若本文其实**有**统计推断侧，请改用 `--genre mixed` 或 `empirical-stat`（后者照报缺参项）。';
 const naNote = isTheoryGenre
   ? `N/A：体裁 \`${genreArg}\`（结构门 IMRaD-Alternate）无方法节 —— 本项为**定量向**判据，体裁不适用。`
     + '**不得读作「已通过」**（`_shared/文类档案.md` §结构门；T7 已在审计报告中独立定性，见反哺报告-v7 F-10）。'
   : '';
-const effMForm12Pass = isTheoryGenre ? true : mForm12Pass;
-const effMForm12Severity = isTheoryGenre ? 'N/A' : mForm12Severity;
-const effMExist11Pass = isTheoryGenre ? true : mExist11Pass;
-const effMExist11Severity = isTheoryGenre ? 'N/A' : mExist11Severity;
+const effMForm12Pass = isTheoryGenre ? true : (isTextQualitative ? false : mForm12Pass);
+const effMForm12Severity = isTheoryGenre ? 'N/A' : (isTextQualitative ? 'SKIP' : mForm12Severity);
+const effMExist11Pass = isTheoryGenre ? true : (isTextQualitative ? false : mExist11Pass);
+const effMExist11Severity = isTheoryGenre ? 'N/A' : (isTextQualitative ? 'SKIP' : mExist11Severity);
 
 // === M-Exist-12 结果-方法闭环 ===
 // 每个结果叙述（以 ### / ## 开头或含 [Dxx] 引用）能否在方法节找到对应方法步骤
@@ -246,6 +272,9 @@ const mExist12Pass = resultsRefsMethod;
 //   末档 `3` 同时覆盖「仅 P2」「仅 SKIP」「非 P0/P1 的其它组合」——本门只有三档判定，语义即「需人工复核」。
 // v18.73.0（反哺报告-v7 F-10）：出口计算改用**生效值**（体裁不适用时三项均 N/A / pass=true）——
 //   旧版用未豁免的原值，于是「三项都显示 N/A」而整体仍 exit 2，**读数与出口自相矛盾**。
+// 批 24：`text-qualitative` 下 M-Form-12 / M-Exist-11 生效值是 `pass=false` + `severity='SKIP'`
+//   → `allPass=false`，而 `hasP0/hasP1` 都为 false → 落到末档 **3**（与 M-Exist-12 的 SKIP 同出口，
+//   `==>` 提示语为「不适用/未检，须人工核」，**不再出现 P0 字样**）。
 const allPass = effMForm12Pass === true && effMExist11Pass === true && (isTheoryGenre ? true : mExist12Pass === true);
 const allSeverities = [effMForm12Severity, effMExist11Severity, isTheoryGenre ? 'N/A' : mExist12Severity];
 const hasP1 = allSeverities.includes('P1');
@@ -264,7 +293,8 @@ const result = {
       found: methodFound,
       foundCount: methodFound.length,
       missing: methodMissing,
-      note: naNote || '至少 4 项：样本量 / 抽样方式 / 变量定义 / 统计模型 / 超参数 / 随机种子 / 软硬件环境',
+      note: naNote || (isTextQualitative ? SKIP_GENRE_NOTE + '｜' : '')
+        + '至少 4 项：样本量 / 抽样方式 / 变量定义 / 统计模型 / 超参数 / 随机种子 / 软硬件环境',
     },
     'M-Exist-11': {
       name: '统计-数据匹配',
@@ -274,7 +304,8 @@ const result = {
       missing: statMissing,
       // v18.79.0（F-k）：把「声明不报」与「漏检」分开呈现——两者都算 missing，但**成因不同**（T7 读 note 即可分辨）
       negatedOnly: statNegated,
-      note: naNote || ('三项齐全：检验类型声明 / 效应量 / 置信区间或 p 值'
+      note: naNote || (isTextQualitative ? SKIP_GENRE_NOTE + '｜' : '')
+        + ('三项齐全：检验类型声明 / 效应量 / 置信区间或 p 值'
         + (statNegated.length ? `（⚠️ ${statNegated.join(' / ')} 只有**否定式声明**、无正向报告，已按「未报」计入 missing）` : '')),
     },
     'M-Exist-12': {

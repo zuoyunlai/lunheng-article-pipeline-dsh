@@ -1,4 +1,4 @@
-> 版本：v19.4.1（DSH bundle 插件）
+> 版本：v19.5.0（DSH bundle 插件）
 
 
 # 投稿就绪检查表（final/交付说明.md 附）

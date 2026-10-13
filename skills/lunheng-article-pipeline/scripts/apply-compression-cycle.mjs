@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // 论衡字数压缩编排脚本（v18.9.x 实战反哺新增，2026.09.23）
-// 用法：node apply-compression-cycle.mjs <run/项目名> [--target-N <N>] [--max-rounds <3>] [--skip-bundle] [--dry-run]
+// 用法：node apply-compression-cycle.mjs <run/项目名> [--target-N <N>] [--max-rounds <3>] [--skip-bundle] [--dry-run] [--outline <路径>] [--baseline <路径>]
 // 一条命令串起实战项目收尾阶段的字数压缩循环：
 //   ① 量测当前字数（body / full，与 count-chars.mjs 同源 _lib/han.mjs + _lib/sections.mjs）
 //   ② 判 G8 字数硬阈（目标字数从 01-任务简报.md §目标篇幅 提取；阈 = −10% / +5%）
@@ -8,8 +8,20 @@
 //   ④ sha256 校验（所有 final/ 文件 — 与 _lib/destructive-write.mjs 的 sameFile 策略一致）
 //   ⑤ 刷新一致性门（consistency-check.mjs）+ 证据包（build-evidence-bundle.mjs）+ 审计视图
 //   ⑥ 输出压缩决策 JSON + 残留风险清单
-// 退出码：0 = 阻塞线内通过 / 1 = 仍超阻塞线需 T5 修订轮 / 10 = 参数路径错 / 70 = 内部错误
+// 退出码：0 = 阻塞线内通过 / 1 = 仍超阻塞线需 T5 修订轮（**或压缩轮不变量/分节硬指标对账不通过**） / 10 = 参数路径错 / 70 = 内部错误
 // v18.12.0 L-66：删除 `writeFileSync` / `copyFileSync`——两者从未在本文件被调用（纯冗余导入）。
+//
+// v19.5.0（压缩/字数闭环批 · 生成期防 + 执行期守；反哺 merge清单-合并版-19条 §一·2 + §三·15）：
+//   本条落在「执行期守」一侧，增补三件事（**全部在既有出口码集合 0/1/10/70 之内**,退出码契约
+//   `repo-hygiene-check` 规则⑧ 登记不变）：
+//     ⓐ **目标计算冲突规则（§一·2）**：「守各节下限」与「落回 ±2%（硬阈内）」**禁止同时要求**——
+//        冲突时按「**先守硬阈**（目标 × 1.05）**，再谈分节下限**」取向，并把冲突逐条写进输出 `note`。
+//     ⓑ **不变量增列两项（§三·15）**：「大纲各节最小硬指标不得跌破」「含判据/标准/口径关键词的
+//        句子不得整句删除」（原有引用标记 / 图位编号两项不变量照旧）。
+//     ⓒ **压缩后自动与大纲 §11 预算表对账**：跌破任一节最小硬指标 → 记 P1 且 **exit 1**。
+//   真源口径（如实）：分节最小硬指标以大纲的**分节标题行**「（预算 ≥N 字）」为准
+//   （每个 H2 一章一行、与正文结构一一对应）；§11 预算表的「本章最小硬指标」列**同样被解析**，
+//   但**仅在与标题式真源不一致时记 note**，不参与判定——两处都算会得出两个不同的下限和。
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { basename, join, dirname } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -19,19 +31,22 @@ import { installExitGuard, requireExistingDir, describeSpawn } from './_lib/exit
 import { parseArgs } from './_lib/cli-args.mjs';
 import { countHan } from './_lib/han.mjs';
 import { parseTargetChars } from './_lib/target-chars.mjs';   // v18.12.3：目标字数解析唯一实现（3-5 位 / 千分位 / 万·千·k）
-import { firstEndnoteIndex, maskFences, bodyStartAfterAbstract } from './_lib/sections.mjs';   // v18.12.3 L-56 同族：正文区口径与 count-chars 同源
+import { firstEndnoteIndex, maskFences, bodyStartAfterAbstract, h2Headings, h3Headings } from './_lib/sections.mjs';   // v18.12.3 L-56 同族：正文区口径与 count-chars 同源
 
 installExitGuard();
 
 const argv = process.argv.slice(2);
-const USAGE = '用法: node apply-compression-cycle.mjs <run/项目名> [--target-N <N>] [--max-rounds <3>] [--skip-bundle] [--dry-run]';
+const USAGE = '用法: node apply-compression-cycle.mjs <run/项目名> [--target-N <N>] [--max-rounds <3>] [--skip-bundle] [--dry-run] [--outline <路径>] [--baseline <路径>]';
 const usageExit = (why) => { console.error(why); console.error(USAGE); process.exit(10); };
 
 let flags, opts, positionals;
 try {
   ({ flags, opts, positionals } = parseArgs(argv, {
     flags: ['--skip-bundle', '--dry-run'],
-    values: { '--target-N': 'final/定稿.md', '--max-rounds': '3' },
+    // v19.5.0（§三·15）：`--outline` 指定大纲（默认 `<项目>/analysis/分析大纲.md`）；
+    //   `--baseline` 指定「压缩前」版本（默认自动探测：目标同级 drafts 目录里版本号次高的 `初稿-vN.md`）。
+    //   两者都给项目内相对/绝对路径；缺失时对账项记「未核」而**不改退出码**（见正文注释）。
+    values: { '--target-N': 'final/定稿.md', '--max-rounds': '3', '--outline': '<项目>/analysis/分析大纲.md', '--baseline': '<项目>/drafts/初稿-v(N-1).md' },
     minPositionals: 1,
     maxPositionals: 1,
     positionalHint: '<run/项目名>',
@@ -108,6 +123,246 @@ for (const f of readdirSync(finalDir).filter((x) => x.endsWith('.md'))) {
   shaMap[f] = { sha256: hashOne(join(finalDir, f)), bytes: readFileSync(join(finalDir, f)).length };
 }
 
+// ---- ④′ 压缩轮不变量 + 大纲 §11 预算表自动对账（v19.5.0 · 反哺 §三·15）----
+// 为什么落在这里：本条反哺的病根是「压缩轮的不变量**只覆盖引用与数值**」——引用标记、
+//   图位编号、分节字数三类事实在压缩轮里**各有一份独立真源**，而此前只有前两类被（人肉）看。
+//   ③ 的三条新伤（P1-1 判据句被删 / P1-8 分节跌破 / P1-2 降级标注被吞）全是「真源在、无人比」。
+// 口径（如实，两条边界都写死）：
+//   · **分节最小硬指标真源 = 大纲的分节标题行**「（预算 ≥N 字）」——每个 H2 一章一行、与正文结构
+//     一一对应；§11 预算表的「本章最小硬指标」列**同样被解析**，但**仅用于一致性提示**
+//     （两处都算会得出两个不同的下限和，判据必须唯一）。
+//   · **自动探测到的基线**（目标同级 `drafts/` 里版本号**次高**的 `初稿-vN.md`）在内容与目标
+//     逐字节相同时**跳过不变量比对**——否则「复核一份未动的稿子」会被读成「引用多重集被改动」。
+//     显式传 `--baseline` 时不做该豁免（调用方声明了「这确实是压缩前后的两版」）。
+const CITATION_RE = /\[(?:L|D|C|先)\d{1,3}\]/g;   // 与三卡编号体例同源（含 [先NN]）
+const FIGURE_RE = /\[图\s*(\d+)/g;                // 图位编号（[图1：说明] / [图1]）
+// 判据/限定关键词面（§三·14 与 §三·15 的并集：15 条点名「判据/标准/口径」，14 条为「若/则/判据/
+//   标准/口径/前提/限定」）——并集取**更宽**的一侧，宁可多抽句子交人判，不可漏抽。
+const CRITERION_RE = /若|则|判据|标准|口径|前提|限定/;
+/**
+ * 正文分节：以大纲的分节标题为真源，逐节切当前正文的字符数。
+ * 仅取 H2（`## N 标题`）——大纲的分节下限是**章级**指标；H3 子节的“预算 ≥N”不参与合计
+ * （本轮实测：六章标题下限之和 = 8,000 = 总量上限；若把 H3 一并相加会得到 10,000+，
+ *  于是「下限之和 ≤ 目标」永远不可满足 —— 正是本条反哺的病根形态）。
+ */
+const parseOutlineMinima = (outlineText) => {
+  // ① 标题式真源：`## 1 引言（预算 ≥850 字）`。括号里除 `预算 ≥N 字` 外**允许追加说明**
+  //    （实测：`## 5 讨论（预算 ≥1880 字）` 干净，而 `## 4 研究结果（预算 ≥2960 字；主体，占全篇最大权重）`
+  //     在数字后还有分号+说明——旧式 `≥\s*(\d+)\s*字\s*）` 要求「字」后紧跟闭括号，会把 §4 整节漏掉、
+  //     下限和从 8,260 掉到 5,040 ⇒ 「下限和已顶满」永不触发，正是本条反哺的病根在实现侧复现）。
+  const heading = [];
+  for (const h of h2Headings(outlineText)) {
+    const m = /[（(]\s*预算\s*[≥>=]+\s*(\d+)\s*字[^（()）]{0,24}[）)]/.exec(h.title)
+      || /[（(]\s*预算\s*[≥>=]+\s*(\d+)/.exec(h.title);
+    if (m) heading.push({ title: h.title, min: Number(m[1]) });
+  }
+  // ② §11 预算表式真源：`| §1 引言 | 850 | ≥850 |`（仅取「章节」列不是合计/摘要的行）
+  const table = [];
+  for (const raw of outlineText.split('\n')) {
+    const cells = raw.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((s) => s.trim());
+    if (cells.length < 3) continue;
+    const sec = cells[0];
+    if (!/^§\s*\d/.test(sec)) continue;                     // 合计 / 摘要 行不进真源
+    const hard = /^[≥>=]+\s*(\d+)/.exec(cells[cells.length - 1]);
+    if (!hard) continue;
+    table.push({ section: sec, min: Number(hard[1]) });
+  }
+  return { heading, table };
+};
+const bodyCountsByHeading = (docText) => {
+  const hs = h2Headings(docText);
+  const masked = maskFences(docText);
+  return hs.map((h, i) => {
+    const from = docText.indexOf('\n', h.index) + 1;
+    const to = i + 1 < hs.length ? hs[i + 1].index : masked.length;
+    return { title: h.title, count: countHan(masked.slice(from, to)) };
+  });
+};
+const norm = (s) => s.replace(/\s+/g, ' ').trim();
+const extractCitations = (t) => (maskFences(t).match(CITATION_RE) || []).slice().sort();
+const extractFigures = (t) => [...new Set((maskFences(t).match(FIGURE_RE) || []).map((x) => x.replace(/\D/g, '')))].sort();
+/** 含判据/标准/口径关键词的**整句**集合（分句符含中英文句读；整句归一化后比对，防排版差异假阳性）。 */
+const criterionSentences = (t) => {
+  const out = [];
+  for (const para of maskFences(t).split(/\n{2,}/)) {
+    const p = para.trim();
+    if (!p || p.startsWith('#') || p.startsWith('|') || p.startsWith('>')) continue;   // 标题/表格/引用块不算「句」
+    for (const s of p.split(/(?<=[。；！？!?])|\n/)) {
+      const n = norm(s);
+      if (n && CRITERION_RE.test(n)) out.push(n);
+    }
+  }
+  return out;
+};
+const outlinePath = opts['--outline'] ? opts['--outline'] : join(projRoot, 'analysis', '分析大纲.md');
+const outlineText = existsSync(outlinePath) ? readFileSync(outlinePath, 'utf8') : null;
+const minima = outlineText ? parseOutlineMinima(outlineText) : { heading: [], table: [] };
+const bodySections = bodyCountsByHeading(text);
+
+// 基线（压缩前版本）：显式 `--baseline` 优先；否则在目标同级 `drafts/` 里取版本号**次高**的初稿。
+const resolveBaseline = () => {
+  if (opts['--baseline']) return { path: opts['--baseline'], explicit: true };
+  const dir = join(projRoot, 'drafts');
+  if (!existsSync(dir)) return { path: null, explicit: false };
+  const ver = (n) => Number((n.match(/初稿-v(\d+)\.md$/) || [])[1] ?? NaN);
+  const nowV = ver(basename(targetPath).endsWith('.md') ? basename(targetPath) : '');
+  const cands = readdirSync(dir).map((n) => ({ n, v: ver(n) })).filter((x) => Number.isFinite(x.v));
+  const lower = cands.filter((x) => (Number.isFinite(nowV) ? x.v < nowV : true)).sort((a, b) => b.v - a.v);
+  return { path: lower.length ? join(dir, lower[0].n) : null, explicit: false };
+};
+const baseRef = resolveBaseline();
+const baseText = baseRef.path && existsSync(baseRef.path) ? readFileSync(baseRef.path, 'utf8') : null;
+
+/**
+ * **多重集**差：按「元素 → 出现次数」逐项相减，返回 base 比 cur **多出的那几处**。
+ * v19.5.0（本批实测修正）：旧式 `base.filter(x => !cur.includes(x))` 是**集合**判据（只看「在不在」），
+ *   而本不变量自称的是**多重集**（`extractCitations` 的注释即写「多重集」、04/07 卡也写「两版完全一致」）。
+ *   两者在**同一编号出现多次**的稿子上不等价：实测（`汉`×600 + `[L01][L02][D01]` → `[L01][D01]`）
+ *   旧判据得 `lost=[] gained=[]` ⇒ **改动了引用却 exit 0**；而 B25-B2 用例正是照「多重集」写的，
+ *   于是它红在实现侧而不是测试侧。判据一句话：**声明「多重集」就必须按计数比，按存在性比就是把门写虚**。
+ *   本仓既有先例同一形态：图位侧用 `[...new Set(...)]` 去重后才比（那里 `Number` 去重语义正确），
+ *   但引用侧去重会**吞掉「删掉重复引用的其中一处」**——正是压缩轮最常见的失效形态。
+ */
+const multisetLost = (base, cur) => {
+  const pool = new Map();
+  for (const x of cur) pool.set(x, (pool.get(x) || 0) + 1);
+  const lost = [];
+  for (const x of base) {
+    const n = pool.get(x) || 0;
+    if (n > 0) pool.set(x, n - 1);
+    else lost.push(x);
+  }
+  return lost;
+};
+
+/** 不变量比对：引用标记多重集 / 图位编号集 / 判据句存活 三项。 */
+const compareInvariants = (cur, base) => {
+  const violations = [];
+  const curCit = extractCitations(cur);
+  const baseCit = extractCitations(base);
+  const lostCit = multisetLost(baseCit, curCit);
+  const gainedCit = multisetLost(curCit, baseCit);
+  if (lostCit.length || gainedCit.length) {
+    violations.push({
+      id: 'inv-citations',
+      level: 'P1',
+      detail: `引用标记多重集被改动：压缩后少 ${lostCit.length} 处（${[...new Set(lostCit)].slice(0, 5).join(' ')}）、`
+        + `多 ${gainedCit.length} 处（${[...new Set(gainedCit)].slice(0, 5).join(' ')}）`,
+    });
+  }
+  const curFig = extractFigures(cur);
+  const baseFig = extractFigures(base);
+  const lostFig = baseFig.filter((x) => !curFig.includes(x));
+  const gainedFig = curFig.filter((x) => !baseFig.includes(x));
+  if (lostFig.length || gainedFig.length) {
+    violations.push({
+      id: 'inv-figures',
+      level: 'P1',
+      detail: `图位编号集被改动：少 [图${lostFig.join('] [图')}]、多 [图${gainedFig.join('] [图')}]`,
+    });
+  }
+  const baseSent = criterionSentences(base);
+  const curSent = new Set(criterionSentences(cur));
+  const killed = [...new Set(baseSent.filter((s) => !curSent.has(s)))];
+  if (killed.length) {
+    violations.push({
+      id: 'inv-criterion-sentences',
+      level: 'P1',
+      detail: `含判据/标准/口径关键词的句子被整句删除 ${killed.length} 句（压缩轮不变量 ②：不得整句删除，`
+        + `须逐句判是否承重）｜例：${killed.slice(0, 3).map((s) => `「${s.slice(0, 40)}…」`).join('')}`,
+      samples: killed.slice(0, 10),
+    });
+  }
+  return violations;
+};
+
+let invariants = { checked: false, reason: null, violations: [] };
+if (!baseText) {
+  invariants.reason = `未找到压缩前基线（--baseline 未给且 ${join(projRoot, 'drafts')} 下无次高版本初稿）→ 不变量比对**未核**（不是已核）`;
+} else if (norm(baseText) === norm(text) && !baseRef.explicit) {
+  invariants.reason = `自动探测到的基线 ${basename(baseRef.path)} 与目标内容一致（本轮无改动）→ 跳过不变量比对`;
+} else {
+  invariants.checked = true;
+  invariants.baseline = baseRef.path;
+  invariants.violations = compareInvariants(text, baseText);
+}
+
+// 大纲对账：逐节实值 vs 该节最小硬指标（跌破 → P1 + exit 非 0）。
+const outlineFindings = [];
+if (!outlineText) {
+  outlineFindings.push({ id: 'outline-missing', level: 'P2', detail: `未读到大纲（${outlinePath}）→ 分节硬指标对账**未核**（不是已核）` });
+} else if (!minima.heading.length) {
+  outlineFindings.push({ id: 'outline-minima-missing', level: 'P2', detail: '大纲里未解析到任何「（预算 ≥N 字）」分节标题 → 分节硬指标对账**未核**' });
+} else {
+  for (const s of minima.heading) {
+    const key = s.title.replace(/^##\s*/, '').replace(/[（(].*$/, '').trim();
+    const hit = bodySections.find((x) => x.title === s.title || x.title.startsWith(key) || key.startsWith(x.title.replace(/[（(].*$/, '').trim()));
+    if (!hit) continue;
+    if (hit.count < s.min) {
+      outlineFindings.push({
+        id: 'section-below-min', level: 'P1', section: s.title, min: s.min, actual: hit.count,
+        detail: `「${s.title}」实测 ${hit.count} 字 < 本节最小硬指标 ${s.min} 字（跌破 ${s.min - hit.count} 字）`,
+      });
+    }
+  }
+}
+const headingSum = minima.heading.reduce((a, x) => a + x.min, 0);
+const tableSum = minima.table.reduce((a, x) => a + x.min, 0);
+const outlineReconcile = {
+  outlinePath: outlineText ? outlinePath : null,
+  perSectionMinima: minima.heading.map((x) => `${x.title} ≥ ${x.min}`),
+  minimaSum: headingSum || null,
+  sectionActual: bodySections.map((x) => `${x.title} = ${x.count}`),
+  findings: outlineFindings,
+};
+
+// 目标计算冲突规则（§一·2）：禁止同时要求「守各节下限」与「落回 ±2%」，冲突时**先守硬阈**。
+//   · 硬阈 = 目标 × 1.05（本文件 `charBand.ceil`，即脚本的 G8 阻塞上界）；
+//   · ±2% 带 = 目标 × 1.02（「落回 ±2%」里的上界）；
+//   · 分节下限合计 = 大纲各节最小硬指标之和。
+//   三者同时成立 ⇔ `下限和 ≤ 目标×1.02` **且** `下限和 ≤ 目标×1.05`（后者由前者蕴含，
+//   但**仍逐条列出**，因为调用方读到的是原因，不是推论）。不成立即记 conflict + 取向。
+const hardCeil = target ? Math.round(target * 1.05) : null;
+const bandCeil2 = target ? Math.round(target * 1.02) : null;
+const conflicts = [];
+if (target && headingSum) {
+  const over = [];
+  if (bandCeil2 !== null && headingSum > bandCeil2) over.push(`±2% 带（≤ ${bandCeil2} 字）`);
+  if (hardCeil !== null && headingSum > hardCeil) over.push(`硬阈（≤ ${hardCeil} 字）`);
+  if (over.length) {
+    conflicts.push(`各节下限之和 ${headingSum} 字已超出 ${over.join(' 与 ')}——`
+      + `「守各节下限」与「落回 ±2%」**不可同时满足**；按取向**先守硬阈 ${hardCeil} 字，再谈分节下限**`
+      + `（即在硬阈内尽量贴近各节下限，不得为一个分节下限而破硬阈）`);
+  }
+}
+// §一·2 的 5% 弹性提示：下限和顶到目标 × 0.95 以上时，写作只要有两节略高于下限就必然超软上限。
+if (target && headingSum) {
+  const elasticCap = Math.round(target * 0.95);
+  if (headingSum > elasticCap) {
+    conflicts.push(`各节★下限之和 ${headingSum} 字已顶满目标 ${target} × 0.95（= ${elasticCap} 字）——`
+      + `请留 5% 弹性：任两节略高于下限即超软上限。**★下限为软目标**（总和允许 ±5%），`
+      + `须自减最低权重节的下限并在大纲里写明理由`);
+  }
+}
+
+// 大纲 §11 表与分节标题**两处真源不一致**（判定以标题式为准，此处只作提示——两处都算会得出两个下限和）。
+if (target && headingSum && tableSum && tableSum !== headingSum) {
+  conflicts.push(`大纲分节标题式下限和 ${headingSum} ≠ §11 预算表式下限和 ${tableSum}——`
+    + `判定以**分节标题行**（「（预算 ≥N 字）」）为准；请把 §11 表与本轮实际结构对齐（表是给写手读的，不得与标题真源相左）`);
+}
+const invariantViolations = invariants.violations.concat(outlineFindings.filter((f) => f.level === 'P1'));
+const reconcileFailed = invariantViolations.length > 0;
+// v19.5.0（§三·15 收口 · 本批实测修正）：旧式三元 `conflicts.length ? conflicts : …`
+//   把 `note` **钉死在目标计算冲突一族**上——`conflicts` 一空（极常见：下限和未顶满弹性阈值、
+//   两处真源恰好一致），note 即被强制置为 `[]`，**invariantViolations 一条也不进人读面**。
+//   实测形态：夹具「少 1 处引用」→ `reconcileFailed=true` + `invariants.violations=[inv-citations]`
+//   而 `note=[]`；调用方（T7/T8/主控）按 07 卡 §压缩轮专项 的说明「读 note / invariants」时，
+//   读到的是「无异常」。判据一句话：**决定退出码的那份清单，必须与 note 里的清单一字不差**。
+//   故此处把 reconcile 的不通过项逐条并入 `note`（前缀 `[对账]` 与目标冲突提示区分开）。
+const note = conflicts.slice();
+for (const v of invariantViolations) note.push(`[对账] ${v.detail}`);
+if (!headingSum && !conflicts.length) note.push('大纲未提供分节下限 → 目标计算冲突规则未参与判定');
+
 // ---- ⑤ 刷新一致性门 + 证据包 + 审计视图 ----
 let ccResult = null;
 let bundleResult = null;
@@ -146,15 +401,26 @@ const result = {
   sha256: shaMap,
   consistencyCheck: ccResult ? ccResult.status : (dryRun ? 'dry-run' : 'skipped'),
   bundle: bundleResult ? bundleResult.status : (dryRun ? 'dry-run' : (flags.has('--skip-bundle') ? 'skipped(--skip-bundle)' : 'skipped')),
+  // v19.5.0（压缩/字数闭环批 §一·2 + §三·15）：
+  //   `note` = 目标计算冲突与弹性提示 + **对账不通过项**（决定 exit 码的那份清单，逐条同文入 note，前缀 `[对账]`）；
+//   `targetConflict` / `reconcileFailed` 为机器字段。
+  note,
+  targetConflict: conflicts.length > 0,
+  outlineReconcile,
+  invariants,
+  reconcileFailed,
   recommendation: verdict.includes('超阻塞线')
     ? `需进入 v(${Number(basename(targetPath).match(/\d+/)?.[0] || '3') + 1}) 修订轮；压缩目标 ${gapAmount ?? '?'} 字（按 maxRounds=${maxRounds} 轮内）`
     : verdict.includes('低于阻塞线')
     ? `需扩写 ${gapAmount ?? '?'} 字（按 §12 补检索方向）`
-    : '✓ 无需修订',
+    : (reconcileFailed ? '⚠ 阻塞线内，但压缩轮不变量/分节硬指标对账不通过（见 invariants / outlineReconcile）' : '✓ 无需修订'),
 };
 console.log(JSON.stringify(result, null, 2));
 // v18.16.0（A-6 反哺）：原 `&& !dryRun` 让 dry-run 模式即便判定超阻塞线也 exit 0，
 //   违反「dry-run 只影响写盘、不影响判定」约定（T7/T8 据 exit 决定是否触发 T5 修订）。
 //   现去掉 `!dryRun` —— 无论是否 dry-run，超阻塞线统一 exit 1。
-if (verdict.includes('超阻塞线')) process.exit(1);
+// v19.5.0（§三·15）：压缩后自动对账「不满足即 exit 非 0」——分节跌破最小硬指标、或任一不变量
+//   被破坏，与「超阻塞线」同解（都指向「须再进一轮修订」），故**合用 exit 1**、不新开码
+//   （`repo-hygiene-check` 规则⑧ 的登记集合 `[0,1,10,70]` 不变）。
+if (verdict.includes('超阻塞线') || reconcileFailed) process.exit(1);
 process.exit(0);

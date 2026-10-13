@@ -84,8 +84,13 @@ test('v18.7.3 P1-2：build-evidence-bundle 信任分布 = 三档 + 未声明（�
   assert.equal(r.code, 0, r.out.slice(0, 300))
   const view = readFileSync(join(proj, 'audits', '审计视图-v0.md'), 'utf8')
   assert.match(view, /主人投喂 \/ 二手转引 \/ 已发布 \/ 未声明/, '表头必须是三档 + 未声明：' + view.slice(view.indexOf('素材卡数量'), view.indexOf('素材卡数量') + 400))
+  // v19.5.0（合并清单 §5②/总表第 6 条）：分布单元格**后面新增一列**「双标与计数口径」，
+  //   四类断言（下表）与五类断言（双标/口径）都放这一列，故 4 元组断言的尾部 `|` 改为 `[^\n]*`，
+  //   并**新增**计数真源断言（卡数须标明取自哪种真源派生，不得回到「全文编号 Set 去重」那套中间结构口径）。
+  const ROW_SRC = String.raw`\| (?:文献卡 \[Lxx\]|数据卡 \[Dxx\]) \| 2 \| \d+ / \d+ / \d+ / \d+ \| 双标 \d+ ｜ 计数口径：(索引段表行编号|条目标题行（本卡无索引段）|全文编号去重（兜底：无索引段且无条目标题，口径最弱）) \|`;
   assert.match(view, /\| 文献卡 \[Lxx\] \| 2 \| 1 \/ 0 \/ 0 \/ 1 \|/, 'L 卡：1 条主人投喂 + 1 条未声明')
   assert.match(view, /\| 数据卡 \[Dxx\] \| 2 \| 0 \/ 0 \/ 1 \/ 1 \|/, 'D 卡：1 条已发布（含加粗形态）+ 1 条未声明')
+  assert.match(view, new RegExp(ROW_SRC), '卡数须逐行声明计数真源（v19.5.0 派生真源，本夹具无索引段时应写条目标题行）')
   assert.ok(!/A \/ B \/ C/.test(view), '旧 A/B/C 口径不得残留')
   rmSync(d, { recursive: true, force: true })
 })

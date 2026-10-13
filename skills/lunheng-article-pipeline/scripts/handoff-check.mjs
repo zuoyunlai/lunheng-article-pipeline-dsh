@@ -20,11 +20,18 @@
 //     只有加 `--require-gates`（或 T7 的 `--level strict`）才可能触及硬档。
 //     这是刻意保留的语义（不是缺陷：不存在的收报不该被判硬失败），但头注释此前未标该不对称，
 //     读代码的人会以为 T8 也有 20/21 两档。A0 文案已在结果里如实说明同一件事。
+//     ⚠️ **v19.5.0 更新（反哺-merge清单-19条 §一.4）**：本门为 T8 增了**交付物最小清单**（五件，缺一 hard 20），
+//       而该清单挂在 **`--require-gates` 或 `--level strict`** 上（与 A7/A11 同一「交付前一次性验收」时点纪律）。
+//       故上面那句「20/21 两档对 T8 不可达」**现已只在纯 basic 调用下成立**：裸 `--role T8`（工具面
+//       `lunheng_handoff_check` 的调研式调用形态）仍为 exit 22，而 `--role T8 --require-gates` 可达 20。
+//     A0 文案仍如实说明「T8 无收报必需产物清单」这件事（两件事不矛盾：**收报面**为空、**交付物面**有清单）。
 //
 // 真源派生（禁止新建第二份清单）：
 //   · 角色 → 必需产物：从 cc-rules/content-rules.mjs 的 CONTRACTS 反查（族名 → 产出者卡 → 角色）
 //   · 磁盘路径：mgate-helpers.mjs 的 CARD_SPECS（卡片类）+ 本文件 PATH_SPECS（非卡片类）
-//   · 回报六要素段名：交接报告六要素（做了什么/产物在哪/怎么验证/已知问题/下一步/状态机更新）+ AI 使用披露
+//   · 回报六要素 = 交接报告六要素，**六个段名逐字**：做了什么 / 产物在哪 / 怎么验证 / 已知问题 / 下一步 /
+//     状态机更新（+ T5/T8 的角色特异第 7 项「AI 使用披露」）。⚠️ 旧文写作「五要素」是**漏数**——
+//     实际参与核验的是 6 项（`SECTION_NAMES` 见下方 B 组），缺「状态机更新」即硬 21。
 //
 // 只读：不联网、不写盘、不 spawn 子进程。stdout 只有 JSON（--summary 时 artifacts 只留失败项）。
 import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs'
@@ -327,6 +334,54 @@ const addSoft = (check, subject, detail) => soft.push({ check, subject, severity
 const required = ROLE_TO_ARTIFACTS[role] || []
 if (required.length === 0) {
   addSoft('A0', role, `${role} 无收报必需产物清单（T0/T8 为主控亲执行或主人侧，一般不做交接验收）`)
+}
+
+// ── v19.5.0（反哺-merge清单-19条 §一.4）：**T8 交付物最小清单**（五件，缺一 hard 20）──────────────
+//   病灶（xingbie 实测）：`--role T8` 此前只报 soft A0「T8 无收报必需产物清单」——而 Phase 5 的交付物
+//   （`final/定稿.md`、`final/交付说明.md`、`final/局限性.md`、`final/AI-使用声明.md`、`final/运行报告.html`）
+//   **是否齐备无任何门在核**，本轮全靠主控自觉。
+//   为什么用 `--require-gates` 触发（而不是无条件判）：与本门 **A7（人在环四门）/ A11（授权串）同一时点纪律**
+//   ——「交付前一次性验收」。主控在 Phase 5 交付前调用 `handoff-check --role T8 --require-gates`
+//   （`SKILL.md` §执行能力边界 已写死该调用形态）；中期「查一下产物在不在」的调研式调用
+//   （工具面 `lunheng_handoff_check` 不暴露 `--require-gates`）**不因缺 Phase 5 产物而假红**。
+//   ⚠️ 如实声明的边界：`--require-gates` 未被工具面暴露（见 `handoff-check.mjs` 头注释对应的
+//     `TOOL_FACE_FLAG_GAPS` 登记）→ 主控须**直调脚本**；`--level strict` 亦触发（strict 是更严的档，
+//     让「strict 跑过」的结论覆盖交付物面）。
+const T8_MIN_ARTIFACTS = [
+  ['final/定稿.md', '交付论文正文（Phase 5 的唯一正文真源）'],
+  ['final/交付说明.md', '12 字段交付说明（M-Exist-7 的输入）'],
+  ['final/局限性.md', '局限性文档（上游缺陷 / 素材约束 / 尚未到期 / 门误判 / 闸门未修订）'],
+  ['final/AI-使用声明.md', 'AI 使用声明（按 `templates/AI-使用声明-template.md` 填实）'],
+  ['final/运行报告.html', '运行报告（交付件之一）'],
+]
+// ⚠️ **触发点（v19.5.0 / §一.4）**：`--require-gates`（或 `--level strict`）**且** `final/` 已含
+//   **正文层产物**（`定稿.md` / `交付说明.md` / `运行报告.html` 任一，或五件里的任意一件）。
+//   为什么要这道前置：`--require-gates` 本身就是**从 Phase 0 起**可用的旗标（A7 四门 / A11 授权串
+//   都在早期就有意义），若只看旗标，**Phase 1 的项目**会被报「缺 Phase 5 交付物 5/5」——那是
+//   **时点没到**，不是缺件（本仓判据：「阶段未到 → SKIP；阶段已到而缺 → 缺陷」）。故前置条件 =
+//   「Phase 5 的影子已经出现」（`final/` 里已有正文层产物）。**边界如实**：若 Phase 5 一件都没落盘，
+//   本项**不判**（此时缺件由 A0 软提示与 T8 的自检兜，不假红）。
+const t8BodyStarted = T8_MIN_ARTIFACTS.some(([rel]) => {
+  const abs = join(project, ...rel.split('/'))
+  return existsSync(abs) && bytesOf(abs) > 0
+})
+if (role === 'T8' && (opt.requireGates || strict) && t8BodyStarted) {
+  const missingT8 = T8_MIN_ARTIFACTS.filter(([rel]) => {
+    const abs = join(project, ...rel.split('/'))
+    return !existsSync(abs) || bytesOf(abs) === 0
+  })
+  if (missingT8.length) {
+    addHard('A1', 'T8 交付物最小清单',
+      `T8 交付物缺 ${missingT8.length}/5 件：`
+      + missingT8.map(([rel, why]) => `${rel}（${why}）`).join('；')
+      + '——五件是 Phase 5 的**最小**交付集，缺一即 hard 20（v19.5.0 §一.4；`--require-gates` / `--level strict` 且 final/ 已有正文层产物时判）', 20)
+  } else {
+    notes.push('T8 交付物最小清单：五件齐备（`final/定稿.md` / 交付说明 / 局限性 / AI-使用声明 / 运行报告.html）'
+      + '——`final/M-Gate-Report.json` 与 `final/证据包/manifest.json` 另由既有门核。')
+  }
+} else if (role === 'T8' && (opt.requireGates || strict)) {
+  notes.push('T8 交付物最小清单：`final/` 尚无正文层产物（Phase 5 未开始）→ **本项未判**（时点没到，不得读成通过；'
+    + 'Phase 5 落盘首件后复跑即生效，v19.5.0 §一.4）。')
 }
 
 // 被审正文最新版本（A4 版本对齐用）
@@ -657,6 +712,16 @@ if (strict) {
 }
 
 // ── B 组：回报侧（给了 report 才跑） ────────────────────────────────────────
+// ⚠️ v19.5.0（T7 反哺批 · **核实留痕，防同类错误复发**）：**「五要素」与「六要素」是两份不同的契约，
+//   不得并成一份**——本包历史上（含反哺清单 §三.11）曾把它们混读，一度把「②」的清单尾部追加
+//   「状态机更新」并改称「六要素」，结果是**两边都不符**（既非 ① 的六段名，也非 ② 的五项）：
+//     ① **交接报告（回报本身）= 六要素**：做了什么 / 产物在哪 / 怎么验证 / 已知问题 / 下一步 / **状态机更新**
+//        ——由本门 B1 逐段核（`SECTION_NAMES` 见下），**缺任一段即硬 21**；
+//     ② **`agents-log.md` 的「### Tn 执行记录」= 五要素**：输入文件清单 / 已读编号·已落盘条数 /
+//        已完成步骤 / 产物路径 / 下一步（≤5 行）——真源 = `references/templates/交接报告-template-lite.md`
+//        与 `references/pipeline-readme.md` §两轨各司其职；本门对它的判据**只有「该不该有这一节」**（A6），
+//        **不核其内部字段**。
+//   判据：**改任一侧的字段清单前，先确认改的是 ① 还是 ②**——混读的代价是把「合规产物」判成「缺段」。
 // v18.62.4（全量审计-v18.62.3 P1-10）：**「没给回报」不再等于「回报合格」**（fail-open 修复）。
 //   病灶（实测）：旧版 `reportText == null` 时 B 组整组既不进 `total`、也不进 `hard`/`soft`
 //   → `handoff-check --project <p> --role T5` 在**六要素回报完全缺失**时照样 `exit 0`（= 合格），
@@ -966,8 +1031,16 @@ if (opt.requireGates) {
   const ledgerInfo = parseLedger(project)
   if (ledgerInfo.exists) {
     if (ledgerInfo.malformed.length) {
-      addHard('A7', LEDGER_REL, `轮次账本有 ${ledgerInfo.malformed.length} 处不可解析：${ledgerInfo.malformed.slice(0, 3).join('；')}`
-        + '——账本损坏时**额度不可判**，不得当通过（与「N/A ≠ SKIP」同口径）', 21)
+      // v19.5.0（反哺-merge清单-19条 §二.8）：**降为软提示**（旧版判硬 21）。
+      //   病灶：账本里**一处**良构错误（如 `轮次` 列写成 `1`）会让整表作废——旧版据此判硬，
+      //   连**格式完全正确的行**也无法判定。现口径 = **逐行降级**：坏行跳过自己、其余行照判，
+      //   故「有坏行」**不再等于「额度不可判」**。降软的理由与 A10 同源：它不改变轮次归属，
+      //   但**必须可见**（否则「逐行降级」退化成「静默丢弃」）；
+      //   残余边界如实声明：若**该轨一行都解析不出**，`counts[track]` 会退化为 0 → 该轨判据空转，
+      //   此时唯一信号就是本条软提示（**不得**读成「账本干净」）。
+      addSoft('A7', LEDGER_REL, `轮次账本有 ${ledgerInfo.malformed.length} 处不可解析：${ledgerInfo.malformed.slice(0, 3).join('；')}`
+        + '——已按**逐行降级**照判其余行（v19.5.0 §二.8：一处良构错误不得作废整表解析）；'
+        + '请修正这些行，否则该轨的累计轮次不可信（**不是**「已核对」）。')
     }
     if (ledgerInfo.over.length) {
       addHard('A7', LEDGER_REL, `轮次账本已越额：${ledgerInfo.over.join('；')}`, 21)
@@ -1010,13 +1083,32 @@ if (opt.requireGates) {
   //   ① `复核报告` 列非空且文件在盘；② 该报告含 `被审正文 sha256`；③ 该指纹与本行 `正文版本` 的实算值相符。
   // 为什么用指纹而不是编号：编号是**审计轮次**的键，B 轨/相位轮没有这个键；指纹是唯一能把「复核过哪一版」钉死的键。
   // 分段（与批 1/2.1 一致）：**账本不存在则不判**（存量项目不追溯）。
+  //
+  // ── v19.5.0（反哺-merge清单-19条 §一.3）：**豁免声明降 soft，指纹不符仍硬** ────────────────────
+  //   病灶（xingbie 实测）：A/B 轨在**当时**往往没有独立复核报告（本项目 A 轨两轮 v3/v4，复核报告出现在
+  //   后来的 v6/v8）→ 旧口径把「该轮无复核产物」与「复核报告没写/写错」一律判硬 21，门只能迫使
+  //   **事后给旧报告补写 sha 声明**（本项目补了 2 处，逐处标注「主控补的形态声明」）——
+  //   这与本包反对的「事后补闸门留痕」**同形**；且本门的 **A1 对「报告」本就宽松**（「本轮修订尚未发生
+  //   → 首轮可缺」），A9 对「账本」却严格 —— 同一事实两处口径不一致。
+  //   新口径（三分支，**只放宽「声明过的豁免」，绝不放宽真缺口与指纹错配**）：
+  //     ① 「复核报告」列**空** → 仍是硬 21（= 没写，缺口）；
+  //     ② 该列写**显式豁免** `—（同轮无独立复核：<理由>）`（`round-ledger.mjs` 的 `reviewExemption`）→
+  //        **软 22** 并写明理由（声明过的历史事实，不是沉默跳过）；
+  //     ③ 声明了报告且报告在盘 → 原判据**一字不动**（缺 sha256 字段 / **指纹不符**仍判硬 21）。
   if (ledgerInfo.exists) {
     for (const r of ledgerInfo.rows) {
       if (r.track !== 'A' && r.track !== 'B') continue
       const label = `${r.track} 轨第 ${r.n} 轮（正文 ${r.draft || '**账本未记**'}）`
+      const exemptWhy = r.reviewExempt ? (r.reviewExemptWhy || '账本已声明豁免') : null
       if (!r.review) {
         addHard('A9', LEDGER_REL, `${label} 缺「复核报告」列——该轮内容修订**无复核产物**`
           + '（B 轨/相位轮没有审计报告可配对，故这一列是它们唯一的复核凭证）', 21)
+        continue
+      }
+      if (exemptWhy) {
+        addSoft('A9', LEDGER_REL, `${label} 声明**同轮无独立复核**（豁免理由：${exemptWhy}）——`
+          + '账本已如实声明该轮无独立复核产物，本门不再判硬 21（v19.5.0 §一.3：降 soft 并写明理由）；'
+          + '**这不是「已复核」**：若该轮实际已有独立复核报告，请把该列改为报告路径。')
         continue
       }
       const repPath = resolve(project, r.review)
@@ -1171,8 +1263,11 @@ if (opt.requireGates) {
 // v19.4.0（GAP-2）：`--require-gates` 下的门从 **1 项**（A7 人在环四门）变为 **2 项**（+ A11 外部服务授权串）
 //   ——A11 与 A7 同挂一个旗标但**是两条独立判据**（可能只红一条），故必须各占 1 个分母单位；
 //   漏改这里会让「挂了 `--require-gates` 的 run」的 `pass`/`total` 口径失准（分母少 1、分子不少）。
+// v19.5.0（§一.4）：T8 交付物最小清单同为「交付前一次性验收」项，故在 `--require-gates` / `--level strict`
+//   下再占 1 个分母单位（五个文件**合成一条**判据——与 A 组按「产物数」入分母的口径一致）。
 const B_CHECK_ITEMS = 4   // B1 六要素段 / B2 AI 使用披露 / B3 回报行数 / B4 回报路径
-const total = required.length + (reportText != null ? B_CHECK_ITEMS : 0) + (strict && role === 'T7' ? 1 : 0) + (opt.requireGates ? 2 : 0)
+const T8_DELIVERABLE_CHECK = (role === 'T8' && (opt.requireGates || strict) && t8BodyStarted) ? 1 : 0
+const total = required.length + (reportText != null ? B_CHECK_ITEMS : 0) + (strict && role === 'T7' ? 1 : 0) + (opt.requireGates ? 2 : 0) + T8_DELIVERABLE_CHECK
 const pass = total - hard.length - soft.length
 let exit = 0
 if (hard.some((h) => h.exitClass === 20)) exit = 20
@@ -1189,7 +1284,8 @@ const out = {
   // v18.57.x：原始条数（不受分母口径影响）与分母口径说明——供机器消费，免去猜 `pass` 的含义。
   hardCount: hard.length,
   softCount: soft.length,
-  countingNote: 'total = A 组产物数 + B 组检查项数(4) + [strict&T7] + [--require-gates ×2：A7 四门 / A11 授权串]；'
+  countingNote: 'total = A 组产物数 + B 组检查项数(4) + [strict&T7] + [--require-gates ×2：A7 四门 / A11 授权串]'
+    + ' + [T8 交付物最小清单 ×1：仅 `--role T8` 且 `--require-gates`/`--level strict`]；'
     + 'pass = total − 失败条目数。同一份产物可能产出多条（A2+A3），此时 pass 偏低（保守方向）；'
     + '判定请以 exit 与 hard/soft 清单为准，pass 仅供速览。',
   hard: hard.map(({ exitClass, ...rest }) => rest),

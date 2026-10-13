@@ -29,6 +29,17 @@
 //   | 轨 | 轮次 | 正文版本 | 触发来源 | 复核报告 | 时间 |
 //   | A | 1/2 | drafts/初稿-v4.md | audits/审计报告-v1.md | audits/复核报告-v1.md | 2026-10-07 |
 // 边界（如实）：解析是**行级表格解析**——不认自由散文；行长错列 → 该行计入 `malformed` 并**不静默丢弃**。
+//   ⚠️ **v19.5.0（反哺-merge清单-19条 §二.8）：`malformed` 是「该行的问题」，不是「整表的死亡证明」。**
+//     病灶（xingbie 实测）：`轮次` 列写成 `1`（应为 `1/2`）时，旧实现让**整表作废**——报「9 处不可解析、
+//     账本损坏时额度不可判」，连**格式完全正确的 B/G 行**也无法判定（消费方一律 exit 10 / 硬 21）。
+//     一处良构错误（well-formedness bug）作废整份解析 = 把**局部**缺陷放大成**全局**失能。
+//     现改为**逐行降级**：坏行记 malformed 后 `continue`（跳过该行），**其余行照判**；
+//     `n/m` 校验失败时先尝试**推断 m**（同轨已解析行数 / `ROUND_CAPS`），推断结果写进行的 `capInferred`
+//     供展示；推断不出（该轨无额度）才记 malformed。**判据：额度判定只在「该轨一行都解析不出」时才不可判。**
+// 复核报告列（v19.5.0 §一.3）：**空** = 未写（A9 判硬）；**显式豁免** = `—（同轮无独立复核：<理由>）`
+//   —— 该形态记 `reviewExempt: true`，由 `handoff-check` 的 A9 降 **soft（22）** 而不是硬 21。
+//   为什么必须有这一档：A/B 轨在**当时**往往没有独立复核报告（实测 A 轨两轮 v3/v4，复核报告出现在后来的 v6/v8）
+//   → 门只能迫使**事后给旧报告补写 sha 声明**，这与本包反对的「事后补闸门留痕」同形。
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -37,6 +48,19 @@ export const ROUND_CAPS = Object.freeze({ A: 2, B: 1, G: 2 })
 /** 合法轨名（含相位轮） */
 export const TRACKS = Object.freeze(['A', 'B', 'G', '相位'])
 export const LEDGER_REL = 'drafts/轮次账本.md'
+
+// ── v19.5.0（反哺-merge清单-19条 §一.3）：**复核报告列的显式豁免形态** ─────────────────────────
+//   形态：`—（同轮无独立复核：<理由>）`（破折号亦可写 `-` / `–` / `——`；理由须非空且 ≥4 字）。
+//   为什么单列一个判据而不是「空 = 豁免」：**空**是「没写」（缺口），**写了豁免 + 理由**才是「声明过的
+//   历史事实」——两者混为一谈会把真缺口放行（见 `handoff-check` A9 的分支）。
+const REVIEW_EXEMPT_RE = /^[-–—\u2011]{1,2}\s*[（(]\s*同轮无独立复核\s*[：:]\s*([^）)]*)[）)]\s*$/
+/** 该「复核报告」列取值是否为**声明过的豁免**（返回理由串，否则 null）。 */
+export function reviewExemption(cell) {
+  const m = REVIEW_EXEMPT_RE.exec(String(cell ?? '').trim())
+  if (!m) return null
+  const why = m[1].trim()
+  return why.length >= 4 ? why : null   // 只写「无」这类空理由不算声明（须说明为什么没有）
+}
 
 export const LEDGER_HEADER = `# 轮次账本
 
@@ -90,6 +114,8 @@ export function authorizedCaps(text) {
 
 /**
  * 解析账本。
+ * ⚠️ **v19.5.0（§二.8）逐行降级**：任何一行的形态问题只影响**该行**（进 `malformed` 后跳过），
+ *   其余行照判；`n/m` 校验失败时先按「同轨已解析行数 / `ROUND_CAPS`」推断分母（记 `capInferred`）。
  * @returns {{exists:boolean, rows:Array, counts:Record<string,number>, malformed:Array<string>, over:Array<string>, caps:Record<string,number>, capsAuthorized:Record<string,number>}}
  */
 export function parseLedger(projectDir) {
@@ -114,11 +140,28 @@ export function parseLedger(projectDir) {
     if (!TRACKS.includes(track)) { out.malformed.push(`未知轨名「${track}」（合法：${TRACKS.join('/')}）`); continue }
     const m = /^(\d+)\s*\/\s*(\d+)$/.exec(cells[1] || '')
     if (!m) { out.malformed.push(`轨 ${track} 的「轮次」不是 \`n/m\` 形态：「${cells[1]}」`); continue }
-    const n = Number(m[1]); const declared = Number(m[2])
+    const n = Number(m[1]); let declared = Number(m[2])
     const cap = out.caps[track]
-    out.rows.push({ track, n, declared, draft: cells[2] || '', source: cells[3] || '', review: cells[4] || '', at: cells[5] || '' })
+    // v19.5.0（§二.8）：分母校验失败**先推断、不牵连整表**——
+    //   推断源 = ① 该轨**已解析出的行数**（`n` 正是第几轮时与行数同量纲）；② `ROUND_CAPS`；
+    //   ③ 取「已解析行数」与「`n`」中的较大者（一条 `n` 大于行数的行仍说明该轨至少用了 n 轮）。
+    let capInferred = false
+    if (cap != null && declared !== cap) {
+      const guess = Math.max(out.counts[track] || 0, n, cap)
+      if (Number.isInteger(guess) && guess >= n) { declared = guess; capInferred = true }
+      else out.malformed.push(`轨 ${track} 的 \`n/m\` 分母 ${declared} ≠ 该轨额度 ${cap ?? '（无额度）'}`)
+    }
+    const row = { track, n, declared, draft: cells[2] || '', source: cells[3] || '', review: cells[4] || '', at: cells[5] || '' }
+    // v19.5.0（§一.3）：复核报告列的**显式豁免**（`—（同轮无独立复核：<理由>）`）→ 记 reviewExempt
+    const why = reviewExemption(row.review)
+    if (why) { row.reviewExempt = true; row.reviewExemptWhy = why }
+    if (capInferred) {
+      row.capInferred = true
+      out.malformed.push(`轨 ${track} 第 ${n} 轮的 \`n/m\` 分母 ${Number(m[2])} ≠ 生效额度 ${cap}`
+        + `——已按「同轨已解析行数 / 额度」推断为 ${declared} 并**照判该行**（v19.5.0 §二.8：一处良构错误不得作废整表解析）`)
+    }
+    out.rows.push(row)
     out.counts[track] += 1
-    if (declared !== (cap ?? declared)) out.malformed.push(`轨 ${track} 的 \`n/m\` 分母 ${declared} ≠ 该轨额度 ${cap ?? '（无额度）'}`)
     if (cap != null && n > cap) out.over.push(`${track} 轨第 ${n} 轮 > 额度 ${cap}——第 ${cap + 1} 轮应走「Acknowledged Limitations」并升级主控`)
     if (cap != null && out.counts[track] > cap) out.over.push(`${track} 轨已记 ${out.counts[track]} 轮 > 额度 ${cap}`)
   }

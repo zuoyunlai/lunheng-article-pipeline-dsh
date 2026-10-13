@@ -3,7 +3,7 @@
 //
 // 用法：
 //   node segment-chars.mjs <文件.md> --list                      # 列出全部 H2/H3 标题及各节汉字数
-//   node segment-chars.mjs <文件.md> --section "3.6"             # 取单节
+//   node segment-chars.mjs <文件.md> --section "3.6"             # 取单节（支持**唯一前缀**）
 //   node segment-chars.mjs <文件.md> --section "3.6" --section "7.4"   # 取多节
 //   node segment-chars.mjs <草稿.md> --budget <分析大纲.md>       # 预算对账 + Sl 观测分（v18.82.0）
 //
@@ -13,8 +13,14 @@
 //
 // 退出码（本脚本**不是闸门**，但与随包脚本共用 `_lib/exit-guard` 的路径语义）：
 //   0  = 成功（全部 selector 命中）
-//   10 = 参数或路径错误（含 **selector 未命中** —— 会打印可用标题清单帮你改参数）
+//   10 = 参数或路径错误（含 **selector 未命中/歧义** —— 会打印**带行号**的可用标题清单帮你改参数）
 //   70 = 内部错误（脚本缺陷）
+//
+// ── 批 24（合并清单 §二.10）：`--section` 唯一前缀匹配 + 失败时全量标题（带行号）──────────────
+//   旧版只认「全等 / 选择器 + 分隔符前缀」，`--section "2 文献回顾"`（实际标题「2 文献回顾与研究缺口」）
+//   直接 exit 10；且提示语写「请改用上面的标题」，而输出里**只有前 40 个标题、且无行号**（无处对照）。
+//   现：① 严格匹配全落空后按「选择器是标题前缀」再匹配 —— 唯一命中即采用、≥2 条报错并列候选；
+//   ② 未命中/歧义输出**同一份**带行号的全量标题清单（`availableTitlesLines`）。**不新增退出码**。
 //
 // ── v18.82.0（LongWriter 借鉴批 · LW-2）：`--budget` 模式与 Sl 观测分 ─────────────────────
 //   来源：LongBench-Write 的 Sl（柔性长度分，arXiv:2408.07055 evaluation/eval_length.py）。
@@ -129,7 +135,10 @@ const sectionRange = (i) => {
   return { from, to: Math.max(to, from) }
 }
 
-/** 选择器匹配：全等，或标题以「选择器 + 空白/分隔」开头（如 "3.6" 命中 "3.6 反方论证…"）。 */
+/** 选择器匹配：全等，或标题以「选择器 + 空白/分隔」开头（如 "3.6" 命中 "3.6 反方论证…"）。
+ *  ⚠️ **本函数刻意保持严格**：`--budget` 模式的预算表 selector 与大纲标题的对应关系
+ *  是**写手声明的契约**，不是交互式输入 —— 把它放宽成任意前缀会让预算错配（如 "3" 吃掉 "3.1"）
+ *  而**不报错**。放宽只发生在 `--section` 路径（见下方 `resolveSelector`，v19.4.x 批 24）。 */
 const matches = (title, sel) => {
   const t = title.trim()
   const s = sel.trim()
@@ -137,6 +146,46 @@ const matches = (title, sel) => {
   if (!t.startsWith(s)) return false
   const rest = t.slice(s.length)
   return /^[\s\u3000.、:：)）]/.test(rest) || /^\d/.test(rest)
+}
+
+// ── v19.4.x（批 24 · 合并清单 §二.10）：`--section` 的**唯一前缀匹配** ─────────────────────
+//   病灶（本项目实测）：`--section "2 文献回顾"` 对标题「2 文献回顾与研究缺口」→ exit 10，
+//   而操作者**看得见的写法就是自己记的那半截标题**。旧版只认「全等 + 分隔符前缀」，
+//   于是「前缀少了分隔符」这一类输入全部落到「未命中」。
+//   现补一档：**严格匹配全落空后**，按「选择器是标题前缀」再匹配一次 ——
+//     · 恰命中 1 条 → 采用（并把实际标题回显在 JSON 的 `title`，调用方看得见命中了谁）；
+//     · 命中 ≥2 条 → **报错并列候选**（不做最长前缀/隐式优先这类「猜」的口径：
+//       猜错会静默量错节，而字数会直接进派发话术与压缩判据）；
+//     · 0 条 → 照旧报错 + 打印**带行号**的可用标题清单。
+//   v19.5.0 补全：**严格档多命中同样算歧义**（旧实现 `findIndex` 静默取首个）——见 `resolveSelector` 注释。
+//   边界（如实）：选择器过长、或与标题中段一致但与开头不同（如只记「文献回顾」而标题以「2 」开头）
+//     仍不命中 —— 泛化成子串匹配会让「关键词选择器」在长稿里越猜越宽，故**刻意不做**。
+/** 选择器解析结果：`{ i }` 命中下标；`options` 非空 = 歧义；两者皆无 = 未命中。 */
+const resolveSelector = (sel) => {
+  // 严格档也**必须唯一**才采用（v19.5.0 批 24 补全）：多条严格命中 = 歧义，不得静默取首个。
+  //   为什么：`matches()` 的「选择器 + 分隔符前缀」会把 `--section "2"` 同时命中 `2 文献回顾…`
+  //   与 `2.1/2.2/2.3 …`（`rest` 以 `.` 开头也算严格命中）——旧实现 `findIndex` **取首个**，
+  //   即「按文档顺序猜一个」。字数会直接进派发话术与压缩判据，猜错即静默量错节，
+  //   故与下方前缀档同一口径：**恰 1 条才采用，≥2 条报错并列候选**（验收语：「唯一命中时成功；
+  //   歧义时报错并列出候选」）。`--budget` 模式不走本函数（它用 `matches` 的首个命中，
+  //   因为预算表 selector 是写手声明的契约，见该函数注释），故本次仅收窄 `--section`。
+  const strict = []
+  headings.forEach((h, i) => { if (matches(h.title, sel)) strict.push(i) })
+  if (strict.length === 1) return { i: strict[0] }
+  if (strict.length > 1) return { options: strict }
+  const s = sel.trim()
+  const hits = []
+  headings.forEach((h, i) => { if (h.title.trim().startsWith(s)) hits.push(i) })
+  if (hits.length === 1) return { i: hits[0] }
+  if (hits.length > 1) return { options: hits }
+  return {}
+}
+
+/** 可用标题清单（**带行号**）：未命中/歧义时的同一份输出，避免两处各写一份又发散。
+ *  `max` 缺省 = 全量（本仓纪律是失败时给足信息，不再截断到前 40 个）。 */
+const availableTitlesLines = (max = Infinity) => {
+  if (headings.length === 0) return ['  （本文件未解析到任何 H2/H3 标题）']
+  return headings.slice(0, max).map((h) => `  ${lineOf(h.index)}: ${'#'.repeat(h.level)} ${h.title}`)
 }
 
 // ── v18.82.0（LW-2）：--budget 模式 ──────────────────────────────────────────────────
@@ -241,12 +290,14 @@ if (wantList) {
   process.exit(0)
 }
 
-// 逐 selector 解析（未命中即收集，最后统一报错并给出可用标题）
+// 逐 selector 解析（未命中 / 歧义即收集，最后统一报错并给出**带行号**的可用标题）
 const sections = []
 const unmatched = []
+const ambiguous = []   // [{ sel, options: [下标] }] —— 命中 ≥2 条（严格档或前缀档，批 24）
 for (const sel of selectors) {
-  const i = headings.findIndex((h) => matches(h.title, sel))
-  if (i === -1) { unmatched.push(sel); continue }
+  const { i, options } = resolveSelector(sel)
+  if (options) { ambiguous.push({ sel, options }); continue }
+  if (i === undefined) { unmatched.push(sel); continue }
   const { from, to } = sectionRange(i)
   sections.push({
     selector: sel,
@@ -258,11 +309,21 @@ for (const sel of selectors) {
   })
 }
 
+if (ambiguous.length > 0) {
+  for (const { sel, options } of ambiguous) {
+    // 措辞不写「前缀命中」：歧义可来自**严格档**（如 `--section "2"` 同时命中 `2 …` 与 `2.1 …`）
+    //   或**前缀档**，两档的处置完全相同（恰 1 条才采用），只有候选数对操作者有意义。
+    console.error(`选择器有歧义（命中 ${options.length} 条标题）: ${sel}`)
+    for (const i of options) console.error(`  候选 ${lineOf(headings[i].index)}: ${'#'.repeat(headings[i].level)} ${headings[i].title}`)
+  }
+  console.error('→ 退出码 10（参数错误）：请改用**完整标题**（或更长的唯一前缀），或 `--list` 查看全量后再指定')
+  process.exit(10)
+}
+
 if (unmatched.length > 0) {
   console.error(`以下选择器未命中任何标题: ${unmatched.join(' / ')}`)
-  console.error('可用标题（前 40 个，格式「level 标题」）：')
-  for (const h of headings.slice(0, 40)) console.error(`  ${'#'.repeat(h.level)} ${h.title}`)
-  if (headings.length === 0) console.error('  （本文件未解析到任何 H2/H3 标题）')
+  console.error('可用标题（带行号，格式「行号: level 标题」）：')
+  for (const line of availableTitlesLines()) console.error(line)
   console.error('→ 退出码 10（参数错误）：请改用上面的标题或 --list 查看全量')
   process.exit(10)
 }

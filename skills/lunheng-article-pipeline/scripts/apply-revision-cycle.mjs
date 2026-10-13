@@ -66,7 +66,17 @@ const dryRun = flags.has('--dry-run');
 // 三态（与批 1 的分段原则一致，避免把制度追溯适用到它存在之前）：
 //   · **无账本**（存量项目）→ 只提示、不阻塞；
 //   · **有账本** → `--track` **必填**；该轨已用满额度 → **exit 10**（动作 = 不再开这一轨，改走升级路径）。
+//   · **账本有坏行**（v19.5.0 §二.8）→ **不阻塞**：`parseLedger` 逐行降级（坏行记 malformed 后跳过，
+//     其余行照判），额度判定照常进行；坏行清单进汇总的 `ledgerMalformed`，**不得**读成「账本干净」。
 const ledgerBefore = parseLedger(projRoot);
+// v19.5.0（§二.8）：账本侧的**非阻塞**留痕（坏行照报、其余行照判）——与 `over`/`malformed` 的处置分开。
+// ⚠️ v19.5.0（T7 反哺批 · **核实留痕**）：本脚本的**输出话术**不涉及「五要素／六要素」之分——该说法
+//   来自反哺清单 §三.11，本条经核实**判假**：**两份契约不得并成一份**——① **交接报告（回报本身）= 六要素**
+//   （做了什么 / 产物在哪 / 怎么验证 / 已知问题 / 下一步 / **状态机更新**；由 `handoff-check` B1 逐段核，
+//   缺一即硬 21）；② **`agents-log.md` 的「### Tn 执行记录」= 五要素**（输入文件清单 / 已读编号·已落盘条数 /
+//   已完成步骤 / 产物路径 / 下一步；真源 = `references/templates/交接报告-template-lite.md`）。
+//   **本脚本不产出、也不校验这两者中的任何一个**，故此处只留判据、不引字段清单（引错一侧即制造新的名实不一）。
+const notes = [];
 const trackArg = (opts['--track'] || '').trim();
 if (ledgerBefore.exists) {
   if (!trackArg) {
@@ -85,8 +95,16 @@ if (ledgerBefore.exists) {
       + `\n  账本：${LEDGER_REL}`);
   }
   if (ledgerBefore.malformed.length) {
-    usageExit(`账本有 ${ledgerBefore.malformed.length} 处不可解析：${ledgerBefore.malformed.slice(0, 3).join('；')}\n`
-      + '  判据：账本损坏时**额度不可判** → 不得当通过（与「N/A ≠ SKIP」同口径）。');
+    // ── v19.5.0（反哺-merge清单-19条 §二.8）：**逐行降级，一处良构错误不得作废整表解析** ─────────
+    //   旧行为：账本里只要有**任何一处**不可解析（如 `轮次` 列写成 `1`），本脚本一律 `exit 10`
+    //   （理由写作「账本损坏时额度不可判 → 不得当通过」）。实测病灶：**9 处**此类报错把
+    //   **格式完全正确的 B/G 行**也一并作废——把**局部**缺陷放大成**全局**失能。
+    //   现口径：`parseLedger` 已改为**逐行降级**（坏行记 malformed 后跳过，其余行照判），
+    //   故此处**额度判定照常进行**（上方 `used + 1 > cap` 与下方 `over` 均已按同一份 rows 判过）；
+    //   残余边界如实声明：若该轨**一行都解析不出**，则 `counts[track] = 0` → 判定退化为「按 0 轮放行」，
+    //   此时唯一可见信号就是汇总里 `ledgerMalformed` 那一段的 malformed 清单（**不得**读成「账本干净」）。
+    notes.push(`账本有 ${ledgerBefore.malformed.length} 处不可解析：${ledgerBefore.malformed.slice(0, 3).join('；')}`
+      + '——已按**逐行降级**照判其余行（v19.5.0 §二.8）；请修正这些行，否则该轨的累计轮次不可信。');
   }
   if (ledgerBefore.over.length) {
     usageExit(`账本已越额：${ledgerBefore.over.join('；')}\n  → 请先按升级路径处置，再开新轮。`);
@@ -272,6 +290,8 @@ console.log(JSON.stringify({
   ledger: ledgerWrite,
   roundCaps: ROUND_CAPS,
   ledgerCounts: ledgerBefore.exists ? ledgerBefore.counts : null, baselineCopied,
+  // v19.5.0（§二.8）：账本的**逐行降级**留痕——坏行照报、其余行照判（`[]` = 账本整体可解析）。
+  ...(ledgerBefore.exists ? { ledgerMalformed: ledgerBefore.malformed, ledgerNotes: notes } : {}),
   chars: {
     prevBody: pre.body,
     nextBody: post ? post.body : null,
