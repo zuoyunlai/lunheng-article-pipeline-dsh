@@ -2,6 +2,26 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 19.3.0 — 2026-10-13
+
+> **主题**：包根插件补**官方 `icon` 字段**——插件管理页与设置页的行图片。
+> **版本判据 = minor**：新增随包资源与打包面字段（`package.json#icon` + `files` 白名单 + `exports` 无关），属打包契约面变更。
+> **动因**：主人 2026-10-13 直接指令（「论衡插件可以有自己的 logo 吗」）+ 提供 `E:\Pictures\lunhenglogo.svg`。
+> **契约真源**：官方升级指南 `subpath-plugin-display-manifest` ——「**包根插件保留 `package.json` 文本和 `icon`**；省略 `icon` 时，导出的 `./icon` 提供图片」。本包为**包根插件**（包根 = `package.json`，`main` → `lib/index.js`），故走方式 A。
+
+**改动**
+- `package.json` 新增 `"icon": "./icon.svg"`（`./` 前缀与本机已装 `@openviking/dsh-memory-plugin` 一致；三种写法 `./icon.svg` / `icon.svg` / `.png` 均经实测可用）；
+- **`package.json#files` 白名单新增 `"icon.svg"`**——**这是成败点**：npm 只自动打包 `package.json` / `README` / `LICENSE`，根目录资源不在 `files` 内则**发不出去**（本地可见、npm 安装后空白）。同批把该图标一并 `npm pack` **解包核对**，确认 `package/icon.svg` 确在 tarball 内——`check:pack-smoke` 通过**不作为**判据；
+- `.gitattributes` 新增 `*.svg text eol=lf`（该文件本为逐类型显式列举，新增受控文本类型即登记）。
+
+**⚠️ 本批被自己的门抓出 1 处**：`check:hygiene` 报 `[eol] 工作区行尾 crlf/mixed（未跟踪）：icon.svg` ——源文件 **25/25 行全为 CRLF**，与本仓「所有文本文件一律 LF」冲突。**不是洁癖**：`.gitattributes` 头部写明后果——**npm 打包读工作区而非 git blob**，CRLF 会使同版本在 Windows 与 macOS/Linux 上内容不一致，**基于 sha256 的证据包指纹跨平台不可复现**（本仓证据包正靠 sha256 校验）。已转 LF（**只改行尾，图形未碰**：path / circle 元素数比对一致，无 BOM）。
+
+**⚠️ 顺手记一条上一版的遗留（本版已避开，未修根因）**：`v19.2.0` 的**提交消息首部带一个 UTF-8 BOM**（实测首字节 `EF BB BF`）——PowerShell 下 `git commit -m "中文…"` 的经典坑，**任何门都抓不到它**（消息不在随包面内）。已 pushed 且已打标，**改它要重写已发布历史，不做**；本版起改用 `git commit -F <无 BOM 消息文件>`。
+
+**验证（本版终态）**：七门全 exit 0（`surface` / `pack-smoke` / `consistent` / `hygiene` / `link` / `closeout` / `no-write`）；全量套 **1067/1067 全绿**（pass 1066 / **0 fail** / 1 skip）；`npm pack` 实测 199 文件 / 1,471.8 KB 且 `package/icon.svg` 在内。改动面 **3 文件 +3 行 + 2 新增文件**：`package.json` +2（`icon` 字段 / `files` 条目）、`.gitattributes` +1（`*.svg text eol=lf`）、`CHANGELOG.md` 新版本段、`icon.svg` 新增；**其余 90 个文件全是 `bump-version.mjs` 的机械改版**（19.2.0 → 19.3.0），无附带污染。
+
+**仍未做（如实）**：**面板实际显示未亲验**——上述只证明「包内有且字段对」，最终显示需重装/升级后在面板肉眼确认，两者之间还隔着一次发布。
+
 ## 19.2.0 — 2026-10-13
 
 > **主题**：全量审计（六层并发 + 故障注入）核实批——**3 个 P0 修复 + 测试网补真身 + 3 条审计纪律固化**。
