@@ -876,32 +876,157 @@ test('v18.93.0：交付件与导出命令派生（只读工作区内的既有产
 // v19.0.0：开工台（§4.2）+ 宿主 locale 桥（§4.4）+ hover 类样式修复
 // ════════════════════════════════════════════════════════════════════════════════════════════
 
-/** L10N/DATA 块外**代码行**中文字面量的**棘轮基线**（v19.1.6 实测 **264**，只许降；v19.0.2 起口径 =
+/** L10N/DATA 块外**代码行**中文字面量的**棘轮基线**（v19.4.0 同批再测 **250**，只许降；v19.0.2 起口径 =
  *  只数会被渲染的代码行——**整行注释不计**，v19.1.6 起 `//`、`/**`、`*` 三种注释开头都算注释）。
  *  历史：v19.0.0 = 340（含派生数据）→ v19.0.1 = 268（划出 DATA 区）→ v19.0.2 = 267（只数代码行）
- *  → v19.1.6 = 264（块注释也算注释，去掉 4 处 JSDoc 假阳性）。新文案进 L10N 块用 `t()`；派生数据进 DATA 块。 */
-const OUTSIDE_CN_BASELINE = 264
+ *  → v19.1.6 = 264（块注释也算注释，去掉 4 处 JSDoc 假阳性）→ v19.4.0 = 257（开工台三控件改造：
+ *  端到端删掉 consent/scopeLit/scopeCase/scopeData/minLit/root 六项旧文案，同时把开场白末段四条
+ *  纪律搬进 L10N 块改走 `t()`）→ v19.4.0 同批 **250**（甲案表单侧：结构门/T9 降只读、题名与
+ *  引用模式改标签、infer/charts/lang/brief 等提示与「Phase 0 其余必答项」清单**全部进 L10N 块**，
+ *  块外只净减）。**基线数字一律以本用例自身的计数为准**：外部脚本数出的 245/257 是**欠计数**，
+ *  只有与最后一次实测一致才可采信（每次改 `lib/client.js` 后按实测下调，只降不升）。
+ *  新文案进 L10N 块用 `t()`；派生数据进 DATA 块。 */
+const OUTSIDE_CN_BASELINE = 250
 
 // ── v19.0.1：主人装新版后的三条实测反馈 ────────────────────────────────────────────────────────
 
-test('开工台（v19.0.1）：外发同意默认「全部同意」，且下拉里不得再有空值项（主人实测反馈）', async () => {
-  // 病灶（主人实测）：旧版同意项的选项表是 `[''].concat(WB_CONSENT)`，空值经 `wbSelect` 渲染成「跟随文类」
-  //   ——对一个「必须显式选」的字段语义不通，而且默认空值会被 `wbValidate` 拦住 ⇒ **每次开工都先卡一下**。
+test('开工台（v19.4.0）：检索范围必选且默认「全网检索」；旧的「外发同意 4 选 1」已整体拆解', async () => {
+  // 病灶沿革（主人 2026-10-13 追问链）：旧的 4 选 1 把「检索范围 / 脱敏档 / 推理位置 / SVG 与文生图」四件
+  //   不同的事压进**一个**选择，于是任何一档都在暗示别的事也跟着变（实测：选「脱敏+SVG+本地」被读成
+  //   「不外发 = 不联网检索」，二者其实无关）。本批按已获采纳的 §4 方案拆成**两个正交下拉 + 一个只读徽标**。
   const h = makeReactStub()
   const mod = await loadClient(h, { fetch: fetchStub({}) })
   const P = mod.__panel
-  assert.equal(P.WB_DEFAULT.consent, '全部同意', '默认必须是「全部同意」')
+  assert.equal(P.WB_DEFAULT.retrieval, '全网检索', '检索范围默认必须是「全网检索」')
+  assert.equal(P.WB_DEFAULT.mask, 'basic', '脱敏档默认 basic（H2 恒定档；strict 才是真选项）')
+  assert.deepEqual(P.WB_RETRIEVAL, ['全网检索', '仅本地素材'], '两档取值必须与素材池 §十一 逐字一致')
+  assert.deepEqual(P.WB_MASK, ['basic', 'strict'])
+  assert.equal(P.WB_CONSENT, undefined, '旧 4 选 1 的选项表必须**整体消失**（不是换个名字留着）')
+  assert.equal(P.WB_DEFAULT.consent, undefined, '旧 consent 字段必须从默认表里去掉')
+  // 开场白：不改任何项即应能直接生成，且带**三段式授权串**
   const prompt = P.buildPrompt(Object.assign({}, P.WB_DEFAULT, { title: 'T', project: 'P1' }))
-  assert.match(prompt, /- 外发同意: 全部同意/, '不改任何项即应能直接生成（含同意项）')
-  // 组件层面：同意下拉存在、含「全部同意」、且**不含**空值项
+  assert.match(prompt, /- 外部服务授权：检索=全网检索 \/ 推理=<[^>]+> \/ 脱敏=basic/, '默认档必须能直接生成三段式授权串')
+  assert.ok(!/外发同意/.test(prompt), '开场白里不得再有「外发同意」一行（已被授权串取代）')
+  // 组件层面：两个下拉都在、都**不含空值项**（空值经 `wbSelect` 会渲染成「跟随文类」，对本区语义不通）
   const props = { inputActions: { setDraft: () => {} }, ctx: { get: () => undefined } }
   h.render(P.Workbench, props)
   wbButton(h.tree(), '打开').props.onClick()
   h.render(P.Workbench, props)
   const hasOpt = (kids, v) => (kids || []).some((c) => Array.isArray(c) ? hasOpt(c, v) : (c && c.props && c.props.value === v))
-  const consentSel = wbFind(h.tree(), (n) => n.type === 'select' && hasOpt(n.children, '全部同意'))
-  assert.ok(consentSel, '同意下拉必须存在且含「全部同意」')
-  assert.ok(!hasOpt(consentSel.children, ''), '同意下拉不得再有空值项（旧版它渲染成「跟随文类」）')
+  const retSel = wbFind(h.tree(), (n) => n.type === 'select' && hasOpt(n.children, '仅本地素材'))
+  assert.ok(retSel, '检索范围下拉必须存在且含「仅本地素材」')
+  assert.ok(!hasOpt(retSel.children, ''), '检索下拉不得有空值项（它现在被 wbValidate 硬拦，空值 = 每次开工先卡一下）')
+  const maskSel = wbFind(h.tree(), (n) => n.type === 'select' && hasOpt(n.children, 'strict'))
+  assert.ok(maskSel, '脱敏档下拉必须存在且含 strict')
+  assert.ok(!hasOpt(maskSel.children, ''), '脱敏下拉不得有空值项')
+  // 「推理位置」面板**不给开关**：它由会话 provider 决定，不是主人的选题 ⇒ 只读徽标 + 明确写谁决定
+  const text = h.render(P.Workbench, props)
+  assert.match(text, /推理位置（只读）/, '必须渲染只读徽标的标签')
+  assert.match(text, /由本会话 provider 决定/, '只读徽标必须说明实际位置由谁决定（不假装面板能选）')
+})
+
+test('开工台（v19.4.0）WB-13：每个表单字段都登记了消费点（script 类真命中脚本锚点 / prompt 类真落到开场白）', async () => {
+  // 为什么要这条：v19.3.0 的开工台字段**没有任何用例**钉「字段 ↔ 真源消费点」，于是三类病一起潜伏
+  //   （证据链见 audits/反哺报告-2026-10-13-开工台字段对齐-v1.md）：
+  //   ① 真死字段（工作区根 / 文献下限：机制只认会话工作区根与 GENRE_MIN_L[文类]，表单值无人读）；
+  //   ② **消费点格式对不上 ⇒ 静默失效**（旧开场白 `- 篇幅上限: 8000 汉字` 过不了 target-chars 的 LINE_RE，
+  //      apply-revision-cycle / apply-compression-cycle 遂**跳过 G8 字数硬阈且 exit 0**）；
+  //   ③ 自造档位（IEEE / 结构门 off / T9 关闭：真源根本没有这些取值）。
+  // 本条把它们变成**机器可核的登记表**：新增字段不登记就红；登记为 script 的必须真在脚本里命中锚点。
+  const S = 'skills/lunheng-article-pipeline/'
+  const FIELDS = [
+    // ── script：被 `scripts/**` 直接读（锚点失配 = 该消费点已消失）──────────────────────────
+    { k: 'project', kind: 'script', file: 'scripts/handoff-check.mjs', re: /01-任务简报\.md/,
+      why: '项目目录名 → run/<项目> 下一切机检的入口（如 A11 读简报头部授权串）' },
+    { k: 'genre', kind: 'script', file: 'scripts/_lib/mgate-gates/mform-gates.mjs', re: /GENRE_MIN_L/,
+      why: '文类决定文献下限（GENRE_MIN_L[文类]），表单自填的「文献下限」从来不是输入' },
+    { k: 'words', kind: 'script', file: 'scripts/_lib/target-chars.mjs', re: /(?:目标篇幅|篇幅)/,
+      why: '目标字数 → G8 硬阈；见本用例 ④ 的格式敏感断言' },
+    { k: 'retrieval', kind: 'script', file: 'scripts/handoff-check.mjs', re: /检索\s*=/,
+      why: '三段式授权串第一段（A11）；仅本地素材时按 素材池 §11.2 派三检索员' },
+    { k: 'mask', kind: 'script', file: 'scripts/handoff-check.mjs', re: /脱敏\s*=/,
+      why: '三段式授权串第三段（A11），与简报 `ETHICS=` 同源（二选一即可，都缺才判硬）' },
+    { k: 'hitl', kind: 'script', file: 'scripts/handoff-check.mjs', re: /A7/,
+      why: '四门必须 → 交付前的四份阶段确认单（A7 判据码；`--require-gates` 才判）' },
+    { k: 'structure', kind: 'script', file: 'scripts/g-audit-check.mjs', re: /structure-check/,
+      why: '结构门 v19.4.0 起是**文类派生值**（面板无控件，经 `applyDerived` 从 `GENRES[genre].structure` 投影；真源 = `_shared/文类档案.md`「结构门」列）→ T7.5 记录必提 structure-check（缺 ⇒ P1），所以它**关不掉**' },
+    { k: 'citeStyle', kind: 'script', file: 'scripts/cite-format.mjs', re: /'gbt', 'apa'/,
+      why: '引用格式白名单只有 gbt/apa，其余 exit 10（IEEE 暂缓：引用格式.md §五）' },
+    { k: 'citeMode', kind: 'script', file: 'scripts/_lib/target-chars.mjs', re: /内联/,
+      why: '编号 / 内联 → **交付形态**（v19.4.0 澄清：稿内一律 `[Lxx]`，内联由主控在交付阶段转写）；此处是内联引注的计数口径' },
+    { k: 't9', kind: 'script', file: 'scripts/apply-revision-cycle.mjs', re: /T9/,
+      why: 'T9 视角 v19.4.0 起是**文类派生值**（面板无控件，经 `applyDerived` 从 `GENRES[genre].t9` 投影；真源 = `_shared/文类档案.md`「T9 视角」列）→ T9 修订轮次口径' },
+    { k: 'targetJournal', kind: 'script', file: 'scripts/journal-fit.mjs', re: /目标期刊/,
+      why: '期刊名是**位置参数**，J-Reason / J-Cycle / J-Format 三项据此判定' },
+    { k: 'charts', kind: 'script', file: 'scripts/m-gate-check.mjs', re: /fig-dir|配图/,
+      why: '图件 → M 门图件判据（|F|=0 且正文有配图承诺 ⇒ P0）' },
+    { k: 'brief', kind: 'script', file: 'scripts/g-audit-check.mjs', re: /'--brief'/,
+      why: '研究问题/写作要点 → G 审计读简报的落点' },
+    // ── prompt：无脚本消费者，只有主控读开场白（照抄进简报）后按文字约定执行 ──────────────
+    { k: 'title', kind: 'prompt', re: /^- 题名: /m,
+      why: '开场白题名 → 简报题名；**无脚本消费者**（题名本身不参与任何机检）' },
+    { k: 'lang', kind: 'prompt', re: /^- 语言: /m,
+      why: '**无脚本消费者**；且 count-chars 只数汉字（\\u4E00-\\u9FFF）⇒ 选 English 会连环撞字数门' },
+    { k: 'tone', kind: 'prompt', re: /^- 文风: /m,
+      why: '**零机器消费点**：「文风档位」只出现在 failure-modes.md 的文字说明里' },
+    { k: 'materials', kind: 'prompt', re: /投喂材料/,
+      why: '自由文本投喂；机制要的是 主人投喂清单-template.md 的 8 列表格（本项只传递路径/说明）' },
+    { k: 'journal', kind: 'prompt', re: /期刊匹配: /,
+      why: '**有机器消费点**（本批较早时误记为「无消费者」、还误删了「可选」档，均已订正）：mexist-gates.mjs:872-895（M-Exist-6）按优先级 ① 审稿报告自述 `/启用期刊匹配|期刊匹配助手/` → ② 简报 `01-任务简报.md` 的 `/启用期刊匹配/` 字面 判定；真载体 = templates/任务简报-template.md:67 的「**启用期刊匹配**」勾选式。值域三档「默认启用/可选/关闭」均取自文类档案「期刊匹配」列（:16-20）' },
+    // ── internal：不直接落开场白，由面板自身合成 ──────────────────────────────────────────
+    { k: 'targetJournalPick', kind: 'internal',
+      why: '期刊库下拉；buildPrompt 里与 targetJournal 合成同一行「目标期刊」' },
+  ]
+  const h = makeReactStub()
+  const mod = await loadClient(h, { fetch: fetchStub({}) })
+  const P = mod.__panel
+  const keys = Object.keys(P.WB_DEFAULT)
+  // ① 双向完备：表单字段 ⇄ 登记表（新增字段不登记就红；登记表留着已删字段也红）
+  for (const k of keys) {
+    assert.ok(FIELDS.some((f) => f.k === k), '字段 ' + k + ' 没有登记消费点（填了等于没填？先证明它有人读）')
+  }
+  for (const f of FIELDS) {
+    assert.ok(keys.includes(f.k), '登记表里的 ' + f.k + ' 已不是表单字段，登记表需同步删')
+    assert.ok(f.why && f.why.length > 6, f.k + ' 的登记必须写清「谁读它」')
+  }
+  // ② script 类：脚本在 + 锚点命中（防登记表自己说谎）
+  for (const f of FIELDS.filter((f) => f.kind === 'script')) {
+    const p = join(ROOT, S, f.file)
+    assert.ok(existsSync(p), f.k + ' 的消费脚本不存在：' + f.file)
+    assert.match(readFileSync(p, 'utf8'), f.re, f.k + ' 的消费锚点在 ' + f.file + ' 里失配（消费点已消失？）')
+  }
+  // ③ prompt 类：真落到开场白（否则这一项连主控都读不到）
+  const filled = Object.assign({}, P.WB_DEFAULT, { title: 'T', project: 'P1', materials: '素材池' })
+  const prompt = P.buildPrompt(filled)
+  for (const f of FIELDS.filter((f) => f.kind === 'prompt')) {
+    assert.match(prompt, f.re, f.k + ' 必须出现在开场白里（否则这一项填了等于没填）')
+  }
+  // ④ 格式敏感项：篇幅行必须能被 target-chars.mjs 的 LINE_RE 真解析到
+  //    （真源 scripts/_lib/target-chars.mjs:30；旧串「- 篇幅上限: 8000 汉字」的「上限」二字卡在
+  //     字段名与冒号之间 ⇒ 两张 cycle 脚本静默跳过 G8 字数硬阈且 exit 0）
+  const tc = readFileSync(join(ROOT, S, 'scripts', '_lib', 'target-chars.mjs'), 'utf8')
+  assert.ok(tc.includes('(?:目标篇幅|篇幅)'), 'target-chars 的篇幅行契约已变，本用例 ④ 需同步')
+  const wordsLine = prompt.split('\n').find((l) => l.includes('目标篇幅'))
+  assert.ok(wordsLine, '开场白必须有篇幅行')
+  assert.ok(/(?:目标篇幅|篇幅)[\s*_`]{0,4}[:：][\s*_`]{0,4}([^\n]{0,24})/.test(wordsLine),
+    '篇幅行过不了 target-chars 的 LINE_RE（会静默跳过字数硬阈）：' + wordsLine)
+  // ⑤ 死字段禁令：v19.4.0 已从表单删除，不得复活（复活 = 重新引入「填了等于没填」）
+  //   `quality` / `rescan` 系主人 2026-10-13 裁决删除（前者降为只读提示、后者整删），同列禁令。
+  for (const gone of ['root', 'minLit', 'consent', 'scopeLit', 'scopeCase', 'scopeData', 'quality', 'rescan']) {
+    assert.ok(!keys.includes(gone), gone + ' 是死字段/已拆解字段，不得再回到表单')
+  }
+  // ⑥ v19.4.0：结构门 / T9 视角是**文类派生值**，不得再成为可编辑字段。
+  //   `applyDerived` 必须把 `GENRES[genre]` 的两列投影到 `f.structure` / `f.t9`（自定义文类 ⇒ 空）。
+  //   真源 = `references/_shared/文类档案.md`「结构门」「T9 视角」两列；`GENRES` 是受另一用例逐行钉住的副本。
+  assert.equal(typeof P.applyDerived, 'function', 'applyDerived 必须导出（面板用它做派生投影）')
+  for (const g of P.GENRES) {
+    const f = P.applyDerived({ genre: g.code })
+    assert.equal(f.structure, g.structure, g.code + ' 的结构门应投影为档案预置值')
+    assert.equal(f.t9, g.t9, g.code + ' 的 T9 视角应投影为档案预置值')
+  }
+  assert.equal(P.applyDerived({ genre: '' }).structure, '', '未选文类 ⇒ 结构门留空（跟随文类，不猜档）')
+  assert.equal(P.applyDerived({ genre: 'not-a-genre' }).structure, '', '自定义文类 ⇒ 结构门留空（无投影可依）')
+  assert.match(P.L10N.zh['wb.derivedHint'], /只读|投影|派生/, '派生徽标必须写明「只读」性质')
 })
 
 test('开工台（v19.0.1）：目标期刊下拉必须与 期刊数据库.md 的 §一/§二 逐行一致', async () => {
@@ -1011,10 +1136,11 @@ test('开工台（v19.0.2）：列容器内不得出现 px 的 flex-basis（主�
   wbButton(h.tree(), '展开高级设置').props.onClick()
   h.render(mod.__panel.Workbench, props)
   assertNoColumnFlexBasis(h.tree())
-  // 具体钉：同意字段的提示必须用**方向无关**的样式（无 flex）——这就是那 220px 空白的来源
+  // 具体钉：政策区提示必须用**方向无关**的样式（无 flex）——这就是那 220px 空白的来源。
+  //   v19.4.0：当事元素从「外发同意」的提示换成「检索范围」的提示（同一坑位、同一形状）。
   const hint = wbFind(h.tree(), (n) => n.type === 'span'
-    && (n.children || []).some((c) => typeof c === 'string' && c.includes('默认「全部同意」')))
-  assert.ok(hint, '同意提示必须在渲染树里（它是本 bug 的当事元素）')
+    && (n.children || []).some((c) => typeof c === 'string' && c.includes('「全网检索」＝检索员可调用外部搜索')))
+  assert.ok(hint, '政策区提示必须在渲染树里（它是本 bug 的当事元素）')
   assert.equal(hint.props.style.flex, undefined, '字段列内的提示不得带 flex（列方向会被当高度）')
   assert.ok(mod.__panel.S.wbFieldHint, '必须存在方向无关的 wbFieldHint 样式')
   assert.equal(mod.__panel.S.wbFieldHint.flex, undefined, 'wbFieldHint 必须是方向无关的（不带 flex）')
@@ -1145,22 +1271,24 @@ test('开工台（v19.0.0 §4.2）：三处硬校验 + 结构化开场白 + 只 
   const h = makeReactStub()
   const mod = await loadClient(h, { fetch: fetchStub({}) })
   const P = mod.__panel
-  // ① 校验：题目 / 项目名（正则，含路径穿越）/ 外发同意（必须显式选）
-  assert.equal(P.wbValidate({ title: '', project: 'p', consent: '全部同意' }), 'wb.need.title')
-  assert.equal(P.wbValidate({ title: 't', project: '', consent: '全部同意' }), 'wb.need.project')
-  assert.equal(P.wbValidate({ title: 't', project: '../escape', consent: '全部同意' }), 'wb.need.projectChars')
-  assert.equal(P.wbValidate({ title: 't', project: 'a'.repeat(33), consent: '全部同意' }), 'wb.need.projectChars')
-  assert.equal(P.wbValidate({ title: 't', project: 'p', consent: '' }), 'wb.need.consent')
-  assert.equal(P.wbValidate({ title: 't', project: '我的项目-1', consent: '全部同意' }), null, '中文/连字符合法')
-  // ② 开场白：结构化字段块（**不是散文**）+ 两条人在环纪律
-  const prompt = P.buildPrompt(Object.assign({}, P.WB_DEFAULT, { title: 'T', project: 'P1', genre: 'academic-cn', consent: '全部同意', materials: 'data.csv' }))
+  // ① 校验：题目 / 项目名（正则，含路径穿越）/ 检索范围（必须显式选；v19.4.0 起取代旧的「外发同意」）
+  assert.equal(P.wbValidate({ title: '', project: 'p', retrieval: '全网检索' }), 'wb.need.title')
+  assert.equal(P.wbValidate({ title: 't', project: '', retrieval: '全网检索' }), 'wb.need.project')
+  assert.equal(P.wbValidate({ title: 't', project: '../escape', retrieval: '全网检索' }), 'wb.need.projectChars')
+  assert.equal(P.wbValidate({ title: 't', project: 'a'.repeat(33), retrieval: '全网检索' }), 'wb.need.projectChars')
+  assert.equal(P.wbValidate({ title: 't', project: 'p', retrieval: '' }), 'wb.need.retrieval')
+  assert.equal(P.wbValidate({ title: 't', project: '我的项目-1', retrieval: '全网检索' }), null, '中文/连字符合法')
+  // ② 开场白：结构化字段块（**不是散文**）+ 授权串 + 四条例律
+  const prompt = P.buildPrompt(Object.assign({}, P.WB_DEFAULT, { title: 'T', project: 'P1', genre: 'academic-cn', retrieval: '全网检索', mask: 'basic', materials: 'data.csv' }))
   assert.match(prompt, /- 项目名: P1/)
-  assert.match(prompt, /- 题目: T/)
+  assert.match(prompt, /- 题名: T/)
   assert.match(prompt, /academic-cn（期刊投稿（社科实证））/, '选文类必须带出它的场景（一选定 11 项）')
-  assert.match(prompt, /- 外发同意: 全部同意/)
+  assert.match(prompt, /- 外部服务授权：检索=全网检索 \/ 推理=<[^>]+> \/ 脱敏=basic/, '三段式授权串必须整条出现在开场白里')
+  assert.ok(!/外发同意/.test(prompt), '旧「外发同意」一行必须消失（不是叠着新串再留一行）')
   assert.match(prompt, /- 投喂材料（已在工作区内）: data\.csv/)
   assert.match(prompt, /跟随文类/, '未填项必须写明「跟随文类」而不是留空')
   assert.match(prompt, /不要启动 Phase 1/, '必须带人在环纪律（否则工作台等于绕过 Phase 0 闸门）')
+  assert.match(prompt, /素材池\.md` \*\*§11\.2/, '档 B（仅本地素材）的派发话术指针必须写进开场白，否则主控会自己编')
   // ③ **唯一通道**：席位标准 props（v19.0.5 收口 —— 主人真机回执确认走的就是这条），且**只 setDraft**
   const calls = []
   const r1 = P.pushDraft({ inputActions: { setDraft: (s) => calls.push(['draft', s]), submit: () => calls.push(['submit']) } }, prompt)
@@ -1298,8 +1426,13 @@ test('开工台（v19.1.1）：**多工作区**时须逐个根探测，取第一
 })
 
 test('开工台（v19.1.6）：必填/可选标记**以 wbValidate 为准**（不靠印象标）', async () => {
-  // `wbValidate` 是真正拦人生成的判据：只有 题名 / 项目名 / 外发同意（已有默认值）三个。
-  //   其余字段（含工作区根、投喂材料、研究问题/写作要点、整块高级设置）一律可选——标错会把主人挡在门外。
+  // `wbValidate` 是真正拦人生成的判据：只有 题名 / 项目名 / 检索范围（有默认值）三个。
+  //   其余字段（含投喂材料、研究问题/写作要点、整块高级设置）一律可选——标错会把主人挡在门外。
+  //   v19.4.0：第三项从「外发同意」换成「检索范围」；同批删掉死字段「工作区根」；**主人同日裁决**再删
+  //   「质量门」「补扫」两个假开关（`quality` 降为只读提示、`rescan` 整删）。
+  //   故「可选」的期望处数 5 → **3**（现只剩 投喂材料 / 研究问题·写作要点 / 高级区标题 三处，
+  //   已按实际渲染逐处核过：`wbInput('materials', …, tag:'opt')`、`wbInput('brief', …, tag:'opt')`、
+  //   `wb.sec4` 标题；**下降**是事实变化，不是宽容）。
   const h = makeReactStub()
   const mod = await loadClient(h, { fetch: fetchStub({}) })
   const P = mod.__panel
@@ -1310,9 +1443,37 @@ test('开工台（v19.1.6）：必填/可选标记**以 wbValidate 为准**（�
   wbButton(h.tree(), '展开高级设置').props.onClick()
   const text = h.render(P.Workbench, props)
   const count = (sn, sub) => sn.split(sub).length - 1
-  assert.equal(count(text, '必填'), 3, '必填应恰好 3 处（题名/项目名/外发同意），与 wbValidate 对齐')
-  assert.ok(count(text, '可选') >= 5, '工作区根/投喂材料/研究问题/写作要点 + 高级区标题都应带「可选」：' + count(text, '可选'))
+  // v19.4.0：计数改用**元素树上的标记节点**（`S.wbTagReq`），不再数文本里的「必填」二字——
+  //   提示文案里合法出现「必填」（`wb.titleHint`「简报的必填格」/ `wb.p0leftList`「下列格必填」）
+  //   会把文本计数从 3 抬到 5，那是**工具误报**，不是标记多了。
+  const tagCount = (styleKey) => {
+    let n = 0
+    const walk = (node) => {
+      if (!node || typeof node !== 'object') return
+      if (Array.isArray(node)) { node.forEach(walk); return }
+      if (node.props && node.props.style === P.S[styleKey]) n++
+      ;(node.children || []).forEach(walk)
+    }
+    walk(h.tree())
+    return n
+  }
+  assert.equal(tagCount('wbTagReq'), 3, '必填标记应恰好 3 个（题名/项目名/检索范围），与 wbValidate 对齐')
+  assert.equal(tagCount('wbTagOpt'), 2, '可选标记应恰好 2 个（投喂材料 / 研究问题·写作要点）')
+  assert.ok(count(text, '可选') >= 3, '投喂材料/研究问题/写作要点 + 高级区标题都应带「可选」：' + count(text, '可选'))
   assert.match(text, /高级（可选；留空＝跟随文类）/, '高级区标题要写明整块可选（旧版此文案是死的，根本没渲染）')
+  // v19.4.0（主人 2026-10-13 授权）：结构门 / T9 视角**降为文类派生值**——面板不许再有这两个可编辑控件。
+  const selects = []
+  const collectSel = (node) => {
+    if (!node || typeof node !== 'object') return
+    if (Array.isArray(node)) { node.forEach(collectSel); return }
+    if (node.type === 'select') selects.push(node)
+    ;(node.children || []).forEach(collectSel)
+  }
+  collectSel(h.tree())
+  const optTexts = (sel) => (sel.children || []).map((o) => (o.props && o.props.value) || '')
+  const hasOpt = (sel, v) => optTexts(sel).includes(v)
+  assert.equal(selects.some((s) => hasOpt(s, 'IMRaD')), false, '结构门不得再是可编辑下拉（应只读展示文类投影）')
+  assert.equal(selects.some((s) => hasOpt(s, '三视角')), false, 'T9 视角不得再是可编辑下拉（应只读展示文类投影）')
   // 负向：标记集合要与 validate 一致（抽查——可选字段不该被标必填）
   const hasReqAfter = (label) => {
     const i = text.indexOf(label)
@@ -1320,10 +1481,17 @@ test('开工台（v19.1.6）：必填/可选标记**以 wbValidate 为准**（�
   }
   assert.equal(hasReqAfter(P.t('wb.f.title')), 1, '题名必填')
   assert.equal(hasReqAfter(P.t('wb.f.project')), 1, '项目名必填')
+  assert.equal(hasReqAfter(P.t('wb.f.scope')), 1, '检索范围必填（v19.4.0 起它是三项硬约束之一）')
+  assert.equal(hasReqAfter(P.t('wb.f.mask')), 0, '脱敏档可选（validate 不拦它，有恒定缺省 basic）')
   assert.equal(hasReqAfter(P.t('wb.f.genre')), 0, '文类可选（validate 不拦它）')
-  assert.equal(hasReqAfter(P.t('wb.f.words')), 0, '字数上限可选')
+  assert.equal(hasReqAfter(P.t('wb.f.words')), 0, '目标篇幅可选')
   assert.equal(hasReqAfter(P.t('wb.f.materials')), 0, '投喂材料可选')
   assert.equal(hasReqAfter(P.t('wb.f.brief')), 0, '研究问题/写作要点可选')
+  assert.equal(hasReqAfter(P.t('wb.f.structure')), 0, '结构门只读（v19.4.0 起为文类派生值），不标必填')
+  assert.equal(hasReqAfter(P.t('wb.f.t9')), 0, 'T9 视角只读（v19.4.0 起为文类派生值），不标必填')
+  // v19.4.0：`citeMode` 的标签改口径（「内联」现为**合法交付形态**，不是被删的假选项）。
+  assert.match(P.t('wb.f.citeMode'), /交付形态/, '引用模式的标签必须写明它是交付形态')
+  assert.equal(P.t('wb.f.title'), '题名（≤25 字）', '「题目」改「题名」并对齐简报的 ≤25 字硬约束')
 })
 
 test('开工台（v19.1.7）：人在环（OOH）——四门节点名**双向钉在真源**，全自动＝按首个推荐项', async () => {
