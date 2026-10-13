@@ -88,3 +88,82 @@ test('R4：sanitize 产物的结构化字段**仍**含原文（code mode / 结�
   const leak = [...froms, ...flagTexts].join('|')
   assert.match(leak, /张三|13800138000/, `value 残留含真原文（注册「已知残留」）：${leak.slice(0, 200)}`)
 })
+
+// ---------------------------------------------------------------------------
+// 批二（2026-10-13 全量审计 §3.5）：把「不泄漏原文」的断言从**镜像**换成**真 render**
+//
+// 为什么加这一组：本文件上面两个用例断言的是 `renderLikeLibTools()`——它是 `lib/tools.js` 的
+// **复刻**，不是被调用的那面。生产侧若在 `lib/tools.js` 的 ethics render 里加一句
+// `clip(f.text || f.detail, 160)`（v18.76.0 修复前**确实有过**这个形态），上面两用例**仍绿**。
+// 正确范式本仓已有：`tests/entry.test.mjs` 的工具注册用例直接取真 `charTool.output.render` 调用
+// （同范式即 `installLunhengTools()` → `regs.find(...)` → `.output.render(args, value)`）。
+//
+// **验收判据（本组存在的理由）**：临时在 `lib/tools.js` 的 ethics render 里加一句含 `f.text`
+// 的输出 → **本组必须红**（改完还原）。不证明「会红」，等于没验。
+// 本批已实测该注入：真 render 用例与形态契约用例变红，而上面两个镜像用例**仍全绿**
+// ——这正是「旧网漏、新网咬得住」的证据。
+// ---------------------------------------------------------------------------
+
+/** 取真 `lunheng_ethics_sanitize.output.render`（与 `tests/entry.test.mjs` 的工具注册用例同范式）。 */
+async function realEthicsRender() {
+  const fakeDefineTool = (def) => def
+  const { installLunhengTools } = await import(pathToFileURL(join(PACKAGE_ROOT, 'lib', 'tools.js')).href)
+  const regs = []
+  const ctx = { get: (n) => (n === 'tools' ? { register: (d) => { regs.push(d); return () => {} } } : undefined) }
+  await installLunhengTools(ctx, {
+    skillRoot: join(PACKAGE_ROOT, 'skills', 'lunheng-article-pipeline'),
+    defineToolFactory: async () => ({ defineTool: fakeDefineTool }),
+  })
+  const tool = regs.find((t) => t.name === 'lunheng_ethics_sanitize')
+  assert.ok(tool, '未注册 lunheng_ethics_sanitize')
+  assert.equal(typeof tool.output?.render, 'function', '必须提供 output.render')
+  return tool.output.render
+}
+
+test('批二 R4：真 render（lib/tools.js）不得回吐 reviewFlags[].text / replacements[].from', async () => {
+  const { sanitize, loadDicts, summarize } = await import(pathToFileURL(join(PACKAGE_ROOT, 'lib', 'ethics-sanitize.js')).href)
+  const dicts = loadDicts(join(PACKAGE_ROOT, 'skills', 'lunheng-article-pipeline'))
+  const value = sanitize('受访者张三的手机是13800138000，他在北京市朝阳区生活。', { mode: 'basic', dicts, maxChars: Number.MAX_SAFE_INTEGER })
+  value.summary = summarize(value)
+
+  const originalNames = [...new Set([
+    ...(value.replacements || []).map((r) => r.from),
+    ...(value.reviewFlags || []).map((f) => f.text),
+  ].filter(Boolean))]
+  assert.ok(originalNames.length > 0, `夹具应至少检出 1 个原文；actual = ${JSON.stringify(originalNames)}`)
+
+  const render = await realEthicsRender()
+  const renderedText = render({ file: '<text>', mode: 'basic' }, value).map((b) => b.text).join('')
+  for (const orig of originalNames) {
+    assert.ok(!renderedText.includes(orig),
+      `**真 render** 不得回吐原文 「${orig}」（该字符串会被 host 落进会话日志）；rendered = ${renderedText}`)
+  }
+})
+
+test('批二 R4：真 render 输出含项数 + 类别 + 「只传 text」提示（不打印原文但可复核）', async () => {
+  const { sanitize, loadDicts, summarize } = await import(pathToFileURL(join(PACKAGE_ROOT, 'lib', 'ethics-sanitize.js')).href)
+  const dicts = loadDicts(join(PACKAGE_ROOT, 'skills', 'lunheng-article-pipeline'))
+  const value = sanitize('张三的项目进展顺利', { mode: 'basic', dicts, maxChars: Number.MAX_SAFE_INTEGER })
+  value.summary = summarize(value)
+  const render = await realEthicsRender()
+  const renderedText = render({ file: '<text>', mode: 'basic' }, value).map((b) => b.text).join('')
+  assert.match(renderedText, /\*\*待复核\*\*：\d+ 项/, `真 render 应给项数；reviewFlags=${JSON.stringify(value.reviewFlags.map((f) => f.kind))}`)
+  assert.match(renderedText, /类别：/, '真 render 应给类别汇总')
+  assert.match(renderedText, /请只把本文的/, '真 render 应明确告知调用方只传 text')
+})
+
+test('批二：真 render 与镜像 render 的**形态契约**一致（镜像不得落后于真身）', async () => {
+  // 本仓原纪律是「测试即 render 镜像，lib 改动则测试必须同步更新」（文件头 :9-11）。
+  //   该纪律有个盲区：**它只证明「镜像与镜像一致」，不证明「镜像与真身一致」**——真身改了、
+  //   镜像没改时它照样绿。本用例把两者放在一处比对，**让镜像落后于真身时变红**。
+  const { sanitize, loadDicts, summarize } = await import(pathToFileURL(join(PACKAGE_ROOT, 'lib', 'ethics-sanitize.js')).href)
+  const dicts = loadDicts(join(PACKAGE_ROOT, 'skills', 'lunheng-article-pipeline'))
+  const value = sanitize('张三的项目进展顺利', { mode: 'basic', dicts, maxChars: Number.MAX_SAFE_INTEGER })
+  value.summary = summarize(value)
+  const render = await realEthicsRender()
+  const args = { file: '<text>', mode: 'basic' }
+  const realText = render(args, value).map((b) => b.text).join('')
+  const mirrorText = renderLikeLibTools({ file: args.file, v: value }).map((b) => b.text).join('')
+  assert.equal(realText, mirrorText,
+    `真 render 与镜像 render 输出已分叉——**同步 renderLikeLibTools**（本仓纪律：测试即镜像）；\nreal   = ${realText}\nmirror = ${mirrorText}`)
+})
