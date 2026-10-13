@@ -893,7 +893,8 @@ const OUTSIDE_CN_BASELINE = 250
 test('开工台（v19.4.0）：检索范围必选且默认「全网检索」；旧的「外发同意 4 选 1」已整体拆解', async () => {
   // 病灶沿革（主人 2026-10-13 追问链）：旧的 4 选 1 把「检索范围 / 脱敏档 / 推理位置 / SVG 与文生图」四件
   //   不同的事压进**一个**选择，于是任何一档都在暗示别的事也跟着变（实测：选「脱敏+SVG+本地」被读成
-  //   「不外发 = 不联网检索」，二者其实无关）。本批按已获采纳的 §4 方案拆成**两个正交下拉 + 一个只读徽标**。
+  //   「不外发 = 不联网检索」，二者其实无关）。本批按已获采纳的 §4 方案拆成**两个正交下拉**；
+  //   v19.4.1（主人裁定「把注释说明都去掉；只读和默认的部分去掉」）：「推理位置」只读徽标一并撤除。
   const h = makeReactStub()
   const mod = await loadClient(h, { fetch: fetchStub({}) })
   const P = mod.__panel
@@ -919,10 +920,30 @@ test('开工台（v19.4.0）：检索范围必选且默认「全网检索」；�
   const maskSel = wbFind(h.tree(), (n) => n.type === 'select' && hasOpt(n.children, 'strict'))
   assert.ok(maskSel, '脱敏档下拉必须存在且含 strict')
   assert.ok(!hasOpt(maskSel.children, ''), '脱敏下拉不得有空值项')
-  // 「推理位置」面板**不给开关**：它由会话 provider 决定，不是主人的选题 ⇒ 只读徽标 + 明确写谁决定
+  // 「推理位置」面板**不给开关**，且 v19.4.1 起连只读行也不摆：它由会话 provider 决定，不是主人的选题。
   const text = h.render(P.Workbench, props)
-  assert.match(text, /推理位置（只读）/, '必须渲染只读徽标的标签')
-  assert.match(text, /由本会话 provider 决定/, '只读徽标必须说明实际位置由谁决定（不假装面板能选）')
+  assert.ok(!/推理位置/.test(text), '面板不得再出现「推理位置」只读行（主人 2026-10-13 裁定）')
+  assert.equal(P.L10N.zh['wb.f.infer'], undefined, '其标签文案必须同批从 L10N 撤除，不留孤儿键')
+  assert.equal(P.L10N.zh['wb.inferBadge'], undefined, '其徽标文案必须同批撤除')
+  // 同批撤除的其余只读块文案：结构门 / T9 视角 / G14 / Phase 0 其余必答项
+  for (const gone of ['wb.f.structure', 'wb.derivedFollow', 'wb.derivedHint', 'wb.f.t9',
+    'wb.f.g14', 'wb.qualityBadge', 'wb.f.p0left', 'wb.p0leftList']) {
+    assert.equal(P.L10N.zh[gone], undefined, gone + ' 属只读块文案，必须同批撤除')
+  }
+  assert.equal(P.S.wbInfer, undefined, '只读徽标样式必须同批撤除（面板里已无宿主）')
+  assert.equal(P.S.wbInferDot, undefined, '只读徽标圆点样式必须同批撤除')
+  // 「注释说明」全清：表单里不得再有任何 `S.wbFieldHint` 行，唯余标题栏的单项目名（`:2099` 那处）——
+  //   它由**标题栏**渲染，不在打开的表单体内。
+  let hintInsideForm = 0
+  const wbBody = wbFind(h.tree(), (n) => n.props && n.props.style === P.S.wbBody)
+  const walkHint = (node) => {
+    if (!node || typeof node !== 'object') return
+    if (Array.isArray(node)) { node.forEach(walkHint); return }
+    if (node.props && node.props.style === P.S.wbFieldHint) hintInsideForm++
+    ;(node.children || []).forEach(walkHint)
+  }
+  walkHint(wbBody)
+  assert.equal(hintInsideForm, 0, '表单体内不得再有说明行（主人 2026-10-13 裁定：注释说明都去掉）')
 })
 
 test('开工台（v19.4.0）WB-13：每个表单字段都登记了消费点（script 类真命中脚本锚点 / prompt 类真落到开场白）', async () => {
@@ -1026,7 +1047,7 @@ test('开工台（v19.4.0）WB-13：每个表单字段都登记了消费点（sc
   }
   assert.equal(P.applyDerived({ genre: '' }).structure, '', '未选文类 ⇒ 结构门留空（跟随文类，不猜档）')
   assert.equal(P.applyDerived({ genre: 'not-a-genre' }).structure, '', '自定义文类 ⇒ 结构门留空（无投影可依）')
-  assert.match(P.L10N.zh['wb.derivedHint'], /只读|投影|派生/, '派生徽标必须写明「只读」性质')
+  assert.equal(P.L10N.zh['wb.derivedHint'], undefined, 'v19.4.1：派生只读说明已随只读块撤除（派生值只进开场白）')
 })
 
 test('开工台（v19.0.1）：目标期刊下拉必须与 期刊数据库.md 的 §一/§二 逐行一致', async () => {
@@ -1136,13 +1157,14 @@ test('开工台（v19.0.2）：列容器内不得出现 px 的 flex-basis（主�
   wbButton(h.tree(), '展开高级设置').props.onClick()
   h.render(mod.__panel.Workbench, props)
   assertNoColumnFlexBasis(h.tree())
-  // 具体钉：政策区提示必须用**方向无关**的样式（无 flex）——这就是那 220px 空白的来源。
-  //   v19.4.0：当事元素从「外发同意」的提示换成「检索范围」的提示（同一坑位、同一形状）。
-  const hint = wbFind(h.tree(), (n) => n.type === 'span'
-    && (n.children || []).some((c) => typeof c === 'string' && c.includes('「全网检索」＝检索员可调用外部搜索')))
-  assert.ok(hint, '政策区提示必须在渲染树里（它是本 bug 的当事元素）')
-  assert.equal(hint.props.style.flex, undefined, '字段列内的提示不得带 flex（列方向会被当高度）')
-  assert.ok(mod.__panel.S.wbFieldHint, '必须存在方向无关的 wbFieldHint 样式')
+  // 具体钉：表单内的**文字行**必须用**方向无关**的样式（无 flex）——那 220px 空白的来源就是这个形状。
+  //   v19.0.2 当事元素是「外发同意」的提示 → v19.4.0 换成「检索范围」的提示。
+  //   v19.4.1（主人裁定撤除字段说明行）：锚点改挂 `wbIntro`（表单体列容器里的「填写后生成结构化开场白…」），
+  //   **坑位与形状不变**：列容器里的文字行不得带 flex，否则列方向会把 `flex-basis` 当高度撑出空白。
+  const intro = wbFind(h.tree(), (n) => n.props && n.props.style === mod.__panel.S.wbIntro)
+  assert.ok(intro, '表单说明行必须在渲染树里（它是本 bug 在 v19.4.1 的当事元素）')
+  assert.equal(intro.props.style.flex, undefined, '列容器内的文字行不得带 flex（列方向会被当高度）')
+  assert.ok(mod.__panel.S.wbFieldHint, '必须存在方向无关的 wbFieldHint 样式（标题栏的项目名回显仍在用）')
   assert.equal(mod.__panel.S.wbFieldHint.flex, undefined, 'wbFieldHint 必须是方向无关的（不带 flex）')
 })
 
@@ -1444,8 +1466,9 @@ test('开工台（v19.1.6）：必填/可选标记**以 wbValidate 为准**（�
   const text = h.render(P.Workbench, props)
   const count = (sn, sub) => sn.split(sub).length - 1
   // v19.4.0：计数改用**元素树上的标记节点**（`S.wbTagReq`），不再数文本里的「必填」二字——
-  //   提示文案里合法出现「必填」（`wb.titleHint`「简报的必填格」/ `wb.p0leftList`「下列格必填」）
-  //   会把文本计数从 3 抬到 5，那是**工具误报**，不是标记多了。
+  //   当时提示文案里合法出现「必填」（`wb.titleHint`「简报的必填格」/ `wb.p0leftList`「下列格必填」）
+  //   会把文本计数从 3 抬到 5，那是**工具误报**，不是标记多了。v19.4.1 主人裁定撤除全部说明行后，
+  //   标记计数口径**保持不变**——它比文本计数稳，不随文案增删而漂。
   const tagCount = (styleKey) => {
     let n = 0
     const walk = (node) => {
@@ -1472,8 +1495,22 @@ test('开工台（v19.1.6）：必填/可选标记**以 wbValidate 为准**（�
   collectSel(h.tree())
   const optTexts = (sel) => (sel.children || []).map((o) => (o.props && o.props.value) || '')
   const hasOpt = (sel, v) => optTexts(sel).includes(v)
-  assert.equal(selects.some((s) => hasOpt(s, 'IMRaD')), false, '结构门不得再是可编辑下拉（应只读展示文类投影）')
-  assert.equal(selects.some((s) => hasOpt(s, '三视角')), false, 'T9 视角不得再是可编辑下拉（应只读展示文类投影）')
+  assert.equal(selects.some((s) => hasOpt(s, 'IMRaD')), false, '结构门不得再是可编辑下拉（文类派生值）')
+  assert.equal(selects.some((s) => hasOpt(s, '三视角')), false, 'T9 视角不得再是可编辑下拉（文类派生值）')
+  // v19.4.1（主人裁定「只读和默认的部分去掉」）：只读回显行也不再摆（面板不摆没有选择余地的行）。
+  //   只认**表单标签节点**（`S.wbLabel`），不认整段渲染文本——开场白预览里 `- 结构门:` 是合法内容。
+  const labelTexts = []
+  const collectLabels = (node) => {
+    if (!node || typeof node !== 'object') return
+    if (Array.isArray(node)) { node.forEach(collectLabels); return }
+    if (node.type === 'span' && node.props && node.props.style === P.S.wbLabel) {
+      labelTexts.push((node.children || []).filter((c) => typeof c === 'string').join(''))
+    }
+    ;(node.children || []).forEach(collectLabels)
+  }
+  collectLabels(h.tree())
+  assert.ok(!labelTexts.some((s) => /结构门|T9 视角|G14|推理位置|Phase 0 其余必答项/.test(s)),
+    '只读行标签必须全部撤除，实到标签：' + JSON.stringify(labelTexts))
   // 负向：标记集合要与 validate 一致（抽查——可选字段不该被标必填）
   const hasReqAfter = (label) => {
     const i = text.indexOf(label)
@@ -1487,8 +1524,6 @@ test('开工台（v19.1.6）：必填/可选标记**以 wbValidate 为准**（�
   assert.equal(hasReqAfter(P.t('wb.f.words')), 0, '目标篇幅可选')
   assert.equal(hasReqAfter(P.t('wb.f.materials')), 0, '投喂材料可选')
   assert.equal(hasReqAfter(P.t('wb.f.brief')), 0, '研究问题/写作要点可选')
-  assert.equal(hasReqAfter(P.t('wb.f.structure')), 0, '结构门只读（v19.4.0 起为文类派生值），不标必填')
-  assert.equal(hasReqAfter(P.t('wb.f.t9')), 0, 'T9 视角只读（v19.4.0 起为文类派生值），不标必填')
   // v19.4.0：`citeMode` 的标签改口径（「内联」现为**合法交付形态**，不是被删的假选项）。
   assert.match(P.t('wb.f.citeMode'), /交付形态/, '引用模式的标签必须写明它是交付形态')
   assert.equal(P.t('wb.f.title'), '题名（≤25 字）', '「题目」改「题名」并对齐简报的 ≤25 字硬约束')
@@ -1508,8 +1543,10 @@ test('开工台（v19.1.7）：人在环（OOH）——四门节点名**双向�
   for (const n of NODES) {
     assert.ok(skill.includes(n) || readme.includes(n), `真源应含四门之一：${n}`)
     assert.ok(P.WB_HITL_FOUR.includes(n), `四门文案必须列全：${n}`)
-    assert.ok(P.L10N.zh['wb.hitlHint'].includes(n.replace('P0 定题', 'P0 定题')), `提示应含节点名：${n}`)
   }
+  // v19.4.1（主人裁定「注释说明都去掉」）：说明行撤除后，四门节点名在面板侧**只由 `WB_HITL_FOUR`
+  //   承载**，唯一权威仍在上面的真源两文件（故不因撤除说明而丢失可核性）。
+  assert.equal(P.L10N.zh['wb.hitlHint'], undefined, '人在环说明行必须同批撤除，不留孤儿键')
   assert.match(readme, /全部必需、不设可省任一门/, '真源里「四门必须」是**默认**硬口径；全自动必须写成显式授权例外')
   // v19.1.9：机制已正式写入「全自动」例外——两处真源都要有，且必须写明「四份单照落 ⇒ A7 门不变」（留痕不破）
   const gateReadme = readme.split('\n').find((l) => l.includes('四门「必须」')) || ''
@@ -1531,7 +1568,7 @@ test('开工台（v19.1.7）：人在环（OOH）——四门节点名**双向�
   assert.ok(!/四门必须/.test(pAuto.split('\n').filter((l) => l.includes('人在环')).join('')), '全自动不该再写四门必须')
 })
 
-test('开工台（v19.1.7）：人在环下拉在「外发同意」旁、两个选项、并带说明', async () => {
+test('开工台（v19.1.7/v19.4.1）：人在环下拉在「外发同意」旁、两个选项（说明行已撤）', async () => {
   const h = makeReactStub()
   const mod = await loadClient(h, { fetch: fetchStub({}) })
   const P = mod.__panel
@@ -1544,7 +1581,10 @@ test('开工台（v19.1.7）：人在环下拉在「外发同意」旁、两个�
   const sel = wbFind(h.tree(), (n) => n.type === 'select' && hasOpt(n.children, '四门必须'))
   assert.ok(sel, '必须有人/环下拉且含「四门必须」')
   assert.ok(hasOpt(sel.children, '全自动'), '必须含「全自动」选项')
-  assert.match(text, /直接按各门的首个推荐项/, '说明里要讲清全自动的实际后果')
+  // v19.4.1（主人裁定撤除说明行）：下拉旁不再挂说明；「全自动的实际后果」改由 `WB_HITL_AUTO`
+  //   单点承载（同一句真源：既进开场白给主控看，也进上面 T-1 的双向钉），面板侧不留副本。
+  assert.equal(P.L10N.zh['wb.hitlHint'], undefined, '下拉旁的说明行必须同批撤除，不留孤儿键')
+  assert.match(P.WB_HITL_AUTO, /首个推荐项/, '全自动的实际后果必须仍写在 WB_HITL_AUTO 里')
 })
 
 test('开工台（v19.1.6）：标题栏的开关按钮**靠右**（`marginLeft: auto`）', async () => {
