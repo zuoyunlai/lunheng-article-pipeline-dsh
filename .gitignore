@@ -1,4 +1,4 @@
-# 依赖与产物
+﻿# 依赖与产物
 node_modules/
 *.tgz
 npm-debug.log*
@@ -44,4 +44,5 @@ audits/反哺报告-v18.22.0-上下文效率质量三维优化方案.md
 *.bak2
 *.bak3
 *.bak-fix
+*.bak-lunheng*
 *.advtest

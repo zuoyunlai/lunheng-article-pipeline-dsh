@@ -147,7 +147,7 @@ else {
   st.started = m(/\*\*启动时间\*\*[：:]\s*([^\n]+)/);
   st.phaseLine = m(/-\s*(?:🔄|✅|⏸)\s*\*\*[^*]+\*\*\s*—\s*([^\n]+)/);
   st.signedAt = m(/主人\s*(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?\s*\+08:00)\s*签收/);
-  const phaseTable = /## Phase 进度[\s\S]*?\n((?:\|[^\n]*\n)+)/.exec(statusText);
+  const phaseTable = /## Phase (?:\u8fdb\u5ea6|\u8fdb\u5c55)[^\n]*\n\s*\n?((?:\|[^\n]*\n)+)/.exec(statusText);   // v19.5.1 反哺第22条：接受「进度|进展」两种字面 + 标题后允许空行（原写法两个陷阱各零命中）
   if (phaseTable) {
     st.phaseRows = phaseTable[1].split('\n').map((l) => l.trim())
       .filter((l) => l.startsWith('|') && !/^\|[\s\-:|]+\|$/.test(l))

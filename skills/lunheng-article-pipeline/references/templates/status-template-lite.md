@@ -35,3 +35,15 @@
 **精简版结束**
 
 > 完整版见 [`status-template.md`](status-template.md)
+
+## Phase 进度
+| Phase | 状态 | 产物 | 闸门 |
+|---|---|---|---|
+| 0 定题 | ⬜ Inbox | | |
+| 1 检索 T1∥T2∥T3 | ⬜ Inbox | | |
+| 2 分析 T4 | ⬜ Inbox | | |
+| 3 写作 T5 | ⬜ Inbox | | |
+| 4 审计 T7 | ⬜ Inbox | | |
+| 5 终检 T8 | ⬜ Inbox | | |
+
+> **形态硬约束**：标题逐字 `## Phase 进度`、**下一行即表格**、状态列含 `✅` 才计闭合（`run-report.mjs` / `panel.mjs` 共用；v19.5.1 反哺第21/22条）。
