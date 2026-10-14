@@ -1360,7 +1360,7 @@ test('开工台（v19.0.0 §4.2）：组件渲染 + 点「生成开场白」把�
   toggle.props.onClick()
   text = h.render(mod.__panel.Workbench, props)
   assert.match(text, /项目名/, '展开后必须出现项目名（论衡特有：run/<项目名>/ 必须主人给）')
-  assert.match(text, /外发同意/, '展开后必须出现外发同意（Phase 0 硬闸）')
+  assert.match(text, /外部服务授权/, '展开后必须出现外部服务授权（Phase 0 硬闸；v19.5.5 起取代旧称「外发同意」）')
   // ③ 未填必填项时点击 → 不写入，且给出**具体**原因
   const fill0 = findButton(h.tree(), '生成开场白并填入输入框')
   assert.ok(fill0, '展开后必须有生成按钮')
@@ -1568,7 +1568,7 @@ test('开工台（v19.1.7）：人在环（OOH）——四门节点名**双向�
   assert.ok(!/四门必须/.test(pAuto.split('\n').filter((l) => l.includes('人在环')).join('')), '全自动不该再写四门必须')
 })
 
-test('开工台（v19.1.7/v19.4.1）：人在环下拉在「外发同意」旁、两个选项（说明行已撤）', async () => {
+test('开工台（v19.1.7/v19.4.1）：人在环下拉在「外部服务授权」旁、两个选项（说明行已撤）', async () => {
   const h = makeReactStub()
   const mod = await loadClient(h, { fetch: fetchStub({}) })
   const P = mod.__panel

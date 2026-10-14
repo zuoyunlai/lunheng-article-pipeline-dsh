@@ -2,7 +2,7 @@
 
 > **论衡（lunheng-article-pipeline）** 是一个多 Agent 深度长文生产流水线，DeepSeek Harness（dsh）bundle 插件。它不是让一个 AI 直接写文章，而是让一支 **9 个 AI 角色组成的"论文生产小队"** 按既定协议协作：定题 → 三线并行检索 → 分析 → 写作 → 批判 → 审计 → 审稿 → 终检。每一步都有明确产出物、交接报告与质量闸门，最终交付**有证据底座、有反方论证、有独立审计、有人工核验节点**的文章。
 
-> 适用：公众号深度长文、研究报告、学术论文、商业评论、行业分析——任何"要站得住脚"的长内容。当前版本 **v19.5.4**（DSH 独立版本）。
+> 适用：公众号深度长文、研究报告、学术论文、商业评论、行业分析——任何"要站得住脚"的长内容。当前版本 **v19.5.5**（DSH 独立版本）。
 
 ---
 
@@ -162,7 +162,7 @@ dsh plugin --profile web add lunheng-article-pipeline
 # 3) 重启 dsh web
 ```
 
-新会话的 `skill` 工具目录会出现 `lunheng-article-pipeline`，直接说「加载 lunheng-article-pipeline 技能」或交给它一个深度文章主题，它会先走 Phase 0 定题确认（含外部服务 4 选 1 明示同意）。
+新会话的 `skill` 工具目录会出现 `lunheng-article-pipeline`，直接说「加载 lunheng-article-pipeline 技能」或交给它一个深度文章主题，它会先走 Phase 0 定题确认（含三段式外部服务授权：`检索=` / `推理=` / `脱敏=`）。
 
 > **安装注意**：① 目标机器需有 pnpm（`dsh plugin` 内部转 pnpm）；② 新版 dsh 的 `dsh plugin add` **会自动**把声明了 `dsh.bundle` 的依赖加进 `dsh.profile.bundles`——装完重启即可；仅当纯 npm/pnpm 直接安装或旧版 dsh 时才需手动加第 2 步；③ 依赖版本如被精确锁定（如 `2.5.2-dsh.4`），升级需手动改 `package.json` 依赖后 `pnpm install`；④ 技能由包入口 `lib/index.js` 注册、三档工具由 `cordis.patch.yml` 叠加——v18.0.0 起本包带 JS 入口，dshmarket 一类「只认 JS 入口」的校验器不再误报。
 
@@ -208,7 +208,7 @@ dsh plugin --profile web add lunheng-article-pipeline
 ## 获取方式
 
 - **GitHub（DSH bundle）**：https://github.com/zuoyunlai/lunheng-article-pipeline-dsh
-- **npm**：`lunheng-article-pipeline@dsh`（dist-tag `dsh` = 最新 DSH 迭代版）；锁定具体版本可写 `@19.5.4`
+- **npm**：`lunheng-article-pipeline@dsh`（dist-tag `dsh` = 最新 DSH 迭代版）；锁定具体版本可写 `@19.5.5`
 - **历史版本线（独立化前）**：https://github.com/zuoyunlai/lunheng-article-pipeline
 
 ---
