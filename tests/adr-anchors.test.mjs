@@ -12,9 +12,13 @@
 //   · 断言写成「**必须出现 X**」+「**不得出现 Y**」两句，缺一不可：
 //     只写前者会被「保留 X 的同时又加了 Y」绕过；只写后者会被「整段删掉」绕过（删掉也就不含 Y 了）。
 //   · 新增 ADR 时，若其 anchor 声明了源码钉，**必须在本文件加一组用例**（否则该 anchor 是空头支票）。
+//   · **v19.5.4（反哺报告 §3.10 方案 A · 主人裁定 R1「应登记」）**：本条由「必须落在本文件」
+//     放宽为「**必须在文件末的 `ADR_ANCHOR_HOMES` 登记表里留名**」——钉可以落在别的测试文件，
+//     但登记表由三条自检兜住：① 声明了钉却没登记 → 红；② 落点文件不存在，或落点里没有 `test(` → 红；
+//     ③ ADR 正文提到的 `tests/**/*.test.mjs` 在盘上不存在 → 红（防「巨石拆分后指针漏迁」）。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -107,4 +111,71 @@ test('ADR-0003 源码钉：本文件的锚点在 repo-hygiene-check 的 ⑧/⑧b
   for (const rule of ['⑧b 退出码命名空间', '⑧d 脚本自述退出码']) {
     assert.ok(hyg.includes(rule), `repo-hygiene-check 必须仍含规则「${rule}」——它是 ADR-0003 的源码钉锚点`)
   }
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 源码钉登记表 + 三条自检（v19.5.4 · 反哺报告 §3.10 方案 A；主人 2026-10-14 裁定 R1 = 「应登记」）
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * `ADR 编号 → 源码钉落点`（相对仓库根的 POSIX 路径，可多处）。
+ *
+ * **这张表存在的理由**：本文件顶部的口径是「新增 ADR 若声明了源码钉必须在本文件加一组用例」，
+ *   但实测 ADR-0004 / ADR-0005 / ADR-0006 的钉**真实存在于别的测试文件**，却在本文件**零登记**
+ *   ——后果在 ADR-0006 上已兑现：阈值由 0.30 改到 0.40 时源码钉与标定注释都同批更新了，
+ *   而**没有任何门点名**（「钉还在，但没人看着」= 空头支票的同一形态）。
+ *
+ * 故把「必须落在本文件」放宽为「**必须有登记**」：钉可以落在别处，但必须在这里留名，
+ *   并由下面三条自检保证它**真实存在、真的有用例、且 ADR 正文里的测试路径都指得准**。
+ */
+const ADR_ANCHOR_HOMES = new Map([
+  ['ADR-0001', ['tests/adr-anchors.test.mjs']],
+  ['ADR-0002', ['tests/adr-anchors.test.mjs']],
+  ['ADR-0003', ['tests/adr-anchors.test.mjs', 'scripts/repo-hygiene-check.mjs']],
+  ['ADR-0004', ['tests/mgate-report-ownership.test.mjs']],
+  ['ADR-0005', ['tests/disproofs-check.test.mjs']],
+  ['ADR-0006', ['tests/readability.test.mjs']],
+  ['ADR-0007', ['tests/readability.test.mjs']],
+])
+
+const DECISIONS = join(ROOT, 'audits', 'decisions')
+const adrText = new Map(
+  readdirSync(DECISIONS)
+    .filter((f) => /^ADR-\d{4}.*\.md$/.test(f))
+    .sort()
+    .map((f) => [`ADR-${f.slice(4, 8)}`, readFileSync(join(DECISIONS, f), 'utf8')]),
+)
+
+test('ADR 登记表自检 ①：正文声明了「源码钉」的 ADR 必须登记（防「空头支票」）', () => {
+  const missing = [...adrText]
+    .filter(([id, txt]) => /源码钉/.test(txt) && !ADR_ANCHOR_HOMES.has(id))
+    .map(([id]) => id)
+  assert.deepEqual(
+    missing,
+    [],
+    `以下 ADR 正文声明了源码钉、却没进 ADR_ANCHOR_HOMES：${missing.join('、')}`
+    + '——钉会「存在但无人点名」（ADR-0006 的 0.30→0.40 正是这条缺口兑现的）',
+  )
+})
+
+test('ADR 登记表自检 ②：登记落点必须存在，且其中至少一个真含 test(...) 用例', () => {
+  for (const [id, homes] of ADR_ANCHOR_HOMES) {
+    assert.ok(adrText.has(id), `${id} 在 ADR_ANCHOR_HOMES 里，但 audits/decisions/ 下没有这份 ADR——登记表指向了不存在的决策`)
+    let withTests = 0
+    for (const rel of homes) {
+      const abs = join(ROOT, rel)
+      assert.ok(existsSync(abs), `${id} 的源码钉落点 ${rel} 不存在——钉指到了一个盘上没有的文件`)
+      if (rel.startsWith('tests/') && /(?:^|\n)test\(/.test(readFileSync(abs, 'utf8'))) withTests++
+    }
+    assert.ok(withTests > 0, `${id} 登记的落点里没有一个真含 test(...) 用例——「钉」落在空文件或纯注释上等于没有钉`)
+  }
+})
+
+test('ADR 登记表自检 ③：ADR 正文提到的 tests/**/*.test.mjs 必须真实存在（防「拆分后指针漏迁」）', () => {
+  const bad = []
+  for (const [id, txt] of adrText) {
+    for (const m of txt.matchAll(/tests\/[\w./-]*\.test\.mjs/g)) {
+      if (!existsSync(join(ROOT, m[0]))) bad.push(`${id} → ${m[0]}`)
+    }
+  }
+  assert.deepEqual(bad, [], `以下 ADR 正文引用的测试文件在盘上不存在：${bad.join('、')}`)
 })

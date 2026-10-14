@@ -29,7 +29,7 @@ export const RULE_REGISTRY = Object.freeze([
   { id: '⑥', module: 'consistency-check.mjs', what: '已知口径残留（M-Form 项数 / M-Gate-Report-v2.2.x / G 项数错标等）' },
   { id: '⑦', module: 'consistency-check.mjs', what: '全量版本头一致性（防单文件版本头漏 bump）' },
   { id: '⑧', module: 'repo-surface-rules.mjs', what: 'cordis.patch.yml + examples/ 版本引用' },
-  { id: '⑨', module: 'repo-surface-rules.mjs', what: '.dsh 双写同步 + 污染校验' },
+  { id: '⑨', module: 'repo-surface-rules.mjs', what: '.dsh 双写同步 + 污染校验 + 备份残留（*.bak*/*.orig/*.rej，v19.5.4 扩面）' },
   { id: '⑩', module: 'script-rules.mjs', what: '随包脚本白名单集合一致性' },
   { id: '⑪', module: 'docs-version-rules.mjs', what: 'CHANGELOG 当前版本段存在性' },
   { id: '⑫', module: 'docs-version-rules.mjs', what: '版本点位全量扫描 + 版本头必须存在（v18.78.2 A1 加硬判据）' },

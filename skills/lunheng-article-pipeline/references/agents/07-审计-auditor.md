@@ -1,4 +1,4 @@
-> 版本：v19.5.3（DSH bundle 插件）
+> 版本：v19.5.4（DSH bundle 插件）
 >
 > **历史叙事已外移**：正文只留现行规则；历史成因 / 逐版明细 / 教训编号见 CHANGELOG.md 对应版本段与 `memory/lessons.md`。
 
@@ -119,7 +119,7 @@
 > - **MC-Exist-11 统计-数据匹配**：方法节同时含「检验类型声明 + 效应量 + 置信区间或 p 值」三项，缺任一项 → **P1**
 > - **MC-Exist-12 结果-方法闭环**：结果节是否引用方法节中的关键方法名（OLS / PSM / DID / 中介效应等），不可回链 → **P1**
 
-> **命名空间契约**：本脚本三检对应 `methodology-check.mjs` 的**自有前缀** `MC-`（`MC-Form-12` / `MC-Exist-11` / `MC-Exist-12`），**不属于 M 门体系编号**（M 门 = M-Form 1-11 + M-Exist 1-11 + M-Integrity-1/2）；本批次以独立脚本形式落地，与 `_lib/mgate-gates/*` 的框架层注册无关。
+> **命名空间契约**：本脚本三检对应 `methodology-check.mjs` 的**自有前缀** `MC-`（`MC-Form-12` / `MC-Exist-11` / `MC-Exist-12`），**不属于 M 门体系编号**（M 门 = M-Form 1-11 + M-Exist 1-11 + M-Integrity-1 + M-Fact-1，另 M-Integrity-2 人工门）；本批次以独立脚本形式落地，与 `_lib/mgate-gates/*` 的框架层注册无关。
 
 ### 📚 引用实质相关性段
 

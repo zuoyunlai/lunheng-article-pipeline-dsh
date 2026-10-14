@@ -105,17 +105,16 @@ export const TOMBSTONES = new Map([
 /**
  * 存疑条目（放行但**大声打印**）：归类拿不准、已上报维护者，不静默变成永久豁免。
  * 清理条件写在 reason 里——条目长期存疑就应升级为「修文档」或「修脚本」。
+ *
+ * ✅ **v19.5.4（反哺报告 §3.13 方案 A）已收口，本表当前为空**：原唯一一条是 `skills/README.md`
+ *   （`consistency-check.mjs` 的**旧内部登记名**）——该脚本的 `repoTargets` 现已登记**真实路径**
+ *   `skills/lunheng-article-pipeline/README.md`，两处引用（`CONTRIBUTING.md` 与
+ *   `references/memory/lessons.md`）也同批改为真实路径，故「同一个文件两个名字」的口径分叉消失。
+ *   **本机制保留**：新出现的拿不准条目仍往这里放，不要静默变成永久豁免。
+ *   沿革（保留，它是这条规则的由来）：v18.62.4（全量审计-v18.62.3 §8.3 #37）去掉会腐烂的
+ *   `:308-315` 行号，改**按符号名定位**（`repoTargets` 可直接 grep；改名时能连带发现）——位置会漂，名字不会。
  */
 export const SUSPECT = new Map([
-  // v18.62.4（全量审计-v18.62.3 §8.3 #37）：**去掉会腐烂的 `:308-315` 行号**。
-  //   病灶：该引用当年指 `consistency-check.mjs` 的 `repoTargets`，随后续批次插入内容已漂到 `:425`
-  //   ——**注释在说谎**，且没有门会发现（规则 ⑪ 只禁 `lib/**.js:LINE` 形态的**发布面**引用，
-  //   管不到仓库脚本注释里的互指）。**实测数（v18.78.2 · 全量审计 B8 复核）：全库同类引用 20 处 / 16 个文件**
-  //   ——已由规则 ⑪' 的**脚本注释面棘轮**覆盖（数字真源 = `scripts/_lib/lib-line-refs.mjs` 的
-  //   `SCRIPT_COMMENT_REF_BASELINE`；本行旧文写的「9 处」是当年的实测，现按「数字只写真源指针」收敛）。
-  //   修法：**按符号名定位**（`repoTargets` 可直接 grep；改名时能连带发现），不再写行号——
-  //   位置会漂，名字不会。
-  ['skills/README.md', '`consistency-check.mjs` 的**内部登记名**（其 `repoTargets` 把它解析为 `skills/lunheng-article-pipeline/README.md`，磁盘上确无 `skills/README.md`）；引用处用的是脚本标签，属命名口径不一致而非文件缺失。建议脚本与文档统一为真实路径'],
 ])
 
 /** 走查某根下的所有 .md。 */

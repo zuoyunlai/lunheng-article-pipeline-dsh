@@ -1,4 +1,4 @@
-> 版本：v19.5.3（DSH bundle 插件）
+> 版本：v19.5.4（DSH bundle 插件）
 
 # 论衡教训库（references/memory/lessons.md）
 
@@ -39,7 +39,7 @@
 - **判据**：论衡特定（M 门执行模型）。
 
 ### #146 自研脚本的「目录布局假设」与部署形态不匹配
-- **现象**：`scripts/consistency-check.mjs` 在本地部署下**完全不可用**（`ENOENT: ~/.dsh/package.json`），21 类文档漂移检查长期空转；同因另产生 3 条假 P0（`README.md` 与 `skills/README.md` 指向同一文件、`docs/introduction.md` 不存在）。
+- **现象**：`scripts/consistency-check.mjs` 在本地部署下**完全不可用**（`ENOENT: ~/.dsh/package.json`），21 类文档漂移检查长期空转；同因另产生 3 条假 P0（`README.md` 与技能级 README（`skills/lunheng-article-pipeline/README.md`）指向同一文件、`docs/introduction.md` 不存在）。
 - **根因**：`REPO_ROOT = join(ROOT,'..','..')` **硬编码「向上两级」**，只对「仓库布局」（`<repo>/package.json` + `<repo>/skills/<name>/`）成立；本机是「技能即包根」（`.dsh/skills/<name>/`）布局。
 - **解决**：已 merge 到该脚本——`REPO_ROOT` **自动探测**（`existsSync(join(ROOT,'package.json')) ? ROOT : join(ROOT,'..','..')`）+ 仓库级文档检查**按布局分流**。
 - **判据**：论衡特定（但判据通用：**脚本跑不通时先查目录布局假设，别急着改逻辑**）。

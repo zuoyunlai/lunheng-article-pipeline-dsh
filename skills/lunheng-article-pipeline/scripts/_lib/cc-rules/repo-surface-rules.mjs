@@ -1,4 +1,4 @@
-// ⑧ patch+examples 版本引用 / ⑨ .dsh 双写同步 / ㉑ 五语 README 镜像 / ㉒ 锚点存在 / ㉓ 阈值总表 + 门模块目录 / ㉝ 脚本数外泄 / ㉞ .md BOM 检测 / ㉟ 规则登记表自洽
+// ⑧ patch+examples 版本引用 / ⑨ .dsh 双写同步 + 污染校验 + 备份残留 / ㉑ 五语 README 镜像 / ㉒ 锚点存在 / ㉓ 阈值总表 + 门模块目录 / ㉝ 脚本数外泄 / ㉞ .md BOM 检测 / ㉟ 规则登记表自洽
 // v18.3.1（审计 B2 阶段 3）：从 consistency-check.mjs 按规则族抽离，行为逐字等价（回归测试的
 //   注入验证用例 + 真源仓库自跑兜底）。共享态（errors / 派生源 / 版本真源等）由主脚本构建 ctx 传入。
 // v18.78.2（全量审计 A2）：**本模块两条规则此前用了别处已占用的编号**（㉕ 与 `content-rules.mjs` 的
@@ -38,6 +38,8 @@ if (existsSync(exDir)) {
 }
 
 // ⑨ .dsh 双写同步 + 污染校验（v2.5.2-dsh.5 审计新增：仅当兄弟 .dsh 技能目录存在时生效，CI 无此目录自动跳过）
+//   ⚠️ v19.5.4（反哺报告 §3.11）扩面：**备份残留扫描不在此跳过之列**——它刻意放在镜像块之外（见文末块注释），
+//   故 CI 也会跑。边界如实：本条只管**技能目录树**，`run/` 等项目目录的回滚点不在此面内。
 // v18.2.3 修订（主人授权；依据「版本抬升 18.2.2 → 18.2.3」后的实测复核）：
 //   旧实现有**两处盲区**——① 只核 **4 个文件**（SKILL.md / m-gate-check / count-chars / M-Gate-Algorithm），
 //   其余 80 个文件从未被核；② 比对**只比字节大小**（`statSync().size`）。
@@ -86,6 +88,27 @@ if (existsSync(dshSkillDir)) {
     if (existsSync(join(dshSkillDir, poll))) {
       errors.push(`[P1 .dsh 污染] 技能目录含仓库级条目 ${poll}（应只含技能包本体）`);
     }
+  }
+}
+
+// ── 备份残留扫描（v19.5.4 · 反哺报告 §3.11；**刻意放在镜像块之外**）─────────────────────────
+//   病灶：实测真源目录里长期躺着 8 个 `*.bak-lunheng-fix*`——**发布面有三重保险**（`package.json`
+//   的 `!**/*.bak*` 白名单否定 / `.gitignore` / `pack-negative` 负清单），所以**没有任何门看得见**；
+//   而 `AGENTS.md` §文件修改操作约束·5 规定的镜像同步方式正是「`cp` 整目录」→ 它们会被**静默带进镜像**，
+//   且上面那段「镜像多出文件」也抓不到（两边都有 = 不多出）。**门绿 ≠ 目录干净**。
+//   为什么不在 `existsSync(dshSkillDir)` 里：CI 没有 `.dsh` → 整段跳过 → 缺陷只在本机存在时可见；
+//   而「备份残留」本身就是真源侧的卫生问题（`writeWithSafety` 的时间戳回滚点也落在**同目录**）。
+//   判据：技能目录树内不得有 `*.bak*` / `*.orig` / `*.rej` 残留；回滚点属**临时物**，
+//   跑门/同步前先清理——与 `maintainers.md` §十四「跑门前先清 staging 中间产物」同判据。
+const BACKUP_RESIDUE_RE = /\.(?:bak|orig|rej)(?:[.\-_]|$)/i;
+{
+  const residue = allFilesOf(ROOT).filter((f) => BACKUP_RESIDUE_RE.test(f.split('/').pop()));
+  if (residue.length) {
+    errors.push(
+      `[P1 备份残留] 技能目录树内有 ${residue.length} 个备份残留（*.bak* / *.orig / *.rej），如 ${residue.slice(0, 3).join('、')}`
+      + '——发布面的三重保险（package.json 否定 / .gitignore / pack 负清单）都看不到它们，'
+      + '而「`cp` 整目录」的镜像同步会**静默**把它们带进镜像；请删除后再跑门（回滚点是临时物，判据同 §十四「跑门前先清 staging」）',
+    );
   }
 }
 
