@@ -316,11 +316,18 @@ if (figRec.status === 'missing') {
   warn('final/图件', `有 ${figRec.totals.numbered} 张已编号图件但正文无图位 —— 图件未与正文对账`);
 }
 const finalFiles = [];
+// v19.5.2（反哺第23条）：**覆盖写留下的 `*.bak` 不进交付物枚举**。
+//   病灶：本脚本/`build-evidence-bundle`/`m-gate-check` 覆盖写时按时间戳留备份，实测某项目 `final/` 里
+//   累积 `运行报告.html.*.bak`×4、`运行报告.json.*.bak`×3、`M-Gate-Report.json.*.bak`×3、
+//   `证据包/manifest.json.*.bak`×6 → **交付物面板计数虚高**（finalFiles 计 24，真实交付物 20）。
+//   判据：面板列的是**交付物**，备份是过程件；把过程件混进交付清单会让「齐备性」失去意义。
+const BAK_RE = /\.bak$|\.[0-9]{8}-[0-9]{6}\.bak$/i;
 (function walkFinal(dir, rel) {
   for (const f of listDir(dir)) {
     const p = join(dir, f);
     let s; try { s = statSync(p); } catch { continue; }
     if (s.isDirectory()) { if (f !== '证据包') walkFinal(p, rel ? rel + '/' + f : f); }
+    else if (BAK_RE.test(f)) continue;   // 备份不进交付物枚举
     else finalFiles.push({ rel: rel ? rel + '/' + f : f, bytes: s.size, mtime: s.mtime.toISOString().slice(0, 16).replace('T', ' ') });
   }
 })(join(projectDir, 'final'), '');
@@ -643,7 +650,7 @@ function render() {
       ${figRec.orphans.length ? `<p class="small n-warn">已编号图件未匹配到图位：${esc(figRec.orphans.join('、'))}</p>` : ''}
       ${figRec.extras.length ? `<p class="small">非正文图（封面 / 附录，不计入图位）：${esc(figRec.extras.join('、'))}</p>` : ''}
       ${figCards ? `<div class="figs">${figCards}</div>` : ''}</div>
-    <div class="panel"><h3>final/ 实体文件（${finalFiles.length} 个，证据包子目录已折叠）</h3>
+    <div class="panel"><h3>final/ 实体文件（${finalFiles.length} 个，证据包子目录已折叠，**备份 *.bak 不计**）</h3>
       <table><thead><tr><th>相对路径</th><th>大小</th><th>修改时间</th></tr></thead><tbody>${filesTable || '<tr><td colspan="3" class="small">final/ 不存在</td></tr>'}</tbody></table></div>
   </section>
 
