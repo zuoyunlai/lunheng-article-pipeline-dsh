@@ -127,7 +127,7 @@ test('B25-A2【反向】下限和 < 目标 × 0.95 → **不得**出现「已顶
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
 
-test('B25-A3【真夹具·只读】本轮大纲：分节标题式下限和 = 8000（= 目标），须触发「已顶满」提示', () => {
+test('B25-A3【真夹具·只读】本轮大纲：分节标题式下限和 = 8000（= 目标），须触发「已顶满」提示', (t) => {
   // 真夹具 = `$LUNHENG_FIXTURE_ROOT`（或仓库同级 `run/` 下自动探测到的项目；**只读**：本用例只读它，不写它）。
   // 实测数字（2026-10-13 复算，含 §4 括号里「；主体…」追加说明的解析）：
   //   分节标题式 = 850+1100+610+2960+1880+600 = **8,000**；§11 预算表式 = 850+1100+610+3000+1800+600 = **7,960**
@@ -139,7 +139,8 @@ test('B25-A3【真夹具·只读】本轮大纲：分节标题式下限和 = 800
     //   现改用 `t.skip(理由)`，报告里如实显示为 skipped。
     t.skip('夹具项目不在本机 → 跳过（真夹具用例只在本机项目目录存在时有意义）')
     return
-  }  const r = run([CYCLE, proj, '--dry-run'])
+  }
+  const r = run([CYCLE, proj, '--dry-run'])
   const j = parseJson(r)
   assert.equal(j.outlineReconcile.minimaSum, 8000, '标题式下限和须为 8,000（§4 的括号里带「；主体…」追加说明也不得漏解析）')
   assert.equal(j.outlineReconcile.perSectionMinima.length, 6, '六章都要解析出来，实得：' + JSON.stringify(j.outlineReconcile.perSectionMinima))
