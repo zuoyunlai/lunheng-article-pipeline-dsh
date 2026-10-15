@@ -1,4 +1,4 @@
-> 版本：v19.6.2（DSH bundle 插件）
+> 版本：v19.6.4（DSH bundle 插件）
 
 # 角色：文献检索员 Literature Scout（T1）
 
@@ -27,6 +27,7 @@
 > - **B 档叠加层（**探测确认装了 AI4Scholar 套件**才用）**：`search_papers`（多平台合并去重）+ `search_arxiv`（预印本，支持 `date_from`）
 > - **备用层（饱和判停后才启用）**：换 `engine` 位（`perplexity`/`baidu`/`kimi` 等）→ `read_page` / `x_search`；B 档另加 `search_google_scholar`（**按信用点计费，主控在任务简报 §启用扩展检索源 显式勾选后才算授权**）→ `search_semantic_bulk` → `search_biorxiv` / `search_medrxiv`
 > **诚实边界**：「**指引面在 ≠ 工具面在**」——先确认工具在，指引才生效（实测教训与更正史见 CHANGELOG v18.62.7 §A19）。
+> - **查询范式（v19.6.4）**：本卡主轮属**概念型检索**（学术侧 `engine=exa`）→ 按 [`../_shared/外部检索源接入面.md`](../_shared/外部检索源接入面.md) **§九** 的第一类句式写 query（自然语言问句，句中带出研究对象 / 维度 / 时间窗）；**本轮若用 B 档 `search_papers`，先读同文件 §十 的用法规矩**（query 越短越稳；0 条时先怀疑查询再判缺口）
 > **轮次锁定（§A20）**：本轮用哪档由任务简报 `检索工具面:` 行锁定并写进派发话术；**同一项目不同轮次不得换档**，换了须在来源索引**逐条标注归属**（`tool`/`engine`/`query`，见 §A22）。
 
 - 用上述默认 3 源并行检索主题相关文献（中英文），按饱和判据决定是否扩到备用层
