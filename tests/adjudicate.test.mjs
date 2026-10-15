@@ -232,3 +232,73 @@ test('m-gate-check（F-AV②）：裁定段自述绑定的指纹与正文不符 
     assert.notEqual(after.exit, 0, '过期后不得继续沿用旧裁定值')
   } finally { rmSync(f.dir, { recursive: true, force: true }) }
 })
+
+// ════════════════════════════════════════════════════════════════════════════════════════════
+// v19.6.0（架构与机制反哺批 §3.3 · 主人授权「依次全部修订」）：**裁定证据本体落盘 + 同寿**
+//
+// 病灶：`refutations` 是**被逐条校验**的裁定证据（不满足覆盖关系即 `rejectAdjudication` 拒绝裁定），
+//   却既不进 `out` 也不在 keep 列表 → 「最常被人工推翻的门项」**不可算**（`lunheng-stats` 只能算
+//   机械失败频次）。这一组用例把「**校验即留痕**」和「**同寿原则**」钉住。
+// ════════════════════════════════════════════════════════════════════════════════════════════
+
+test('v19.6.0：裁定证据 `refutations` 必须落盘为 `_t8_refutations`（校验即留痕）', () => {
+  const f = mkClean()
+  try {
+    run([M(), f.draft, f.ev, '--report', f.report])
+    const mech = readReport(f.report)
+    const refs = refutationsOf(mech)
+    assert.ok(refs.length > 0, '前提：夹具机械失败项须非空（否则 refutations 为空、断言无意义）')
+    const adj = adjFile(f.dir, { true_p0: 0, true_p1: 0, verdict: 'Pass（T8 裁定）', llm_review: FOUR, refutations: refs })
+    run([M(), f.draft, f.ev, '--report', f.report, '--adjudicate', adj])
+    const j = readReport(f.report)
+    const got = j._t8_refutations
+    assert.ok(Array.isArray(got), '报告必须带 `_t8_refutations` 数组：' + JSON.stringify(Object.keys(j)))
+    assert.equal(got.length, refs.length, '裁据条数必须与裁定文件给出的条数一致（一条对一条）')
+    assert.deepEqual(got.map((r) => r.gate).sort(), refs.map((r) => r.gate).sort(), '门项须原样转存')
+    for (const r of got) assert.ok(typeof r.basis === 'string' && r.basis.trim(), '每条裁据须带非空 basis')
+  } finally { rmSync(f.dir, { recursive: true, force: true }) }
+})
+
+test('v19.6.0：`_t8_refutations` 与 `_t8_conclusion` **同寿**——非裁定复跑不得丢弃它', () => {
+  // 这条正是 v18.54.0 为 `_t8_adjudicated_at/_by` 立「同寿原则」时抓到的同型缺陷：
+  //   键在一次复跑后静默消失，于是「谁在何时裁定/依据什么裁定」只剩裁定 JSON 可查。
+  const f = mkClean()
+  try {
+    run([M(), f.draft, f.ev, '--report', f.report])
+    const refs = refutationsOf(readReport(f.report))
+    const adj = adjFile(f.dir, { true_p0: 0, true_p1: 0, verdict: 'x', llm_review: FOUR, refutations: refs })
+    run([M(), f.draft, f.ev, '--report', f.report, '--adjudicate', adj])
+    assert.ok(readReport(f.report)._t8_refutations.length > 0, '前提：裁定当次须已落盘')
+
+    run([M(), f.draft, f.ev, '--report', f.report])   // 不带 --adjudicate 的同稿复跑
+    const after = readReport(f.report)
+    assert.ok(Array.isArray(after._t8_refutations) && after._t8_refutations.length === refs.length,
+      '复跑后 `_t8_refutations` 必须仍在（同寿原则）；旧形态会在这一步静默丢弃')
+    assert.ok(after._t8_conclusion, '同批：`_t8_conclusion` 亦须仍在（同寿的参照键）')
+  } finally { rmSync(f.dir, { recursive: true, force: true }) }
+})
+
+test('v19.6.0：`reason_code` 为**可选**枚举——给了就转存、没给就不补（缺即缺）', () => {
+  const f = mkClean()
+  try {
+    run([M(), f.draft, f.ev, '--report', f.report])
+    const refs = refutationsOf(readReport(f.report)).map((r, i) => (i === 0 ? { ...r, reason_code: 'false-positive' } : r))
+    const adj = adjFile(f.dir, { true_p0: 0, true_p1: 0, verdict: 'x', llm_review: FOUR, refutations: refs })
+    run([M(), f.draft, f.ev, '--report', f.report, '--adjudicate', adj])
+    const got = readReport(f.report)._t8_refutations
+    assert.equal(got[0].reason_code, 'false-positive', '给了 reason_code 必须原样转存')
+    for (const r of got.slice(1)) {
+      assert.ok(!('reason_code' in r), '未给 reason_code 的条目**不得**被补默认值（缺即缺，不编）')
+    }
+  } finally { rmSync(f.dir, { recursive: true, force: true }) }
+})
+
+test('v19.6.0：无裁定的报告**不得**凭空出现 `_t8_refutations`（不编造）', () => {
+  const f = mkClean()
+  try {
+    run([M(), f.draft, f.ev, '--report', f.report])
+    const j = readReport(f.report)
+    assert.ok(!('_t8_refutations' in j), '未走裁定通道 ⇒ 报告不得含该键：' + JSON.stringify(Object.keys(j)))
+    assert.ok(!j._t8_conclusion, '同批：未裁定 ⇒ 不得含 `_t8_conclusion`')
+  } finally { rmSync(f.dir, { recursive: true, force: true }) }
+})

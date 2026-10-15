@@ -60,6 +60,7 @@ export const RULE_REGISTRY = Object.freeze([
   { id: '㊲', module: 'repo-surface-rules.mjs', what: '速查卡硬数字派生（版本 ↔ `package.json` / 角色数 ↔ `agents/` 编号卡 / 随包脚本数 ↔ `scripts/*.mjs` 实测；**v18.80.0 新立**）' },
   { id: '㊳', module: 'content-rules.mjs', what: 'G14 类数口径（真源 = 14-中文AI痕迹-gate.md 的 G14-[A-H] 类表；**v18.95.0 新立**）' },
   { id: '㊴', module: 'docs-version-rules.mjs', what: '执行面允许面三方对账（`!!js` 允许面真源 = 规则 ⑭ 的 `FORBIDDEN` 补集；文档侧「无真源指针的排他断言」与「被禁项进允许列表」皆报；**v18.99.0 新立**）' },
+  { id: '㊵', module: 'content-rules.mjs', what: '四门事实单一登记表（真源 = `_lib/cc-rules/phase-registry.mjs`：三口径各自唯一 + 代码面无第二份数组字面量；**v19.6.0 新立**）' },
 ])
 
 /** 全部主规则 id（登记表顺序）。 */

@@ -87,7 +87,14 @@ const classifyReport = (path) => {
     if (Array.isArray(j.results)) {
       const p0 = Number(j.p0 ?? 0), p1 = Number(j.p1 ?? 0), p2 = Number(j.p2 ?? 0);
       const exit = typeof j.exit === 'number' ? j.exit : (p0 > 0 ? 2 : (p1 > 0 ? 1 : ((p2 > 0 || Number(j.soft ?? 0) > 0 || Number(j.skips ?? 0) > 0) ? 3 : 0)));
-      return { format: 'machine', exit, p0, p1, p2, total: Number(j.total ?? 0), results: j.results, bytes: Number(j.verdict_scope?.draft_bytes ?? 0) };
+      return {
+        format: 'machine', exit, p0, p1, p2, total: Number(j.total ?? 0), results: j.results,
+        bytes: Number(j.verdict_scope?.draft_bytes ?? 0),
+        // v19.6.0（架构与机制反哺批 §3.3）：T8 裁定证据本体（此前被逐条校验却不落盘 → 读不到）。
+        //   缺失（v19.6.0 之前写入的存量报告）⇒ 空数组，**不判**、不编造。
+        refutations: Array.isArray(j._t8_refutations) ? j._t8_refutations : [],
+        adjudicated: !!(j._t8_conclusion && typeof j.exit === 'number' && j.exit !== j.script_exit_raw),
+      };
     }
     return { format: 'llm-legacy' };
   } catch { return { format: 'unparseable' }; }
@@ -174,6 +181,15 @@ const byStage = {}; for (const p of projects) byStage[p.stage] = (byStage[p.stag
 const byFormat = { machine: 0, 'llm-legacy': 0, none: 0, unparseable: 0 };
 const gateFreq = new Map();
 let sumRounds = 0, nRounds = 0, sumP0 = 0, sumP1 = 0, sumP2 = 0, sumHan = 0;
+// v19.6.0（架构与机制反哺批 §3.3）：**人工裁定侧**的按门项聚合。
+//   为什么必须补这一半：`gateFreq`/`topFailingGates` 只回答「机械最常报哪些门项」，
+//   回答不了「哪些门项最常被人工推翻」——而后者才是「规则判据该不该改」的信号：
+//     某门项被裁率 ~100% ⇒ 判据与真实文本形态不匹配（该改门）；零人工修正 ⇒ 判据判得准（可考虑加硬）。
+//   归一化键与 `gateFreq` **同源**（同一段 `.replace()` 口径），故两侧天然可 join，无需映射表。
+const adjFreq = new Map();
+const refReasonFreq = new Map();
+let nAdjudicated = 0, nRefTotal = 0;
+const normGate = (g) => (g || '').replace(/^([A-Za-z]+-[A-Za-z]+-\d+).*/, '$1');
 for (const p of projects) {
   if (p.rounds > 0) { sumRounds += p.rounds; nRounds++; }
   if (p.han > 0) sumHan += p.han;
@@ -183,16 +199,33 @@ for (const p of projects) {
     sumP0 += p.mgate.p0; sumP1 += p.mgate.p1; sumP2 += p.mgate.p2;
     for (const r of p.mgate.results || []) {
       if (r.pass === false && r.severity && /^P[012]$/.test(r.severity)) {
-        const key = (r.gate || '').replace(/^([A-Za-z]+-[A-Za-z]+-\d+).*/, '$1');
+        const key = normGate(r.gate);
         if (!key) continue;
         const e = gateFreq.get(key) || { p0: 0, p1: 0, p2: 0 };
         e[r.severity.toLowerCase()]++;
         gateFreq.set(key, e);
       }
     }
+    if (p.mgate.adjudicated) {
+      nAdjudicated++;
+      for (const r of p.mgate.refutations || []) {
+        const key = normGate(r && r.gate);
+        if (!key) continue;
+        adjFreq.set(key, (adjFreq.get(key) || 0) + 1);
+        nRefTotal++;
+        const rc = r && typeof r.reason_code === 'string' ? r.reason_code : '（未标）';
+        refReasonFreq.set(rc, (refReasonFreq.get(rc) || 0) + 1);
+      }
+    }
   } else byFormat[f] = (byFormat[f] || 0) + 1;
 }
 const topGates = [...gateFreq.entries()].map(([g, e]) => ({ gate: g, ...e, total: e.p0 + e.p1 + e.p2 })).sort((a, b) => (b.p0 + b.p1) - (a.p0 + a.p1) || b.total - a.total);
+// 被裁率 = 该门项被人工裁定推翻的次数 / 该门项机械失败次数（分母为 0 时记 null，**不编 0**）
+const topAdjudicated = [...adjFreq.entries()].map(([g, n]) => {
+  const mech = gateFreq.get(g) || { p0: 0, p1: 0, p2: 0 };
+  const mechTotal = mech.p0 + mech.p1 + mech.p2;
+  return { gate: g, refuted: n, mechanicalFailures: mechTotal, refutedRatio: mechTotal > 0 ? Number((n / mechTotal).toFixed(2)) : null };
+}).sort((a, b) => b.refuted - a.refuted || a.gate.localeCompare(b.gate));
 
 const summary = {
   root, totalProjects: n, byStage,
@@ -200,6 +233,14 @@ const summary = {
   avgRevisionRounds: nRounds ? Number((sumRounds / nRounds).toFixed(1)) : null,
   totalP0: sumP0, totalP1: sumP1, totalP2: sumP2, totalHanChars: sumHan,
   topFailingGates: topGates,
+  // v19.6.0：人工裁定侧（缺失时全 0 / 空，如实表示「存量报告没有这一层」）
+  adjudicatedProjects: nAdjudicated,
+  totalRefutations: nRefTotal,
+  topAdjudicatedGates: topAdjudicated,
+  refutationReasons: [...refReasonFreq.entries()].map(([reason, n]) => ({ reason, count: n })).sort((a, b) => b.count - a.count),
+  adjudicationNote: '`refutedRatio` = 被裁次数 / 机械失败次数（同一归一口径，两侧可 join）；'
+    + '**分母为 0 记 null，不编 0**。存量报告（v19.6.0 之前写入）没有 `_t8_refutations` ⇒ 一律按「未裁定」计，'
+    + '不把「读不到」算成「没被推翻」。',
 };
 
 // === 输出 ===
@@ -221,4 +262,18 @@ if (stFlags.has('--json')) {
   console.log(`\n== 门拦截频率 TOP（仅机器报告，跨项目 P0/P1 合计）==`);
   if (topGates.length === 0) console.log('（无可解析的机器报告）');
   for (const g of topGates.slice(0, 12)) console.log(`  ${g.gate.padEnd(10)} P0×${g.p0}  P1×${g.p1}  P2×${g.p2}`);
+  // v19.6.0（§3.3）：人工裁定侧——**这才是「规则判据该不该改」的信号**
+  console.log(`\n== 人工裁定侧（T8 裁据）TOP ==`);
+  console.log(summary.adjudicationNote);
+  if (nAdjudicated === 0) {
+    console.log('（无带裁定的机器报告——存量报告（v19.6.0 之前写入）没有 `_t8_refutations`，属正常形态）');
+  } else {
+    console.log(`带裁定的项目 ${nAdjudicated} 个｜裁据合计 ${nRefTotal} 条`);
+    for (const g of topAdjudicated.slice(0, 12)) {
+      const ratio = g.refutedRatio === null ? '—' : `${(g.refutedRatio * 100).toFixed(0)}%`;
+      console.log(`  ${g.gate.padEnd(10)} 被裁×${g.refuted}  / 机械失败×${g.mechanicalFailures}  =  ${ratio}`);
+    }
+    const reasons = summary.refutationReasons;
+    if (reasons.length) console.log(`  原因分布：${reasons.map((r) => `${r.reason}×${r.count}`).join('  ')}`);
+  }
 }

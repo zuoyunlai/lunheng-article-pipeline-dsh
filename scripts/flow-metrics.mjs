@@ -23,14 +23,16 @@
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+// v19.6.0（架构与机制反哺批 §3.2）：四门从**唯一登记表**派生——此前本处自写一份，且其 label
+//   与 `handoff-check` 的 label **早已不同**（`P0 定题` vs `Phase 0 定题`），即漂移已经发生。
+//   保留 `{ id, label }` 的输出形态（存量报告列名不变）：这里的 label = `shortLabel`。
+import { PHASES, PHASE_FILES } from '../skills/lunheng-article-pipeline/scripts/_lib/cc-rules/phase-registry.mjs';
 
-/** 四门固定文件名（真源 = 主人确认-template.md 的「命名真源」） */
-export const GATES = [
-  { id: 'Phase0', label: 'P0 定题' },
-  { id: 'Phase2.5', label: 'P2.5 大纲' },
-  { id: 'Phase3.5', label: 'P3.5 洞察' },
-  { id: 'Phase5', label: 'P5 终稿' },
-];
+/** 四门（id + 短标签；真源 = `_lib/cc-rules/phase-registry.mjs`） */
+export const GATES = PHASES.map((p) => ({ id: p.id, label: p.shortLabel, file: p.confirmFile }));
+
+/** 四门确认单文件名（顺序同 `GATES`；真源同上） */
+export const GATE_FILES = PHASE_FILES;
 
 /** 从确认单 §6 抽取「回复时间」与「主控落盘结论」。 */
 export function parseGateRecord(text) {

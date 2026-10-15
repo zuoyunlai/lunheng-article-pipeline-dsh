@@ -644,7 +644,12 @@ if (reportPath) {
         //   （顶层只剩 `_t8_llm_review` / `_t8_conclusion` / `script_exit_raw` / `verdict_stale`）
         //   → 报告不再自证「**谁在何时裁定**」，只剩裁定 JSON 本体与闸门记录可查。
         //   判据：随裁定一起写入的**留痕键**，其寿命必须与 `_t8_conclusion` 同步（同寿原则）。
-        for (const k of ['_t8_llm_review', '_t8_conclusion', '_t8_adjudicated_at', '_t8_adjudicated_by']) if (prev[k]) keep[k] = prev[k];
+        //   v19.6.0（架构与机制反哺批 §3.3）：`_t8_refutations` 并入本列表——**同一条判据的漏网之鱼**。
+        //     病灶实测：`refutations` 是**被逐条校验**的裁定证据本体（不满足即 `rejectAdjudication` 拒绝
+        //     裁定），却既不在 `out` 也不在 keep → 「人会判」的结构化理由**只活在裁定 JSON 里**，
+        //     报告层面读不到。后果：`lunheng-stats` 能算「最常触发的门项」，**算不出「最常被人工推翻的
+        //     门项」**——而后者才是「规则判据该不该改」的唯一信号（报告 §2.1 判据 3「校验即留痕」）。
+        for (const k of ['_t8_llm_review', '_t8_conclusion', '_t8_adjudicated_at', '_t8_adjudicated_by', '_t8_refutations']) if (prev[k]) keep[k] = prev[k];
         if (Object.keys(keep).length > 0) {
           out = { ...report, ...keep, script_exit_raw: report.exit };
           const prevSha = prev.verdict_scope?.draft_sha256;
@@ -796,7 +801,14 @@ if (reportPath) {
         //   粘进 `llm_review`」即可让关键词校验满分 —— 校验退化为「格式检查」，声称的「证据」其实没被看。
         //   故：提示**保留形状**（告诉调用方要哪些字段），但**不再给出可复制的关键词**。
         //   判据：**模板不得包含校验所依赖的字面量**（否则校验等于在考自己出的题）。
-        console.error('  期望 JSON：{"true_p0":0,"true_p1":0,"verdict":"…","llm_review":"<证伪证据四件套，逐项写明；具体要件见 SKILL.md/审计报告，本处不再印出关键词>","refutations":[{"gate":"<失败项编号>","basis":"<该条为何假阳性，写明依据>"}]}——裁定值 ≠ 机械值时，refutations 须一条对一条覆盖本次全部硬失败项');
+        console.error('  期望 JSON：{"true_p0":0,"true_p1":0,"verdict":"…","llm_review":"<证伪证据四件套，逐项写明；具体要件见 SKILL.md/审计报告，本处不再印出关键词>","refutations":[{"gate":"<失败项编号>","basis":"<该条为何假阳性，写明依据>","reason_code":"<可选，见下>"}]}——裁定值 ≠ 机械值时，refutations 须一条对一条覆盖本次全部硬失败项');
+        // v19.6.0（架构与机制反哺批 §3.3）：`reason_code` 是**可选**枚举，随裁定落盘进 `_t8_refutations`。
+        //   为什么加它（而不是只留自由文本 `basis`）：「最常被人工推翻的门项」已经可算，但**为什么被推翻**
+        //   只有自由文本可读 ⇒ 聚合时无法分类。取值刻意收窄到 5 类（够用即止；**不设必填**——
+        //   存量裁定文件没有该字段 ⇒ 缺即缺，不判、不补默认值）。
+        console.error('   可选 reason_code（供跨项目聚合「最常被推翻的门项 + 原因分布」）：'
+          + 'path-misconfig（路径/环境配置不当）/ not-applicable（本条对本文类不适用）/ '
+          + 'false-positive（判据与真实文本形态不匹配）/ spec-conflict（两条规范互相冲突）/ real（确是真缺陷，经裁定降级）');
         process.exit(10);
       }
       const aP0 = adj.true_p0 ?? adj.true_p0_count;
@@ -884,12 +896,23 @@ if (reportPath) {
           ...(adj.note !== undefined ? { note: adj.note } : {}),
         },
         _t8_llm_review: adj.llm_review ?? '',
+        // v19.6.0（§3.3）：**裁定证据本体落盘**。此前 `refutations` 被逐条校验却不进产物 →
+        //   「最常被人工推翻的门项」不可算。这里**原样转存**（不加工、不补默认值）；`reason_code`
+        //   是**可选**枚举（存量裁定文件没有它 ⇒ 缺即缺，不判、不补）。
+        _t8_refutations: Array.isArray(adj.refutations)
+          ? adj.refutations.map((r) => ({
+            gate: String(r?.gate ?? ''),
+            basis: String(r?.basis ?? ''),
+            ...(typeof r?.reason_code === 'string' && r.reason_code ? { reason_code: r.reason_code } : {}),
+          }))
+          : [],
         _t8_adjudicated_at: new Date().toISOString().slice(0, 10),
         _t8_adjudicated_by: 'T8（主控亲执行；经 --adjudicate 正式通道写入）',
         verdict_stale: false,
       };
       finalExit = adjExit;
-      console.error(`✅ 已写入 T8 裁定：exit=${adjExit}（script_exit_raw=${report.exit}，证伪四件套 ${fourHits}/4，正文指纹 ${String(draftSha256).slice(0, 12)}…）`);
+      console.error(`✅ 已写入 T8 裁定：exit=${adjExit}（script_exit_raw=${report.exit}，证伪四件套 ${fourHits}/4，`
+        + `裁据 ${out._t8_refutations.length} 条，正文指纹 ${String(draftSha256).slice(0, 12)}…）`);
     }
     // === v18.64.2（自审 · 独立审计 A-P0-②）：**删掉报告再跑**不得静默丢掉裁定 ===
     // 停靠点：上面的「拒绝覆盖」只在「目标报告**存在**且含裁定」时生效；把报告 `rm` 掉再跑就绕过了它

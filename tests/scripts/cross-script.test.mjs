@@ -217,13 +217,19 @@ test('模板齐备；§6 回填由消费者 handoff-check 判定；§6 字段与
   assert.ok(s6.length > 0, '模板 §6 段应可定位（§6…§7 之间）——形状变了请同步本解析器')
   const tplFields = [...s6.matchAll(/^-\s*\*\*(.+?)\*\*/gm)].map((m) => m[1].replace(/[（(].*$/, '').trim())
   assert.ok(tplFields.length >= 5, `模板 §6 解析出的字段过少（实测 ${tplFields.length}）——形状变了？`)
-  const hcSrc = readFileSync(join(SCRIPTS, 'handoff-check.mjs'), 'utf8')
-  const mGf = hcSrc.match(/const GATE_FIELDS = \[([^\]]*)\]/)
-  assert.ok(mGf, '消费者 handoff-check.mjs 应含 `const GATE_FIELDS = [...]`——形状变了请同步本解析器')
-  const gateFields = [...mGf[1].matchAll(/'([^']+)'/g)].map((m) => m[1])
-  assert.ok(gateFields.length >= 5, `GATE_FIELDS 解析出的字段过少（实测 ${gateFields.length}）`)
+  //   v19.6.0（架构与机制反哺批 §3.2）：**不再 grep `handoff-check.mjs` 的源码文本**——该文件的
+  //   `GATE_FIELDS` 已改为从登记表派生（`_lib/cc-rules/phase-registry.mjs` 的别名 import），
+  //   源码里那行是 `const GATE_FIELDS = REGISTRY_GATE_FIELDS`，**文本解析器因此失效**（本批实测抓出）。
+  //   改为**读真表**（与 ④ 的 `CONTRACTS` 同一手法）：断言的是**契约**，不是写法。
+  const registry = await import(pathToFileURL(join(SCRIPTS, '_lib', 'cc-rules', 'phase-registry.mjs')).href)
+  const gateFields = [...registry.GATE_FIELDS]
+  assert.ok(gateFields.length >= 5, `登记表 GATE_FIELDS 的字段过少（实测 ${gateFields.length}）`)
   const undef = gateFields.filter((k) => !tplFields.includes(k))
   assert.deepEqual(undef, [], `消费者要求了模板 §6 未定义的字段：${undef.join(' / ')}——模板与 handoff-check 必须同一次提交一起改`)
+  // 反向锚点：登记表必须真的是 handoff-check 消费的那一份（防「登记表在盘但没人用」）
+  const hcSrc = readFileSync(join(SCRIPTS, 'handoff-check.mjs'), 'utf8')
+  assert.match(hcSrc, /GATE_FIELDS as REGISTRY_GATE_FIELDS/,
+    'handoff-check 必须从登记表 import GATE_FIELDS（不得回退为本地硬编码数组）')
 
   // ④ 契约表登记：读**真表**（`CONTRACTS`），不 grep 源码文本
   const contracts = await import(pathToFileURL(join(SCRIPTS, '_lib', 'cc-rules', 'content-rules.mjs')).href)

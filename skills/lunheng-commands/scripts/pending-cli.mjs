@@ -25,12 +25,16 @@ import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, resolve, isAbsolute } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { isPathInsideRunDir } from '../../../lib/run-path-fence.mjs';
+// v19.6.0（架构与机制反哺批 §3.2）：**四门 / §6 五字段的唯一登记表**（主技能 `_lib/cc-rules/` 下）——
+//   此前本文件各写一份，与 handoff-check / flow-metrics / run-report / 模板 §7 共 5 份实现、3 套命名。
+//   **保留同名 export**（`GATES` / `SECTION6_FIELDS`）以免破坏既有 import 与用例。
+import { PHASE_IDS, GATE_FIELDS as REGISTRY_GATE_FIELDS } from '../../lunheng-article-pipeline/scripts/_lib/cc-rules/phase-registry.mjs';
 
-/** 四门固定文件名（真源 = templates/主人确认-template.md 的「命名真源」） */
-export const GATES = ['Phase0', 'Phase2.5', 'Phase3.5', 'Phase5'];
+/** 四门 id（真源 = `_lib/cc-rules/phase-registry.mjs` 的 `PHASES`；本处只派生） */
+export const GATES = PHASE_IDS;
 
-/** §6 的五个固定字段（真源 = 同上模板 §6；缺项即「未留痕」） */
-export const SECTION6_FIELDS = ['主人原话', '回复时间', '提问方式', '主控落盘结论', '轮次计数'];
+/** §6 的五个固定字段（真源 = 同上登记表；缺项即「未留痕」） */
+export const SECTION6_FIELDS = REGISTRY_GATE_FIELDS;
 
 /**
  * 解析阶段确认单的 §6 回填状态。

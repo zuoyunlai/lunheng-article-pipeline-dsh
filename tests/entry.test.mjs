@@ -12,10 +12,10 @@
 //   ④ resourceBase 目录下 SKILL.md / references/ / scripts/ 真实存在（渐进披露的相对引用前提）。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { PIPE_SPAWN_BLOCKED, skipWhen, settle, withEnv } from './_fixtures.mjs'   // v18.16.0（F-1 反哺 · 共享 settle）；v18.18.0（F-6 · withEnv）
+import { PIPE_SPAWN_BLOCKED, skipWhen, settle, withEnv, mkProject, tmp } from './_fixtures.mjs'   // v18.16.0（F-1 反哺 · 共享 settle）；v18.18.0（F-6 · withEnv）；v19.6.0（+mkProject/tmp：工具面旗标接线用例）
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PACKAGE_ROOT = join(HERE, '..')
@@ -171,6 +171,74 @@ test('C 组：注册 4 个只读原生工具，规范值可复算（真跑一次
     /未返回 JSON/,
     '拿不到 JSON（路径错 → exit 10）时必须 throw，不得返回伪造的规范值',
   )
+})
+
+// ════════════════════════════════════════════════════════════════════════════════════════════
+// v19.6.0（架构与机制反哺批 §3.5 · 主人授权「依次全部修订」）：**工具面旗标缺口收敛**
+//
+// 病灶（原缺口声明逐字）：「`M-Gate-Report.json` 是闸门记录指纹互锁与 M-Exist-5/9 的共同输入，
+//   而经本工具调用**不会落盘**」；以及 Phase 5 的 `--role T8 --require-gates` 只能走 `pwsh`
+//   —— 而 `pwsh` 恰是机制文件写保护**唯一已声明**的绕过口。
+// 本组用例钉住「已接线」这一事实（**行为层**，不是查源码字符串）：旗标缺省时**逐字不变**，
+//   给了之后必须真的改变脚本行为。
+// ════════════════════════════════════════════════════════════════════════════════════════════
+
+test('v19.6.0：工具面 `--require-gates` 已接线 —— 不给不判四门、给了真的判（行为层证据）', async () => {
+  const fakeDefineTool = (def) => def
+  const { installLunhengTools } = await import(pathToFileURL(join(PACKAGE_ROOT, 'lib', 'tools.js')).href)
+  const regs = []
+  const ctx = { get: (n) => (n === 'tools' ? { register: (d) => { regs.push(d); return () => {} } } : undefined) }
+  await installLunhengTools(ctx, {
+    skillRoot: join(PACKAGE_ROOT, 'skills', 'lunheng-article-pipeline'),
+    defineToolFactory: async () => ({ defineTool: fakeDefineTool }),
+  })
+  const handoff = regs.find((t) => t.name === 'lunheng_handoff_check')
+  assert.ok(handoff.parameters?.requireGates, '参数面必须声明 requireGates（缺口表里它已被移除）')
+  assert.equal(handoff.parameters.requireGates.type, 'boolean')
+  assert.ok(handoff.parameters?.level, '参数面必须声明 level')
+  assert.deepEqual(handoff.parameters.level.enum, ['basic', 'strict'])
+
+  // 最小项目：四份确认单**全缺** → `--require-gates` 应判硬 20（产物缺失），不给则应不判四门
+  const dir = tmp('lunheng-toolfl-')
+  try {
+    const exec = { signal: new AbortController().signal }
+    const without = await handoff.execute({ project: dir, role: 'T8' }, exec)
+    const withGates = await handoff.execute({ project: dir, role: 'T8', requireGates: true }, exec)
+    assert.notEqual(withGates.exit, without.exit,
+      '接线证据：同项目下「给了 requireGates」与「不给」的 exit 必须不同（否则旗标没生效）')
+    assert.equal(withGates.exit, 20, `四门全缺时应判 20，实得 ${withGates.exit}：${JSON.stringify(withGates.hard)}`)
+    assert.ok(withGates.hard.some((h) => h.check === 'A7'), '硬失败项须含 A7（人在环四门）')
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('v19.6.0：工具面 M 门 `--report` 已接线 —— 给了必须真的落盘报告（此前恒不落盘）', async () => {
+  const fakeDefineTool = (def) => def
+  const { installLunhengTools } = await import(pathToFileURL(join(PACKAGE_ROOT, 'lib', 'tools.js')).href)
+  const regs = []
+  const ctx = { get: (n) => (n === 'tools' ? { register: (d) => { regs.push(d); return () => {} } } : undefined) }
+  await installLunhengTools(ctx, {
+    skillRoot: join(PACKAGE_ROOT, 'skills', 'lunheng-article-pipeline'),
+    defineToolFactory: async () => ({ defineTool: fakeDefineTool }),
+  })
+  const gateTool = regs.find((t) => t.name === 'lunheng_m_gate')
+  assert.ok(gateTool.parameters?.report, '参数面必须声明 report（缺口表里它已被移除）')
+
+  // 用既有夹具项目真跑一次：`--report` 路径必须被写出（= 缺口声明里「不会落盘」的反面证据）
+  const { d, proj, fin, ev } = mkProject()
+  try {
+    // mkProject 只建目录骨架，定稿需自写（评测对象是**落盘**，不是内容判定）
+    const draft = join(fin, '定稿.md')
+    writeFileSync(draft, '# 标题\n\n## 摘要\n\n摘要若干字 [L01] [D01] [C01] [先01]。\n\n## 一、导论\n\n正文。\n\n'
+      + '## 参考文献\n\n[L01] a\n\n## 数据来源\n\n[D01] d\n\n## 案例来源\n\n[C01] c\n\n## 先行者文献\n\n[先01] p\n\n## AI 使用声明\n\nAI。\n')
+    const reportPath = join(fin, 'M-Gate-Report.json')
+    assert.ok(!existsSync(reportPath), '前提：跑之前不应有报告')
+    await gateTool.execute({ draft, evidence: ev, report: reportPath, summary: true }, { signal: new AbortController().signal })
+    assert.ok(existsSync(reportPath), '给了 `report` 必须落盘 M 门报告（这是闸门指纹互锁与 M-Exist-5/9 的共同输入）')
+    const j = JSON.parse(readFileSync(reportPath, 'utf8'))
+    assert.equal(typeof j.exit, 'number', '落盘报告须含机读 exit')
+    assert.ok(j.verdict_scope?.draft_sha256, '落盘报告须带被审正文指纹')
+    assert.ok(proj, '（fixture 返回 proj，仅用于路径可读性）')
+  } finally { rmSync(d, { recursive: true, force: true }) }
 })
 
 test('C 组降级：宿主缺 @deepseek-ai/dsh-tools 时，工具安装失败但不影响技能（裸仓库场景）', async () => {

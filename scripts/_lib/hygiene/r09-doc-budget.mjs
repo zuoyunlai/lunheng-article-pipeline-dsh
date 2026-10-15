@@ -184,7 +184,11 @@ export function run(ctx) {
   note(
     `⑨ 词预算：登记 ${Object.keys(DOC_BUDGET).length} 个文档（≥${kb(DOC_BUDGET_MIN)} 全覆盖 = 技能目录 + docs/ + 仓库根根级，未登记 ${unregistered.length} 个；` +
       `排除面见规则头：CHANGELOG.md（append-only 留痕）/ docs 历史归档 / docs/介绍与排版 的 .html（非 .md 物料））` +
-      `；常驻集合计 ${kb(residentTotal)}/${kb(ALWAYS_LIMIT)}（SKILL.md + AGENTS.md）` +
+      // v19.6.0（架构与机制反哺批 §3.6）：本行此前只写 `54.0 KB/54.0 KB`，**读者会自行脑补余量**——
+      //   实测该形态被读成「还剩 44 KB」（见反哺报告 §3.6：真实余量仅 10 B）。现显式给出**余量**与
+      //   **口径**（合计上限 ≠ 逐文件上限；两者按不同公式登记，同一行并列时必须标注）。
+      `；常驻集合计 ${kb(residentTotal)}/${kb(ALWAYS_LIMIT)}（**余量 ${ALWAYS_LIMIT - residentTotal} B**；` +
+      '上限口径 = 「合计 + 1.5 KB 向上取整到整 KB」，**与下面逐文件上限不是同一把尺**）' +
       (docOver ? `；❗ 超限 ${docOver} 个` : budgetBad.length ? `；⚠️ 接近上限：${budgetBad.join('、')}` : '，均在预算内'),
   )
   // B1②③：棘轮的另一半（合计余量 / 超长期目标 / 建议下调）——**只报告，不判失败**。

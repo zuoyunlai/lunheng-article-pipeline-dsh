@@ -278,6 +278,11 @@ const mGateInfo = (() => {
   const mg = parsedOutputs['m-gate'];
   if (!mg || mg.exit === undefined) return null;
   let adjudicatedExit = null, adjudicatedBy = null;
+  // v19.6.0（架构与机制反哺批 §3.3）：**「有裁定无证据」必须可见**。裁定值 ≠ 机械值时，报告必须带
+  //   `_t8_refutations`（裁据本体）——它此前被逐条校验却不落盘，于是「最常被人工推翻的门项」不可算。
+  //   存量报告（v19.6.0 之前写入）没有该键 ⇒ 只记 `evidenceMissing` 并由上层如实展示，**不判失败**
+  //   （与「缺 gate_rev 不翻 stale」同一条 legacy 容忍判据：无法证明不可比时不说它不可比）。
+  let adjudicationEvidenceMissing = false;
   try {
     const rp = join(project, 'final', 'M-Gate-Report.json');
     if (existsSync(rp)) {
@@ -285,6 +290,8 @@ const mGateInfo = (() => {
       if (rep._t8_conclusion && typeof rep.exit === 'number' && rep.exit !== rep.script_exit_raw) {
         adjudicatedExit = rep.exit;
         adjudicatedBy = rep._t8_adjudicated_by || 'T8（主控亲执行）';
+        const refs = rep._t8_refutations;
+        adjudicationEvidenceMissing = !Array.isArray(refs) || refs.length === 0;
       }
     }
   } catch { /* 报告读不动不影响机械值——只是裁定值不可见，如实留 null */ }
@@ -299,6 +306,7 @@ const mGateInfo = (() => {
     hardExit: mg.exit,                        // 机械值（= M-Gate-Report.json 的 script_exit_raw 语义）
     adjudicatedExit,                          // T8 经 --adjudicate 写入的裁定值（null = 未裁定）
     adjudicatedBy,
+    adjudicationEvidenceMissing,              // v19.6.0：裁定值≠机械值但报告缺 `_t8_refutations`（legacy 容忍，不判失败）
     // **交付件应引用的稳定态**（有裁定取裁定）。⚠️ v18.64.2：本次 M 门**未写盘**时它**不适用** →
     //   显式 null（不给一个会被误读成「通过」的 0），并把原因写在 `stableExitApplies` / `reportIsStale` 上。
     stableExit: mGateRefusedWrite ? null : (adjudicatedExit ?? mg.exit),
@@ -315,6 +323,11 @@ const mGateInfo = (() => {
       ? `⚠️ 本次 M 门**拒绝写盘**（该步 exit ${mGateStep?.exit ?? 'n/a'}）：磁盘报告仍是**旧稿裁定**，**稳定态不适用**`
       : (adjudicatedExit !== null
         ? `机械值 ${mg.exit} → T8 裁定 ${adjudicatedExit}（稳定态 = ${adjudicatedExit}；交付件只引用稳定态，v18.52.0 F-BB）`
+          // v19.6.0（§3.3）：**「有裁定无证据」必须当场可见**——否则「裁据缺失」会静默退化成「这版就是没裁据」。
+          + (adjudicationEvidenceMissing
+            ? '｜⚠️ 该报告**缺 `_t8_refutations`**（裁据本体）：v19.6.0 起的裁定会写它；'
+              + '存量报告属 legacy 形态（**不判失败**，但「最常被人工推翻的门项」这一层对这些项目不可算）'
+            : '')
         : '无 T8 裁定（稳定态 = 机械值）'),
   };
 })();

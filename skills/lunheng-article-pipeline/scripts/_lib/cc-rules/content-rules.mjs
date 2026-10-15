@@ -627,6 +627,77 @@ const HISTORY_TOKEN_RE = /此前|曾经|旧版|已删|已移除|已作废|历史
     }
   }
 
+  // ㊵ 四门事实单一登记表（v19.6.0 · 架构与机制反哺批 §3.2 · 主人授权「依次全部修订」）
+  //   为什么立它（病灶实测，不是假想）：「四门」这一事实此前有 **5 份实现 / 3 套命名**——
+  //     `handoff-check` 三元组 / `pending-cli` 纯 id 数组 / `flow-metrics` 的 `{id,label}`（**label 已漂**：
+  //     `P0 定题` vs `Phase 0 定题`）/ `run-report` 私有 const / 模板 §7 散文。
+  //   而既有门抓不到：㉟ 只核**规则编号**，⑪ 只核**行号引用**，⑲ 只核**契约的闭合性**。
+  //   判据：① **真源可用**（登记表须能解析出 4 门，否则派生退化会让本规则恒真）；
+  //         ② **命名三口径**（`label` / `shortLabel` / `confirmFile`）各自全库唯一（无重复定义）；
+  //         ③ **代码面无第二份**：**显式消费者清单**（`handoff-check` / `run-report`，即本包里真正
+  //            写四门文件名的两处）中不得出现「数组字面量含 `阶段确认-Phase`」——这条才是
+  //            「禁止新建第二份清单」的机械形态。  //   ⚠️ **刻意不核 `id` 的额外形态**：`id` 与 `label` 在本仓存量里就是不同集合（`Phase0` vs `Phase 0 定题`），
+  //      统一会给存量产物改列名；本规则只保证**三者由一处派生**，不强制它们形态相同。
+  {
+    const REGISTRY_REL = 'scripts/_lib/cc-rules/phase-registry.mjs'
+    const regPath = join(ROOT, REGISTRY_REL)
+    if (!existsSync(regPath)) {
+      // 纯技能目录部署可能不含 `_lib`（本规则自身即位于其中）——如实跳过，不假装核过。
+      notes.push(`[㊵ SKIP] 未找到 ${REGISTRY_REL}：本次未核四门登记表`)
+    } else {
+      const regSrc = readFileSync(regPath, 'utf8')
+      // ⓪ 真源可用性：登记表须同时含四个 id（防「文件在盘但内容退化」让下面两条恒真）
+      const PHASE_ID_SET = ['Phase0', 'Phase2.5', 'Phase3.5', 'Phase5']
+      const missingIds = PHASE_ID_SET.filter((id) => !new RegExp(`id:\\s*'${id.replace('.', '\\.')}'`).test(regSrc))
+      if (missingIds.length) {
+        errors.push(`[P0 派生源失效] ${REGISTRY_REL} 缺门 id：${missingIds.join(' / ')}——`
+          + '派生退化会让规则 ㊵ 恒真（与 ㊳ 的同族失效模式）')
+      } else {
+        // · 三口径各自唯一（防「同一登记表里抄两遍」）
+        //    ⚠️ 扫**剥注释后的代码行**：登记表的注释里就有 `label: ...` 的举例，
+        //    按整文件正则数会把举例也数进去（首版实测：`label` 被数成 5 条 → 规则自伤）。
+        const codeOnly = regSrc.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n')
+        for (const field of ['label', 'shortLabel', 'confirmFile']) {
+          const vals = [...codeOnly.matchAll(new RegExp(`\\b${field}:\\s*'([^']+)'`, 'g'))].map((m) => m[1])
+          const dup = vals.filter((v, i) => vals.indexOf(v) !== i)
+          if (dup.length) {
+            errors.push(`[P1 四门口径重复] ${REGISTRY_REL} 的 \`${field}\` 出现重复值：${[...new Set(dup)].join(' / ')}`)
+          }
+          if (vals.length !== PHASE_ID_SET.length) {
+            errors.push(`[P1 四门登记不全] ${REGISTRY_REL} 的 \`${field}\` 解析出 ${vals.length} 条，应为 ${PHASE_ID_SET.length} 条`)
+          }
+        }
+        // · 代码面无第二份：数组字面量形态的 `阶段确认-Phase` 只许出现在登记表自身
+        //   ⚠️ **本判据的扫描集不能复用 ctx.files**（v19.6.0 首版实测踩到）：`consistency-check.mjs` 的
+        //     `files = walk(ROOT)` 实际只收 **`.md`**（88 个），里面**一个 `.mjs` 都没有** —— 首版据此
+        //     扫出 `pkgScripts=0`，规则**恒真**（注入第二份实现实测不报，`LUNHENG_DBG_RULE40` 探针抓出）。
+        //     这正是本仓反复登记的那条失效模式（「派生退化会让规则恒真」，同 ㊳ 的头注释）。
+        //     现改为**按显式消费者清单读盘**（且**跳过 `.bak*`** —— 备份副本不是第二份实现）。
+        const ARRAY_LITERAL_RE = /\[\s*['"]阶段确认-Phase/
+        const CONSUMER_RELS = [
+          'scripts/handoff-check.mjs',
+          'scripts/run-report.mjs',
+          'scripts/_lib/cc-rules/phase-registry.mjs',
+        ]
+        for (const rel of CONSUMER_RELS) {
+          if (rel === REGISTRY_REL) continue
+          const abs = join(ROOT, rel)
+          if (!existsSync(abs)) {
+            errors.push(`[P1 四门消费者缺失] ${rel} 不在盘——四门登记表的消费者清单已过期（改清单须同批改本规则）`)
+            continue
+          }
+          const src = readFileSync(abs, 'utf8')
+          // 剥注释后再扫：注释里的引述形态（如「旧写法 = ['阶段确认-Phase0.md', …]」）不构成第二份实现。
+          const code = src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n')
+          if (ARRAY_LITERAL_RE.test(code)) {
+            errors.push(`[P1 四门第二份实现] ${rel} 出现「数组字面量含 \`阶段确认-Phase\`」——`
+              + `四门只有一处真源（${REGISTRY_REL}），此处须改为从登记表派生（与 CONTRACTS / RULE_REGISTRY 同判据）`)
+          }
+        }
+      }
+    }
+  }
+
   // ㊱ 模板示例 ↔ 机检契约对照（v18.60.1，主人授权反哺 v2 §4.1 / §7.1 #9）
   //   **v18.78.2（全量审计 A2 的连带发现）：编号由 ㉚ 改为 ㊱**——原编号与 `script-rules.mjs` 的
   //   「㉚ lib/** 代码面禁当前版本字面量」撞号。该重号是新增规则 ㉟（登记表自洽）**首次运行即抓出**的，

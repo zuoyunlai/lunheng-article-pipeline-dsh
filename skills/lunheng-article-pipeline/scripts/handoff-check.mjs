@@ -42,6 +42,8 @@ import { loadSessions, pairAskUserQuestion, collectTouched } from './_lib/sessio
 import { parseLedger, ROUND_CAPS, LEDGER_REL } from './_lib/round-ledger.mjs'   // v18.81.0（批 2.1）：轮次额度真源
 import { BLIND_FORBIDDEN } from './_lib/blind-forbidden.mjs'   // v18.80.4（QLT-6 脚手架批）：盲评禁忌面**单一真源**
 import { CONTRACTS } from './_lib/cc-rules/content-rules.mjs'
+// v19.6.0（架构与机制反哺批 §3.2）：**四门 / §6 五字段的唯一登记表**——禁止在本文件再写第二份。
+import { PHASE_DOCS, GATE_FIELDS as REGISTRY_GATE_FIELDS, confirmFileOf } from './_lib/cc-rules/phase-registry.mjs'
 import { CARD_SPECS, latestReport, indexSection, entryIds, idsByToken } from './_lib/mgate-helpers.mjs'
 
 installExitGuard()   // 必须在任何 readFileSync 之前（fs 异常 → 10，其余 → 70）
@@ -812,13 +814,11 @@ if (reportText != null) {
 //   （与 M-Exist-2 的「drafts 阶段证据包为空判 N/A」同一条原则）。故把**时点**交给调用方：
 //   **主控在 Phase 5 交付前调用 `--require-gates`**；这也让本项成为「交付前一次性验收」而非每轮开销。
 if (opt.requireGates) {
-  const GATE_DOCS = [
-    ['阶段确认-Phase0.md', 'Phase 0 定题', 'Phase0'],
-    ['阶段确认-Phase2.5.md', 'Phase 2.5 大纲确认', 'Phase2.5'],
-    ['阶段确认-Phase3.5.md', 'Phase 3.5 洞察补充', 'Phase3.5'],
-    ['阶段确认-Phase5.md', 'Phase 5 终稿交付', 'Phase5'],
-  ]
-  const GATE_FIELDS = ['主人原话', '回复时间', '提问方式', '主控落盘结论', '轮次计数']
+  // v19.6.0（架构与机制反哺批 §3.2）：**四门与 §6 五字段改为从登记表派生**——此前本处硬编码三元组，
+  //   与 `pending-cli` / `flow-metrics` / `run-report` / 模板 §7 各写一份（共 5 份实现 / 3 套命名），
+  //   而实测 `flow-metrics` 的 label 早已与这里不同（漂移已发生）。真源 = `_lib/cc-rules/phase-registry.mjs`。
+  const GATE_DOCS = PHASE_DOCS
+  const GATE_FIELDS = REGISTRY_GATE_FIELDS
   // ── v18.81.0（独立审计批 1.1）：**人门口回执账本** ──────────────────────────────
   // 病灶（实测，不是假想）：45 份真实 `阶段确认-*.md` 里，「主控落盘结论」含 **驳回/打回** 的实例 = **0**，
   //   而「主人原话」栏**系统性填的是主控自己的选项标签**——`cn-llm-inference-cost-econ/阶段确认-Phase2.5.md:47`
@@ -840,7 +840,13 @@ if (opt.requireGates) {
   //     账本行自身不自洽（缺字段、tool 名不对、`options[chosenIndex] ≠ chosenLabel`）→ **硬 21**。
   // ⚠️ 能力边界（如实，不得读成「已双盲」或「已防伪」）：**账本仍由主控写入**，它不是 Host 侧独立记录，
   //   故本项提高的是**自述的门槛与一致性**（必须维护一份可交叉核对的结构化账本），**不是密码学保证**。
-  //   真正独立于主控的核对路径 = 会话日志（Host 写、主控改不了）——那是**待办**，不构成本项的宣称。
+  //   真正独立于主控的核对路径 = 会话日志（Host 写、主控改不了）——
+  //   ✅ **v19.6.0 订正：该层早已在盘（`--session-log`，见本文件 `:1010` 起），旧文写「那是待办」与实现相反。**
+  //      现口径：**默认仍关**（会话日志的路径/事件形态属宿主契约，设成默认依赖会在别的宿主版本上假红），
+  //      但**开则严格**——账本 `callId` 由「可选」升为「必填」，且宿主答复须与 `rawAnswer` 逐字相同。
+  //      ⚠️ **结构性边界（必须写明，勿读成「独立即完整」）**：该层的判据是「**引用的那条回执**不存在」
+  //      （`callId` 找不到 / 答复不符），**不是**「Host 记的人门问答有漏登」——它**不做双向核**。
+  //      故「账本里有没有少记一次往返」仍属**自述**面，只能靠人工核；新项目落账本时须逐次落全。
   const receiptsPath = join(project, 'audits', 'gate-receipts.jsonl')
   const receipts = []
   const badLines = []
@@ -1045,7 +1051,8 @@ if (opt.requireGates) {
     if (ledgerInfo.over.length) {
       addHard('A7', LEDGER_REL, `轮次账本已越额：${ledgerInfo.over.join('；')}`, 21)
     }
-    const p5 = join(project, '阶段确认-Phase5.md')
+    // v19.6.0（§3.2）：Phase 5 的文件名亦从登记表派生（此前硬编码，是本事实的第 5 处副本）。
+    const p5 = join(project, confirmFileOf('Phase5'))
     if (existsSync(p5)) {
       let t5 = ''
       try { t5 = readFileSync(p5, 'utf8') } catch { /* 不可读已由上文报 */ }

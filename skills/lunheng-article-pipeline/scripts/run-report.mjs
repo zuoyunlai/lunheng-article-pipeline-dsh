@@ -53,6 +53,8 @@ import { parseArgs, USAGE_CODE } from './_lib/cli-args.mjs';
 import { writeReport } from './_lib/destructive-write.mjs';
 import { countHan } from './_lib/han.mjs';
 import { bodyStartAfterAbstract, bodyBounds } from './_lib/sections.mjs';
+// v19.6.0（架构与机制反哺批 §3.2）：四门门序的唯一登记表（禁止在本文件再写第二份）。
+import { PHASE_IDS } from './_lib/cc-rules/phase-registry.mjs';
 // 「图位 ↔ 图件」对账的**唯一实现**（v19.1.8）：与 `lib/panel.mjs` 共用同一份口径。
 import { reconcileFigures, figureSummaryLine } from './_lib/figure-reconcile.mjs';
 
@@ -168,7 +170,8 @@ else {
 }
 
 // ── 采集 ②：四门回执（机器面）→ 不足时回退阶段确认单 §6 ────────────────────
-const GATE_ORDER = ['Phase0', 'Phase2.5', 'Phase3.5', 'Phase5'];
+// v19.6.0（架构与机制反哺批 §3.2）：门序从**唯一登记表**派生（此前是本事实的第 4 处副本）。
+const GATE_ORDER = PHASE_IDS;
 const gates = [];
 const receiptsRaw = readText(join(projectDir, 'audits', 'gate-receipts.jsonl'));
 if (receiptsRaw === null) warn('audits/gate-receipts.jsonl', '四门回执缺 —— 已回退解析 阶段确认-Phase*.md §6「回复时间」（等待时长会缺失）');
