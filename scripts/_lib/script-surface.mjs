@@ -54,6 +54,15 @@ const CONTENT_WRITE_PATTERNS = [
   ['unlinkSync', /(?<![\w.])unlinkSync\s*\(/g],
   ['writeWithSafety', /(?<![\w.])writeWithSafety\s*\(/g],
   ['writeReport', /(?<![\w.])writeReport\s*\(/g], // v18.29.1：词表第一版漏收它 → 9 个只经它写报告的脚本被算成只读
+  // v19.6.1（审计 2026-10-15 全量批 P1-2 / P1-3 的池域收口）：素材池的**共享写口**纳入词表。
+  //   病灶：三个 `pool-*.mjs` 的写盘统一收进 `_lib/pool-store.mjs`（`ensurePoolSkeleton` 建空池文件、
+  //   `writeManifest` 重算并写 manifest）后，`pool-query.mjs` 的**顶层**已无任何被识别的写 API
+  //   → 被本口径算成「只读」，而它其实**会创建池文件并重写 manifest** —— 正是本模块开头点名的
+  //   「失真方向几乎总是**低报执行面**」。修法取**收紧**方向（词表加项只会多报、不会少报）：
+  //   这两个名字与既有的 `writeWithSafety` / `writeReport` 同属「语义已知会写内容的口」。
+  //   反向自证见 `tests/script-surface.test.mjs`（删掉任一项即红）。
+  ['writeManifest', /(?<![\w.])writeManifest\s*\(/g],
+  ['ensurePoolSkeleton', /(?<![\w.])ensurePoolSkeleton\s*\(/g],
 ]
 const MKDIR_ONLY_PATTERN = /(?<![\w.])mkdirSync\s*\(/
 

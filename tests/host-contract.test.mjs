@@ -119,3 +119,25 @@ test('退化防线：零监听器 → 门必须报空跑（fail-closed）', () =
   const { errors } = reconcileHostContract('// 没有任何 ctx.on 注册\n')
   assert.ok(errors.some((e) => e.includes('未解析出任何')), `零监听器应报空跑，实际 ${errors.join(' | ')}`)
 })
+
+// ── v19.6.1（全量审计-2026-10-15 **P2-20**）：peer 声明的「宽于证据」必须**持续披露** ──────────────
+// 病灶：`peerDependencies` 声明 `>=0.1.2-rc.1 <0.2.0`，而装载冒烟只在 `0.1.7-rc.2` 跑过，且区间**内含
+//   已知必红版本**（`0.1.5-rc.2`/`rc.3`）。仓库已在 `docs/installation.md` 如实披露。审计的判定是
+//   「判据未收口」——本批**刻意不收窄区间**（下限是 lockfile 解析值且全量测试通过，收窄＝对可用旧宿主的
+//   假拒绝；多段区间排除只是把两个已知版本刻进声明）。故本用例的作用是**把披露钉住**：
+//   只要 peer 仍是宽区间，那两句如实披露就必须在场（**删掉披露才是漂移**）。
+test('P2-20：peer 声明宽于实测证据时，`docs/installation.md` 的如实披露必须在场', () => {
+  const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'))
+  const peers = Object.entries(pkg.peerDependencies || {}).filter(([k]) => k.startsWith('@deepseek-ai/'))
+  assert.ok(peers.length >= 1, 'peerDependencies 里应有 @deepseek-ai/* 声明——解析退化为空会让本用例恒真')
+  const honest = readFileSync(join(ROOT, 'docs', 'installation.md'), 'utf8')
+  const narrow = peers.every(([, range]) => !/^>=0\.1\.2-rc\.1/.test(range))
+  if (narrow) {
+    // 区间若已收紧（未来的收口批），本用例**不再要求**那两句（披露是为宽区间服务的）
+    assert.ok(true, 'peer 区间已收紧 → 本披露不再必需（该分支保留，防有人误以为本用例恒需那两句）')
+    return
+  }
+  assert.match(honest, /声明区间宽于实测证据|声明宽于证据/, '宽区间必须伴「声明宽于证据」的如实披露（P2-20 的收口判据）')
+  assert.match(honest, /0\.1\.5-rc\.2/, '已知不兼容的宿主版本必须点名（否则读者以为区间内处处可用）')
+  assert.match(honest, /loader-smoke/, '必须写明实测证据来自哪条 CI 作业（loader-smoke）')
+})

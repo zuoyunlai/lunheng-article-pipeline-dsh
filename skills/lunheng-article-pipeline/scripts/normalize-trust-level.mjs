@@ -88,8 +88,13 @@ for (const file of files) {
     // v18.7.3（P1-1，全量审计）：写盘改走 _lib/destructive-write.mjs 的 writeWithSafety——
     //   旧实现「固定名 .bak + writeFileSync 直接覆写」有两缺陷：① 固定名 .bak 会抹掉上一次回滚点
     //   （destructive-write 头注释批判过的形态）；② 非原子写，进程中途被杀留半写文件。
-    //   现获得：带时间戳 .bak（一轮多次写不丢回滚点）+ 上限回收（BAK_MAX=20）+ temp-rename 原子写。
+    //   现获得：带时间戳 .bak（一轮多次写不丢回滚点）+ 上限回收 + temp-rename 原子写。
+    //   上限值不复述（真源 = _lib/destructive-write.mjs 的 BAK_MAX）——2026-10-15 审计 P2-2：
+    //   本行原写「BAK_MAX=20」而真值已是 6，属「同一常量多处复述」的漂移形态。
     //   回滚命令相应变为：`cp <卡>.<时间戳>.bak <卡>`（取目录下最新 .bak）。
+    // v19.6.1（审计 2026-10-15 全量批 P2-4）：**原地重写，源即目标，故不设 `source`**——`source` 是
+    //   「本次运行读过的源文件路径」槽位（给出即启用同文件守卫）；此处规范化的是卡文件自身，
+    //   `inPlace: true` 已显式声明覆盖意图。本注释只为让「无 source」的调用点一眼可辨（不是省略）。
     const r = writeWithSafety(file, text, { inPlace: true });
     console.log(`✓ ${file}: ${changed} 条已规范化（备份 ${r.backup ?? '（原文件新建，无备份可做）'}）`);
   } else if (!write) {

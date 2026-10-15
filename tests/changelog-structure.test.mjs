@@ -161,3 +161,19 @@ test('真实树：CHANGELOG 版本段结构自洽（0 违例），且版本段�
     '`## 18.18.11` 版本标题必须在场——它是 v18.18.12 事故中被误删的那个',
   )
 })
+
+// ── v19.6.1（全量审计-2026-10-15 **F-4**）：随包的「变更面」派生数据必须与 CHANGELOG 同源 ──────────
+// 为什么必须有一条门：`lib/change-surface.json` 是**派生量**（运行期提示的唯一数据源，因为它随包而
+//   CHANGELOG 不随包）。派生量没有门 = 迟早漂，而这一条的漂移是**静默**的——提示会照着过期计数说话。
+// 判据 = 「用生成器重算一遍，与盘上逐字段比对」（同一实现，不另写解析）。
+test('F-4 派生对账：`lib/change-surface.json` 必须与 CHANGELOG 当前版本段一致', async () => {
+  const { deriveFromRepo, isInSync } = await import('../scripts/gen-change-surface.mjs')
+  const expected = deriveFromRepo(join(ROOT, 'CHANGELOG.md'))
+  const onDisk = JSON.parse(readFileSync(join(ROOT, 'lib', 'change-surface.json'), 'utf8'))
+  assert.ok(isInSync(onDisk, expected),
+    '`lib/change-surface.json` 与 CHANGELOG 当前版不一致（version/count/anchor 三字段）——'
+    + `盘上 ${JSON.stringify({ version: onDisk.version, count: onDisk.count, anchor: onDisk.anchor })} vs `
+    + `应为 ${JSON.stringify(expected)}。修法：node scripts/gen-change-surface.mjs（bump 后必跑）`)
+  assert.equal(onDisk.version, expected.version, '派生数据的 version 必须等于 CHANGELOG 首段版本')
+  assert.ok(expected.count > 0, `CHANGELOG 当前段应有「行为变更 N 条」机读行（实测 ${expected.count}）——否则随包提示会退化成「未登记」`)
+})

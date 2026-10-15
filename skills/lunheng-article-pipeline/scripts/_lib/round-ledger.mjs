@@ -40,8 +40,9 @@
 //   —— 该形态记 `reviewExempt: true`，由 `handoff-check` 的 A9 降 **soft（22）** 而不是硬 21。
 //   为什么必须有这一档：A/B 轨在**当时**往往没有独立复核报告（实测 A 轨两轮 v3/v4，复核报告出现在后来的 v6/v8）
 //   → 门只能迫使**事后给旧报告补写 sha 声明**，这与本包反对的「事后补闸门留痕」同形。
-import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs'
+import { readFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { writeWithSafety } from './destructive-write.mjs'   // v19.6.1（审计 P1-3）：账本写盘走统一安全网
 
 /** 各轨额度（真源 = glossary §修订回环；改这里必须同批改该文档）。相位轮**无额度**。 */
 export const ROUND_CAPS = Object.freeze({ A: 2, B: 1, G: 2 })
@@ -182,11 +183,16 @@ export function appendLedgerRow(projectDir, row) {
   const cap = row.cap ?? effCaps[row.track]
   const roundCell = cap == null ? `${row.n}` : `${row.n}/${cap}`
   const line = `| ${row.track} | ${roundCell} | ${row.draft || ''} | ${row.source || ''} | ${row.review || ''} | ${row.at || new Date().toISOString().slice(0, 10)} |\n`
+  // v19.6.1（审计 2026-10-15 全量批 **P1-3**）：账本写盘改走 `writeWithSafety`（temp→rename 原子写 +
+  //   时间戳 `.bak` 回滚点）。旧版两处都是裸 `writeFileSync`——账本承载的是**轮次额度**这类「判据输入」
+  //   （`parseLedger` 的 `over` 直接喂给交接门与修订环），写坏即无回滚点。
+  //   边界（如实）：本函数仍是**读-改-写**，`writeWithSafety` 只消除「半写损坏」，
+  //   **不提供并发语义**——当前唯一调用方是单进程顺序执行的修订环脚本，未发现并发调用路径。
   if (!existsSync(p)) {
     mkdirSync(join(projectDir, 'drafts'), { recursive: true })
-    writeFileSync(p, LEDGER_HEADER + line, 'utf8')
+    writeWithSafety(p, LEDGER_HEADER + line, { inPlace: true })
     return { created: true, appended: line.trim() }
   }
-  writeFileSync(p, readFileSync(p, 'utf8').replace(/\n*$/, '\n') + line, 'utf8')
+  writeWithSafety(p, readFileSync(p, 'utf8').replace(/\n*$/, '\n') + line, { inPlace: true })
   return { created: false, appended: line.trim() }
 }

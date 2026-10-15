@@ -35,13 +35,17 @@
 // **判据（可迁移）**：**「量尺报警」与「量尺本身要改」之间的那一步，是先去取地面真值**；
 //   没有地面真值的阈值调整，无论方向都只是把争议藏起来。
 
+// 汉字口径**唯一真源** = `_lib/han.mjs`（v19.6.1 · 审计 2026-10-15 全量批 P2-3）：
+//   旧版本模块自建了 `countHan` 与 `{4,6}` 词表正则两份副本——与真源**逐字符等价**，
+//   故当时不产生漂移；属**潜在**风险：真源下次扩区（如需覆盖扩展 A 区）时这两处不会跟着改。
+//   han.mjs 头注释记的正是「三处口径互不相同导致同一稿件字数对不上」的历史事故，故一并收口。
+import { countHan, hanTokenRe } from './han.mjs'
+
 /** 句切分（与 `cite-coverage` / `mfact` 同族口径）：`。；！？` 与换行，丢弃空句。 */
 export const splitSentences = (text) => String(text ?? '')
   .split(/(?<=[。；！？])|\n/)
   .map((s) => s.trim())
   .filter((s) => s.length > 0);
-
-const countHan = (s) => (String(s ?? '').match(/[\u4e00-\u9fff]/g) || []).length;
 
 /** 被动标记（中文被动式的常见标志；**刻意只收明确标志**，避免把「被」字名词误判——如「被子」）。 */
 const PASSIVE_RE = /被(?!子|动|告|捕|褥|单|试|害人)|受到|遭到|遭受|为[^，。；]{0,8}所|得以|给予|获评|被评为/;
@@ -65,7 +69,7 @@ export const profile = (body) => {
   //   边界如实声明：这是**代理**，不是词典判定——普通名词缩写、外国人名音译也会被计入；
   //   故它只用来发现「术语密度异常」，不能用来断言「这些不是术语」。
   const tokens = new Map();
-  for (const m of text.matchAll(/[\u4e00-\u9fff]{4,6}/g)) tokens.set(m[0], (tokens.get(m[0]) || 0) + 1);
+  for (const m of text.matchAll(hanTokenRe())) tokens.set(m[0], (tokens.get(m[0]) || 0) + 1);
   const hapax = [...tokens.entries()].filter(([, c]) => c === 1).map(([t]) => t);
   const passive = sents.filter((s) => PASSIVE_RE.test(s));
   return {

@@ -8,10 +8,12 @@
 //   index.md 人类可读视图。供主控/主人查看池的条数、渠道、信任、时效、复用分布。
 //
 // 退出码：0 = 成功 ｜ 10 = 参数/路径错 ｜ 70 = 内部错误
-import { readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { installExitGuard, requireExistingDir, EXIT_USAGE } from './_lib/exit-guard.mjs'
 import { parseArgs, USAGE_CODE } from './_lib/cli-args.mjs'
+import { POOL_FILES, poolFilePath, readJsonTolerant } from './_lib/pool-store.mjs'
+import { writeWithSafety } from './_lib/destructive-write.mjs'   // v19.6.1（审计 P1-3）：index.md 走统一写盘安全网
 
 installExitGuard()
 
@@ -30,15 +32,15 @@ try {
 
 const workspaceRoot = requireExistingDir(positionals[0], '工作区根')
 const poolDir = join(workspaceRoot, 'evidence-pool')
-const POOL_FILES = { L: 'literature.json', D: 'data.json', C: 'cases.json', DB: 'databases.json' }
 const TYPE_LABEL = { L: '文献', D: '数据', C: '案例', DB: '数据库' }
-const readJson = (p) => JSON.parse(readFileSync(p, 'utf8').replace(/^\uFEFF/, ''))
+// 池文件清单 / 容忍 BOM 的读取口径统一在 `_lib/pool-store.mjs`（v19.6.1：旧版三脚本各写一份）
+const readJson = readJsonTolerant
 
 function main() {
   const all = []
   const perType = { L: 0, D: 0, C: 0, DB: 0 }
   for (const key of Object.keys(POOL_FILES)) {
-    const p = join(poolDir, POOL_FILES[key])
+    const p = poolFilePath(poolDir, key)
     if (!existsSync(p)) continue
     const j = readJson(p)
     perType[key] = j.entries.length
@@ -81,7 +83,7 @@ function main() {
   lines.push('## 条目清单')
   lines.push('')
   for (const key of Object.keys(POOL_FILES)) {
-    const p = join(poolDir, POOL_FILES[key])
+    const p = poolFilePath(poolDir, key)
     if (!existsSync(p)) continue
     const j = readJson(p)
     if (j.entries.length === 0) continue
@@ -95,7 +97,9 @@ function main() {
     lines.push('')
   }
 
-  writeFileSync(join(poolDir, 'index.md'), lines.join('\n'), 'utf8')
+  // v19.6.1（审计 P1-3）：视图是**持久化交付产物**，覆盖写走 `writeWithSafety`（原子写 + 时间戳 `.bak`）。
+  //   旧版裸 `writeFileSync`：写入中途被 kill 会留下半写文件且无回滚点。
+  writeWithSafety(join(poolDir, 'index.md'), lines.join('\n'), { inPlace: true })
 
   console.log(`总条目: ${all.length} (L=${perType.L} D=${perType.D} C=${perType.C} DB=${perType.DB})`)
   console.log(`渠道: 主人预设 ${channel['主人预设']} / 项目沉淀 ${channel['项目沉淀']}`)

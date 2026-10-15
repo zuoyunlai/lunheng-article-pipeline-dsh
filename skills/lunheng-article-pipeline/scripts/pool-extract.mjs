@@ -11,17 +11,20 @@
 // 去重键（单一真源 = references/_shared/素材池.md §去重）：
 //   文献 DOI→URL；数据「来源机构+年份+指标」→URL（**URL 不优先**——同一 URL 可拆多个数据点，
 //   实测 D05/D06 同引 Pew 一页、D10/D17/D23 同引一篇新华网报道，URL 优先会误合并）；案例 标题(事件名)。
-//   命中既有条目 → reuseCount+1、追加 reusedBy，不新增；未命中 → 新增条目，channel=项目沉淀。
+//   命中既有条目 → 首次由**本项目**复用时 reuseCount+1 并追加 reusedBy，不新增；未命中 → 新增条目，
+//   channel=项目沉淀。**幂等**（v19.6.1 审计 P1-1）：计数与 `reusedBy` 同判据——见 `main()` 内注释。
 //
 // 信任级别归一化（三档真源 _lib/trust.mjs）：已发布 / 主人投喂 / 二手转引。
 //   旧格式可信度 A/B → 已发布（含预印本）；C → 二手转引（含媒体转引）。
 //
 // 退出码：0 = 成功 ｜ 10 = 参数/路径错 ｜ 70 = 内部错误
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
+import { readFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join, resolve, basename } from 'node:path'
 import { createHash } from 'node:crypto'
 import { installExitGuard, requireExistingDir, EXIT_USAGE } from './_lib/exit-guard.mjs'
 import { parseArgs, USAGE_CODE } from './_lib/cli-args.mjs'
+import { POOL_FILES, readJsonTolerant, writeManifest } from './_lib/pool-store.mjs'
+import { writeWithSafety } from './_lib/destructive-write.mjs'   // v19.6.1（审计 P1-3）：池产物走统一写盘安全网
 
 installExitGuard()
 
@@ -43,7 +46,6 @@ const workspaceRoot = requireExistingDir(argv[1], '工作区根')
 const poolDir = join(workspaceRoot, 'evidence-pool')
 const projectName = basename(projDir)
 
-const POOL_FILES = { L: 'literature.json', D: 'data.json', C: 'cases.json', DB: 'databases.json' }
 const CARD_FILES = [
   { type: 'L', path: join(projDir, 'literature', '文献卡.md') },
   { type: 'D', path: join(projDir, 'data', '数据卡.md') },
@@ -52,8 +54,8 @@ const CARD_FILES = [
 
 const hash = (s) => createHash('sha256').update(String(s)).digest('hex').slice(0, 12)
 const today = new Date().toISOString().slice(0, 10)
-// 读 JSON 容忍 BOM（Windows PowerShell Set-Content -Encoding UTF8 会带 \uFEFF）
-const readJson = (p) => JSON.parse(readFileSync(p, 'utf8').replace(/^\uFEFF/, ''))
+// 读 JSON 容忍 BOM 的口径统一在 `_lib/pool-store.mjs`（v19.6.1：旧版两脚本各写一份）
+const readJson = readJsonTolerant
 
 // ── 条目切分：识别条目起始行 ─────────────────────────────────────────
 // 标题形式  ### [L01] 标题  |  加粗形式  **[D01]** 标题  |  行首形式  [D01] 指标|机构|年份|URL
@@ -159,10 +161,19 @@ function main() {
       const k = dedupKey(f)
       if (!k) { skipped++; console.log(`  [无去重键,跳过] ${f.type}${f.num}`); continue }
       if (index.has(k)) {
+        // v19.6.1（审计 2026-10-15 全量批 **P1-1**）：计数必须与 `reusedBy` **同判据**。
+        //   旧实现 `reuseCount + 1` 无条件递增，而 `reusedBy` 用 `includes()` 去重 → 两者判据不一致，
+        //   同一项目重复抽取（Phase 5 之后的 T5 修订轮 / 重跑交付都会再跑一次本脚本）线性虚增：
+        //   实测「同一项目、卡片一字未改连跑 3 次」得 `reuseCount: 2` 而 `reusedBy: ["proj"]`（1 项），
+        //   并经 manifest 汇总（`_lib/pool-store.mjs` 的 `reuseCountTotal`）把计数一并放大——
+        //   持久化的统计量失真且**不可自愈**（`reusedBy` 无法反推正确计数）。
+        //   现把递增绑定到「**首次由本项目复用**」这一唯一事实：算一次、记一次，重复执行结果不变。
         const hit = index.get(k)
-        hit.reuseCount = (hit.reuseCount || 0) + 1
         hit.reusedBy = hit.reusedBy || []
-        if (!hit.reusedBy.includes(projectName)) hit.reusedBy.push(projectName)
+        if (!hit.reusedBy.includes(projectName)) {
+          hit.reusedBy.push(projectName)
+          hit.reuseCount = (hit.reuseCount || 0) + 1
+        }
         reused++
       } else {
         pool.entries.push({
@@ -179,39 +190,17 @@ function main() {
     }
 
     mkdirSync(poolDir, { recursive: true })
-    writeFileSync(poolFile, JSON.stringify(pool, null, 2) + '\n', 'utf8')
+    // v19.6.1（审计 P1-3）：池文件是持久化状态产物 → 走 `writeWithSafety`（temp→rename 原子写 + 时间戳
+    //   `.bak` 回滚点）。旧版裸 `writeFileSync`：写入中途被 kill 会留半写文件且无任何回滚点。
+    writeWithSafety(poolFile, JSON.stringify(pool, null, 2) + '\n', { inPlace: true })
   }
 
-  updateManifest()
+  // v19.6.1（审计 P1-2）：manifest 的派生量**一律重算**——真源 = `_lib/pool-store.mjs`（与 `pool-query` 同一实现）
+  writeManifest(poolDir)
   console.log(`\n完成: 新增 ${added} 条 / 复用 ${reused} 条 / 跳过 ${skipped} 条`)
   console.log(`分类型新增: L=${perType.L} D=${perType.D} C=${perType.C}`)
   console.log(`池位置: ${poolDir}`)
   process.exit(0)
-
-  function updateManifest() {
-    const mf = join(poolDir, 'manifest.json')
-    let m = existsSync(mf) ? readJson(mf) : {}
-    const counts = { L: 0, D: 0, C: 0, DB: 0 }
-    const channels = { '主人预设': 0, '项目沉淀': 0 }
-    let reuseTotal = 0
-    for (const key of Object.keys(POOL_FILES)) {
-      const pf = join(poolDir, POOL_FILES[key])
-      if (!existsSync(pf)) continue
-      const p = readJson(pf)
-      counts[key] = p.entries.length
-      for (const en of p.entries) {
-        channels[en.channel] = (channels[en.channel] || 0) + 1
-        reuseTotal += (en.reuseCount || 0)
-      }
-    }
-    m.createdAt = m.createdAt || today
-    m.totalEntries = counts.L + counts.D + counts.C + counts.DB
-    m.byType = counts
-    m.byChannel = channels
-    m.reuseCountTotal = reuseTotal
-    m.lastUpdated = today
-    writeFileSync(mf, JSON.stringify(m, null, 2) + '\n', 'utf8')
-  }
 }
 
 try { main() } catch (err) { throw err }

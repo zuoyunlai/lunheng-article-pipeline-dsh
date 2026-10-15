@@ -420,6 +420,10 @@ if (fixMode) {
       //   ③ 无 `.bak` 上限回收。
       //   现统一走 `writeWithSafety(…, { inPlace: true })`：时间戳 `.bak`（同秒加序号，一轮内多次写不丢回滚点）
       //   + temp→rename 原子写 + BAK_MAX 回收。
+      // v19.6.1（审计 2026-10-15 全量批 P2-4）：**原地重写，源即目标，故不设 `source`**——`source` 是
+      //   「本次运行读过的源文件路径」槽位（给出即启用同文件守卫）；这里是 `--fix` 就地改写同一个文件，
+      //   `inPlace: true` 已显式声明覆盖意图。不传 `source` 与「传了但被 inPlace 让路」语义等价，
+      //   本行注释只是让这两种写法在代码上可区分（源 = 该文件自身）。
       const r = writeWithSafety(f, text.replaceAll('（检查）', '（按主控 phase 0 协议）'), { inPlace: true });
       console.log(`  ✓ 已修复 ${rel}（${hits} 处；回滚点 ${r.backup ? relative(ROOT, r.backup).replaceAll('\\', '/') : '（原文件新建，无备份可做）'}）`);
     } else {

@@ -1680,8 +1680,10 @@ if (files.length === 0 && isDraftStageAudit) {
       const drifted = [];
       const absent = [];
       // ── v18.60.1（主人授权反哺 v2 §1.3 / §7.1 #6）：**`.bak` 两侧都不参与复算** ──
-      //   为什么：`.bak` 是 `writeWithSafety` 的回滚点，`pruneBackups` 每个原文件上限 `BAK_MAX = 20`
-      //   （超出即回收最旧者）。① 若清单登记了它（v18.60.1 之前生成的包），回收后必判 `absent` → **假 P0**；
+      //   为什么：`.bak` 是 `writeWithSafety` 的回滚点，`pruneBackups` 每个原文件有上限
+      //   （`BAK_MAX`，真源 = `_lib/destructive-write.mjs`——**本处刻意不复述数值**：该常量曾被三处
+      //   注释复述成同一旧值，属本仓「同一事实多处维护必然漂」的形态，2026-10-15 审计 P2-2 收口）。
+      //   超限即回收最旧者，于是：① 若清单登记了它（v18.60.1 之前生成的包），回收后必判 `absent` → **假 P0**；
       //   ② 新清单不再登记它，但包里仍留有历史 `.bak` → 会被 `extra` 判「未登记的产物」→ **假 P0**。
       //   判据：复算只对**交付成员**负责；`.bak` 是脚本自身的回滚点，不是交付物。
       const isBak = (p) => String(p).endsWith('.bak');

@@ -41,6 +41,7 @@ import { installExitGuard, requireExistingDir } from './_lib/exit-guard.mjs'
 import { loadSessions, pairAskUserQuestion, collectTouched } from './_lib/session-log.mjs'   // v18.81.0（批 1.4）：会话日志独立核对
 import { parseLedger, ROUND_CAPS, LEDGER_REL } from './_lib/round-ledger.mjs'   // v18.81.0（批 2.1）：轮次额度真源
 import { BLIND_FORBIDDEN } from './_lib/blind-forbidden.mjs'   // v18.80.4（QLT-6 脚手架批）：盲评禁忌面**单一真源**
+import { maskFences } from './_lib/sections.mjs'   // v19.6.1（审计 P1-4）：盲评「首节」判据的围栏感知（本仓唯一实现）
 import { CONTRACTS } from './_lib/cc-rules/content-rules.mjs'
 // v19.6.0（架构与机制反哺批 §3.2）：**四门 / §6 五字段的唯一登记表**——禁止在本文件再写第二份。
 import { PHASE_DOCS, GATE_FIELDS as REGISTRY_GATE_FIELDS, confirmFileOf } from './_lib/cc-rules/phase-registry.mjs'
@@ -259,6 +260,15 @@ function runBlindReview(blindPath, session) {
   let text = ''
   try { text = readText(blindPath) } catch { hard.push({ check: 'BR-A1', subject: blindPath, severity: 'hard', detail: '盲评件不可读', exitClass: 20 }); return { hard, soft, notes } }
   if (!text.trim()) { hard.push({ check: 'BR-A1', subject: blindPath, severity: 'hard', detail: '盲评件 0 字节', exitClass: 20 }); return { hard, soft, notes } }
+  // v19.6.1（审计 2026-10-15 全量批 P2-8）：**输入面收窄提示**。本模式的判据只做「存在 + 非 0 字节」，
+  //   而六维 / `##` 节契约**假定输入是 Markdown 盲评件**；给定任意非空文件（`.txt` / `.json` / 二进制）
+  //   都会进入契约解析并多半判 21——判据是窄的（不是缺陷），但把明显非盲评件的路径当真的跑会误导读者。
+  //   故加一条 **notes 提示**：notes 是信息通道，**不影响退出码**（见下方 exit 计算只用 hard/soft），
+  //   因此不新增任何拒绝面，只让「跑错了东西」这件事可见。
+  if (!/\.md$/i.test(blindPath)) {
+    notes.push(`输入路径 \`${blindPath}\` 的后缀不是 \`.md\`——本模式按 **Markdown 盲评件契约**解析`
+      + '（`##` 二级节 + 六维 `x/5`）。若这是 `.txt`/`.json`/二进制等非盲评件，下面判出的失败不具判定意义。')
+  }
 
   // ① 六维名逐字 + 每维 x/5（名字真源 = 09 卡，机检契约不得改写）
   const DIMS = ['原创性', '方法论', '证据强度', '论证结构', '写作质量', '引文规范']
@@ -278,14 +288,36 @@ function runBlindReview(blindPath, session) {
       hard.push({ check: 'BR-A3', subject: '总评分', severity: 'hard', detail: `总评分 ${total[1]} ≠ 六维之和 ${sum}（逐项写算式：${scores.join('+')} = ${sum}）`, exitClass: 21 })
     }
   }
-  // ③ 「已读范围」为首节且非空
-  const mRead = /^##\s*已读范围/m.exec(text)
+  // ③ 「已读范围」为**首节**且非空
+  // ── v19.6.1（审计 2026-10-15 全量批 **P1-4**）：把声明已久的「首节」变成**真判据** ──────────────
+  //   病灶：本门自 v18.81.0 起把「**首节**「已读范围」」写进契约的三处（本脚本 `--help`、09 卡 §🕶
+  //   盲评模式的产物行、`tests/blind-review.test.mjs` 文件头），而判据只有 `^##\s*已读范围`
+  //   =「**任意位置**存在该行」。实测：把该节前面插入另一个 `##` 节后与合规件**完全同判**
+  //   （均 exit 0 / hardCount 0），只有「完全没有」才拦（exit 21 / BR-A4）。
+  //   为什么这不只是措辞问题：本门在下方 detail 里自述的理由是「盲评的**全部效力**建立在『读的是什么』
+  //   可核对之上」——「写在最前、读完即记」与「写在末尾、事后追补」在审计意义上不同。门既已把它写进
+  //   契约（三处），就应判它；另一条出路是把三处措辞一并降为「须含」。此处取**判它**（收紧实现，
+  //   不动契约口径，故三处声明无需改写）。
+  //   围栏感知走真源 `_lib/sections.mjs` 的 `maskFences`（逐字节等长遮罩，index 可直接用于原文切片）——
+  //   与 g-audit-check / cite-coverage-check 同源，不在本脚本第四次手写标题解析。
+  //   `##` 后**允许零空白**（`\s*`）：与旧判据同宽容度，避免本次收紧让既有的紧凑写法新增失败。
+  const maskedRead = maskFences(text)
+  const mRead = /^##(?!#)\s*已读范围/m.exec(maskedRead)
+  const firstH2 = /^##(?!#)/m.exec(maskedRead)
   if (!mRead) {
     hard.push({ check: 'BR-A4', subject: '已读范围', severity: 'hard', detail: '缺首节「## 已读范围」——盲评的**全部效力**建立在「读的是什么」可核对之上', exitClass: 21 })
+  } else if (!firstH2 || firstH2.index !== mRead.index) {
+    hard.push({
+      check: 'BR-A4', subject: '已读范围', severity: 'hard', exitClass: 21,
+      detail: `「已读范围」不是**第一个二级节**（首个 \`##\` 在偏移 ${firstH2 ? firstH2.index : -1}，该节在 ${mRead.index}）`
+        + '——契约要求它写在最前（09 卡 §🕶 盲评模式的产物行）：盲评的全部效力建立在「读的是什么」可核对之上，'
+        + '「读完即记」与「事后追补」在审计意义上不同。修法：把 `## 已读范围` 移到第一个二级节的位置',
+    })
   } else {
-    const after = text.slice(mRead.index + mRead[0].length)
-    const nextH2 = after.search(/^##\s/m)
-    const body = (nextH2 === -1 ? after : after.slice(0, nextH2)).trim()
+    const afterIdx = mRead.index + mRead[0].length
+    const after = maskedRead.slice(afterIdx)
+    const nextRel = after.search(/^##(?!#)/m)
+    const body = (nextRel === -1 ? text.slice(afterIdx) : text.slice(afterIdx, afterIdx + nextRel)).trim()
     if (!body) hard.push({ check: 'BR-A4', subject: '已读范围', severity: 'hard', detail: '「已读范围」为空——空节会被读成「已核对过」', exitClass: 21 })
     // ④ 禁忌面（本轮**自述**层）
     const hit = BLIND_FORBIDDEN.filter((k) => body.includes(k))

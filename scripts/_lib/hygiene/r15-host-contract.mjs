@@ -3,7 +3,10 @@
 //   3 参 waterfall——入参错位后真实宿主**每次工具调用**抛 `next is not a function`、被静默改写成 isError，
 //   却因「自建桩测试照着实现写」而 600 用例全绿。H4 同族（2 参且不调 next() → 截断下游模型选择）。
 //   本门静态解析 lib/index.js 的 `ctx.on(...)`，对每条断言「事件名存在于宿主契约表 + 形参个数逐位一致」。
-//   契约表真源与更新口径见 `_lib/host-contract.mjs` 头注释（宿主 0.2.0-rc.2 三个派发点）。
+//   契约表真源与更新口径见 `_lib/host-contract.mjs` 头注释。
+//   v19.6.1（全量审计-2026-10-15 **P2-23**）：本行原写「（宿主 0.2.0-rc.2 三个派发点）」——那个版本号与
+//   可执行常量对不上（判定依据是 `_lib/host-contract.mjs` 的 `CONTRACT_HOST_VERSION`，它钉的是**实测通过**
+//   的宿主版本）。**宿主版本号只该有一处**：此处改为指针、不复述数字（防再漂，与本仓「同一事实一处」同判据）。
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { reconcileHostContract } from '../host-contract.mjs' // ⑮：lib/index.js 监听器签名 + 事件名 vs 宿主 waterfall 契约

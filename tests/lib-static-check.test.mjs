@@ -183,7 +183,12 @@ test('lib 文案门②：描述里声明的「未暴露旗标」必须与表逐�
   const gaps = parseFlagGaps()
   for (const { name, slice } of toolSlices()) {
     const declared = gaps[name] || []
-    const claimsGap = /工具面未暴露/.test(slice)
+    // v19.6.1（全量审计-2026-10-15 **P2-22**）：判据正则原为 `/工具面未暴露/`，而 `lib/tools.js` 的实际
+    //   文案是「工具面**仍**未暴露」（中间夹一个「仍」字）→ **永不匹配** → `claimsGap` 恒 false →
+    //   「表里无缺口、描述却声称有缺口」这一**反向漂移**永远不会被判（假绿）。
+    //   修法：把判据放宽到「工具面 … 未暴露」（跨任意非换行字符）——本门要判的是**有没有这句声明**，
+    //   不是它中间有没有修饰词。
+    const claimsGap = /工具面[^\n]*?未暴露/.test(slice)
     if (declared.length === 0) {
       assert.ok(!claimsGap,
         `${name} 在表中**无**旗标缺口，描述却声称「工具面未暴露」——反向漂移会误导调用方绕开工具`)

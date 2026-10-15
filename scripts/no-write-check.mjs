@@ -79,13 +79,37 @@ function compare(a, b) {
 const show = (list) => list.map((f) => f.split(sep).join('/')).sort();
 
 const REPO_SCRIPTS = join(root, 'scripts');
+// ── v19.6.1（审计 2026-10-15 全量批 **P2-7**）：全量套的**测试超时旗标必须派生，不得写死第二把尺** ──
+//   病灶：`package.json#scripts.test` 用一把超时（`--test-timeout` 旗标），而本脚本内置的「全量套」步
+//   写的是另一个数字（240000 vs 180000）。两处都是「同一个全量套」，却给了两把尺：
+//   · CI（`ci.yml`）与发布链（`publish.yml`）都以 `-- node --test <旗标> …` **显式传入**，
+//     该显式命令**覆盖**下面内置的那一步 —— 所以内置值只在**本地裸跑**
+//     `pnpm run check:no-write` 时生效；
+//   · 后果正是本仓反复登记的那类不一致：**「本地判定的通过」与「CI/发布判定的通过」不是同一个判据**
+//     （180 s 内必须完成的用例，在本地这一支可以跑到 240 s）。
+//   现取**权威入口作真源**：从 `package.json#scripts.test` 抽出该旗标（本仓契约：测试入口就是它），
+//   两处天然同值。读不到时**响亮回退**到内置默认值——不静默（判据同本文件「降级必须可观察」）。
+const DEFAULT_TEST_TIMEOUT = 180000;
+const TIMEOUT_FROM_PKG = (() => {
+  try {
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+    const m = /--test-timeout=(\d+)/.exec(pkg?.scripts?.test || '');
+    if (m) return `--test-timeout=${m[1]}`;
+  } catch { /* 落到下面的回退分支 */ }
+  return null;
+})();
+const TEST_TIMEOUT_FLAG = TIMEOUT_FROM_PKG || `--test-timeout=${DEFAULT_TEST_TIMEOUT}`;
+/** 旗标来源（`package.json` / `fallback`）——降级必须**可观察**（本仓「不静的降级」纪律）。
+ *  刻意不在这里 `console.error`：本脚本的 `--json` 分支由调用方 `JSON.parse(stdout)`，
+ *  模块加载期的 stderr 会被 `out = stdout + stderr` 拼接后污染 JSON——故改在输出段报（见下）。 */
+const TIMEOUT_SOURCE = TIMEOUT_FROM_PKG ? 'package.json#scripts.test' : 'fallback';
 // 每一步 = `{ label, cmd, args }`。内置步骤都跑 node 脚本（cmd 默认 = 当前 node）；
 // `-- <命令…>` 给的是**完整命令行**（如 `-- node scripts/x.mjs`）——**不要**在这条路径上再前置 node，
 // 否则会变成 `node node …`（本脚本首版就这么错过：子进程 exit 1 且什么也没跑，检查器却报「无改写」）。
 const STEPS = custom
   ? [{ label: `自定义命令：${custom.join(' ')}`, cmd: custom[0], args: custom.slice(1) }]
   : [
-    { label: '全量套 node --test', cmd: process.execPath, args: ['--test', '--test-timeout=240000', 'tests/**/*.test.mjs', 'skills/*/tests/**/*.test.mjs'] },
+    { label: '全量套 node --test', cmd: process.execPath, args: ['--test', TEST_TIMEOUT_FLAG, 'tests/**/*.test.mjs', 'skills/*/tests/**/*.test.mjs'] },
     { label: '① consistency-check', cmd: process.execPath, args: [join(root, 'skills/lunheng-article-pipeline/scripts/consistency-check.mjs')] },
     { label: '② plugin-surface-check', cmd: process.execPath, args: [join(REPO_SCRIPTS, 'plugin-surface-check.mjs')] },
     { label: '③ repo-hygiene-check', cmd: process.execPath, args: [join(REPO_SCRIPTS, 'repo-hygiene-check.mjs')] },
@@ -165,8 +189,11 @@ const notRun = steps.filter((s) => s.spawnErr);
 const unexpected = steps.filter((s) => !s.spawnErr && s.exit !== 0);
 
 if (json) {
-  console.log(JSON.stringify({ root, steps, total: { ...total, changed: show(total.changed), added: show(total.added), removed: show(total.removed) } }, null, 2));
+  console.log(JSON.stringify({ root, testTimeout: TEST_TIMEOUT_FLAG, testTimeoutSource: TIMEOUT_SOURCE, steps, total: { ...total, changed: show(total.changed), added: show(total.added), removed: show(total.removed) } }, null, 2));
 } else {
+  if (TIMEOUT_SOURCE === 'fallback') {
+    console.log(`⚠️ 读不到 package.json#scripts.test 的超时旗标 → 全量套回退到内置默认 ${DEFAULT_TEST_TIMEOUT} ms（两处可能不同源，请核对）`);
+  }
   for (const s of steps) {
     const mark = s.spawnErr ? '!' : (s.total === 0 ? '✓' : '✗');
     console.log(`  ${mark} ${s.label.padEnd(26)} exit=${String(s.exit).padStart(3)}  改写 ${s.total}${s.spawnErr ? `  ← ${s.spawnErr}` : ''}`);

@@ -52,6 +52,10 @@ export function run(ctx) {
     'lib/tools.js',
     'lib/guard.js',
     'lib/commands.js',
+    // v19.6.1（全量审计-2026-10-15 F-4）：**变更面派生数据必须随包**——它的唯一用途就是在
+    //   「没有 CHANGELOG」的 npm 安装形态下让运行期提示仍然可用；漏了它 = 该提示静默退化成「未登记」
+    //   （而开发树读 CHANGELOG 照常工作，故**本仓本地永远发现不了**）。故在此列为关键路径。
+    'lib/change-surface.json',
     'skills/lunheng-article-pipeline/SKILL.md',
     'skills/lunheng-article-pipeline/AGENTS.md',
     'skills/lunheng-article-pipeline/scripts/m-gate-check.mjs',

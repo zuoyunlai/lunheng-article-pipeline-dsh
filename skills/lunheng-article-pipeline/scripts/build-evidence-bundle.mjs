@@ -45,7 +45,7 @@
 //   stderr 点名原因 + 视图槽位留空（**不退回本地重算**，那等于再造第二份实现），退出码不变。
 //   边界（如实）：`count-chars.mjs` 是随包同目录脚本，直接 `spawnSync` 调用其 CLI（`--summary`）
 //   并解析其 JSON —— 这是「与 count-chars 同一助手函数」的最强形态：**就是它在算**。
-import { readdirSync, copyFileSync, existsSync, mkdirSync, statSync, readFileSync, writeFileSync, rmdirSync } from 'node:fs';
+import { readdirSync, copyFileSync, existsSync, mkdirSync, statSync, readFileSync, rmdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';   // v19.5.0：调 count-chars.mjs 取正文区字数（同一产线真源）
 import { join, basename, relative, resolve, dirname } from 'node:path';
 import { parseTargetCandidates } from './_lib/target-chars.mjs';  // 目标字数解析唯一真源（v19.5.0 超限标记）
@@ -415,7 +415,8 @@ const MANIFEST_NAME = 'manifest.json';
       if (f === MANIFEST_NAME) continue;
       // ── v18.60.1（主人授权反哺 v2 §1.3）：**跳过 `.bak` 备份产物** ──
       //   为什么：`manifest.json` 走 `writeWithSafety`（原子写 + 时间戳 `.bak`），备份落在**同目录**；
-      //   而 `pruneBackups`（destructive-write.mjs，`BAK_MAX = 20`）会**回收最旧的 `.bak`**——旧版把
+      //   而 `pruneBackups`（真源 = `_lib/destructive-write.mjs` 的 `BAK_MAX`；**本处不复述数值**
+      //   ——该常量曾被三处注释复述成同一旧值，2026-10-15 审计 P2-2 收口）会**回收最旧的 `.bak`**——旧版把
       //   `.bak` 一并登记为清单成员，于是「回收 → 登记的成员已不存在」→ M-Exist-2 **必然**判复算失败 P0
       //   （实测：论衡实测项目-夫妻收入差异家庭权力 的证据包累积 21 个 `.bak`，复算报「登记的文件已不在包里」）。
       //   判据：`.bak` 是脚本自身的回滚点，**不是交付成员**——不应进入清单，也不应影响复算。
@@ -456,6 +457,9 @@ const MANIFEST_NAME = 'manifest.json';
     ...(sizeMismatch.length ? { sizeMismatch } : {}),
     files: entries,
   };
+  // v19.6.1（审计 2026-10-15 全量批 P2-4）：**原地重写，源即目标，故不设 `source`**——`writeWithSafety`
+  //   的 `source` 槽位是「本次运行读过的**源文件**路径」（给出即启用同文件守卫）；清单本身既是输入
+  //   又是输出，`inPlace: true` 已显式声明覆盖意图，故不传 `source`（传了反而要 `inPlace` 让路）。
   writeWithSafety(join(destDir, MANIFEST_NAME), JSON.stringify(manifest, null, 2) + '\n', { inPlace: true });
   console.log(`✓ 证据包清单 -> ${join('证据包', MANIFEST_NAME)}（${entries.length} 个文件记 sha256；M-Exist-2 据此复算）`);
 }
@@ -808,7 +812,15 @@ ${src && src.kind === 'final' ? `- [ ] 引用闭环：素材卡条数 vs 引用�
   if (!existsSync(auditsDir)) mkdirSync(auditsDir, { recursive: true });
   // 规范路径固定为 `审计视图-v0.md`（角色卡统一只认这一条路径，避免多版本并存导致读错）；源与阶段写在视图头，重新生成即覆盖。
   const summaryPath = join(auditsDir, '审计视图-v0.md');
-  writeFileSync(summaryPath, summary, 'utf8');
+  // ── v19.6.1（审计 2026-10-15 全量批 P1-3 / P2-5）────────────────────────────────────────────
+  //   P1-3：视图是**持久化交付产物**，此前两处都是裸 `writeFileSync`——写入中途被 kill 会留半写文件，
+  //     且**无 `.bak` 回滚点**。现一律走 `writeWithSafety`（temp→rename 原子写 + 时间戳 `.bak`）。
+  //   P2-5：`--deep-summary` 旧实现是「先全量覆写 → 再 `readFileSync` 读回 → 追加」（**两次非原子写**），
+  //     两步之间被 kill 会留下**缺 deep 段的视图**。现把 deep 段拼进同一份文本**一次落盘**，
+  //     顺带删掉那次回读。（该形态旧版**幂等性是对的**——因为每次都被前一次全量覆写重置，审计已实跑证伪
+  //     「重复追加」；此处只收掉非原子窗口，不改任何输出内容。）
+  //   写盘时机：`--deep-summary` 时移到 deep 段之后（它就是同一份文本）；非 deep 时保持原位。
+  if (!wantDeepSummary) writeWithSafety(summaryPath, summary, { inPlace: true });
   console.log(`\n✓ 审计视图: ${summaryPath}`);
   console.log(`  - 视图源: ${srcRel}（${stageLabel}）`);
   console.log(`  - 正文区纯汉字: ${hanBody}（全文 ${hanFull}）${src ? '' : '（无正文源）'}`);
@@ -877,8 +889,9 @@ ${src && src.kind === 'final' ? `- [ ] 引用闭环：素材卡条数 vs 引用�
     }
 
     const deepPath = summaryPath;
-    const prev = readFileSync(deepPath, 'utf8');
-    writeFileSync(deepPath, prev + deepSection, 'utf8');
+    // 单次落盘（P2-5）：deep 段拼在内存里的 `summary` 之后，不再「读回刚写的文件再追加」——
+    //   旧形态的两次非原子写之间被 kill 会留下缺 deep 段的视图。
+    writeWithSafety(deepPath, summary + deepSection, { inPlace: true });
     console.log(`  - 素材卡全集（deep）: L${Ls.length} D${Ds.length} C${Cs.length}`);
   }
 

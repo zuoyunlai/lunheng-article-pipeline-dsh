@@ -84,6 +84,40 @@ test('B4：缺首节「已读范围」→ 硬 21（空节会被读成「已核�
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
 
+// ── v19.6.1（审计 2026-10-15 全量批 P1-4）：**反向用例**──────────────────────────────
+// 契约三处（`--help` / 09 卡 §🕶 的产物行 / 本文件头）都写「**首节**「已读范围」」，而旧实现只判
+// 「任意位置存在该行」——实测把该节移到末尾与合规件**完全同判**（均 exit 0 / hardCount 0）。
+// 这条用例把「非首节 → 硬 21」钉住：删掉判据即红（审计原话：「否则同类漂移会再犯」）。
+test('B4b【反向】：**已读范围不是首个二级节** → 硬 21（旧实现与合规件不可区分）', () => {
+  // 把「## 已读范围」整段移到文末（前面已有 `## 评审维度` 等节）——内容一字未删，只调位置
+  const lines = ART().split('\n')
+  const i = lines.indexOf('## 已读范围')
+  const moved = [...lines.slice(0, i), ...lines.slice(i + 2), '## 已读范围', lines[i + 1]].join('\n')
+  assert.ok(moved.indexOf('## 已读范围') > moved.indexOf('## 评审维度'), '夹具必须真的把该节移到后面')
+  const d = mk({ art: moved })
+  try {
+    const r = runB(art(d))
+    assert.equal(r.code, 21, '非首节必须判硬（该节内容完整，只判位置）：' + r.out)
+    const hit = parseJson(r).hard.find((x) => x.check === 'BR-A4')
+    assert.ok(hit, '须报 BR-A4：' + JSON.stringify(parseJson(r).hard))
+    assert.match(hit.detail, /第一个二级节/, '文案须说清判的是「首节」而非「缺失」：' + hit.detail)
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
+// 反例的「围栏」边界：围栏代码块里出现的 `## …`（稿件引用示例）**不算**二级节
+// （真源 = `_lib/sections.mjs` 的 `maskFences`）。这条是**假失败防护**：不做围栏遮罩时，围栏内的
+// 那一行会被当成「首个二级节」→ 合规件被判硬 21（本仓已因同类漏遮罩踩过多次，围栏语义有唯一实现）。
+test('B4c：**围栏代码块内**的 `## …` 不得被当成首节（否则合规件假失败）', () => {
+  const art2 = ART({ extraHead: '```markdown\n## 这是对稿件标题的引用示例\n```\n' })
+  assert.ok(art2.indexOf('## 这是对稿件标题的引用示例') < art2.indexOf('## 已读范围'), '夹具须把示例放在已读范围之前')
+  const d = mk({ art: art2 })
+  try {
+    const r = runB(art(d))
+    assert.equal(r.code, 0, '围栏内的 `##` 不是标题，合格件应放行：' + r.out)
+    assert.equal(parseJson(r).hardCount, 0, JSON.stringify(parseJson(r).hard))
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
 test('B5：已读范围含**禁忌面**（自述层）→ 硬 21', () => {
   const d = mk({ art: ART({ readBody: '- analysis/分析大纲.md\n- data/数据卡.md' }) })
   try {
@@ -122,6 +156,19 @@ test('B8：盲评件不存在 → exit 20（产物缺失，与交接门同码）
   try {
     const r = runB(join(d, 'audits', '不存在.md'))
     assert.equal(r.code, 20, '产物缺失须用 20：' + r.out)
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
+// v19.6.1（审计 2026-10-15 全量批 P2-8）：非 `.md` 后缀 → **notes 提示**（只提示、不改退出码）。
+// 判据刻意保持窄（存在 + 非 0 字节），本提示只让「跑错了东西」可见——不放宽也不新增拒绝面。
+test('P2-8：输入后缀不是 `.md` → notes 提示，且不改退出码', () => {
+  const d = mk()
+  try {
+    const p = join(d, 'audits', '被误当盲评件的其他文件.txt')
+    writeFileSync(p, ART())
+    const r = run([H(), '--blind-review', p])
+    assert.equal(r.code, 0, 'notes 是信息通道，不得影响退出码：' + r.out)
+    assert.match((parseJson(r).notes || []).join('\n'), /后缀不是/, '须提示后缀可疑：' + r.out)
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
 

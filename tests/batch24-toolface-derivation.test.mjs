@@ -242,9 +242,12 @@ test('B24-§5-6 正文区 > 目标上限 × 1.2 → 视图内**显著标记**超
 
 test('B24-§6-1【核心夹具】--genre text-qualitative 不得 exit 2；两项记 SKIP + N/A 注明',
   { skip: skipWhen(!FIXTURE, '真夹具 run/<项目>/final/定稿.md 不在本机——带理由跳过') },
-  () => {
+  (t) => {
     const draft = join(FIXTURE, 'final', '定稿.md')
-    if (!existsSync(draft)) { assert.ok(true, '夹具定稿缺失，跳过'); return }
+    // v19.6.1（全量审计-2026-10-15 **P2-9**）：原为 `assert.ok(true, '…跳过…') + return`——它被
+    //   node:test 记成 **PASS**（缺夹具与「真跑过」在报告里同形），而本仓口径是 **skip ≠ 通过**。
+    //   现改用 `t.skip(理由)`：报告里如实显示为 skipped。
+    if (!existsSync(draft)) { t.skip('夹具定稿缺失，跳过'); return }
     const rep = join(tmp('lunheng-b24-mc-'), 'tq.json')
     const r = run([S('methodology-check.mjs'), draft, '--genre', 'text-qualitative', '--report', rep])
     assert.notEqual(r.code, 2, `文本分析型不得因体裁不适用报 P0（exit 2）：${r.out.slice(-400)}`)
@@ -261,9 +264,9 @@ test('B24-§6-1【核心夹具】--genre text-qualitative 不得 exit 2；两项
 
 test('B24-§6-2【反向】--genre empirical-stat 仍须报出缺参项；不传 --genre 与旧口径逐值一致',
   { skip: skipWhen(!FIXTURE, '真夹具不在本机——带理由跳过') },
-  () => {
+  (t) => {
     const draft = join(FIXTURE, 'final', '定稿.md')
-    if (!existsSync(draft)) { assert.ok(true, '夹具定稿缺失，跳过'); return }
+    if (!existsSync(draft)) { t.skip('夹具定稿缺失，跳过'); return }   // v19.6.1（P2-9）：同 §6-1，改记 SKIP 而非 PASS
     const d = tmp('lunheng-b24-mc2-')
     try {
       const es = join(d, 'es.json')

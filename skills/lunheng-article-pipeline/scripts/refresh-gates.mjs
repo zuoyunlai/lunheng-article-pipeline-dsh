@@ -206,7 +206,14 @@ for (const t of targets) {
     }
     if (n > 0) text = lines.join('\n');
   }
-  if (!dryRun) writeWithSafety(abs, text, { source: 'refresh-gates.mjs' });
+  // ── v19.6.1（审计 2026-10-15 全量批 **P2-1**）：`source` 槽位必须是**源正文真路径** ──────────
+  //   旧版传的是字面量 `'refresh-gates.mjs'`（**文件名**，不是路径）——而 `writeWithSafety` 的
+  //   `source` 契约是「本次运行**读过的源文件路径**」，内部据此执行 `assertNotSameFile(source, p)`。
+  //   字面量会被 `resolve()` 成「cwd 下同名的文件」，那里不存在 → `sameFile` 判定为 false →
+  //   **守卫恒放行**（语义误用：把「人读的标签」写进了「机器判据的槽位」）。
+  //   今天无可触发路径（刷新目标 = 三份交付件，与源正文 `final/定稿.md` / `drafts/初稿-vN.md` 不相交），
+  //   故本修**零行为变更**；修的是「一旦将来有人把交付件路径加进刷新目标，保护会静默失效」。
+  if (!dryRun) writeWithSafety(abs, text, { source: src.abs });
   replaced += n;
   results.push({
     file: t.rel, status: dryRun ? 'would-replace' : 'replaced', count: n,

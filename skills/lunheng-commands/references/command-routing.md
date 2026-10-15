@@ -104,9 +104,12 @@
 
 ## `-rollback <id> --confirm`
 
-**行为**：从 `run/<id>/checkpoints/phase-XX/` 恢复到指定 checkpoint。
+**行为（v19.6.1 · 全量审计-2026-10-15 P2-10 如实更正）**：本命令**只做两件事**——① 校验 `--confirm`（缺则提示并中止）；② 产出路由 token（`action: 'rollback'`），checkpoint 参数原样透传。
+
+> ⚠️ **项目级 checkpoint 尚未实现（如实声明，不留矛盾）**：全仓**没有任何脚本**创建 `run/<id>/checkpoints/`，也没有可执行的恢复逻辑（`scripts/route-command.mjs` 只解析 token、**零副作用**）。本行此前写「从 `run/<id>/checkpoints/phase-XX/` 恢复到指定 checkpoint」属**文档承诺 > 实现**。**现行可用的回滚是文件级的**：`_lib/destructive-write.mjs` 在每次覆盖写前留时间戳 `.bak` 回滚点（回滚 = `cp <文件>.<时间戳>.bak <文件>`），另加 git 历史。**判据：本命令返回成功 ≠ 项目已被回滚**；需要项目级回滚时须先落地 checkpoint 生产者。
+
 **二次确认**：`--confirm` 必填；缺则提示「将自动确认回滚，请重试并加 --confirm」。
-**论衡阶段**：影响 status.md + 重置 agents-log.md。
+**论衡阶段**：设计意图是影响 status.md + 重置 agents-log.md——**当前无实现**（同上）。
 
 <a id="status"></a>
 

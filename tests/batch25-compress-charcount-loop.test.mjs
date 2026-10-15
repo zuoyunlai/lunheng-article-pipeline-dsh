@@ -35,8 +35,11 @@ const CYCLE = S('apply-compression-cycle.mjs')
 //   （本批夹具项目名 = `xingbie`；直接用「第一个含 `analysis/分析大纲.md` 的目录」是**不确定**的——
 //     本机 `run/` 下有 38 个符合条件的项目，字母序第一个是 `AB-ai-content-farm-A`，
 //     于是真夹具用例会对着**别的项目**断言，四条用例全红且红得毫无信息量。实测过。）
-// 找不到 ≠ 失败：真夹具用例在本机/CI 上是否可跑是**环境事实**，故按本仓既有口径
-//   `assert.ok(true, '…跳过…')` 带理由跳过（既有写法照旧），而不是把缺夹具读成回归。
+// 找不到 ≠ 失败：真夹具用例在本机/CI 上是否可跑是**环境事实**，故按本仓既有口径**带理由跳过**，
+//   而不是把缺夹具读成回归。
+//   ⚠️ v19.6.1（全量审计-2026-10-15 P2-9）：跳过出口由 `assert.ok(true, '…跳过…') + return`
+//   **改为 `t.skip('…')`**——前者会被 node:test 记成 **PASS**（「缺夹具」与「真跑过」在报告里同形），
+//   与本仓「**skip ≠ 通过**」的既定口径相反。同批修了本文件 4 处与 `batch24-*` 2 处。
 const FIXTURE_PROJECT = 'xingbie'
 const FIXTURE_ROOT = (() => {
   if (process.env.LUNHENG_FIXTURE_ROOT) return process.env.LUNHENG_FIXTURE_ROOT
@@ -131,10 +134,12 @@ test('B25-A3【真夹具·只读】本轮大纲：分节标题式下限和 = 800
   //   （两处不一致本身即 note 的一条：表是给写手读的，判定以标题行为准）。
   const proj = XINGBIE
   if (!proj || !existsSync(join(proj, 'analysis', '分析大纲.md'))) {
-    assert.ok(true, '夹具项目不在本机 → 跳过（真夹具用例只在本机项目目录存在时有意义）')
+    // v19.6.1（全量审计-2026-10-15 **P2-9**）：原为 `assert.ok(true, '…跳过…') + return`——它被
+    //   node:test 记成 **PASS**（「缺夹具」与「真跑过」在报告里同形），与本仓「skip ≠ 通过」口径相反。
+    //   现改用 `t.skip(理由)`，报告里如实显示为 skipped。
+    t.skip('夹具项目不在本机 → 跳过（真夹具用例只在本机项目目录存在时有意义）')
     return
-  }
-  const r = run([CYCLE, proj, '--dry-run'])
+  }  const r = run([CYCLE, proj, '--dry-run'])
   const j = parseJson(r)
   assert.equal(j.outlineReconcile.minimaSum, 8000, '标题式下限和须为 8,000（§4 的括号里带「；主体…」追加说明也不得漏解析）')
   assert.equal(j.outlineReconcile.perSectionMinima.length, 6, '六章都要解析出来，实得：' + JSON.stringify(j.outlineReconcile.perSectionMinima))
@@ -314,11 +319,11 @@ test('B25-C2 04 卡：字数分配校验式在场（各节★下限之和 ≤ �
   assert.ok(src.includes('## N 章节名（预算 ≥N 字）'), '须给出压缩轮对账的解析锚点形态')
 })
 
-test('B25-C3【真夹具·只读】v1 → v2「判据句差集」演示：四项都能被列出（含 P1-1 判据句被删）', () => {
+test('B25-C3【真夹具·只读】v1 → v2「判据句差集」演示：四项都能被列出（含 P1-1 判据句被删）', (t) => {
   const v1p = XINGBIE ? join(XINGBIE, 'drafts', '初稿-v1.md') : null
   const v2p = XINGBIE ? join(XINGBIE, 'drafts', '初稿-v2.md') : null
   if (!v1p || !existsSync(v1p) || !existsSync(v2p)) {
-    assert.ok(true, '真夹具不在本机 → 跳过')
+    t.skip('真夹具不在本机 → 跳过')   // v19.6.1（P2-9）：改记 SKIP，不再用 assert.ok(true) 冒充 PASS
     return
   }
   // 与角色卡第 2 项同形的最小实现：抽含关键词的句子集合 → 做差集。**只读**两份初稿。
@@ -350,12 +355,12 @@ test('B25-C3【真夹具·只读】v1 → v2「判据句差集」演示：四项
   assert.match(v2txt, /当事方自源|未独立审计|转引/, '④ 降级限定须仍在场（本夹具判通过——四项里并非每项都报）')
 })
 
-test('B25-C4【真夹具·只读】脚本对同一对版本实测：criterion 违规 + 两条 section-below-min + exit 1', () => {
+test('B25-C4【真夹具·只读】脚本对同一对版本实测：criterion 违规 + 两条 section-below-min + exit 1', (t) => {
   const proj = XINGBIE
   const v1p = proj ? join(proj, 'drafts', '初稿-v1.md') : null
   const v2p = proj ? join(proj, 'drafts', '初稿-v2.md') : null
   if (!proj || !v1p || !existsSync(v1p) || !existsSync(v2p)) {
-    assert.ok(true, '真夹具不在本机 → 跳过')
+    t.skip('真夹具不在本机 → 跳过')   // v19.6.1（P2-9）：同 C3
     return
   }
   const r = run([CYCLE, proj, '--dry-run', '--target-N', v2p, '--baseline', v1p])
@@ -466,11 +471,11 @@ test('B25-F1【反向】同一编号只剩一处（ID 未消失，只是少一�
 // ─────────────────────────────────────────────────────────────────────────────
 // E 组：§一·2 的**算术**钉死（真实大纲的六章下限和）
 // ─────────────────────────────────────────────────────────────────────────────
-test('B25-E1 真夹具 §11 算术：850+1100+610+2960+1880+600 = 8000 = 目标（顶满 0.95 弹性线）', () => {
+test('B25-E1 真夹具 §11 算术：850+1100+610+2960+1880+600 = 8000 = 目标（顶满 0.95 弹性线）', (t) => {
   const proj = XINGBIE
   const outline = proj ? join(proj, 'analysis', '分析大纲.md') : null
   if (!outline || !existsSync(outline)) {
-    assert.ok(true, '真夹具不在本机 → 跳过')
+    t.skip('真夹具不在本机 → 跳过')   // v19.6.1（P2-9）：同 C3
     return
   }
   // 逐字从大纲标题行取六章下限（不写死数字），再与「总和 = 8,000 = 目标」这一**实测事实**比对。

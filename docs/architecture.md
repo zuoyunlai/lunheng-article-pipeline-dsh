@@ -38,3 +38,21 @@ T1 先行者检索 → T4 差异点声明 → T7 G7 原创性审计，防止「�
 ## DSH 适配
 
 技能以「bundle」形态发布，两部分各司其职：**包入口 `lib/index.js`** 经 `ctx.skills.register()` 注册**两个技能**（`lunheng-article-pipeline` 主技能 + `lunheng-commands` 内嵌子技能；`resourceBase` 指向随包的 `skills/lunheng-article-pipeline/`，故角色卡/模板/脚本的相对引用在任意 cwd 下可解析，且注册即 effect、卸载自动清理）；**`cordis.patch.yml`**（由 `package.json` 的 `dsh.bundle.patch` 声明）只叠加 3 档 subagent 工具。工具集由 DSH Agent 预设决定，模型路由由 `settings.yaml` 配置。
+
+## lib/ 的运行时半边（v19.6.1 补：此前本节只讲注册面，另一半无声明）
+
+> **为什么补**：2026-10-15 全量审计 **P2-14** 实测——本节此前只描述「注册技能 + patch 工具」，对
+> `lib/` 里**随包发货的另外约四百 KB**（守卫 / 工具 / 命令 / 监听器 / 面板 / 浏览器半边）**一个词都没提**
+> （`panel` / `guard` / `写保护` / `命令` / `监听` / `client` 关键词命中全为 0）。架构文档只覆盖一半注册面
+> ＝读者无法据它判断「装了这个包会在宿主里多出哪些面」。
+
+| 模块 | 作用 | 默认 | 关闭方式 |
+|---|---|---|---|
+| `lib/index.js` 的 **H2/H4 监听器** | `tools/post-execute` 上做伦理脱敏**标记**（默认**不改写**正文）；`system-prompt/assemble` 上追加「变更面」提示（本次行为变更条数 + CHANGELOG 锚点；数据源 = **随包的** `lib/change-surface.json`，开发树无该文件时回退读仓库根 `CHANGELOG.md`） | 开 | `Config.ethicsHook: false` |
+| `lib/guard.js` **机制文件写保护** | 经 `ctx.tools.guard()` 全局否决命中**受保护根**的写调用（技能副本 / `lib/` / 仓库 `scripts/` / `cordis.patch.yml`；写工具**与**登记过的写参数） | 开 | 主人授权：env `LUNHENG_ALLOW_MECH_EDIT=1`（或 profile 里的同名开关） |
+| `lib/tools.js` **原生工具 ×4** | `lunheng_m_gate` / `lunheng_char_count` / `lunheng_handoff_check` / `lunheng_ethics_sanitize`（前三个薄包装随包脚本；`m_gate` 可写门报告，受**可写范围围栏**） | 宿主有 `tools` 服务即注册 | 宿主不含 `tools` 服务时自动降级 |
+| `lib/commands.js` **人类命令** | `/lunheng-status`（读单项目进展）/ `/lunheng-stats`（跨项目遥测看板）/ 子技能侧的 `/lunheng-*` 路由 | 开 | 无需开关 |
+| `lib/panel.mjs` **运行面板（只读 HTTP 读面）** | 在宿主 `ctx.webServer` 上挂 `prefix` 路由 `/lunheng-panel/*`：`/ping`、`/projects`、`/snapshot`、`/file`（只读下载项目内产物）、`/events`（SSE） | **开**（v18.93.0 起「装完即用」） | `Config.panel: false` 或 `LUNHENG_PANEL=0` |
+| `lib/client.js` + 开工台 | 浏览器半边：运行面板视图 + 「开工台」表单；只写 `localStorage`，**不新增宿主路由** | 随面板 | 同面板 |
+
+**共同口径**：以上模块都**零第三方依赖**、不联网、不写盘（例外逐条写明：面板只读、工具仅 `m_gate` 的门报告可写、监听器默认只标记）；所有路径判定统一走 `lib/run-path-fence.mjs` 的**三层围栏**（词法 → 结构 → realpath 物理层），**新入口不得自写一套**（审计 §优化方向 2）。逐项信任边界与残余风险见 [`SECURITY.md`](../SECURITY.md)。

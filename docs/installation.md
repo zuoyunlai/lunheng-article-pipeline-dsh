@@ -9,7 +9,7 @@
 #    ⚠️ **务必钉版本**：不写 `@<版本>` 时，装到哪个版本取决于本机包管理器**当时**的解析状态。
 #    实测过一次：同一条命令装到 **18.15.0**，而 registry 上的 `latest` 已是 18.20.4 —— 差了五个小版本，
 #    且按下面流程走下去**没有任何一步能让人察觉**。版本真源只有一处：`npm view lunheng-article-pipeline version`。
-dsh plugin --profile <profile> add lunheng-article-pipeline@19.6.0
+dsh plugin --profile <profile> add lunheng-article-pipeline@19.6.2
 
 # 1b) **核对装到的版本**（钉了版本也值得跑一次——它读的是 profile 里**实际落盘**的 package.json）
 node -e "console.log(require('<DSH_HOME>/profiles/<profile>/node_modules/lunheng-article-pipeline/package.json').version)"
@@ -35,7 +35,8 @@ node -e "console.log(require('<DSH_HOME>/profiles/<profile>/node_modules/lunheng
 3. **dshmarket 市场**：v18.0.0 起本包带 JS 包入口（`main` → `lib/index.js`），「只认 JS 入口」的校验器不再误报（详见 `docs/faq.md`）。
 4. **宿主（`@deepseek-ai/dsh`）版本**（三次复审 N-4，如实声明）：本包 `peerDependencies` 写 `>=0.1.2-rc.1 <0.2.0`，但**真实装载冒烟（CI 的 `loader-smoke`）只在 `0.1.7-rc.2` 上跑过**——声明区间宽于实测证据。
    已知不兼容：`0.1.5-rc.2` / `rc.3` 的 `dsh-app-boot` 在 profile 的 `patchReload: "live"`（`dsh plugin add` 生成的默认值）且无 HMR 时会抛 `requires the Cordis HMR service` → **headless 启动必红**，与本包代码无关（`pack` / `install` / `dump-config` 三个前置子步全过）。规避：用 `0.1.7-rc.2` 及以上，或避开 headless 启动路径。
-   > 该「声明宽于证据」的差额何时收口（CI 加最低版本 leg ↔ 收紧 peer 声明）见三次复审报告 §三.3 定案 1。
+   > **v19.6.1（审计 P2-20）处置**：**刻意不收窄区间**——下限 `0.1.2-rc.1` 是 lockfile 解析值且全量测试通过，收窄会把**实际可用**的旧宿主一并拒之门外（假拒绝）；专挑已知两版排除又只是把它们刻进声明。**收口走「扩证据」**（CI 加最低版本 leg 后再收紧 peer），见三次复审报告 §三.3 定案 1。
+   > **机械面**：上两句（「声明宽于证据」+「已知不兼容版本」）**不得被静默删除**——`tests/host-contract.test.mjs` 的 peer 对账用例钉住：只要 peer 仍是宽区间，这两句就必须在场（**如实披露本身就是交付面的一部分**）。
 
 ## 验证
 
@@ -105,7 +106,7 @@ dsh --profile <profile>
 | `LUNHENG_TIERING` | `on` / `off` | `on` = 显式装载三档工具行（不指定模型也可，用于确认工具可见）；`off` = 强制不装载 | 优先级最高，压过其它 `LUNHENG_*` |
 | `LUNHENG_{RETRIEVAL,STRONG,AUDIT}_{PROVIDER,MODEL}` | provider 名 / 模型 id | 分档取值；**设任一档即同时装载三行** | 跨 provider 时才需同时给 PROVIDER + MODEL |
 
-同名的**部署开关**走插件 `config`（v18.2.6 起入口导出 `Config`，**共 9 键**，完整清单见 `SECURITY.md` §可调参数）：`allowMechanismEdit` / `quiet` / `scriptTimeoutMs` / `scriptMaxOutputBytes` / `handoffLevel`（`basic`｜`strict`，默认 `basic`）/ `ethicsHook`（H2 伦理脱敏总开关，默认 `true`；纯代码·文档工作流可置 `false` 关噪声）/ `hookRewriteContent`（H2 改写正文，默认 `false` = 只标记）/ `hookMaxBlockChars`（单块扫描上限）/ `panel`（**运行面板**：只读 HTTP 读面 `/lunheng-panel/*`，默认 `false` 不注册任何路由；开启后在 Web GUI 里实时看 `run/<项目>` 的阶段、角色、门与产物，披露见 `SECURITY.md`）。写在你 profile 里本插件行上：
+同名的**部署开关**走插件 `config`（v18.2.6 起入口导出 `Config`，**共 10 键**，完整清单见 `SECURITY.md` §可调参数）：`allowMechanismEdit` / `quiet` / `scriptTimeoutMs` / `scriptMaxOutputBytes` / `handoffLevel`（`basic`｜`strict`，默认 `basic`）/ `ethicsHook`（H2 伦理脱敏总开关，默认 `true`；纯代码·文档工作流可置 `false` 关噪声）/ `hookRewriteContent`（H2 改写正文，默认 `false` = 只标记）/ `hookMaxBlockChars`（单块扫描上限）/ `hookMaxTotalChars`（**单次调用**累计扫描预算，默认 1 MB）/ `panel`（**运行面板**：只读 HTTP 读面 `/lunheng-panel/*`，默认 `false` 不注册任何路由；开启后在 Web GUI 里实时看 `run/<项目>` 的阶段、角色、门与产物，披露见 `SECURITY.md`）。写在你 profile 里本插件行上：
 
 ```yaml
 - id: lunheng-article-pipeline

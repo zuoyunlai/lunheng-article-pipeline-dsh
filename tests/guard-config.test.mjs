@@ -14,12 +14,14 @@
 // 本文件不导出内部函数，而是**真跑一次入口**拿到 guard 与 reporter——测的就是发布物本身的行为。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'   // v19.6.1（审计 F-1）：登记对账用例要读 lib/tools.js 源码派生根工具参数面
 import { dirname, join, resolve, relative } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { settle, withEnv } from './_fixtures.mjs'   // v18.16.0（F-1 反哺 · 共享 settle）；v18.18.0（F-6 · withEnv）
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PACKAGE_ROOT = join(HERE, '..')
+const ROOT = PACKAGE_ROOT   // v19.6.1（审计 F-1）：登记对账用例按仓库根读源码（与其它测试同义名）
 const ENTRY = join(PACKAGE_ROOT, 'lib', 'index.js')
 const SKILL_DIR = join(PACKAGE_ROOT, 'skills', 'lunheng-article-pipeline')
 const SKILL_MD = join(SKILL_DIR, 'SKILL.md')
@@ -169,10 +171,66 @@ test('不误伤：项目产物 / 包内文档 / tests / 只读工具 一律放�
     ['skills/scripts 之外的普通文件', 'write', { file_path: join(ws, 'docs', 'faq.md') }],
     ['只读工具 read（名字不在写工具集合内）', 'read', { file_path: SKILL_MD }],
     ['无路径参数（不含 file/path 键）', 'write', { content: 'x' }],
+    // v19.6.1（审计 F-1）：**参数级写面不得误伤读参数**——`draft` / `evidence` 是**读**参数，
+  //   指向受保护根内的文件是合法的（如「审一份机制文档」）；只有登记的写参数（`report`）才判写面。
+    ['m_gate 读参数指向受保护根（draft）', 'lunheng_m_gate', { draft: SKILL_MD, evidence: join(ws, 'final', '证据包') }],
+    ['m_gate 未给写参数', 'lunheng_m_gate', { draft: join(ws, 'final', '定稿.md'), evidence: join(ws, 'final', '证据包') }],
+    ['m_gate 写参数落在工作区', 'lunheng_m_gate', { draft: 'a.md', evidence: 'b', report: join(ws, 'run', 'x', 'final', 'M-Gate-Report.json') }],
   ]
   for (const [label, tool, args] of benign) {
     assert.equal(await guard(exec(tool, args, ws)), undefined, `${label} 不得被误伤`)
   }
+})
+
+// ── v19.6.1（全量审计-2026-10-15 **F-1**）：参数级写面 ────────────────────────────────────────
+// 病灶：`lunheng_m_gate` 自 v19.6.0 起把 `report` 接到 `--report`（写盘），而 guard 只认「工具名 ∈
+//   `WRITE_TOOLS`」——`lunheng_*` 一个都不在集合里 → 短路放行。实测可**不经 `pwsh`** 在受保护根内
+//   创建/覆盖文件（审计端到端复现）。本用例是它的回归网：删掉 `WRITE_PARAMS` 即红。
+test('F-1：工具面写参数（`lunheng_m_gate.report`）命中受保护根必须被拦', async () => {
+  const { guards } = await runApply()
+  const guard = guards[0]
+  const ws = PACKAGE_ROOT
+  const writeParams = [
+    ['受保护根 = 技能目录', { draft: 'a.md', evidence: 'b', report: SKILL_MD }],
+    ['受保护根 = lib/', { draft: 'a.md', evidence: 'b', report: LIB_INDEX }],
+    ['受保护根 = 包级 cordis.patch.yml', { draft: 'a.md', evidence: 'b', report: join(PACKAGE_ROOT, 'cordis.patch.yml') }],
+    ['受保护根 + 拼写变体（. 段）', { draft: 'a.md', evidence: 'b', report: `${SKILL_DIR}/./SKILL.md` }],
+  ]
+  for (const [label, args] of writeParams) {
+    const reason = await guard(exec('lunheng_m_gate', args, ws))
+    assert.ok(reason, `${label}：经工具参数写受保护根必须被拦（审计 F-1 回归）`)
+    assert.match(String(reason), /机制文件写保护/, '理由须说明是机制写保护否决')
+  }
+  // 授权例外对参数级写面同样生效（不要造出「绕过不了的第二个开关」）
+  const cfg = await runApply({ allowMechanismEdit: true })
+  assert.equal(await cfg.guards[0](exec('lunheng_m_gate', { draft: 'a.md', evidence: 'b', report: SKILL_MD }, ws)), undefined,
+    'allowMechanismEdit=true 时参数级写面同样放行')
+})
+
+test('F-1 登记对账：工具 schema 里的写型参数名必须登记（`WRITE_PARAMS`）或显式豁免', async () => {
+  // 「声明搬进门的视野」：新增一个「带写参数的非写工具」时必须同步登记，否则本用例红。
+  const g = await import(pathToFileURL(join(ROOT, 'lib', 'guard.js')).href)
+  const WRITE_LIKE = new Set(g.WRITE_LIKE_PARAM_NAMES)
+  const src = readFileSync(join(ROOT, 'lib', 'tools.js'), 'utf8')
+  const tools = [...src.matchAll(/name:\s*'(lunheng_[a-z_]+)'/g)].map((m) => ({ name: m[1], i: m.index }))
+  assert.ok(tools.length >= 4, `应从 tools.js 派生出 ≥4 个工具（实测 ${tools.length}）——解析退化为恒真`)
+  let checked = 0
+  for (let k = 0; k < tools.length; k++) {
+    const seg = src.slice(tools[k].i, k + 1 < tools.length ? tools[k + 1].i : src.length)
+    const pm = seg.match(/parameters:\s*\{([\s\S]*?)\n    \},/)
+    if (!pm) continue
+    const keys = [...pm[1].matchAll(/^ {6}(\w+):/gm)].map((m) => m[1])
+    for (const key of keys) {
+      if (!WRITE_LIKE.has(key.toLowerCase())) continue
+      checked++
+      const registered = (g.WRITE_PARAMS[tools[k].name] || []).includes(key)
+      const exempted = (g.WRITE_PARAM_EXEMPT[tools[k].name] || []).includes(key)
+      assert.ok(registered || exempted,
+        `${tools[k].name}.${key} 名字像写路径，却既不在 WRITE_PARAMS 登记、也不在 WRITE_PARAM_EXEMPT 豁免`
+        + '——若是写面请登记（并补 guard 行为用例），不是写面请写明豁免理由')
+    }
+  }
+  assert.ok(checked >= 2, `应至少命中 2 个写型参数名（实测 ${checked}）——写型名集合或解析退化会让本门恒真`)
 })
 
 test('授权例外：allowed() 为真时放行（env 与 Config 两条路径都要能用）', async () => {

@@ -201,17 +201,25 @@ jobs:
         # v18.18.3（审计 D-1③）：补 `skills/*/tests/**` —— 子技能 `lunheng-commands` 的
         # route.test.mjs（22 用例）此前**不在任何自动触发点**：根 test 脚本只 glob `tests/**`，
         # 本工作流 grep `lunheng-commands` 0 命中。它只靠人手动跑，等于没有回归网。
-        # 该 glob 与 package.json 的 `test` / `test:no-isolation` 三处同形（判据 = 用例总数 289）。
+        # 该 glob 与 package.json 的 `test` / `test:no-isolation` 三处同形。
+        # v19.6.1（全量审计-2026-10-15 **P2-24**）：本行原写「判据 = 用例总数 289」，那是**当时的**实测值，
+        #   早已过期（套件随版本增长）。按本仓既定纪律（「此处不再抄数字，防『加规则忘改数字』」）撤掉绝对值：
+        #   真正的不变量是「三处 glob 同形且都含 `skills/*/tests/**`」，不是某个数字。
         #
         # v18.46.0：**用 no-write-check 包住同一条命令**——它先对全仓文件做 sha256 快照，再跑下面这条
         #   完全相同的测试命令，最后比对（有改写 → exit 1 并逐文件点名）。
         #   **代价 = 0**：跑的还是同一次套件，不增加运行时长；换来的是一道**此前没有的**守卫——
         #   「测试或工具偷偷写进真仓库」（忘了用临时夹具 / 把「检查」实现成「修复」/ 路径推导偏到真源树）。
         #   它同时是 v18.44.0 那起**未定位成因**的改写事故在 CI 侧的固定观察点。
-        run: node scripts/no-write-check.mjs -- node --test "tests/**/*.test.mjs" "skills/*/tests/**/*.test.mjs"
+        # v19.6.1（全量审计-2026-10-15 **F-5**）：**补上 `--test-timeout`**。此前这一条（包裹跑）
+        #   没有超时旗标，而下一条（裸跑）有 —— 同一个全量套在 CI 内部就有两把尺；更严重的是
+        #   **包裹跑**那一支挂死的用例只能等 GitHub job 上限（数十分钟且难归因）。
+        #   旗标值与 `package.json#scripts.test` 同源（180000）；机械对账见
+        #   `tests/no-write-check.test.mjs` 的「CI/publish 包裹跑与裸跑旗标一致」源码钉。
+        run: node scripts/no-write-check.mjs -- node --test --test-timeout=180000 "tests/**/*.test.mjs" "skills/*/tests/**/*.test.mjs"
       # v18.62.4（全量审计-v18.62.3 P1-11）：**这一条曾不存在，而上面那条包装曾吞掉测试退出码**——
       #   `no-write-check` 旧版只看「有没有改写」与「命令是否存在（ENOENT）」，被包命令退出非 0
-      #   既不判负也不透传 → 604 个用例在 PR/push 上**完全不阻塞**，只剩 `publish.yml`（打 tag 时）
+      #   既不判负也不透传 → **整个套件**在 PR/push 上**完全不阻塞**，只剩 `publish.yml`（打 tag 时）
       #   才拦，为时已晚。现两头收口：① 包装器内部把「被包命令 exit≠0」判负；② 再加下面这一步**裸跑**
       #   同一 glob —— 即使将来包装器语义再变，测试失败也一定红，且失败细节直接落在 GitHub 的测试报告里。
       #   `--test-timeout` 与 `package.json#scripts.test` 同源：此前三处 glob 同形而超时参数只有

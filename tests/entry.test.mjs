@@ -14,6 +14,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { tmpdir } from 'node:os'   // v19.6.1（审计 F-1）：构造「工作区与 tmpdir 之外」的路径
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { PIPE_SPAWN_BLOCKED, skipWhen, settle, withEnv, mkProject, tmp } from './_fixtures.mjs'   // v18.16.0（F-1 反哺 · 共享 settle）；v18.18.0（F-6 · withEnv）；v19.6.0（+mkProject/tmp：工具面旗标接线用例）
 
@@ -239,6 +240,78 @@ test('v19.6.0：工具面 M 门 `--report` 已接线 —— 给了必须真的�
     assert.ok(j.verdict_scope?.draft_sha256, '落盘报告须带被审正文指纹')
     assert.ok(proj, '（fixture 返回 proj，仅用于路径可读性）')
   } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
+// ── v19.6.1（全量审计-2026-10-15 **F-1** 工具侧第二道）：写参数 `report` 的**可写范围围栏** ─────────
+// 审计已端到端实测的病灶：`report` 只做基准解析 → 可写到任意路径（含受保护根内），**不需要 `pwsh`**。
+// 上一条用例只验「给了 `report` 必须落盘」（正例）；本条补**反例**——工作区与系统临时目录之外必须被拒，
+// 且**目标文件不得被创建**（「拒绝 + 无副作用」缺一不可，否则拒绝只是嘴上说说）。
+test('F-1：`report` 落在会话工作区与系统临时目录之外 → 拒绝且目标文件不存在', async () => {
+  const fakeDefineTool = (def) => def
+  const { installLunhengTools } = await import(pathToFileURL(join(PACKAGE_ROOT, 'lib', 'tools.js')).href)
+  const regs = []
+  const ctx = { get: (n) => (n === 'tools' ? { register: (d) => { regs.push(d); return () => {} } } : undefined) }
+  await installLunhengTools(ctx, {
+    skillRoot: join(PACKAGE_ROOT, 'skills', 'lunheng-article-pipeline'),
+    defineToolFactory: async () => ({ defineTool: fakeDefineTool }),
+  })
+  const gateTool = regs.find((t) => t.name === 'lunheng_m_gate')
+  const { d, fin, ev } = mkProject()
+  try {
+    const draft = join(fin, '定稿.md')
+    writeFileSync(draft, '# 标题\n\n## 摘要\n\n摘要 [L01]。\n\n## 一、导论\n\n正文。\n\n'
+      + '## 参考文献\n\n[L01] a\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
+    // 会话工作区 = 夹具项目所在目录（本身就在 `os.tmpdir()` 内），故「两者之外」要上溯一层：
+    //   `dirname(os.tmpdir())`（Windows `…\AppData\Local` / POSIX `/`）既不在工作区、也不在 tmpdir。
+    //   ⚠️ 不可以拿 `tmp()` 造「外部」目录——它本身就在 `os.tmpdir()` 内，那样测不出任何东西（本用例首版踩到）。
+    const outsideDir = dirname(tmpdir())
+    const outside = join(outsideDir, `lunheng-must-not-exist-${process.pid}.json`)
+    assert.ok(!existsSync(outside), '前提：拒绝路径上跑之前不应有文件')
+    await assert.rejects(
+      () => gateTool.execute({ draft, evidence: ev, report: outside, summary: true },
+        { signal: new AbortController().signal, agent: { session: { header: { cwd: fin } } } }),
+      /INVALID_ARGS|只能写到会话工作区/,
+      '工作区与系统临时目录之外的 report 必须被拒（审计 F-1）',
+    )
+    assert.ok(!existsSync(outside), '拒绝路径上**不得留下任何字节**（拒绝必须无副作用）')
+    // 同一个 tmpdir 夹具内（= 系统临时目录）仍必须放行——既有合法用法（quality-score 写 os.tmpdir()）不得被误伤
+    const insideTmp = join(fin, 'M-Gate-Report.json')
+    await gateTool.execute({ draft, evidence: ev, report: insideTmp, summary: true },
+      { signal: new AbortController().signal, agent: { session: { header: { cwd: fin } } } })
+    assert.ok(existsSync(insideTmp), '项目内（也在 tmpdir 内）的 report 必须照常落盘——围栏不得误伤既有用法')
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
+// ── v19.6.1（全量审计-2026-10-15 **P2-7**）：原生工具的**读参数**也要围栏 ─────────────────────────
+// 病灶：工具在**宿主进程内** `readFileSync` → **不经宿主对 agent 的 fs 策略**；`lunheng_ethics_sanitize`
+//   的 `mode:'none'` 更是「任意文件全文读」原语（逐字节回吐原文）。审计口径：与 `lib/commands.js`
+//   的叶文件拒止「同类问题两处不同强度」，必须统一到共享围栏（§优化方向 2）。
+test('P2-7：原生工具读参数落在工作区与 tmpdir 之外 → 拒绝（读面不得绕过宿主 fs 策略）', async () => {
+  const fakeDefineTool = (def) => def
+  const { installLunhengTools } = await import(pathToFileURL(join(PACKAGE_ROOT, 'lib', 'tools.js')).href)
+  const regs = []
+  const ctx = { get: (n) => (n === 'tools' ? { register: (d) => { regs.push(d); return () => {} } } : undefined) }
+  await installLunhengTools(ctx, {
+    skillRoot: join(PACKAGE_ROOT, 'skills', 'lunheng-article-pipeline'),
+    defineToolFactory: async () => ({ defineTool: fakeDefineTool }),
+  })
+  const names = regs.map((t) => t.name).sort()
+  assert.deepEqual(names, ['lunheng_char_count', 'lunheng_ethics_sanitize', 'lunheng_handoff_check', 'lunheng_m_gate'],
+    '四个工具都应注册（否则下面的用例可能对着空集断言）')
+  // 界外：`dirname(os.tmpdir())` 既不在工作区、也不在 tmpdir（本用例只能构造到这一层）
+  const outside = join(dirname(tmpdir()), `lunheng-read-fence-${process.pid}.md`)
+  const exec = (cwd) => ({ signal: new AbortController().signal, agent: { session: { header: { cwd } } } })
+  const sanitize = regs.find((t) => t.name === 'lunheng_ethics_sanitize')
+  const counted = regs.find((t) => t.name === 'lunheng_char_count')
+  await assert.rejects(() => sanitize.execute({ file: outside, mode: 'none' }, exec(PACKAGE_ROOT)),
+    /INVALID_ARGS/, '`ethics_sanitize` 是「任意文件全文读」原语，界外路径必须被拒')
+  await assert.rejects(() => counted.execute({ file: outside }, exec(PACKAGE_ROOT)),
+    /INVALID_ARGS/, '`char_count` 的读参数同样受围栏')
+  // 工作区内必须放行（不得误伤既有用法：本项目自己的脚本就在工作区内）
+  const inside = join(PACKAGE_ROOT, 'docs', 'architecture.md')
+  assert.ok(existsSync(inside), '前提：工作区内要有一个真实文件')
+  const ok = await counted.execute({ file: inside }, exec(PACKAGE_ROOT))
+  assert.equal(typeof ok.hanChars ?? ok.total ?? ok.chars, 'number', '工作区内读参数必须照常工作：' + JSON.stringify(ok).slice(0, 200))
 })
 
 test('C 组降级：宿主缺 @deepseek-ai/dsh-tools 时，工具安装失败但不影响技能（裸仓库场景）', async () => {

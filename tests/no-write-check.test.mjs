@@ -13,7 +13,7 @@
 //   ④ 参数错 / 空目录 → exit 10（不得把「指错根」当「干净」）。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { ROOT, run, tmp } from './_fixtures.mjs'
 
@@ -123,4 +123,45 @@ test('no-write-check：--json 给出机器可读结构（steps 逐步 + total �
     assert.equal(typeof j.total.changed.length, 'number', 'total 三个类别都应是数组')
     assert.ok(j.root.endsWith('lunheng-nowrite-' + j.root.split('lunheng-nowrite-')[1]), 'root 应回显')
   } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
+// ── v19.6.1（审计 2026-10-15 全量批 **P2-7**）：超时口径**单一真源**的源码钉 ──────────────────
+// 病灶：`package.json#scripts.test` 与「本脚本内置的全量套步」用了**两个不同的数字**（180000 / 240000）
+//   ⇒ 「本地裸跑 check:no-write 的通过」与「CI / 发布链的通过」不是同一个判据。
+// 钉法（沿用本仓 ADR 源码钉的「必须出现 X + 不得出现 Y」两句式）：
+//   必须：内置步用**派生的**旗标（模板串 `${…}`）；
+//   不得：源码里再出现写死的 `--test-timeout=<数字>`（含注释里的复述——故本文件与脚本注释都只写「超时旗标」）。
+test('P2-7 源码钉：全量套的超时旗标必须派生自 package.json，不得写死第二个数字', () => {
+  const src = readFileSync(CHECK, 'utf8')
+  const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'))
+  const m = /--test-timeout=(\d+)/.exec(pkg.scripts.test || '')
+  assert.ok(m, 'package.json#scripts.test 必须带超时旗标（本仓测试入口契约，no-write-check 的真源）')
+  assert.match(src, /'--test',\s*TEST_TIMEOUT_FLAG,/, '内置全量套步必须使用派生的 TEST_TIMEOUT_FLAG')
+  assert.match(src, /--test-timeout=\$\{/, '旗标必须由真源派生（模板串），而不是硬编码')
+  assert.doesNotMatch(src, /--test-timeout=\d/, '不得再写死一个数字——那正是 P2-7 的病灶形态（两把尺）')
+  // 反向自证：派生逻辑真的读 package.json（删掉读取分支即红）
+  assert.match(src, /package\.json/, '派生必须真的读 package.json（否则「派生」是假动作）')
+})
+
+// ── v19.6.1（全量审计-2026-10-15 **F-5**）：CI / 发布链的**每一条** `node --test` 都必须带同一旗标 ──
+// 病灶（审计实测）：`ci.yml` 的**包裹跑**（`no-write-check -- node --test …`）**没有**超时旗标，而同一
+//   job 的**裸跑**有 —— 一个 CI 内部两把尺；更严重的是包裹跑那一支挂死的用例只能等 GitHub job 上限。
+//   判据：**「push 绿」与「发布绿」必须同义**，故所有测试入口的超时旗标都必须等于 `package.json#scripts.test` 的那个值。
+test('F-5 源码钉：ci.yml / publish.yml 的每一条 `node --test` 都必须与 package.json 同超时旗标', () => {
+  const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'))
+  const m = /--test-timeout=(\d+)/.exec(pkg.scripts.test || '')
+  assert.ok(m, 'package.json#scripts.test 必须带超时旗标（本仓测试入口契约）')
+  let seen = 0
+  for (const wf of ['.github/workflows/ci.yml', '.github/workflows/publish.yml']) {
+    const src = readFileSync(join(ROOT, wf), 'utf8')
+    // 只取**真实命令行**（`run:` 行），不是步骤名（步骤名里也含「node --test」字样——首版就误收了它）
+    const cmds = src.split('\n').filter((l) => /^\s*run:\s*.*node --test/.test(l) && !/^\s*#/.test(l))
+    assert.ok(cmds.length >= 1, `${wf} 应至少有一条真实（非注释）的 \`node --test\` 命令——解析退化会让本门恒真`)
+    for (const l of cmds) {
+      seen++
+      assert.ok(l.includes(`--test-timeout=${m[1]}`),
+        `${wf} 的这条命令缺超时旗标或与 package.json 不同值（应为 ${m[1]}）：${l.trim()}`)
+    }
+  }
+  assert.ok(seen >= 3, `应至少核到 3 条测试命令（实测 ${seen}）——判据退化为空集即失效`)
 })

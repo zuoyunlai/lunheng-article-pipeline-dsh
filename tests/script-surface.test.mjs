@@ -91,6 +91,24 @@ test('真实树：写内容面必须覆盖所有 `--report` 写盘脚本（口�
   }
 })
 
+// ── v19.6.1（审计 2026-10-15 全量批 P1-2/P1-3 的池域收口）：**素材池共享写口必须算「写内容」** ──────
+// 病灶（本模块开头点名的那类失真，这次又发作了一次）：三个 `pool-*.mjs` 把写盘统一收进
+//   `_lib/pool-store.mjs` 后，`pool-query.mjs` 的**顶层**已无被识别的写 API → 被算成「只读」，
+//   而它其实会**创建空池文件并重写 manifest**。⑧c 当场把它读成「SECURITY.md 列了但源码已无该能力」。
+// 这条是**反向自证**：删掉词表里的 `writeManifest` / `ensurePoolSkeleton` 任一项，本用例立刻红。
+test('**词表回归**：素材池共享写口（`writeManifest` / `ensurePoolSkeleton`）必须算「写内容」（v19.6.1）', () => {
+  const r = withScripts(
+    {
+      'manifest-only.mjs': 'import { writeManifest } from "./_lib/pool-store.mjs"\nwriteManifest("pool")\n',
+      'skeleton-only.mjs': 'import { ensurePoolSkeleton } from "./_lib/pool-store.mjs"\nensurePoolSkeleton("pool")\n',
+    },
+    (dir) => deriveScriptSurface(dir),
+  )
+  assert.deepEqual(r.writeContent, ['manifest-only.mjs', 'skeleton-only.mjs'],
+    '经素材池共享写口写盘的脚本属于「写内容」——旧口径把 pool-query 算成只读＝低报执行面')
+  assert.deepEqual(r.readOnly, [], '两者都不得落入「只读」')
+})
+
 test('解析 SECURITY.md：三档清单能取出，且缺 marker 时**响亮抛错**', () => {
   const d = parseSecuritySurface(SECURITY)
   assert.ok(d.spawn.includes('apply-compression-cycle.mjs'), '子进程面应含 apply-compression-cycle.mjs（C-7 的事主）')

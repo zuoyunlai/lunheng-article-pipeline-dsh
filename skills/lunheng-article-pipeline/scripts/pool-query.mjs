@@ -9,11 +9,18 @@
 //   用户不预设任何素材也能生效：第一个项目 Phase 5 回写沉淀、第二个项目 Phase 0.5 查池命中。
 //   命中条目由主控注入 T1/T2/T3 派发话术（复用不绕过三角验证 / G8 / G7）。
 //
+// manifest 口径（v19.6.1 · 审计 2026-10-15 全量批 **P1-2**）：`manifest.json` 的计数全是**派生量**，
+//   一律由池文件**重算**（真源 = `_lib/pool-store.mjs`）。旧版 `ensureSkeleton()` 的判据只看
+//   「manifest.json 在不在」，写进去的计数**恒为 0** → 池内有数据时产出一份「自称 0 条」的 manifest，
+//   实测同一进程内先打印「✅ 已创建空素材池骨架（0 条）」再打印「命中 1/1 条」；且在下次跑
+//   `pool-extract` 之前**不自愈**——而主人侧读面正是本脚本与 `pool-report`。
+//
 // 退出码：0 = 成功（含「空池无命中」）｜ 10 = 参数/路径错 ｜ 70 = 内部错误
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { installExitGuard, requireExistingDir, EXIT_USAGE } from './_lib/exit-guard.mjs'
 import { parseArgs, USAGE_CODE } from './_lib/cli-args.mjs'
+import { POOL_FILES, ensurePoolSkeleton, poolFilePath, readJsonTolerant, writeManifest } from './_lib/pool-store.mjs'
 
 installExitGuard()
 
@@ -33,46 +40,31 @@ try {
 const workspaceRoot = requireExistingDir(positionals[0], '工作区根')
 const poolDir = join(workspaceRoot, 'evidence-pool')
 const keywords = positionals.slice(1)
-const POOL_FILES = { L: 'literature.json', D: 'data.json', C: 'cases.json', DB: 'databases.json' }
-const today = new Date().toISOString().slice(0, 10)
-const readJson = (p) => JSON.parse(readFileSync(p, 'utf8').replace(/^\uFEFF/, ''))
 
 // ── 惰性创建空骨架（能力/数据分离：数据目录首次使用时才建）──────────
-function ensureSkeleton() {
-  if (existsSync(join(poolDir, 'manifest.json'))) return false
-  const dirs = ['raw/books', 'raw/datasets', 'raw/papers', 'raw/misc', 'transcripts']
-  for (const d of dirs) mkdirSync(join(poolDir, d), { recursive: true })
-  for (const f of Object.values(POOL_FILES)) {
-    const p = join(poolDir, f)
-    if (!existsSync(p)) writeFileSync(p, JSON.stringify({ version: 1, entries: [] }, null, 2) + '\n', 'utf8')
-  }
-  const mf = join(poolDir, 'manifest.json')
-  if (!existsSync(mf)) {
-    writeFileSync(mf, JSON.stringify({
-      createdAt: today, totalEntries: 0,
-      byType: { L: 0, D: 0, C: 0, DB: 0 },
-      byChannel: { '主人预设': 0, '项目沉淀': 0 },
-      reuseCountTotal: 0, lastUpdated: today,
-    }, null, 2) + '\n', 'utf8')
-  }
-  return true
-}
-
+// v19.6.1（审计 P1-2）：建骨架**只建目录与空池文件**（已存在的池文件不覆盖），manifest 由
+// `writeManifest()` **重算**产生——两个动作拆开后，就不会再出现「一遍写 0、一遍报 N 条」的自相矛盾。
+// 真源 = `_lib/pool-store.mjs` 的 `ensurePoolSkeleton()`（与 `pool-extract` 同一实现；
+// 本仓判据：同一事实两处实现必然漂）。
 function readAll() {
   const all = []
   for (const key of Object.keys(POOL_FILES)) {
-    const p = join(poolDir, POOL_FILES[key])
+    const p = poolFilePath(poolDir, key)
     if (!existsSync(p)) continue
-    try { all.push(...(readJson(p).entries || [])) } catch { /* 忽略坏文件 */ }
+    try { all.push(...(readJsonTolerant(p).entries || [])) } catch { /* 忽略坏文件 */ }
   }
   return all
 }
 
 function main() {
-  const created = ensureSkeleton()
+  const created = ensurePoolSkeleton(poolDir)
   const all = readAll()
+  // manifest 是派生量的副本：**每次查池都重算**，与盘上一致时不落盘（避免只读路径产生无意义的 `.bak` 噪声），
+  // 不一致或缺失时**自愈**并如实报出（「不静的降级」——修复动作必须可见）。
+  const mw = writeManifest(poolDir, { onlyIfStale: true })
 
-  if (created) console.log(`✅ 已创建空素材池骨架: ${poolDir}（0 条）`)
+  if (created) console.log(`✅ 已创建素材池骨架: ${poolDir}（池内 ${all.length} 条）`)
+  else if (mw.written) console.log(`· 素材池 manifest 与池文件不一致（派生量失真），已按池文件重算: ${poolDir}/manifest.json`)
   if (all.length === 0) { console.log('查池结果: 空池，无命中'); return }
 
   const hits = keywords.length === 0
