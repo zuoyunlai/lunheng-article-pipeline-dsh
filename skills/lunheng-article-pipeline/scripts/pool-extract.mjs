@@ -196,10 +196,14 @@ function main() {
   }
 
   // v19.6.1（审计 P1-2）：manifest 的派生量**一律重算**——真源 = `_lib/pool-store.mjs`（与 `pool-query` 同一实现）
-  writeManifest(poolDir)
+  const { manifest } = writeManifest(poolDir)
+  const total = manifest.totalEntries
   console.log(`\n完成: 新增 ${added} 条 / 复用 ${reused} 条 / 跳过 ${skipped} 条`)
   console.log(`分类型新增: L=${perType.L} D=${perType.D} C=${perType.C}`)
   console.log(`池位置: ${poolDir}`)
+  // v19.6.6（素材池可见性批 · 反馈闭环）：**一行机器可读回执**——交付说明模板的「证据素材池贡献」
+  //   字段直接抄本行，主人据此看到池在长（旧版只报本次增量，池累计不可见，滚雪球在体验上是断的）。
+  console.log(`POOL_APPEND 本次新增=${added} 命中复用=${reused} 池累计=${total} 路径=${poolDir}`)
   process.exit(0)
 }
 

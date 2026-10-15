@@ -113,3 +113,19 @@ test('防空转：本文件真的跑到了脚本（池目录缺 manifest 时上�
     assert.ok(existsSync(join(poolOf(ws), 'literature.json')), 'pool-extract 必须落 literature.json')
   } finally { rmSync(ws, { recursive: true, force: true }) }
 })
+
+// ── v19.6.6（素材池可见性批 · 反馈闭环）：回写必须给出一行**机器可读回执** ────────────────
+// 为什么需要：交付说明模板的「证据素材池贡献」字段要填「本次新增 / 命中复用 / 池累计」，
+//   而旧版输出只有前两项，**池累计**（= 主人能看到的「池在长」的唯一证据）无来源 ⇒ 必被估填。
+//   本用例同时钉住「输出与 manifest 同值」——防止有人把累计数写死或算成别的东西。
+test('v19.6.6 可见性：回写必须输出 `POOL_APPEND` 回执，且累计数 == manifest.totalEntries', () => {
+  const { ws, proj } = mkProj()
+  try {
+    const r = run([POOL(), proj, ws])
+    assert.equal(r.code, 0, r.out)
+    assert.match(r.out, /POOL_APPEND 本次新增=1 命中复用=0 池累计=1 /, '回执字段与顺序是交付说明抄录的契约：' + r.out)
+    assert.ok(r.out.includes(`路径=${poolOf(ws)}`), '回执须带池路径且与真实落点一致：' + r.out)
+    const m = JSON.parse(readFileSync(join(poolOf(ws), 'manifest.json'), 'utf8'))
+    assert.equal(m.totalEntries, 1, '回执里的累计数必须与 manifest 同源')
+  } finally { rmSync(ws, { recursive: true, force: true }) }
+})

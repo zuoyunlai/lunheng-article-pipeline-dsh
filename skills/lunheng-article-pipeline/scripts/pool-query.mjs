@@ -63,9 +63,17 @@ function main() {
   // 不一致或缺失时**自愈**并如实报出（「不静的降级」——修复动作必须可见）。
   const mw = writeManifest(poolDir, { onlyIfStale: true })
 
-  if (created) console.log(`✅ 已创建素材池骨架: ${poolDir}（池内 ${all.length} 条）`)
-  else if (mw.written) console.log(`· 素材池 manifest 与池文件不一致（派生量失真），已按池文件重算: ${poolDir}/manifest.json`)
-  if (all.length === 0) { console.log('查池结果: 空池，无命中'); return }
+  // v19.6.6（素材池可见性批）：**每轮都显形**——旧版只在新建骨架时报一次路径，非空池且无命中时全程静默，
+  //   而本脚本是主人侧的**读面**（Phase 0 显形 / Phase 0.5 查池）：用户据此才知道池在哪、有多少、
+  //   档 B「仅本地素材」是不是可用（池 0 条 + 无投喂 ⇒ 档 B 不适用，真源 = `素材池.md` §11.5 第 4 条）。
+  console.log(`· 素材池: ${poolDir}（现有 ${all.length} 条）`)
+  if (created) console.log('✅ 已创建素材池骨架——长期共享原件请放 raw/{books,datasets,papers,misc}/（A 轨）；本项目一次性材料走 run/<项目>/主人投喂清单.md（B 轨）')
+  else if (mw.written) console.log('· manifest 与池文件不一致（派生量失真），已按池文件重算（池文件是唯一真源）')
+  if (all.length === 0) {
+    console.log('查池结果: 空池，无命中')
+    console.log('⚠️ 池内 0 条：此刻选「检索=仅本地素材」档 B 将无任何合法来源（除非另有主人投喂）——见 素材池.md §11.5 第 4 条，须三选一并留痕')
+    return
+  }
 
   const hits = keywords.length === 0
     ? all

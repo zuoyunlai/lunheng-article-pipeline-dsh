@@ -35,6 +35,18 @@ G0 覆盖度 / G0.5 视角一致性 / G1 分级核验（C 级 100% web_search �
 
 T1 先行者检索 → T4 差异点声明 → T7 G7 原创性审计，防止「重复/改写已公开文章」。
 
+## 跨项目证据素材池（v19.6.6：此前架构文档零提及）
+
+```
+项目① run/<项目名>/ ──Phase 5 pool-extract──▶ <工作区根>/evidence-pool/      ← 跨项目、长期（A 轨）
+项目② Phase 0.5 pool-query ──命中──▶ 注入 T1/T2/T3 派发话术（复用不绕过三角验证 / G8 / G7）
+```
+
+- **落点**：`<工作区根>/evidence-pool/`（与 `run/` 平级）+ `raw/{books,datasets,papers,misc}/`（主人预设原件，**只读**）+ 四个池文件（`literature` / `data` / `cases` / `databases`.json）+ `index.md`（人类视图）+ `manifest.json`（**派生量**，一律由池文件重算）。
+- **与项目内两条路的区别**：池是 **A 轨**（跨项目复用）；`run/<项目>/materials/` + `主人投喂清单.md` 是 **B 轨**（本项目一次性）。两者互不替代。
+- **三个脚本**：`pool-query.mjs`（Phase 0 显形 + Phase 0.5 查池）/ `pool-extract.mjs`（Phase 5 回写）/ `pool-report.mjs`（统计），均属随包白名单；**不随包分发的是数据**。
+- 机制真源 = [`../skills/lunheng-article-pipeline/references/_shared/素材池.md`](../skills/lunheng-article-pipeline/references/_shared/素材池.md)。
+
 ## DSH 适配
 
 技能以「bundle」形态发布，两部分各司其职：**包入口 `lib/index.js`** 经 `ctx.skills.register()` 注册**两个技能**（`lunheng-article-pipeline` 主技能 + `lunheng-commands` 内嵌子技能；`resourceBase` 指向随包的 `skills/lunheng-article-pipeline/`，故角色卡/模板/脚本的相对引用在任意 cwd 下可解析，且注册即 effect、卸载自动清理）；**`cordis.patch.yml`**（由 `package.json` 的 `dsh.bundle.patch` 声明）只叠加 3 档 subagent 工具。工具集由 DSH Agent 预设决定，模型路由由 `settings.yaml` 配置。

@@ -95,3 +95,32 @@ test('防空转：查池必须真建出四个空池文件（池不存在时的�
     }
   } finally { rmSync(ws, { recursive: true, force: true }) }
 })
+
+// ── v19.6.6（素材池可见性批）：**每轮显形**是本次新增的行为契约，必须有用例钉住 ─────────────
+// 反向自证：旧实现在「非空池 + manifest 一致 + 命中」时**全程静默**（只在新建骨架时报一次路径），
+//   主人侧的读面因此看不到池在哪、有多少——本用例对**三种形态**都要求出现「· 素材池: <路径>（现有 N 条）」。
+test('v19.6.6 可见性：任何形态都必须显形「池路径 + 现有条数」（旧版非空池命中时全程静默）', () => {
+  const cases = [
+    { label: '池不存在（惰性建骨架）', setup: () => tmp('lunheng-pool-q-'), hit: true },
+    { label: '池有数据 + manifest 缺失', setup: () => mkPoolNoManifest(), hit: true },
+    { label: '池有数据但关键词无命中', setup: () => mkPoolNoManifest(), hit: false },
+  ]
+  for (const c of cases) {
+    const dir = c.setup()
+    try {
+      const r = run(c.hit ? [QUERY(), dir] : [QUERY(), dir, '不存在的关键词zzz'])
+      assert.equal(r.code, 0, `${c.label} 应 exit 0：` + r.out)
+      assert.match(r.out, /· 素材池: .+（现有 \d+ 条）/, `${c.label} 必须显形池路径与现有条数：` + r.out)
+    } finally { rmSync(dir, { recursive: true, force: true }) }
+  }
+})
+
+test('v19.6.6 可见性：**空池**时须把「档 B 此刻不可用」摆到主人面前（真源 = 素材池.md §11.5 第 4 条）', () => {
+  const ws = tmp('lunheng-pool-q-')
+  try {
+    const r = run([QUERY(), ws])
+    assert.match(r.out, /池内 0 条/, r.out)
+    assert.match(r.out, /仅本地素材/, '空池必须提示档 B 无来源：' + r.out)
+    assert.match(r.out, /§11\.5/, '提示须指向机制真源（否则主控只能临场约定）：' + r.out)
+  } finally { rmSync(ws, { recursive: true, force: true }) }
+})
