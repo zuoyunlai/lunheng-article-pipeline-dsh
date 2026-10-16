@@ -246,7 +246,23 @@ export function writeReport(reportPath, text, { protect = [], label = '--report'
   for (const src of protect) {
     if (!src) continue
     if (sameFile(reportPath, src)) {
-      console.error(`${label} 不能与本次运行的源文件是同一文件（会不可回滚地销毁它）：${realPath(reportPath)}`)
+      // v19.7.2（诊断面 · **A5 间歇失败的堵点**）：旧版**只打印报告路径**、不打印「撞上的那个源文件」，
+      //   于是偶发碰撞在日志里表现为「报告撞了源文件」却**看不出撞的是谁** ⇒ 该 flake 长期无法定位
+      //   （实测：`cross-script.test.mjs` 单跑 **8/8 绿**、全量套偶发 `fail 1`，而日志里拿不到第二个路径）。
+      //   现把**全部定位事实**一次打齐：两个路径 + 走的是哪条判据（`pathKey` 相等 / 同一 `dev+ino`）
+      //   + 两侧 `dev/ino` 实测值。
+      //   **判据：报错信息必须包含足以定位的全部事实**——只说「撞了」等于把排查成本转嫁给下一个人。
+      console.error(`${label} 不能与本次运行的源文件是同一文件（会不可回滚地销毁它）：`)
+      console.error(`  · 报告路径 = ${realPath(reportPath)}`)
+      console.error(`  · 撞上的源 = ${realPath(src)}`)
+      const keyEq = pathKey(reportPath) === pathKey(src)
+      let statLine
+      try {
+        const sa = statSync(realPath(reportPath))
+        const sb = statSync(realPath(src))
+        statLine = `dev/ino = ${sa.dev}/${sa.ino} vs ${sb.dev}/${sb.ino}`
+      } catch (e) { statLine = `stat 失败（${e.code || e.message}）` }
+      console.error(`  · 判定路径：pathKey 相等=${keyEq}｜${statLine}`)
       console.error(`→ 退出码 ${EXIT_USAGE}（参数或路径错误）：请把 ${label} 指向另一个路径（如 audits/xxx.json）`)
       process.exit(EXIT_USAGE)
     }

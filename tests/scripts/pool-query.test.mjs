@@ -196,3 +196,110 @@ test('V5b-乙：池有数据但结构不完整 → 报「补齐缺失的池文�
     }
   } finally { rmSync(ws, { recursive: true, force: true }) }
 })
+
+// ── v19.7.2（**丁案 · 负知识复用计数**）：**同名主张判同**必须是**强判据**，且只有它计入 ────────
+// **为什么需要**：丙案（v19.6.10）只做**关键词弱命中**提示，并把「同名主张如何判同」列为**未做**。
+//   丁案补强判据（`claim` 归一化后逐字相等），并**只让强判据计入计数**——若把弱命中也计入，
+//   同一关键词会命中大量**不同**主张 ⇒ 数字必然虚增，而**失真的统计量比没有统计量更坏**
+//   （同仓 P1-1「`reuseCount` 非幂等」：持久化的假数字不可自愈）。
+// 本组钉五件事：① 标点/空白/全角差异仍判同名；② 不同 claim 不得报数；③ 弱命中不得算复现；
+//   ④ **幂等**（同项目重复查 → 计数不虚增）；⑤ **只写自己的项目**（不碰对方账本）。
+const DP = (claim, id = 'DP-001', extra = {}) =>
+  ({ claim, verdict: '证伪', basis: '实测：三份政策文本无对应执行条款', originProject: 'projA', id, ...extra })
+
+/** 造「projA 有负知识账本 + projB 是查询方」的工作区。 */
+const mkReuseWs = (rows) => {
+  const ws = tmp('lunheng-pool-dp-')
+  for (const p of ['projA', 'projB']) mkdirSync(join(ws, 'run', p, 'audits'), { recursive: true })
+  writeFileSync(join(ws, 'run', 'projA', 'audits', 'disproofs.jsonl'),
+    rows.map((r) => JSON.stringify(r)).join('\n') + '\n')
+  return ws
+}
+const reusePath = (ws, proj) => join(ws, 'run', proj, 'audits', '负知识复用.jsonl')
+
+const CLAIM = '人工智能的伦理原则已足以指导实践。'
+
+test('丁案①：`--claim` 强判据——**标点 / 空白 / 全角差异仍判同名**，并落到查询方自己的账本', () => {
+  const ws = mkReuseWs([DP(CLAIM)])
+  try {
+    // 全角逗号 + 不同空格（归一化后应相等）
+    const r = run([QUERY(), ws, '伦理', '--claim', '人工智能的伦理原则，已足以指导实践', '--project', 'projB'])
+    assert.equal(r.code, 0, r.out)
+    assert.ok(r.out.includes('负知识**同名**复现: 1 条'), '归一化后相等必须判同名（标点/空白不算差异）：' + r.out)
+    assert.match(r.out, /已被 1 个项目复现/, r.out)
+    assert.ok(existsSync(reusePath(ws, 'projB')), '给了 --project 必须在本项目账本留痕')
+    const rows = readFileSync(reusePath(ws, 'projB'), 'utf8').trim().split(/\r?\n/).map((l) => JSON.parse(l))
+    assert.equal(rows.length, 1, '一次命中原生一行：' + JSON.stringify(rows))
+    assert.equal(rows[0].queryingProject, 'projB', '归属必须是查询方项目')
+    assert.equal(rows[0].originProject, 'projA', '须回指来源项目')
+    assert.equal(rows[0].originId, 'DP-001')
+  } finally { rmSync(ws, { recursive: true, force: true }) }
+})
+
+test('丁案② 反向自证：**不同的 claim 不得报数**（防「给了 --claim 就报 1 条」）', () => {
+  const ws = mkReuseWs([DP(CLAIM)])
+  try {
+    const r = run([QUERY(), ws, '伦理', '--claim', '完全不同的另一条主张', '--project', 'projB'])
+    assert.equal(r.code, 0, r.out)
+    assert.ok(r.out.includes('负知识**同名**复现: 0 条'), '不相等必须报 0：' + r.out)
+    assert.ok(!existsSync(reusePath(ws, 'projB')), '0 条时不得落痕（不留空账本）')
+  } finally { rmSync(ws, { recursive: true, force: true }) }
+})
+
+test('丁案③：**弱命中不计入同名**——关键词命中（提示层有行）但 claim 不同 → 同名仍报 0', () => {
+  const ws = mkReuseWs([DP(CLAIM)])
+  try {
+    // 「政策文本」只在 basis 里（弱判据命中），不在 claim 里（同名判据不命中）
+    const r = run([QUERY(), ws, '政策文本', '--claim', CLAIM, '--project', 'projB'])
+    assert.equal(r.code, 0, r.out)
+    assert.match(r.out, /命中 1\/1 条/, '弱判据层应照旧命中：' + r.out)
+    assert.ok(r.out.includes('负知识**同名**复现: 1 条'), 'claim 逐字相等（含句号）应判同名：' + r.out)
+    // 反向：关键词命中而 claim 不同 → 同名必须 0，且明说弱命中不算复现
+    const r2 = run([QUERY(), ws, '政策文本', '--claim', '换一条与账本不同的主张', '--project', 'projB'])
+    assert.ok(r2.out.includes('负知识**同名**复现: 0 条'), r2.out)
+    assert.match(r2.out, /上列弱命中\*\*不算\*\*复现/, '必须显式声明弱命中不计入：' + r2.out)
+  } finally { rmSync(ws, { recursive: true, force: true }) }
+})
+
+test('丁案④ **幂等**：同一项目重复查 → 「已被 N 个项目复现」不虚增（N 按项目去重）', () => {
+  const ws = mkReuseWs([DP(CLAIM)])
+  try {
+    for (const n of [1, 2, 3]) {
+      const r = run([QUERY(), ws, '伦理', '--claim', CLAIM, '--project', 'projB'])
+      assert.equal(r.code, 0, `第 ${n} 跑应 exit 0：` + r.out)
+      assert.match(r.out, /已被 1 个项目复现/,
+        `第 ${n} 跑：同一项目重复查不得把「已被 N 个项目复现」推高（旧病 = 持久化假数字不可自愈）：` + r.out)
+    }
+  } finally { rmSync(ws, { recursive: true, force: true }) }
+})
+
+test('丁案⑤：**只写查询方自己的项目**——projA 的账本一字不动', () => {
+  const ws = mkReuseWs([DP(CLAIM)])
+  const aFile = join(ws, 'run', 'projA', 'audits', 'disproofs.jsonl')
+  try {
+    const before = readFileSync(aFile, 'utf8')
+    const r = run([QUERY(), ws, '伦理', '--claim', CLAIM, '--project', 'projB'])
+    assert.equal(r.code, 0, r.out)
+    assert.equal(readFileSync(aFile, 'utf8'), before, '跨项目写别人的账本是危险动作——来源账本必须逐字未变')
+    assert.ok(!existsSync(reusePath(ws, 'projA')), '不得往来源项目写复用记录')
+  } finally { rmSync(ws, { recursive: true, force: true }) }
+})
+
+test('丁案⑥：不给 `--claim` → 只走弱判据，**明确声明不产生计数**（不静默）', () => {
+  const ws = mkReuseWs([DP(CLAIM)])
+  try {
+    const r = run([QUERY(), ws, '伦理', '--project', 'projB'])
+    assert.equal(r.code, 0, r.out)
+    assert.match(r.out, /不产生复用计数/, '必须显式声明「未给 --claim ⇒ 不计数」：' + r.out)
+    assert.ok(!existsSync(reusePath(ws, 'projB')), '未给 --claim 不得落痕')
+  } finally { rmSync(ws, { recursive: true, force: true }) }
+})
+
+test('丁案⑦ argv 严格性：`--claim` 缺值必须 exit 10（不得被当位置参数吃掉）', () => {
+  const ws = mkReuseWs([DP(CLAIM)])
+  try {
+    const r = run([QUERY(), ws, '--claim'])
+    assert.equal(r.code, 10, '`--claim` 缺值应 exit 10：' + r.out)
+    assert.match(r.out, /缺少值/, '须点明是缺值：' + r.out)
+  } finally { rmSync(ws, { recursive: true, force: true }) }
+})
