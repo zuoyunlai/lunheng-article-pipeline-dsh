@@ -108,17 +108,29 @@ if (totalCards < trigger) {
 }
 
 // === PRISMA 流程骨架生成（4 阶段） ===
-// 识别阶段：所有数据卡视作「识别」（Identification）；筛选阶段需人工过滤；
-// 纳入阶段：所有触发阈值的卡；综合阶段：输出 meta-synthesize 协议
+// v19.7.1（元分析输入面修复 · 缺陷②）：**单位如实声明**——PRISMA 的 identified/screened/eligible/included
+//   在元分析里数的是「**研究**（records → studies → included studies）」，而本脚本的输入是
+//   `<项目>/data/数据卡.md`，那是**数据点**、不是研究报告。实测（`run/xingbie`，56 张卡）：旧版把 56 个数据点
+//   在四个阶段**一律报成 56**，读者会读成「56 项研究入选」——**流程看起来完整**，这比「输出为空」更危险。
+//   而数据卡契约（`templates/数据卡-template.md`）**不含「研究标识」字段** ⇒ 脚本**无法**把数据点归并为研究。
+//   故：① 数值字段**保留**（它们确实等于数据点数，不得凭空改小）② **显式声明单位**；
+//   ③ 另给 `studyCount: null` + 理由——**禁止**把 records 数当研究数（不静默、不假装）。
 const prismaFlow = {
-  identification: { identified: totalCards, note: '所有触发阈值的数据卡' },
+  unit: 'records（= 数据卡 = 数据点）——**不是研究数**',
+  identification: { identified: totalCards, note: '所有触发阈值的数据卡（**records**，非研究）' },
   screening: { screened: totalCards, excluded: 0, note: '筛选标准 = 同质研究设计 / 同质变量 / 同质测量工具 — 由 T4 + 主控裁定' },
   eligibility: { eligible: totalCards, excluded: 0, note: '纳入标准 = 数据完整 + 报告效应量或可计算原始数据 + 发表语言无偏 — 由 T4 + 主控裁定' },
   included: { included: totalCards, analysisNote: '合成方法（固定效应 / 随机效应 / 混合）由 T4 选 R / Python / Stata 实施' },
+  studyCount: null,
+  studyCountReason: '数据卡契约不含「研究标识」字段 ⇒ 无法把数据点归并为研究；**禁止**把上述 records 数当研究数（要真做 PRISMA 须先由 T2 在建卡时补研究标识，属输入面改造）',
 };
 
 // === 效应量识别 ===
 // 自动标注每张卡的「可计算效应量」候选（基于数据类型）
+// v19.7.1（元分析输入面修复 · 缺陷①）：**未知研究类型不再给通用候选**。旧版只有二分（RCT/队列/case-control
+//   → OR/RR/RD；**其余一切** → MD/SMD/r），于是「**studyType 没识别出来**」与「**已知是横断面**」落进同一支
+//   ⇒ 实测 `run/xingbie` **56/56 卡拿到同一组通用候选**、`studyType` 全为 null，下游会把那组候选误读成
+//   「已识别出可算的效应量」。现拆三支，并对未识别者**显式标 degraded**（空候选 + 理由，不静默、不伪装）。
 const effectSizeCandidates = dataCards.map((card) => {
   const candidates = [];
   // 二分类结局：OR / RR / RD
@@ -128,13 +140,30 @@ const effectSizeCandidates = dataCards.map((card) => {
   if (card.studyType === 'rct' || card.studyType === '队列研究' || card.studyType === 'case-control') {
     candidates.push('OR / RR（需原始 2×2 表）');
     candidates.push('RD（需暴露 / 非暴露结局率）');
-  } else {
+    return { id: card.id, topic: card.topic, studyType: card.studyType, candidates, degraded: false };
+  }
+  if (card.studyType) {
+    // 已知类型但非上述三类（横断面 / meta-analysis / experiment / survey / interview）
     candidates.push('MD（需均值 + 标准差 + 样本量）');
     candidates.push("SMD / Cohen's d（需两臂均值差 + 合并 SD）");
     candidates.push('r（需相关系数 + n）');
+    return { id: card.id, topic: card.topic, studyType: card.studyType, candidates, degraded: false };
   }
-  return { id: card.id, topic: card.topic, studyType: card.studyType, candidates };
+  // ⚠️ studyType 未识别 → **刻意不给通用候选**（给了 = 下游误读成「已识别」）
+  return {
+    id: card.id, topic: card.topic, studyType: null, candidates: [], degraded: true,
+    degradedReason: '未识别出 studyType ⇒ 无法判定效应量形态（数据卡契约不含该字段，靠卡体正则提取）',
+  };
 });
+
+// 退化聚合（v19.7.1）：把「多少张卡没识别出来」抬到**顶层可读**位置——单卡上的 degraded 容易被略过，
+//   而「静默退化」正是缺陷① 的病根（脚本照常 exit 0）。T4/主控据此决定是否回退到输入面改造。
+const effectSizeSummary = {
+  total: effectSizeCandidates.length,
+  identified: effectSizeCandidates.filter((c) => !c.degraded).length,
+  degraded: effectSizeCandidates.filter((c) => c.degraded).length,
+  note: 'degraded = studyType 未识别 ⇒ candidates 为空（**刻意不给通用候选**：给了会被下游误读成「已识别出可算效应量」）。degraded > 0 时须由 T4 回退到输入面（请 T2 补研究类型字段）或显式声明「无元分析需求」。',
+};
 
 // === 异质性诊断提示（I² / τ² 计算位置） ===
 const heterogeneityHints = [
@@ -151,12 +180,19 @@ const result = {
   trigger: { threshold: trigger, actualCards: totalCards, triggered: true },
   prismaFlow,
   effectSizeCandidates,
+  effectSizeSummary,
   heterogeneityHints,
   meta: {
     timestamp: new Date().toISOString(),
     description: '论衡元分析协议生成器 / v18.10.0 战略反哺 P2-1 / scripts 白名单 21→22',
     notes: '本脚本仅生成协议骨架 + 效应量候选 + 异质性诊断提示；具体合成与计算须主控触发外部工具（R metafor / Python statsmodels / Stata metan）',
     positioning: '提示层（非自动化元分析）—元分析的方法学要求太高，主控不应假装能做出来',
+    inputFaceCaveats: [
+      '**输入面与元分析契约不匹配（v19.7.1 如实声明）**：本脚本只读 `<项目>/data/数据卡.md`，而**数据卡是数据点、不是研究报告**，其契约也不含 `studyType` / `sampleSize` / 「研究标识」字段——两个字段都靠**卡体正则**碰运气提取。',
+      '后果一（效应量面）：`studyType` 提不出来时 `effectSizeCandidates` 会**整批 degraded**（candidates 为空）——见 `effectSizeSummary.degraded`。**不得**把它读成「已识别出可算效应量」。',
+      '后果二（PRISMA 面）：`prismaFlow` 的四个计数等于**数据卡数（records）**，**不是研究数**（`studyCount` 刻意给 `null`）。要真做 PRISMA，须先由 T2 在建卡时补「研究标识 / 研究类型 / 样本量」，属**输入面改造**，不在本脚本能力内。',
+      '责任点（T4 / 主控）：本脚本**触发后**须核对 `effectSizeSummary.degraded` 与 `prismaFlow.unit`，据实决定「回退输入面」或「显式声明无元分析需求」。',
+    ],
   },
 };
 
