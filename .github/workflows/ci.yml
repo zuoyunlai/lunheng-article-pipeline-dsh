@@ -2,6 +2,16 @@ name: ci
 
 on:
   push:
+    # 发版链去重（2026-10-16 批）：**不在 `v*` tag 上跑本 workflow**。
+    #   理由（实测）：`publish.yml` 的 `gates` 作业已覆盖**同样四道门 + 回归**，且**更强**——门 2 带
+    #   `STRICT_WARN=1`（warn 也阻塞）、测试由 `no-write-check` 包裹（= 本 job 做不到的「无改写」守卫）。
+    #   故 `v*` tag 上再跑一遍 `ci` 是**纯重复**；而重复并非无害：发版流程要求「推 master **并** 推 tag」
+    #   ⇒ 两者**同 commit**，而本 workflow 的并发组按 `ref` 分组 ⇒ 两个 `ci` **并发**跑重活（各含 300+
+    #   包安装）互相争用，其中一个的 `loader-smoke` 在 `uninstall` 子步骤超 420s 被 abort
+    #   （实测：v19.6.8 与 v19.7.0 的 **tag** run 红、**同一 commit 的 master** run 绿；v19.6.7 只推一处即绿）。
+    #   非 `v*` 的 tag **仍会**触发本 workflow（`tags-ignore` 只排除 `v*`）⇒ **不留覆盖缺口**。
+    branches: ['**']
+    tags-ignore: ['v*']
   pull_request:
 
 # 最小权限（v2.5.2-dsh.13）：CI 只需只读仓库，不需要任何写权限
