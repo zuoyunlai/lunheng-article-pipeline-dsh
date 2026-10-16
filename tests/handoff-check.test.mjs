@@ -503,6 +503,44 @@ test('A9：刷新时间晚于初稿（夹具默认 2099）→ 不报 A9', () => 
 //   「回执 id 的 gate 与本文档不符」判**硬 21**（实测该项目只能用「预授权形态 + 括注真实形态」绕行）。
 //   本用例钉**两侧**：① 放宽侧——「全自动」+ Phase0 回执 ⇒ 无 A7 硬项（但仍留三条件 soft）；
 //   ② 不放宽侧——回执指向账本里不存在的 id ⇒ 仍判硬（放宽不得变成「A7 失效」）。
+// v19.6.9（主人 2026-10-16 授权「做」）：**T8 五件清单第 4 件改为「AI 使用披露」载体等价检查**。
+//   真源 `deliverables.md` §AI 使用披露双通道 **只有两条载体**（交付说明＝完整版 + 定稿＝精简版），
+//   **独立文件从未被定义为必需**；旧实现硬要 `final/AI-使用声明.md` ⇒ 一个完全按真源做事的学术项目
+//   被判 hard 20（实测生成式AI：定稿有 `## AI 使用声明` ✓、交付说明有披露 ✓、无独立文件 ⇒ 假红）。
+//   两侧同批钉：① 双通道齐（无独立文件）→ **不判硬** 且 notes 如实标注载体；
+//              ② 三条载体全缺 → **仍判硬 20**（放宽不得退化成「不判」）。
+test('v19.6.9：T8 五件清单的 AI 使用披露接受「真源双通道」载体；三条全缺仍硬 20', () => {
+  const mkT8 = (finalOverrides = {}) => {
+    const d = makeProject()
+    mkdirSync(join(d, 'final'), { recursive: true })
+    const base = {
+      '定稿.md': '# 定稿\n\n## 摘要\n正文。\n',
+      '交付说明.md': '# 交付说明\n\n## 8. AI 使用披露\n\n本文由 AI 辅助生成。\n',
+      '局限性.md': '# 局限性\n',
+      '运行报告.html': '<html></html>\n',
+    }
+    for (const [rel, content] of Object.entries(Object.assign(base, finalOverrides))) {
+      writeFileSync(join(d, 'final', rel), content)
+    }
+    return d
+  }
+  // ① 双通道齐（定稿含声明节 + 交付说明含披露段），**无**独立文件 → A1 不得判硬，且 notes 标注载体
+  const d1 = mkT8({ '定稿.md': '# 定稿\n\n## 摘要\n正文。\n\n## AI 使用声明\n\n本文由 AI 辅助生成，作者对内容负最终责任。\n' })
+  const j1 = parseJson(run([SCRIPT, '--project', d1, '--role', 'T8', '--require-gates']))
+  const a1d1 = j1.hard.filter((x) => x.check === 'A1')
+  assert.deepEqual(a1d1, [], '真源双通道齐不得判硬：' + JSON.stringify(a1d1))
+  assert.ok(j1.notes.some((n) => /双通道/.test(n)), 'notes 必须如实标注用的是哪条载体：' + JSON.stringify(j1.notes))
+  rmSync(d1, { recursive: true, force: true })
+
+  // ② 反向网：三条载体全缺（定稿无声明节、交付说明无披露段、无独立文件）→ 仍须判硬 20
+  const d2 = mkT8({ '交付说明.md': '# 交付说明\n\n（本条无披露段）\n' })
+  const r2 = run([SCRIPT, '--project', d2, '--role', 'T8', '--require-gates'])
+  const j2 = parseJson(r2)
+  assert.ok(j2.hard.some((x) => x.check === 'A1' && /AI/.test(x.detail)), '三条载体全缺仍须判硬：' + JSON.stringify(j2.hard))
+  assert.equal(r2.code, 20, '缺件走 20（与「产物缺失」同码）')
+  rmSync(d2, { recursive: true, force: true })
+})
+
 test('v19.6.7（反哺 M-03）：「全自动」形态与「Phase 0 预授权」并列被 A7 接受，但回执仍须真实存在', () => {
   const receipt = JSON.stringify({
     gate: 'Phase0', round: 1, askedAt: '2026-10-15 22:00', answeredAt: '2026-10-15 22:00',

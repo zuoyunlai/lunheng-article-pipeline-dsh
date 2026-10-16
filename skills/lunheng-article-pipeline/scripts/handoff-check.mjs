@@ -385,9 +385,25 @@ const T8_MIN_ARTIFACTS = [
   ['final/定稿.md', '交付论文正文（Phase 5 的唯一正文真源）'],
   ['final/交付说明.md', '12 字段交付说明（M-Exist-7 的输入）'],
   ['final/局限性.md', '局限性文档（上游缺陷 / 素材约束 / 尚未到期 / 门误判 / 闸门未修订）'],
-  ['final/AI-使用声明.md', 'AI 使用声明（按 `templates/AI-使用声明-template.md` 填实）'],
+  // v19.6.9（主人 2026-10-16 授权「做」）：**载体等价**——第 4 件不再硬要独立文件。
+  ['final/AI-使用声明.md', 'AI 使用披露（**载体二选一**：① 本独立文件；② 真源「双通道」= `final/定稿.md` 的 `## AI 使用声明` 节 ＋ `final/交付说明.md` 的「AI 使用披露」段）', true],
   ['final/运行报告.html', '运行报告（交付件之一）'],
 ]
+// ⚠️ **为什么第 4 件是「载体等价」而非「必须有那个文件」（v19.6.9 修正）**：
+//   真源 `references/deliverables.md` §AI 使用披露双通道 明写**只有两条载体**——`final/交付说明.md`
+//   ＝完整版（给主人）、`final/定稿.md` ＝精简版（给读者）；**独立文件从未被定义为必需**。
+//   而 `任务简报-template.md` §9 按文类分派：「学术期刊投稿 → `final/定稿.md` 文末须含 `## AI 使用声明` 段」。
+//   旧实现把 `final/AI-使用声明.md` 当**第五件硬门** ⇒ **完全按真源做事的学术项目会被判 hard 20**
+//   （实测生成式AI：定稿含 `## AI 使用声明` ✓、交付说明含「AI 使用披露」✓、无独立文件 ⇒ 假红；
+//   主人已裁决「接受交付」，但机制侧这条冲突不修则下一个项目照样撞）。
+//   修法：**独立文件仍被接受**（存量项目不破），真源双通道同样算落盘；命中双通道时在 notes 里**如实标注载体**。
+const t8Read = (rel) => {
+  const abs = join(project, ...rel.split('/'))
+  try { return existsSync(abs) && bytesOf(abs) > 0 ? readText(abs) : '' } catch { return '' }
+}
+const t8AiInFinal = /^\s*##\s+AI 使用声明/m.test(t8Read('final/定稿.md'))
+const t8AiInNote = /AI 使用披露/.test(t8Read('final/交付说明.md'))
+const t8AiCarrier = t8AiInFinal && t8AiInNote
 // ⚠️ **触发点（v19.5.0 / §一.4）**：`--require-gates`（或 `--level strict`）**且** `final/` 已含
 //   **正文层产物**（`定稿.md` / `交付说明.md` / `运行报告.html` 任一，或五件里的任意一件）。
 //   为什么要这道前置：`--require-gates` 本身就是**从 Phase 0 起**可用的旗标（A7 四门 / A11 授权串
@@ -400,9 +416,10 @@ const t8BodyStarted = T8_MIN_ARTIFACTS.some(([rel]) => {
   return existsSync(abs) && bytesOf(abs) > 0
 })
 if (role === 'T8' && (opt.requireGates || strict) && t8BodyStarted) {
-  const missingT8 = T8_MIN_ARTIFACTS.filter(([rel]) => {
+  const missingT8 = T8_MIN_ARTIFACTS.filter(([rel, , carrierEquiv]) => {
     const abs = join(project, ...rel.split('/'))
-    return !existsSync(abs) || bytesOf(abs) === 0
+    if (existsSync(abs) && bytesOf(abs) > 0) return false          // ① 独立文件在盘
+    return !(carrierEquiv && t8AiCarrier)                          // ② 真源双通道成立 ⇒ 不算缺
   })
   if (missingT8.length) {
     addHard('A1', 'T8 交付物最小清单',
@@ -410,8 +427,14 @@ if (role === 'T8' && (opt.requireGates || strict) && t8BodyStarted) {
       + missingT8.map(([rel, why]) => `${rel}（${why}）`).join('；')
       + '——五件是 Phase 5 的**最小**交付集，缺一即 hard 20（v19.5.0 §一.4；`--require-gates` / `--level strict` 且 final/ 已有正文层产物时判）', 20)
   } else {
-    notes.push('T8 交付物最小清单：五件齐备（`final/定稿.md` / 交付说明 / 局限性 / AI-使用声明 / 运行报告.html）'
+    notes.push('T8 交付物最小清单：五件齐备（`final/定稿.md` / 交付说明 / 局限性 / AI 使用披露 / 运行报告.html）'
       + '——`final/M-Gate-Report.json` 与 `final/证据包/manifest.json` 另由既有门核。')
+    // v19.6.9：**如实标注 AI 使用披露用的是哪条载体**（防「五件齐备」这句话把载体差异盖掉）
+    const t8AiStandalone = existsSync(join(project, 'final', 'AI-使用声明.md')) && bytesOf(join(project, 'final', 'AI-使用声明.md')) > 0
+    if (!t8AiStandalone && t8AiCarrier) {
+      notes.push('AI 使用披露载体 = 真源「双通道」（`final/定稿.md` 的 `## AI 使用声明` ＋ `final/交付说明.md` 的「AI 使用披露」）'
+        + '——未产独立文件，**不算缺件**（v19.6.9；真源 = `deliverables.md` §AI 使用披露双通道；`任务简报-template.md` §9 按文类分派）。')
+    }
   }
 } else if (role === 'T8' && (opt.requireGates || strict)) {
   notes.push('T8 交付物最小清单：`final/` 尚无正文层产物（Phase 5 未开始）→ **本项未判**（时点没到，不得读成通过；'

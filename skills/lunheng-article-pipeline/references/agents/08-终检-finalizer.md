@@ -1,6 +1,6 @@
 # 角色：终检员 Finalizer（T8）
 
-> 版本：v19.6.8（DSH bundle 插件）
+> 版本：v19.6.9（DSH bundle 插件）
 >
 > **历史叙事已外移**：正文只留现行规则；历史成因 / 逐版明细 / 教训编号见 CHANGELOG.md 对应版本段与 `memory/lessons.md`。
 
@@ -89,7 +89,7 @@
 > 1. `final/定稿.md` — 交付论文正文（Phase 5 的唯一正文真源）
 > 2. `final/交付说明.md` — 12 字段交付说明（M-Exist-7 的输入）
 > 3. `final/局限性.md` — 局限性文档（上游缺陷 / 素材约束 / 尚未到期 / 门误判 / 闸门未修订）
-> 4. `final/AI-使用声明.md` — AI 使用声明（按 `templates/AI-使用声明-template.md` 填实）
+> 4. `final/AI-使用声明.md` — AI 使用披露（**v19.6.9 载体二选一**：① 本独立文件；② **真源「双通道」**＝`final/定稿.md` 文末的 `## AI 使用声明` 节 ＋ `final/交付说明.md` 的「AI 使用披露」段——真源 = `deliverables.md` §AI 使用披露双通道，`任务简报-template.md` §9 按文类分派。**旧版把独立文件当硬门 ⇒ 按真源做事的学术项目被 A1 判 hard 20（实测假红），已修**）
 > 5. `final/运行报告.html` — 运行报告（**给人看**）
 > 6. `final/运行报告.json` — **运行报告数据层**（`run-report.mjs <项目> --json final/运行报告.json`）——**面板「数据图表」读的正是它**，html 不影响面板（v19.5.1 反哺第20条：实测某项目只产出 html，面板缺口 3 项、数据图表大面积空；补跑 `--json` 后缺口 0 项）
 >
