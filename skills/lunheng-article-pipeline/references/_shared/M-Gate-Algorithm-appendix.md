@@ -1,4 +1,4 @@
-> 版本：v19.6.7（DSH bundle 插件）
+> 版本：v19.6.8（DSH bundle 插件）
 
 ## 一、M-Gate-Report 输出格式（JSON schema，v18.2.6 审计修复：按实现重建）
 

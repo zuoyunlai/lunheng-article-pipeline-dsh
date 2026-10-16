@@ -1,4 +1,4 @@
-> 版本：v19.6.7（DSH bundle 插件）
+> 版本：v19.6.8（DSH bundle 插件）
 
 # 角色：数据检索员 Data Scout（T2）
 

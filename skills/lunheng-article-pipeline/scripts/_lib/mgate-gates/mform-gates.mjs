@@ -1127,6 +1127,47 @@ try {
     if (headN && bodyIds.size && Number(headN[1]) !== bodyIds.size) {
       findings.push(`${name}: 头部声明 ${headN[1]} 条 ≠ 正文条目 ${bodyIds.size} 条（best-effort 解析头部声明）`);
     }
+    // v19.6.8（反哺 · 生成式AI **M-18②**，主人 2026-10-16「做吧」授权）：**卡头分布声明 vs 逐条行**。
+    //   病灶（实测）：文献卡头写「A = 13（…），B = 2（…）」而 B 括号里列了 3 条（13+3=16 > 总条数 15），
+    //   卡内逐条 `- **可信度等级**:` 实测 **A=11 / B=4** —— **双重不符**；而 T7 不得改上游产物，
+    //   只能留到 T8 手改（v4 修订说明已按卡内更正，卡头直到 T8 才补）。
+    //   三卡 lite 自检段（v19.5.0 起）早已明文要求「卡头汇总行**由逐条独立行自动统计生成（禁手写）**」——
+    //   本条即那句话的**机械落点**：此前**只有要求、没有任何判据**（`grep 信任级别声明` 在 scripts/ 下
+    //   零消费点，本门只核「总条数」一项）。
+    //   判据与边界（刻意窄，防假 P0）：
+    //     ① **两侧齐备才对账**——卡头没有分布声明行、或卡内没有对应逐条行 → **不判**（分布行本就「若有」）；
+    //     ② A/B/C **只取首个 `X = N` 形态**（基本信息段在最前，故「首次出现」即头部声明），不做语义推断；
+    //     ③ 信任级别声明**只在头部写齐三档时**才对账（规范形态恰是「已发布 N1 / 主人投喂 N2 / 二手转引 N3」），
+    //        且逐条只统计「**恰好命中一档**」的行——**双标行（同一行并列两档）单列不并入**（防把双标误判为不符）；
+    //     ④ 不一致 → **硬**（卡头是下游 G1/G12 的分母，漂移会连带算错）。
+    if (/A\/B\/C\s*分布|等级分布/.test(cardText)) {
+      const declared = {}
+      for (const m of cardText.matchAll(/([ABC])\s*[=＝]\s*(\d+)/g)) if (!(m[1] in declared)) declared[m[1]] = Number(m[2])
+      const actual = { A: 0, B: 0, C: 0 }
+      for (const m of cardText.matchAll(/-\s*\*\*可信度等级\*\*\s*[:：]\s*([ABC])\b/g)) actual[m[1]]++
+      const keys = Object.keys(declared).filter((k) => k in actual)
+      if (keys.length && keys.some((k) => declared[k] !== actual[k])) {
+        findings.push(`${name}: 卡头「A/B/C 分布」与逐条「可信度等级」行不符（声明 ${keys.map((k) => `${k}=${declared[k]}`).join(' / ')} ≠ 逐条 ${keys.map((k) => `${k}=${actual[k]}`).join(' / ')}）——卡头须由逐条独立行自动统计生成、禁手写`)
+      }
+    }
+    const trustHead = cardText.match(/\*\*信任级别声明\*\*\s*[:：]([^\n]*)/);
+    if (trustHead) {
+      const TRUST_TOKENS = ['已发布', '主人投喂', '二手转引']
+      const declared = {}
+      for (const t of TRUST_TOKENS) {
+        const m = trustHead[1].match(new RegExp(t + '\\s*(\\d+)'))
+        if (m) declared[t] = Number(m[1])
+      }
+      const actual = { 已发布: 0, 主人投喂: 0, 二手转引: 0 }
+      for (const m of cardText.matchAll(/-\s*\*\*信任级别\*\*\s*[:：]([^\n]*)/g)) {
+        const hit = TRUST_TOKENS.filter((t) => m[1].includes(t))
+        if (hit.length === 1) actual[hit[0]]++          // 双标行（并列两档）单列不并入
+      }
+      const keys = Object.keys(declared)
+      if (keys.length === TRUST_TOKENS.length && keys.some((k) => declared[k] !== actual[k])) {
+        findings.push(`${name}: 卡头「信任级别声明」与逐条「信任级别」行不符（声明 ${keys.map((k) => `${k} ${declared[k]}`).join(' / ')} ≠ 逐条 ${keys.map((k) => `${k} ${actual[k]}`).join(' / ')}）——禁手写，须由逐条独立行统计生成`)
+      }
+    }
   }
   if (checked === 0) {
     results.push({ gate: 'M-Form-10 索引段完整性', pass: true, detail: `N/A：三张卡均未找到（${notes[0] || '尚未进入检索阶段'}）`, severity: '通过' });

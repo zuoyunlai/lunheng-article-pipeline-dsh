@@ -980,6 +980,39 @@ test('自省审计：M-Integrity-1 不再是永久 soft（数据条目不足 →
   rmSync(d, { recursive: true, force: true })
 })
 
+// v19.6.8（反哺 · 生成式AI **M-18②** · 主人 2026-10-16「做吧」授权）：**卡头分布声明 vs 逐条行**。
+//   病灶（实测）：文献卡头「A = 13 / B = 2」而逐条 `**可信度等级**` 实测 **A=11 / B=4**，且 B 括号里列了 3 条
+//   （13+3=16 > 总条数 15）——**双重不符**；模板（三卡 lite 自检段，v19.5.0 起）早已要求「卡头汇总行由逐条
+//   独立行自动统计生成（禁手写）」，但**此前没有任何机械判据**（本门只核「总条数」一项）。
+//   本用例同时钉三条边界：① 不符 → 硬；② 一致 → 不判；③ **无分布声明行 → 不判**（分布行本就「若有」）。
+test('v19.6.8（反哺 M-18②）：卡头「A/B/C 分布」与逐条「可信度等级」不符 → 硬；一致/缺席不误判', () => {
+  const { fin, ev } = mkProject()
+  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
+  const lit = join(ev, '文献卡.md')
+  const entry = (id, lvl) => `### [${id}] 题名\n- **可信度等级**: ${lvl}（理由）\n`
+  const card = (head) => '# 文献卡\n\n## 基本信息\n\n- **总条数**: 3\n' + head
+    + '\n## 📇 索引段\n\n[L01] a ｜ b ｜ c\n[L02] a ｜ b ｜ c\n[L03] a ｜ b ｜ c\n\n## 正文\n\n'
+    + entry('L01', 'A') + entry('L02', 'A') + entry('L03', 'B')
+  const gate = () => parseJson(run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])).results.find((x) => x.gate.startsWith('M-Form-10'))
+
+  // ① 声明 A=2 / B=0，而逐条实为 A=2 / B=1 → 硬
+  writeFileSync(lit, card('- **A/B/C 分布**: A = 2（L01, L02），B = 0，C = 0\n'))
+  let item = gate()
+  assert.equal(item.pass, false, '卡头分布与逐条不符必须判失败：' + item.detail)
+  assert.match(item.detail, /A\/B\/C 分布/, '必须点名卡头分布声明：' + item.detail)
+  assert.match(item.detail, /可信度等级/, '必须点名逐条真源：' + item.detail)
+
+  // ② 一致 → 不得误判
+  writeFileSync(lit, card('- **A/B/C 分布**: A = 2（L01, L02），B = 1（L03），C = 0\n'))
+  const okItem = gate()
+  assert.equal(okItem.pass, true, '声明与逐条一致不得误判：' + okItem.detail)
+
+  // ③ 反向网：无分布声明行 → 不判（分布行「若有」，不得因没有它而判负）
+  writeFileSync(lit, card(''))
+  const noneItem = gate()
+  assert.equal(noneItem.pass, true, '无分布声明行不得判负：' + noneItem.detail)
+})
+
 test('m-gate-check M-Form-10：索引段缺条必须报（下游按索引定位会漏卡），索引齐则通过', () => {
   const { d, proj, fin, ev } = mkProject()
   writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
