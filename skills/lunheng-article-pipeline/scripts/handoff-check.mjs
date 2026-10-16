@@ -983,9 +983,16 @@ if (opt.requireGates) {
     //   预授权本身在 Phase 0 经 ask_user_question 确认过，故「回执 id」指向 Phase0 那条即合法。
     //   三条件核验仍由人工按模板执行（soft 提示，不假装机械已核）。
     const askMode = fieldVal(sec, '提问方式') || ''
-    const isPreAuth = /Phase\s*0\s*预授权/.test(askMode)
+    // v19.6.7（反哺 · 生成式AI M-03 实测）：**「全自动」是与「Phase 0 预授权」并列的合法形态**——
+    //   开工台「人在环」下拉明列 `全自动（主人显式授权…）`，其语义 = 四门仍全开、只是不再逐门提问
+    //   （直接采用各门 `ask_user_question` 的首个推荐项）。面板能选这一档，而旧判据只认
+    //   `/Phase\s*0\s*预授权/` ⇒ 按字面写「全自动」的项目，P2.5/P3.5/P5 三门会因「回执 id 不在账本 /
+    //   gate 不符」判**硬 21**（实测该项目只能用「预授权形态 + 同栏括注真实形态」绕行，属形式伪装）。
+    //   修法：把「全自动 / 主人显式授权」并入本分支（同样只接受 `gate=Phase0` 的回执 + 同一条 soft 提示）
+    //   ——**判据放宽的只是「提问方式这一栏可写哪几个词」**，回执与 §6 五字段的硬要求一律不变。
+    const isPreAuth = /Phase\s*0\s*预授权|全自动|主人显式授权/.test(askMode)
     if (isPreAuth) {
-      addSoft('A7', f, `本门标注「Phase 0 预授权」——请人工核对「主控落盘结论」栏是否含三条件逐条核验（建议=通过 / P0 数=0 / 未做项=无，模板 §0-d）`)
+      addSoft('A7', f, `本门标注「${/全自动|主人显式授权/.test(askMode) && !/预授权/.test(askMode) ? '全自动（主人显式授权）' : 'Phase 0 预授权'}」——请人工核对「主控落盘结论」栏是否含三条件逐条核验（建议=通过 / P0 数=0 / 未做项=无，模板 §0-d）`)
     }
     if (!existsSync(receiptsPath)) continue
     const idRaw = fieldVal(sec, '回执 id')

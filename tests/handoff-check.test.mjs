@@ -496,3 +496,45 @@ test('A9：刷新时间晚于初稿（夹具默认 2099）→ 不报 A9', () => 
   assert.ok(!j.hard.some((x) => x.check === 'A9'), '刷新时间新鲜不得报 A9：' + JSON.stringify(j.hard))
   rmSync(d, { recursive: true, force: true })
 })
+
+// ── v19.6.7（反哺 · 生成式AI M-03）：「全自动」是与「Phase 0 预授权」并列的合法提问方式 ──────────────
+//   病灶：开工台「人在环」下拉明列 `全自动（主人显式授权…）`（四门仍全开、只是不逐门提问），
+//   而 A7 的预授权分支只认 `/Phase\s*0\s*预授权/` ⇒ 账本在盘时，P2.5/P3.5/P5 三门会因
+//   「回执 id 的 gate 与本文档不符」判**硬 21**（实测该项目只能用「预授权形态 + 括注真实形态」绕行）。
+//   本用例钉**两侧**：① 放宽侧——「全自动」+ Phase0 回执 ⇒ 无 A7 硬项（但仍留三条件 soft）；
+//   ② 不放宽侧——回执指向账本里不存在的 id ⇒ 仍判硬（放宽不得变成「A7 失效」）。
+test('v19.6.7（反哺 M-03）：「全自动」形态与「Phase 0 预授权」并列被 A7 接受，但回执仍须真实存在', () => {
+  const receipt = JSON.stringify({
+    gate: 'Phase0', round: 1, askedAt: '2026-10-15 22:00', answeredAt: '2026-10-15 22:00',
+    question: '是否按建议推进？', options: ['同意', '其他（我会补充说明）'], chosenIndex: 0,
+    chosenLabel: '同意', rawAnswer: '同意', tool: 'ask_user_question', caller: 'T0',
+  })
+  const auto = (receiptId) => `# 确认单\n\n### 6. 主人回复（必填）\n\n`
+    + '- **主人原话**：同意（全自动：不再逐门提问）\n- **回复时间**：2026-10-15 22:00\n'
+    + '- **提问方式**：全自动（主人显式授权）\n'
+    + '- **主控落盘结论**：按各门首个推荐项自决\n'
+    + `- **回执 id**：${receiptId}\n- **轮次计数**：首轮\n`
+  const allGates = (id25, id35, id5) => ({
+    '阶段确认-Phase0.md': auto('Phase0#1'),
+    '阶段确认-Phase2.5.md': auto(id25),
+    '阶段确认-Phase3.5.md': auto(id35),
+    '阶段确认-Phase5.md': auto(id5),
+    'audits/gate-receipts.jsonl': receipt + '\n',
+  })
+
+  // ① 三门写「全自动」+ 回执 id 指向 Phase0#1（账本里确有此条）→ 不得判硬
+  const d1 = makeProject(allGates('Phase0#1', 'Phase0#1', 'Phase0#1'))
+  const j1 = parseJson(run([SCRIPT, '--project', d1, '--role', 'T8', '--require-gates']))
+  const a7 = j1.hard.filter((x) => x.check === 'A7')
+  assert.deepEqual(a7, [], '「全自动」+ Phase0 回执不得判硬（M-03）：' + JSON.stringify(a7))
+  assert.ok(j1.soft.some((x) => x.check === 'A7' && /三条件/.test(x.detail)),
+    '仍须保留「人工核三条件」的 soft 提示（不假称机械已核）：' + JSON.stringify(j1.soft))
+  rmSync(d1, { recursive: true, force: true })
+
+  // ② 反向网：回执 id 在账本里不存在 → 仍须判硬（放宽只针对「提问方式可写哪几个词」）
+  const d2 = makeProject(allGates('Phase2.5#9', 'Phase0#1', 'Phase0#1'))
+  const j2 = parseJson(run([SCRIPT, '--project', d2, '--role', 'T8', '--require-gates']))
+  assert.ok(j2.hard.some((x) => x.check === 'A7' && /找不到/.test(x.detail)),
+    '回执 id 不存在仍须判硬：' + JSON.stringify(j2.hard))
+  rmSync(d2, { recursive: true, force: true })
+})

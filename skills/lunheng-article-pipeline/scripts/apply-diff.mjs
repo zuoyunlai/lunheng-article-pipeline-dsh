@@ -268,11 +268,22 @@ if (emptyList && unparsedHeads.length) {
 // v18.13.0（L-58 收口）：**丢弃行必须上报**。只要条目正文里有既非「定位/现况/修改」又非空的行，
 //   就说明清单里有内容没被吃进 old/new —— 多行「现况」的续行是最常见形态，后果是**半截替换仍报 ok**。
 //   判据：有不规则行 → 计入 unparsed（走既有的 exit 1 通道），并在 stderr 逐条点名。
+// v19.6.7（M-11）：受影响条目 id（去重）——stderr 与两个 JSON 出口共用同一份，避免三处各算一遍。
+//   ⚠️ 只用 `droppedLines`（它在解析段就已填充）；`skipped` 的 id 在**汇总前**才算（见 `skippedIds` 处）。
+const droppedIds = [...new Set(droppedLines.map((d) => d.id).filter(Boolean))]
 if (droppedLines.length) {
-  console.error(`⚠️ 清单里有 ${droppedLines.length} 行**既不是定位/现况/修改、也不为空**，未参与替换：`);
-  for (const d of droppedLines.slice(0, 5)) console.error(`   · [${d.id}] 第 ${d.line} 行: ${d.text}`);
-  console.error('   → 最常见原因是**多行「现况」的续行**（旧版会静默丢弃 → 半截替换仍报 ok）。');
-  console.error('   → 处置：把该条目的「现况」写成一行，或把续行显式并入前一行后重跑。');
+  // v19.6.7（反哺 · 生成式AI M-11 实测）：**必须按条目点名**。旧版只给「N 行未参与替换」+ 前 5 条行号样例，
+  //   实测 109 行丢弃时主控看不出**是哪几条条目半截失效**（P0-06 整条失效只有分节实测才暴露，而 T5 报告
+  //   还宣称「11 条 P0 全部生效」）⇒ 只能靠额外跑 `--report` + 人工 cross-ref。现补：
+  //     ① 去重后的**受影响条目 id 清单**（一眼看出哪些条目有问题）；
+  //     ② 行号样例 5 → 20（超过 20 条给「…等 N 行，全量见 --report」）；
+  //     ③ 同一信息以 `dropped_ids` / `skipped_ids` 两个**加法字段**进 stdout JSON 与 JSON 报告。
+  console.error(`⚠️ 清单里有 ${droppedLines.length} 行**既不是定位/现况/修改、也不为空**，未参与替换：`)
+  console.error(`   受影响条目（去重 ${droppedIds.length} 条）：${droppedIds.join(' / ') || '（无法归属条目）'}`)
+  for (const d of droppedLines.slice(0, 20)) console.error(`   · [${d.id}] 第 ${d.line} 行: ${d.text}`)
+  if (droppedLines.length > 20) console.error(`   · …等共 ${droppedLines.length} 行（全量明细见 \`--report\` 的 dropped_lines）`)
+  console.error('   → 最常见原因是**多行「现况」的续行**（旧版会静默丢弃 → 半截替换仍报 ok）。')
+  console.error('   → 处置：把该条目的「现况」写成一行，或把续行显式并入前一行后重跑。')
 }
 
 // ---- 写盘目标策略（v18.2.6，B-4）：默认原地覆盖已取消 ----
@@ -385,6 +396,15 @@ if (noop) {
   console.error('   → 若这不是预期：检查清单条目的「现况」行是否与正文逐字一致（不一致会被计入 skipped/unparsed，见 JSON）。');
 }
 
+// v19.6.7（M-11）：`skipped` 在本行之前才填充完（它的声明在解析段之后）——故 skippedIds **必须**在此处算，
+//   不得与 droppedIds 一起放到解析段（那样会撞 `skipped` 的 TDZ ⇒ ReferenceError ⇒ exit 70，实测已踩）。
+const skippedIds = skipped.map((s) => s.id).filter(Boolean)
+// v19.6.7（M-11）：被跳过条目**按 id 点名**（旧版只在 stdout 给前 8 条明细，主控看不出「哪几条没应用」）。
+if (skipped.length) {
+  console.error(`⚠️ 有 ${skipped.length} 条**被跳过**（未应用）：${skippedIds.join(' / ') || '（无 id）'}`)
+  console.error('   → 逐条原因见 `--report` 的 skipped_items（常见：现况不唯一 / 现况与正文不逐字一致）。')
+}
+
 const summary = {
   target: targetPath,
   list: listPath,
@@ -407,6 +427,8 @@ const summary = {
   // v18.13.0（L-58/L-59）：把两类此前**完全不可见**的内容也写进 JSON 契约（只做加法，不动既有字段）
   dropped_lines: droppedLines,                      // 既非定位/现况/修改、又非空 → 未参与替换（半截替换的根因）
   dropped_count: droppedLines.length,
+  dropped_ids: droppedIds,                       // v19.6.7（M-11）：受影响条目 id（去重）
+  skipped_ids: skippedIds,                       // v19.6.7（M-11）
   unrecognized_head_lines: unparsedHeads,           // 方括号行但不是四个清单族（如正文引用 `[L01]`）
 };
 
@@ -427,8 +449,10 @@ console.log(JSON.stringify({
   numeric_drift: numericDrift,                // v18.3.0 阶段 2：数值静默漂移（P2 提示）
   han_before: beforeHan, han_after: afterHan, han_delta: delta,
   skipped_detail: skipped.slice(0, 8),
+  skipped_ids: skippedIds,                     // v19.6.7（M-11）
   unparsed_detail: summary.unparsed_items.slice(0, 8),
   dropped_count: droppedLines.length,                       // v18.13.0（L-58）：>0 即「替换可能半截」，ok 已随之转假
+  dropped_ids: droppedIds,                                  // v19.6.7（M-11）：受影响条目 id（去重）
   dropped_detail: droppedLines.slice(0, 8),
   unrecognized_head_lines: unparsedHeads.slice(0, 8),       // v18.13.0（L-59）：方括号行但不是四个清单族
   hint,

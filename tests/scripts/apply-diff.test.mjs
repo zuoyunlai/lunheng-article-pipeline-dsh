@@ -12,6 +12,40 @@ import { ROOT, SCRIPTS, run, parseJson, tmp, mkProject, mkRepo, MD, mkSvg, DRAFT
 import { mkProj, DRAFT_OK, cardOk, setupCards, gateOf, mkTriFixture, mform8Of } from '../_scripts-shared.mjs'
 
 
+test('v19.6.7（反哺 M-11）：多行「现况」的丢弃行必须**按条目点名**（stderr 给 id 清单 + JSON 给 dropped_ids）', () => {
+  // 病灶（生成式AI 2026-10-15 实测）：109 行被丢弃时旧版只给「N 行未参与替换」+ 前 5 条行号样例
+  //   ⇒ 主控看不出**是哪几条条目半截失效**（P0-06 整条失效只有分节实测才暴露，而 T5 报告还宣称
+  //   「11 条 P0 全部生效」）。本用例钉「丢弃行 → 条目 id」的归属。
+  const { d, fin } = mkProject()
+  const target = join(fin, '定稿.md')
+  writeFileSync(target, '# 标题\n\n## 摘要\n\n正文 [L01]。\n\n## 一、导论\n\n研究发现该变量与结果相关。\n\n## 参考文献\n\n[L01] a\n')
+  const list = join(fin, '清单.md')
+  // 「现况」写成两行：第二行是续行 ⇒ 既非定位/现况/修改、也不为空 ⇒ 计入 droppedLines
+  writeFileSync(list, '# 清单\n\n[P0-06]\n- 现况：研究发现该变量与结果相关。\n  被换行截断的续行。\n- 修改：研究发现该变量导致该结果。\n')
+  const r = run([join(SCRIPTS, 'apply-diff.mjs'), target, list, '--out', join(fin, '初稿-v2.md')])
+  const j = parseJson(r)
+  assert.ok(j.dropped_count >= 1, '应识别出丢弃行：' + r.out)
+  assert.deepEqual(j.dropped_ids, ['P0-06'], '丢弃行必须归属到条目 id：' + JSON.stringify(j.dropped_ids))
+  assert.match(r.out, /受影响条目/, 'stderr 必须点名受影响条目：' + r.out)
+  assert.match(r.out, /P0-06/, 'stderr 必须出现条目 id：' + r.out)
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('v19.6.7（反哺 M-11）：被跳过条目必须**按 id 点名**（skipped_ids + stderr 一行）', () => {
+  const { d, fin } = mkProject()
+  const target = join(fin, '定稿.md')
+  // 「现况」在正文出现两次 → 旧契约「多处匹配一律跳过并报告」；本用例钉「跳过也要点名 id」
+  writeFileSync(target, '# 标题\n\n## 摘要\n\n重复句 [L01]。\n\n## 一、导论\n\n重复句 [L01]。\n\n## 参考文献\n\n[L01] a\n')
+  const list = join(fin, '清单.md')
+  writeFileSync(list, '# 清单\n\n[P0-2]\n- 现况：重复句 [L01]。\n- 修改：重复句 [L01] 已改。\n')
+  const r = run([join(SCRIPTS, 'apply-diff.mjs'), target, list, '--out', join(fin, '初稿-v2.md')])
+  const j = parseJson(r)
+  assert.equal(j.skipped, 1, '多处匹配应跳过：' + r.out)
+  assert.deepEqual(j.skipped_ids, ['P0-2'], 'skipped_ids 必须给条目 id：' + JSON.stringify(j.skipped_ids))
+  assert.match(r.out, /被跳过/, 'stderr 必须报「有 N 条被跳过」：' + r.out)
+  rmSync(d, { recursive: true, force: true })
+})
+
 test('v18.2.9 方案：apply-diff causal 守恒——强档替换中档且无新增引用 → causal_upgrades', () => {
   const { d, proj, fin, ev } = mkProject()
   // 目标正文（含一处中档因果句）

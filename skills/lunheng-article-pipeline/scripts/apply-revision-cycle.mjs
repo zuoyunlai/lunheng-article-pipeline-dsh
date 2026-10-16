@@ -137,6 +137,50 @@ const measure = (p) => {
 };
 const pre = measure(prevPath);
 
+// ---- ②′ 目标字数解析 + **应用前净变化预检**（v19.6.7 · 反哺 M-12）----
+// v18.12.3：目标字数解析走 `_lib/target-chars.mjs` 唯一实现。旧行为内联 `\d{4,5}` →
+//   `目标篇幅：300 字`（3 位）/ `12,000 字`（千分位）/ `1.2 万 字`（数量级单位）**全部解析不出**
+//   → `charBand = null` → **字数硬阈整段判定被静默跳过、脚本仍 exit 0**，主控会以为「已核过」。
+//   现在解析不到就**说出原因**（stderr 可见），不再让闸门无声失效。
+// v19.6.7：本解析**上移到 ③ 应用之前**——净变化预检要用同一个 `charBand`；④ 只消费结果（同一事实一处）。
+const briefPath = [join(projRoot, '01-任务简报.md')].find(existsSync);
+const tParse = briefPath
+  ? parseTargetChars(readFileSync(briefPath, 'utf8'))
+  : { value: null, raw: null, reason: '未找到 01-任务简报.md（无法判定目标篇幅）' };
+const target = tParse.value;
+if (target === null) {
+  console.error(`⚠️ 目标字数未解析到 → **G8 字数硬阈判定跳过**（这是「未核」，不是「已核」）：${tParse.reason}`);
+  if (tParse.raw) console.error(`   · 简报里读到的是：「${tParse.raw}」——请核对 §目标篇幅 的写法（支持 3–5 位、千分位逗号、万/千/k 单位）`);
+}
+const charBand = target ? { floor: Math.round(target * 0.9), ceil: Math.round(target * 1.05) } : null;
+
+// ⚠️ **应用前净变化预检**（v19.6.7 · 反哺 · 生成式AI M-12 实测）：
+//   病灶：段级 diff 模式**只后测不回滚**——该项目 v2 应用后 body 10,382（目标 8000、**+29.8%**）才暴露，
+//   只能靠下一轮压缩回滚，**白耗一个 A 轨额度**（T5 自估 ≈8400，误差 ≈2000）。
+//   净变化在**应用前**就可得：`apply-diff --dry-run` 不写盘，但 old/new 都在手 ⇒ `han_delta` 有值。
+//   故这里先试算一次：若 `pre.body + delta` 会越过 +5% 阻塞线，就在**写盘前**响亮告警。
+//   ⚠️ **只告警、不阻塞**（有意）：等量置换 / 删冗余 / G14 环内临时突破 ±2% 都是合法修订，
+//   硬堵会把合法修订判死——本预检的职责是「让主控在付一个额度之前先看见代价」。
+if (diffList && !dryRun && charBand) {
+  const pv = spawnSync(nodeBin, [join(scriptDir, 'apply-diff.mjs'), nextPath, diffList, '--dry-run'], { encoding: 'utf8' });
+  let delta = null;
+  try { delta = JSON.parse(pv.stdout || '{}').han_delta; } catch { delta = null }
+  if (typeof delta === 'number') {
+    const projected = pre.body + delta;
+    if (projected > charBand.ceil) {
+      console.error(`⚠️ **应用前预检：本轮净变化会越线**——净增 ${delta} 字 ⇒ 改后正文 ≈ ${projected} 字，`
+        + `超 +5% 阻塞线（${charBand.ceil}）**${projected - charBand.ceil} 字**。`);
+      console.error('   → 处置建议：① 补写改走**等量置换**（本轮净增预算记 0 或负数）；② 先压缩再加；'
+        + '③ 若属 G14 环内临时突破 ±2%，须在修订说明写明理由。**本预检只告警、不阻塞**。');
+    } else {
+      console.error(`✓ 应用前预检：净变化 ${delta >= 0 ? '+' : ''}${delta} 字 ⇒ 改后正文 ≈ ${projected} 字（+5% 阻塞线 ${charBand.ceil}，未越线）。`);
+    }
+  } else {
+    console.error(`⚠️ 应用前预检**未取得净变化**（apply-diff --dry-run 未返回 han_delta，exit=${pv.status}）——`
+      + '属「未核」而非「已核」；请在应用后用 ④ 的实测值回看。');
+  }
+}
+
 // ---- ③ 应用 diff 清单 ----
 let diffResult = null;
 if (diffList) {
@@ -191,20 +235,8 @@ const post = dryRun ? null : measure(existsSync(nextPath) ? nextPath : prevPath)
 const postMeasurement = dryRun
   ? 'dry-run 未执行：不复制基线、不应用 diff，故无改后稿可测（nextBody / delta / nextFull 均为 null）'
   : null;
-// v18.12.3：目标字数解析改走 `_lib/target-chars.mjs` 唯一实现。旧行为内联 `\d{4,5}` →
-//   `目标篇幅：300 字`（3 位）/ `12,000 字`（千分位）/ `1.2 万 字`（数量级单位）**全部解析不出**
-//   → `charBand = null` → **字数硬阈整段判定被静默跳过、脚本仍 exit 0**，主控会以为「已核过」。
-//   现在解析不到就**说出原因**（stderr 可见），不再让闸门无声失效。
-const briefPath = [join(projRoot, '01-任务简报.md')].find(existsSync);
-const tParse = briefPath
-  ? parseTargetChars(readFileSync(briefPath, 'utf8'))
-  : { value: null, raw: null, reason: '未找到 01-任务简报.md（无法判定目标篇幅）' };
-const target = tParse.value;
-if (target === null) {
-  console.error(`⚠️ 目标字数未解析到 → **G8 字数硬阈判定跳过**（这是「未核」，不是「已核」）：${tParse.reason}`);
-  if (tParse.raw) console.error(`   · 简报里读到的是：「${tParse.raw}」——请核对 §目标篇幅 的写法（支持 3–5 位、千分位逗号、万/千/k 单位）`);
-}
-const charBand = target ? { floor: Math.round(target * 0.9), ceil: Math.round(target * 1.05) } : null;
+// v19.6.7：目标字数解析与 `charBand` 已在 **②′** 完成（净变化预检要用同一个 charBand）——此处只消费。
+//   （旧版在 ④ 重算一遍：改带宽口径时必然漏改一处，属「同一事实两处」；现已收口。）
 // 档位（2026-09-29 主人定案，真源 = `references/_shared/字数判定表.md` §二）：
 //   · 超上限（> +5%）→ **P1**（原写 P0；裁定后**超限侧**已无 P0 档）——须压缩
 //   · 低下限（< −10%）→ **P0**——须扩写（主人明示保留 P0：「字数低于下限 −10% 直接输出 P0，须扩写」）
@@ -259,6 +291,14 @@ ${diffList ? (diffResult?.skipped === 'dry-run' ? '- dry-run 未应用' : `- ${b
 
 ## 六、下一步
 <!-- 主控回填：派 T7 复核 / 主控微压缩 / 进入 Phase 4.5 等 -->
+
+## 七、未处理项（v19.6.7 · 反哺 M-16：**每条必须可机检**，禁止只写「已留注 / 已处理」）
+<!-- 每条须给：① 正文位置（§N 或行号）② 可复现的 grep -c 实据（把命令与实测数一起写出）
+     ③ 「已删除 / 已留注 / 已改口径」三类声明一律以正文现状为准。
+     判定依据（实测病灶，生成式AI v4）：§八 自报「§5.5 末段已留密度复算注」，
+     而 grep 「反方密度|不均衡|0\.8」在该版正文 = **0 命中** —— 声明与正文不符 = 披露义务未履行，
+     需 T7 独立 grep 全文才能发现（属「自报不可核」）。
+     可与 §二「字数实值（脚本实测）」同源核对分节字数（segment-chars.mjs --list）。 -->
 `, 'utf8');
   revNote = `已生成 ${revNotePath}`;
 }

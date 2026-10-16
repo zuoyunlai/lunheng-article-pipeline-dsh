@@ -18,7 +18,7 @@
 //   · 非 zstd（`.jsonl`）直接按文本读——测试夹具用这条路径，避免测试依赖压缩实现。
 //   · 本模块**不判断**「读了某文件算不算违规」——禁忌面由调用方给（判断力不下沉的同一条判据）。
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs'
-import { join, basename } from 'node:path'
+import { join } from 'node:path'
 import { zstdDecompressSync } from 'node:zlib'
 
 const ZSTD_MAGIC = [0x28, 0xb5, 0x2f, 0xfd]
@@ -136,7 +136,14 @@ export function collectTouched(events) {
 export function loadSessions(target, { sessionRoot = null } = {}) {
   const files = []
   if (sessionRoot && !existsSync(target)) {
-    for (const f of findSessionFiles(sessionRoot)) if (basename(f).includes(String(target))) files.push(f)
+    // v19.6.7（反哺 · 生成式AI M-04 实测）：**过滤必须含目录名**——旧版 `basename(f).includes(target)`
+    //   只比文件名，而会话文件的 basename 恒为 `session.v4.jsonl.zstd`（**不含 id**），会话 id 落在
+    //   **目录名**上（`<sessionRoot>/<workspace>/<id>/session.v4.jsonl.zstd`）⇒ 传 id 时零命中、
+    //   exit 10「未匹配到任何会话文件」，而传目录/文件路径才通过。最坏后果：交付前「独立核对层」
+    //   按文档写法传入即失败，被误读成「没有留痕」。
+    //   修法：按**完整路径**匹配（`f.includes(target)`）——同时覆盖目录名与文件名两种写法，
+    //   旧用法（传文件名片段）行为不变。注意 target 已在 parseCliArgs 侧做过路径归一。
+    for (const f of findSessionFiles(sessionRoot)) if (f.includes(String(target))) files.push(f)
   } else {
     for (const f of findSessionFiles(target)) files.push(f)
   }
