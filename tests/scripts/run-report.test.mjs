@@ -138,6 +138,23 @@ test('run-report：缺输入 —— 空项目仍出报告，但 exit 3（须人�
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
 
+test('run-report F-3：G 项机检 JSON 带连字符（G-Audit-Report.json）也能被读', () => {
+  const d = tmp()
+  try {
+    const proj = fixtureProject(d)
+    // 带连字符的文件名 = g-audit-check 默认落盘名「G-Audit-Report.json」的形态；旧 /gaudit/i 只认无连字符 → 漏读标 N/A
+    writeFileSync(join(proj, 'audits', 'G-Audit-Report-v1.json'), JSON.stringify({
+      checks: { G1: { pass: true } }, overall: { exitCode: 0, p0: 0, p1: 0 },
+    }))
+    const js = join(d, 'r.json')
+    const r = run([SCRIPT, 'run/proj-r', '--json', js, '--no-score'], { cwd: d })
+    assert.equal(r.code, 0, '应 exit 0：' + r.out.slice(0, 300))
+    assert.ok(!/G 项机检 JSON 缺/.test(r.stdout), '带连字符的 G-Audit JSON 应被读、不得报缺：' + r.stdout)
+    const j = parseJson({ stdout: readFileSync(js, 'utf8') })
+    assert.equal(j.gAudit.overall.exitCode, 0, 'G 面板应取到 overall.exitCode')
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
 test('run-report：默认输出落 <项目>/final/运行报告.html', () => {
   const d = tmp()
   try {

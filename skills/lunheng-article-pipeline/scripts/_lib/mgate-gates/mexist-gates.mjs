@@ -1012,7 +1012,10 @@ try {
     let journalNote = '';
     let paradigmNote = '';   // v18.78.0（F29）：范式契合列的有无必须说出来（否则读者不知复算用了默认值）
     const wantJournal = /启用期刊匹配|期刊匹配助手/.test(rt) || (() => {
-      try { return /启用期刊匹配/.test(readFileSync(join(projDir6, '01-任务简报.md'), 'utf8')); }
+      // F-2（policy 真试跑反哺）：简报侧不能用「字段名出现即启用」——字段名「启用期刊匹配」本身含「启用」二字，
+      //   写「**启用期刊匹配**：☐（关闭）」也会被旧 `/启用期刊匹配/` 判成启用 → 审稿报告无期刊表被误判 P1。
+      //   改为「字段名+值」正向匹配：只有后跟 ☑/开启/true/enabled/1 才算启用；☐/关闭/否/0/false 不命中。
+      try { return /启用期刊匹配[\s*_`]{0,4}[：:][\s*_`]{0,4}(?:☑|开启|true|enabled?|1)/i.test(readFileSync(join(projDir6, '01-任务简报.md'), 'utf8')); }
       catch (e) {
         if (e.code === 'ENOENT') {
           journalNote = '项目 01-任务简报.md 不存在 → 「是否启用期刊匹配」按**未启用**处理（简报缺失是 Phase 4.5 之前的合法状态；判据以审稿报告自述优先）';

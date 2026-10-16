@@ -365,6 +365,28 @@ test('m-gate-check M-Exist-5：闸门记录表（漏项 / 自述当实据 / ✗ 
   rmSync(d, { recursive: true, force: true })
 })
 
+test('m-gate-check M-Exist-6 F-2：简报「启用期刊匹配：☐ 关闭」不得误判启用', () => {
+  const { d, proj, fin, ev, aud } = mkProject({ audits: true })
+  writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')
+  // 审稿报告 6 维自洽（24/30）+ minor 建议 + 修改建议段，但**无期刊匹配表**——若 wantJournal 误判「启用」会报「缺期刊表」P1
+  writeFileSync(join(aud, '审稿报告-v2.md'), '# 同行评审报告\n\n> **总评分**：24/30\n> **建议**：minor revision\n\n'
+    + '| 维度 | 得分 |\n|------|------|\n'
+    + ['原创性', '方法论', '证据强度', '论证结构', '写作质量', '引文规范'].map((x) => `| ${x} | 4/5 |`).join('\n')
+    + '\n\n判定：minor revision\n\n## 给作者的具体修改建议（按优先级）\n\n1. 补 §三 第 2 段的 [L01] 支撑\n')
+  const item = () => parseJson(run([join(SCRIPTS, 'm-gate-check.mjs'), join(fin, '定稿.md'), ev])).results.find((x) => x.gate.startsWith('M-Exist-6'))
+  // 正向钉：简报「启用期刊匹配：☐（关闭）」→ wantJournal=false → 无期刊表不判「缺期刊表」
+  writeFileSync(join(proj, '01-任务简报.md'), '# 简报\n\n- **启用期刊匹配**：☐（policy 档关闭）\n')
+  let it = item()
+  assert.equal(it.pass, true, '简报「☐ 关闭」时无期刊表应通过（不得误判启用）：' + it.detail)
+  assert.doesNotMatch(it.detail, /无「综合匹配度」表|Top 3 缺失/)
+  // 反向钉：简报「启用期刊匹配：☑」→ wantJournal=true → 无期刊表必须报缺
+  writeFileSync(join(proj, '01-任务简报.md'), '# 简报\n\n- **启用期刊匹配**：☑\n')
+  it = item()
+  assert.equal(it.pass, false, '简报「☑ 开启」时无期刊表应报缺：' + it.detail)
+  assert.match(it.detail, /无「综合匹配度」表/)
+  rmSync(d, { recursive: true, force: true })
+})
+
 test('m-gate-check M-Exist-6：审稿报告评分与期刊匹配（总分≠分项和 / 综合不可复算 / 杜撰刊名）', () => {
   const { d, proj, fin, ev, aud } = mkProject({ audits: true })
   writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n正文。\n\n## 参考文献\n\n[L01] x\n\n## 数据来源\n\n## 案例来源\n\n## 先行者文献\n\n## AI 使用声明\n\nAI。\n')

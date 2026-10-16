@@ -233,7 +233,10 @@ else if (!Array.isArray(mg.json.results)) warn(relPath(mg.path), '无 results[] 
 // ── 采集 ④：G 项机检 JSON（任意 *gaudit*.json）────────────────────────────
 let ga = null;
 for (const f of listDir(join(projectDir, 'audits'))) {
-  if (!/gaudit/i.test(f) || !f.endsWith('.json')) continue;
+  // F-3（policy 真试跑反哺）：g-audit-check 默认落盘名是 `G-Audit-Report.json`（「G-Audit」带连字符），
+  //   旧 `/gaudit/i` 只认无连字符的「gaudit」→ 连 g-audit 自己的默认名都不匹配，G 面板必标 N/A。
+  //   改为容忍连字符/下划线（`g-audit` / `g_audit` / `gaudit` 都认）。
+  if (!/g[-_]?audit/i.test(f) || !f.endsWith('.json')) continue;
   const p = join(projectDir, 'audits', f);
   const j = readJson(p);
   if (j && (j.checks || j.overall)) { ga = { path: p, json: j }; break; }

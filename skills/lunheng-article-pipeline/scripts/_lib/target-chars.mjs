@@ -107,8 +107,11 @@ export function parseTargetCandidates(briefText) {
     const field = m[1] || '';
     const raw = (m[2] || '').trim();
     attempts.push(raw);
+    // F-1（policy 真试跑反哺）：千分位逗号必须**先剥再匹配**——`6,000` 会被 `\d+` 拆成 `6`+`000`（都过滤掉）、
+    //   `5,880` 拆出 `880`（恰好落在 [MIN_TARGET,MAX_TARGET]）→ 候选只剩 880 的「假超限」；剥逗号后 6000/5880/6120 正确入候选。
+    //   同源：`parseTargetChars` 的 plain 分支早已 `raw.replace(/,/g,'')`，本函数漏了这一步 → 两函数对同一输入不一致。
     const nums = [];
-    for (const x of raw.matchAll(CAND_NUM_RE)) {
+    for (const x of raw.replace(/,/g, '').matchAll(CAND_NUM_RE)) {
       const base = Number(x[1]);
       if (!Number.isFinite(base)) continue;
       const mag = x[2];
