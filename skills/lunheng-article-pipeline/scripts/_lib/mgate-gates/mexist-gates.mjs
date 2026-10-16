@@ -1988,3 +1988,93 @@ export function mExist11(ctx) {
     });
   }
 }
+
+// === M-Exist-12 贡献陈述（v19.8.0 · 反哺报告 v9 D3：学术编辑五维评审「性价比最高的空位」）===
+//
+// **为什么需要**：M 门此前管格式（卷期页码 G15-VolIssue 都管）、管存在性、管引用闭环——
+//   却不管「这篇论文声称对领域做了什么、凭什么」（contribution statement）。学术编辑看稿
+//   第一件事就是找它；开题报告模板第 4(4) 节「创新点」正是同一对象（反哺报告 v9 D7 对照）。
+//
+// **文类感知**（沿 M-Form-1 `GENRE_MIN_L` 的先例）：贡献陈述是**学术文类的规范**——
+//   公众号/行业分析/第三方报告不写 contribution statement 是正当的，判它们 P1 属于
+//   「拿学术规范打非学术稿件」。故只在下方集合内的文类实检，其余记 SKIP（N/A 未检，
+//   不得读成通过）。未传 `--genre` 时**同样 SKIP**：缺文类信息时无法区分学术/非学术，
+//   实检会重演「窄口径误伤老项目」（M-Exist-11 的教训）。
+//   `kaiti`（开题报告文类，反哺 v9 D7 登记）在此预挂——D7 落地前传该值会先被
+//   `GENRE_MIN_L` 之外的文类校验挡下，不会静默通过。
+export const CONTRIBUTION_GENRES = new Set([
+  'academic-cn', 'academic-hum', 'academic-case', 'lit-review', 'kaiti',
+]);
+
+// 贡献陈述锚点：摘要区或引言里声明贡献/创新点的固定句式（「本文（的）贡献」「贡献如下」「创新点」「本文提出」）。
+const CONTRIB_ANCHOR_RE = /(本文(?:的)?贡献|贡献如下|创新点|本文提出)/;
+// 结构化形态：命中段附近须是列表/编号形态（- / * / 数字. / （数字）），且 ≥2 条——防一句话带过。
+const CONTRIB_LIST_ITEM_RE = /^\s*(?:[-*·]|\d+[.、）)]|[（(]\d+[）)])\s*\S/;
+// 锚定形态：每条陈述句内含文内引用（数字 [1] 或素材编号 [L01]/[D-基-1]/[先01]）或小节引用（§/见第X节）——不锚定的贡献是自说自话。
+const CONTRIB_EVIDENCE_RE = /\[\d+\]|\[(?:L|D|C|先)\s*[\d-]+\]|§|见第[一二三四五六七八九十\d]+节/;
+
+export function mExist12(ctx) {
+  const { genre, bodyProse, results } = ctx;
+  if (!genre || !CONTRIBUTION_GENRES.has(genre)) {
+    results.push({
+      gate: 'M-Exist-12 贡献陈述（学术文类）',
+      pass: 'SKIP',
+      detail: `N/A 且**未检**：贡献陈述是学术文类（academic-cn/-hum/-case / lit-review / kaiti）的规范，本稿文类 = ${genre || '未声明'}——非学术稿件不写 contribution statement 是正当的。**不得读成通过**`,
+      severity: 'SKIP',
+    });
+    return;
+  }
+  try {
+    const lines = bodyProse.split('\n');
+    // ① 存在性：摘要区或引言（正文前 40% 内）命中锚点 ≥1 处
+    const scanLimit = Math.max(20, Math.floor(lines.length * 0.4));
+    let anchorLine = -1;
+    for (let i = 0; i < Math.min(lines.length, scanLimit); i++) {
+      if (CONTRIB_ANCHOR_RE.test(lines[i])) { anchorLine = i; break; }
+    }
+    if (anchorLine === -1) {
+      results.push({
+        gate: 'M-Exist-12 贡献陈述（学术文类）',
+        pass: false, severity: 'P1',
+        detail: `文类 ${genre} 下**缺失贡献陈述**——摘要区或引言内未命中「本文（的）贡献 / 贡献如下 / 创新点 / 本文提出」任一锚点。学术编辑第一眼看的就是这个：这篇论文声称对领域做了什么、凭什么（开题报告「创新点」节同源对象）`,
+      });
+      return;
+    }
+    // ② 结构化：锚点行起 15 行窗口内，列表/编号形态的贡献条目须 ≥2 条
+    const window = lines.slice(anchorLine, Math.min(anchorLine + 15, lines.length));
+    const contribItems = window.filter((l) => CONTRIB_LIST_ITEM_RE.test(l));
+    if (contribItems.length < 2) {
+      results.push({
+        gate: 'M-Exist-12 贡献陈述（学术文类）',
+        pass: false, severity: 'P1',
+        detail: `命中贡献锚点（L${anchorLine + 1}）但**非结构化形态**——窗口 15 行内列表/编号条目仅 ${contribItems.length} 条（要求 ≥2）。一句话带过不是贡献陈述：读者要能逐条核销`,
+      });
+      return;
+    }
+    // ③ 锚定：每条陈述句内含 [n] / § / 见第X节 ≥1 处——不锚定的贡献记 P1
+    const unanchored = [];
+    contribItems.forEach((l, k) => {
+      if (!CONTRIB_EVIDENCE_RE.test(l)) unanchored.push(anchorLine + 1 + k + 1);
+    });
+    if (unanchored.length > 0) {
+      results.push({
+        gate: 'M-Exist-12 贡献陈述（学术文类）',
+        pass: false, severity: 'P1',
+        detail: `贡献陈述 ${contribItems.length} 条中有 ${unanchored.length} 条**未锚定**（行 ${unanchored.slice(0, 5).join('、')}…）——每条须含文内引用 [n] 或小节引用（§/见第X节）：不锚定的贡献是自说自话，审稿人无从核验`,
+      });
+      return;
+    }
+    results.push({
+      gate: 'M-Exist-12 贡献陈述（学术文类）',
+      pass: true, severity: '通过',
+      detail: `文类 ${genre}：锚点 L${anchorLine + 1}，结构化贡献 ${contribItems.length} 条，全部含证据锚点（[n]/§/见第X节）——**「贡献是否成立、是否与局限性对偶」属语义判断，归 T7/G16（LLM）**`,
+    });
+  } catch (e) {
+    results.push({
+      gate: 'M-Exist-12 贡献陈述（学术文类）',
+      pass: 'SKIP', severity: 'LLM 兜底',
+      detail: `本项执行异常（${e && e.message ? e.message : e}）——按「未检」记，不得当通过`,
+    });
+  }
+}
+

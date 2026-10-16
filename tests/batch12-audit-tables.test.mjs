@@ -344,7 +344,7 @@ test('L-07：Phase 序列自洽——速查表删掉 4.2 时必须报 P1（复�
     const seqLine = before.split('\n').find((l) => /^\s*-\s*Phase：/.test(l))
     assert.ok(seqLine, '夹具的 SKILL.md 应有 `- Phase：` 序列行')
     assert.ok(seqLine.includes('1.5') && seqLine.includes('4.2'), '速查序列应已含 1.5 与 4.2（本次修复点）')
-    writeFileSync(skill, before.replace(seqLine, seqLine.replace(' → **4.2 修订回环(≤2 轮+A 轨)**', '')))
+    writeFileSync(skill, before.replace(seqLine, seqLine.replace('4.2 修订→', '')))
 
     const r = run([join(repo, 'skills', 'lunheng-article-pipeline', 'scripts', 'consistency-check.mjs')], { cwd: d })
     const all = `${r.stdout}${r.stderr}`

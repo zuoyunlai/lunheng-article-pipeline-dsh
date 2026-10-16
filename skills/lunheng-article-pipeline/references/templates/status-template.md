@@ -1,4 +1,4 @@
-> 版本：v19.7.1（DSH bundle 插件）
+> 版本：v19.8.0（DSH bundle 插件）
 
 # 项目状态机 — run/<项目名>/status.md
 
@@ -51,7 +51,7 @@
 > ③ 列至少 4 列，状态列**含 `✅` 才计为已闭合**（面板按此推「已闭合到哪个阶段」）；
 > ④ 行首为**阶段号**（`0`/`0.5`/`1`/`2.5`/`3`/`4.2`/`T7.5` 等；`T7.5` 这类以 T 开头的行不计入 Phase 号，属检查点行，保留无碍）。
 > **为什么单列**：`run-report.mjs` 与 `panel.mjs` 都读这张表，而本模板此前**没有这一段**（消费者无生产者）——实测项目只能自行拟表，且因「进度/进展」一字之差+空行同时踩雷，面板长期少一整张表。
- | | | 含证据包（build-evidence-bundle.mjs 自动生成）+ M 门 25 项 + 终检必查项 15 项 + AI 使用声明 |
+ | | | 含证据包（build-evidence-bundle.mjs 自动生成）+ M 门 26 项 + 终检必查项 15 项 + AI 使用声明 |
 
 ---
 
@@ -159,7 +159,7 @@ Phase 5 终检前，主控 T8 状态行写完「Done」前，**必须**先跑：
 
 `node scripts/final-check.mjs <run/项目名> [--no-summary] [--json] [--report <path>]`
 
-- 默认串联 3 脚本（v17.0.0 顺序）：count-chars.mjs（字数）→ build-evidence-bundle.mjs --summary（**先刷新证据包**，防 M 门读陈旧副本）→ m-gate-check.mjs（M 门 25 项）
+- 默认串联 3 脚本（v17.0.0 顺序）：count-chars.mjs（字数）→ build-evidence-bundle.mjs --summary（**先刷新证据包**，防 M 门读陈旧副本）→ m-gate-check.mjs（M 门 26 项）
 - 同时产出 audits/final-check-v0.json，含 summary.hanChars + summary.mGate + summary.recommendation
 - m-gate-check 非零退出（即有 P0 残留）**中止终检**，打回 T5/T7
 - --no-summary：跳过第 3 步（已生成过审计视图时复用）

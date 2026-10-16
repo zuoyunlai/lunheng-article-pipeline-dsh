@@ -94,6 +94,7 @@ export const GENRE_MIN_L = Object.freeze({
   'course': 3, 'lit-review': 3,
   'book-review': 2, 'policy': 2, 'industry': 2,
   'report-3rd': 1, 'biz-review': 1, 'wechat': 1,
+  'kaiti': 10,   // v19.8.0 反哺 v9 D7：开题报告的文献综述节须充分（文献下限高），结构门 = 开题九节
 });
 export function mForm1(ctx) {
   const { bodyProse, refRe, THRESHOLDS, results } = ctx;

@@ -1,4 +1,4 @@
-> 版本：v19.7.1（DSH bundle 插件）
+> 版本：v19.8.0（DSH bundle 插件）
 
 # AGENTS.md — 论文流水线操作手册
 
@@ -34,8 +34,8 @@
   > **⚠️ 唯一例外：主人显式授权（v18.0.0）**：主人**直接指令**要求修订机制文件时**不构成越权**——主人是机制文件的所有者，该指令即授权；但**仍须走安全流程**（改前备份 / `edit` 精确匹配禁 `sed -i` / 改后验证 / 可回滚 / 如实标注——**五步逐条判据见 [`references/maintainers.md`](references/maintainers.md) §十四**，v18.88.0 多宿主收口）。
   > **判据一句话（保留）**：**agent 自发改进 = 禁写（只出反哺报告）；主人明确下令 = 可写（走安全流程）**。
 - **技能来源自检（v2.5.2-dsh.13）**：启动时核对 `SKILL.md` 版本头与期望版本一致，不一致即停机报「技能来源可疑」（同名技能会按 rank 就近静默顶替）
-- **M 门**：**M 门 25 项中 24 项已脚本化**（= **M-Form 1-11 + M-Exist 1-11 + M-Integrity-1 + M-Fact-1**；人工项 = M-Integrity-2 跨文件判断，M-Form-8 承重墙质量同源由主控 LLM 兜底）——**仅 T7/T8 读** `references/_shared/M-Gate-Algorithm.md`（T1-T5/T9 不读），产出 `final/M-Gate-Report.json`，**exit 0 才返回**。**exit 语义真源 = `SKILL.md` §执行能力边界**。
-  > ⚠️ **本行有 2 处机检契约字符串**（①「M 门 25 项中 24 项已脚本化」→ `consistency-check` ⑥b；② 项数枚举 → `docs-facts` M 门守卫）：本批瘦身把两句改成**语义等价但不同形**的写法 → 两条机械面**同时失明**，被 `tests/scripts/consistency-check.test.mjs` 与 `tests/docs-facts.test.mjs` 各自抓出。判据：**改文档前先查有没有机械消费者依赖该字符串**——「语义等价」不是机械面的通行证。
+- **M 门**：**M 门 26 项中 25 项已脚本化**（= **M-Form 1-11 + M-Exist 1-12 + M-Integrity-1 + M-Fact-1**；人工项 = M-Integrity-2 跨文件判断，M-Form-8 承重墙质量同源由主控 LLM 兜底）——**仅 T7/T8 读** `references/_shared/M-Gate-Algorithm.md`（T1-T5/T9 不读），产出 `final/M-Gate-Report.json`，**exit 0 才返回**。**exit 语义真源 = `SKILL.md` §执行能力边界**。
+  > ⚠️ **本行有 2 处机检契约字符串**（①「M 门 26 项中 25 项已脚本化」→ `consistency-check` ⑥b；② 项数枚举 → `docs-facts` M 门守卫）：本批瘦身把两句改成**语义等价但不同形**的写法 → 两条机械面**同时失明**，被 `tests/scripts/consistency-check.test.mjs` 与 `tests/docs-facts.test.mjs` 各自抓出。判据：**改文档前先查有没有机械消费者依赖该字符串**——「语义等价」不是机械面的通行证。
 - **图件链路 / G14 / T9 三段的运行期判据**：**真源 = [`SKILL.md`](SKILL.md) §⚡ 启动速查表**（图件链路「图位独占一行 → 主控写 SVG → `md2html --fig-dir` → M-Form-9 对账」那行；G14 三层防御与 Phase 4.6 时点那行；T9 按文类档案启用那行）。细则另见 `references/pipeline-readme.md` 与 `references/gates/14-中文AI痕迹-gate.md`。
 - **项目进展记入** `memory/YYYY-MM-DD.md` 和 `memory/projects.md`
 - **注解聚合（v2.5.2-dsh 补丁，token 优化）**：新机制注解**不再逐层堆叠**（v2.1.8 新增/v2.2.1 新增/v2.3.0 改…），同主题合并为单行「v2.5.2-dsh 补丁，教训：…」格式；历史分层注解聚合到卡头一行，细节见 git log——防角色卡/文档随版本膨胀。

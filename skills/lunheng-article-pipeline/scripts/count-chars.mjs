@@ -35,6 +35,7 @@ installExitGuard();   // 传目录/权限错 → exit 10（旧版未捕获 EISDI
 //   不传该旗标时，`argvTokens` 与旧版逐 token 相同，**行为零变化**。
 const rawTokens = process.argv.slice(2);
 let reportPath = null;
+let wordMetric = false;   // v19.8.0 反哺 v9 D4：加 Word 口径字数列（估算，不作门判据）
 const argvTokens = [];
 for (let i = 0; i < rawTokens.length; i++) {
   if (rawTokens[i] === '--report') {
@@ -45,6 +46,10 @@ for (let i = 0; i < rawTokens.length; i++) {
       process.exit(10);
     }
     reportPath = v;
+    continue;
+  }
+  if (rawTokens[i] === '--word-metric') {
+    wordMetric = true;
     continue;
   }
   argvTokens.push(rawTokens[i]);
@@ -124,6 +129,22 @@ if (flag !== undefined && !['--full', '--summary'].includes(flag)) {
 }
 
 const text = readFileSync(file, 'utf8');
+
+// v19.8.0（反哺 v9 D4）：Word 口径字数估算——汉字 + 全/半角标点 + 数字串 + 英文连续串，
+//   与论衡内部「纯汉字」口径（hanChars）**双轨并存**，互不替换。**只作展示换算，不进 M 门、
+//   不改变退出码**（防再造第二个口径家族，QLT-5 前车之鉴）。journal-fit 的限额按 Word 口径录入时
+//   用本列对期刊限额、hanChars 对内预算——两轨分离、各自真源。
+const countWordMetric = (t) => {
+  let n = 0;
+  const CJK_PUNCT_RE = /[\u3000-\u303f\uff00-\uffef]/;      // 全角标点（，。；：、（）【】等）
+  const ASCII_PUNCT_RE = /[!"#$%&'()*+,\-./:;<=>?@\[\\\]^_`{|}~]/;
+  const run = t.replace(/[A-Za-z0-9]+/g, (m) => { n += 1; return ''; });   // 英文/数字连续串 = 1 个词
+  for (const ch of run) {
+    if (/[\u4e00-\u9fff]/.test(ch)) n += 1;
+    else if (CJK_PUNCT_RE.test(ch) || ASCII_PUNCT_RE.test(ch)) n += 1;
+  }
+  return n;
+};
 
 // 正文区起点（缺「## 摘要」）的标记计算（v18.0.5：从默认分支**提到 summary 之前**——旧版
 //   `--summary` 在标记逻辑之前就 process.exit(0)，导致该模式口径失真却**不带 degraded 标记**，
@@ -226,6 +247,8 @@ const out = {
   hanChars: count,
   ...degradedFields,
 };
+// v19.8.0（反哺 v9 D4）：`--word-metric` 时附加 Word 口径估算（纯展示换算，不做门判据）。
+if (wordMetric) out.wordChars = countWordMetric(target);
 // v18.16.0（S-2 反哺）：仅当 `--warn-threshold <N>` 被传入且字数超阈值时附加警告字段。
 //   不影响退出码（仍 0），不参与 M 门判定；供主控与审计视图按需消费。
 if (warnThreshold !== null) {

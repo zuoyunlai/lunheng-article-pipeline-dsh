@@ -896,7 +896,7 @@ test('M 门机械/总项数必须等于 mgate-gates 派生值，锚点文档不�
   const mech = mechanicalGateCount()
   const total = mech + 1
   // 四族全枚举真源（与 M-Gate-Algorithm.md 顶部真源行同形）——数字对了但漏一族，同样是漂。
-  const ENUM = 'M-Form 1-11 + M-Exist 1-11 + M-Integrity-1 + M-Fact-1'
+  const ENUM = 'M-Form 1-11 + M-Exist 1-12 + M-Integrity-1 + M-Fact-1'
 
   const anchors = [
     join(SKILL, 'scripts', 'm-gate-check.mjs'),

@@ -282,6 +282,16 @@ for (const name of diskNames) {
 if (brokenImports.length) bad('imports', 'I1', `${brokenImports.length} 处相对导入目标不在盘：${brokenImports.slice(0, 8).join(' / ')}${brokenImports.length > 8 ? ' …' : ''}`)
 else ok('imports', 'I1', `${diskNames.length} 个脚本的 ${importCount} 处相对导入全部可解析`)
 
+// ── ⑥ 契约一致性（v19.8.0 · 反哺 v9 D6-a）：exit code 族 / 六要素 / 三要素 ↔ contracts.json ──
+try {
+  const { verifyContracts } = await import('./_lib/contract-verify.mjs')
+  const { issues } = verifyContracts(HERE, SKILL_MD, join(SKILL_ROOT, 'AGENTS.md'))
+  if (issues.length) bad('contracts', 'C1', `${issues.length} 处契约漂移：${issues.slice(0, 5).join('；')}${issues.length > 5 ? ' …' : ''}`)
+  else ok('contracts', 'C1', 'contracts.json 单一真源在案：exit code 族 / 六要素 / 三要素全部对账通过')
+} catch (e) {
+  bad('contracts', 'C1', `contract-verify 模块不可用（${e && e.message ? e.message : e}）——契约核验本身失效`)
+}
+
 // ── 汇总 ────────────────────────────────────────────────────────────────────
 const count = (s) => results.filter((r) => r.status === s).length
 const summary = { pass: count('pass'), fail: count('fail'), na: count('na'), skip: count('skip'), total: results.length }
@@ -295,10 +305,11 @@ if (wantJson) {
   const GROUP_TITLE = {
     whitelist: '① 白名单 ↔ 磁盘对账', files: '② 运行期承重文件与关键目录',
     version: '③ 版本头一致性', package: '④ 包面齐备', imports: '⑤ 相对导入可解析',
+    contracts: '⑥ 契约一致性（contracts.json）',
   }
   console.log(`论衡随包自检 ${version} —— ${SKILL_ROOT}`)
   console.log('')
-  for (const g of ['whitelist', 'files', 'version', 'package', 'imports']) {
+  for (const g of ['whitelist', 'files', 'version', 'package', 'imports', 'contracts']) {
     console.log(`【${GROUP_TITLE[g]}】`)
     for (const r of results.filter((x) => x.group === g)) {
       console.log(`  ${ICON[r.status]} ${r.id}  ${r.detail}`)

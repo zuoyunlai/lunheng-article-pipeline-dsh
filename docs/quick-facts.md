@@ -1,4 +1,4 @@
-# 论衡速查卡（v19.7.1）
+# 论衡速查卡（v19.8.0）
 
 > **定位**：新人「第一眼需要知道的硬数字」**单一真源**——所有用户文档**只引本卡**、不在自己文档里复述数字。本卡是 `audit-report-v18.78.0.md` §7.2 立项的落地产物。
 >
@@ -12,8 +12,8 @@
 
 | 项 | 值 | 真源 |
 |---|---|---|
-| 当前版本 | **v19.7.1** | `package.json#version` |
-| 引擎锚定（子技能 `lunheng-commands`） | **v19.7.1**（规则 ㉖ 机械对账） | `skills/lunheng-commands/SKILL.md` description + L8 |
+| 当前版本 | **v19.8.0** | `package.json#version` |
+| 引擎锚定（子技能 `lunheng-commands`） | **v19.8.0**（规则 ㉖ 机械对账） | `skills/lunheng-commands/SKILL.md` description + L8 |
 
 ## 角色与 Phase
 
@@ -28,8 +28,8 @@
 | 项 | 值 | 真源 |
 |---|---|---|
 | 阶段闸门 | **2 道**（T2.5 检索→分析；T7.5 审计→终检） | `SKILL.md` §⚡ |
-| **M 门总项数** | **机检 24 项 + 人工 1 项 = 总 25 项**（M-Form 11 + M-Exist 11 + M-Integrity-1 + M-Fact-1 = 机检 24；M-Integrity-2 = 人工 1） | `references/_shared/M-Gate-Algorithm.md` L23 |
-| M 门脚本实测 `total` | **24**（与机检 24 一致；脚本头注释 v18.61.1 收口） | `skills/.../scripts/m-gate-check.mjs` L14 |
+| **M 门总项数** | **机检 25 项 + 人工 1 项 = 总 26 项**（M-Form 11 + M-Exist 12 + M-Integrity-1 + M-Fact-1 = 机检 25；M-Integrity-2 = 人工 1） | `references/_shared/M-Gate-Algorithm.md` L23 |
+| M 门脚本实测 `total` | **25**（与机检 25 一致；脚本头注释 v18.61.1 收口、v19.8.0 增 M-Exist-12） | `skills/.../scripts/m-gate-check.mjs` L14 |
 | G 清单 | **G0-G14 主项 15 个 + G15 模式相关项**（v18.18.0 口径，v18.34.0 更正） | `references/glossary.md` §二（G 清单） |
 | 修订回环 | **三环制（A 轨 / B 轨 / G 环）**：A 轨 ≤2 轮纠错；B 轨至多 +1 深化（主控触发轮 T6/T9/洞察共享）；G 环 1-2 轮（v18.75.0 新立、G14 终闸 Warning/Fail 触发，**不占 B 轨**） | `references/glossary.md` §十二.1 |
 

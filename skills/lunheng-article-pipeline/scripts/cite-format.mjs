@@ -176,6 +176,12 @@ const build = (e) => {
       case 'D': return `${aG}. ${t}[D]. ${need(e.src.raw, '培养单位')}, ${y}.`
       case 'R': return `${aG}. ${t}[R]. ${need(e.src.raw, '机构')}, ${y}.`
       case 'N': return `${aG}. ${t}[N]. ${need(e.src.journal, '报纸名')}, ${y}${e.src.pages ? `(${e.src.pages})` : ''}.`
+      // v19.8.0（反哺 v9 D9-1）：5 类冷门著录（模板真源 = 开题模板第 9 节 / 引用格式.md §一）
+      case 'C': return `${aG}. ${t}[C]. ${need(e.src.raw, '出版地: 出版者')}, ${y}${e.src.pages ? `: ${e.src.pages}` : ''}.${tail ? ` ${tail}` : ''}`
+      case 'P': return `${aG}. ${t}: ${need(e.patentNo, '申请/专利号')}[P]. ${need(e.pubDate, '公告日期或公开日期')}.`
+      case 'R/OL': return `${aG}. ${t}: ${need(e.reportNo, '报告号')}. ${y}[R/OL]. (${e.pubDate || PLACEHOLDER('编制时间')})[${e.accessDate || PLACEHOLDER('引用时间')}]. ${need(e.url, '获取和访问路径')}.`
+      case 'S': return `${aG}. ${t}: ${need(e.stdNo, '标准编号')}[S]. ${y}.`
+      case 'Z': return `${aG}. ${t}[Z]. ${need(e.src.raw, '完成单位')}. ${y}.`
       default: return null
     }
   }
@@ -225,6 +231,9 @@ if (headerOk) {
 }
 
 const entries = []
+// v19.8.0（反哺 v9 D9-1）：11 类完整码表（6 类原有 + 5 类冷门）。APA 7th 只定义前 6 类的模板
+//   （真源 §一 未给 5 类的 APA 形态），故 5 类在 APA 下记 blocked「暂不支持」，GB/T 已支持。
+const KNOWN_TYPES = new Set(['J', 'M', 'EB/OL', 'D', 'R', 'N', 'C', 'P', 'R/OL', 'S', 'Z'])
 const headRe = /^###\s*\[(L\d+)\]\s*(.+?)\s*$/gm
 const heads = [...raw.matchAll(headRe)]
 for (let i = 0; i < heads.length; i++) {
@@ -239,6 +248,10 @@ for (let i = 0; i < heads.length; i++) {
     DOIURL: pick(body, ['DOI/URL', 'DOI／URL', 'DOI', 'URL', 'DOI/链接']),
     访问日期: pick(body, ['访问日期', '引用日期', '检索日期']),
     发布日期: pick(body, ['发布日期', '发表日期', '日期']),
+    // v19.8.0（反哺 v9 D9-1）：5 类冷门著录的新字段（[P] 专利号 / [S] 标准编号 / [R/OL] 报告号）
+    专利号: pick(body, ['专利号', '申请号', '专利编号']),
+    标准编号: pick(body, ['标准编号', '标准号', '标准']),
+    报告号: pick(body, ['报告号', '报告编号']),
   }
   const typeM = String(f.类型 || '').match(/\[([A-Z]{1,2}(?:\/[A-Z]{2})?)\]/) || String(f.出处 || '').match(/\[([A-Z]{1,2}(?:\/[A-Z]{2})?)\]/)
   const type = typeM ? typeM[1] : null
@@ -257,9 +270,18 @@ for (let i = 0; i < heads.length; i++) {
     //   现要求 `ISBN` 字样在场才抽（DOI 数字串不再误判）。
     isbn: firstOf(/ISBN[：: ]*((?:97[89])?[\d-]{9,17}[\dXx])/i, f.DOIURL || ''),
     accessDate: f.访问日期 ? firstYear(f.访问日期) : null, pubDate: f.发布日期 ? firstYear(f.发布日期) : null,
+    // v19.8.0（反哺 v9 D9-1）：三个新字段；专利号/标准编号常混写在 DOIURL 或出处栏，故加确定性回退
+    patentNo: f.专利号 || firstOf(/(?:专利号|申请号|公开号)[：: ]*([A-Z]{2}[\dA-Z./]+|ZL[\d.]+)/i, f.DOIURL || '') || null,
+    stdNo: f.标准编号 || firstOf(/(?:GB(?:\/T)?|GB|QB|HG|ISO|IEC|ASTM|YY|CJJ|JGJ)[ /]?[\w.\-—–/]+/i, `${f.DOIURL || ''} ${f.出处 || ''}`) || null,
+    reportNo: f.报告号 || null,
   }
   const text = build(e)
-  entries.push({ e, text, blocked: text ? null : `类型未识别或缺失（类型栏：${f.类型 || '空'}）——**不猜类型**，请先按真源补 [J]/[M]/[EB/OL]/[D]/[R]/[N]` })
+  const blockedWhy = text ? null : (
+    KNOWN_TYPES.has(e.type)
+      ? `该类型 [${e.type}] 在 ${style === 'gbt' ? 'GB/T' : 'APA 7th'} 下暂不支持（真源 §一 未定义模板）——不猜类型`
+      : `类型未识别或缺失（类型栏：${f.类型 || '空'}）——**不猜类型**，请先按真源补 [J]/[M]/[EB/OL]/[D]/[R]/[N]/[C]/[P]/[R/OL]/[S]/[Z]`
+  )
+  entries.push({ e, text, blocked: blockedWhy })
 }
 
 const generated = [], blocked = [], crossCheck = [], placeholders = []

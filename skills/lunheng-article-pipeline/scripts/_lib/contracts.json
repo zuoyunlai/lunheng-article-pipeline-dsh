@@ -1,0 +1,29 @@
+{
+  "$comment": "论衡机检契约单一真源（v19.8.0 · 反哺报告 v9 D6-a）。exit code 族 / 交接六要素 / 产物三要素在此集中声明；self-check 第⑥组「契约一致性」与 tests/contracts.test.mjs 以本文件为准做机械对账。改任何脚本的退出码语义必须同批改这里——「语义等价但不同形」不是机械面的通行证。",
+  "exitCodes": {
+    "m-gate-check.mjs": {
+      "pass": 0,
+      "p1": 1,
+      "p0": 2,
+      "p2-soft-skip-only": 3,
+      "usage": 10,
+      "adjudicate-rejected": 30,
+      "internal": 70
+    },
+    "handoff-check.mjs": {
+      "pass": 0,
+      "artifacts-missing": 20,
+      "structure-bad": 21,
+      "soft-only": 22,
+      "usage": 10,
+      "internal": 70
+    },
+    "model-routing.mjs": {
+      "ok": 0,
+      "needs-human": 4,
+      "usage": 10
+    }
+  },
+  "handoffSixElements": ["做了什么", "产物在哪", "怎么验证", "已知问题", "下一步", "状态更新"],
+  "artifactThreeElements": ["路径", "字节数", "结构自检结果"]
+}

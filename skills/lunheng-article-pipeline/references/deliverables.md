@@ -1,4 +1,4 @@
-> 版本：v19.7.1（DSH bundle 插件）
+> 版本：v19.8.0（DSH bundle 插件）
 
 
 # 论衡交付边界 + F 失败模式 + M 门 + 修订回环 + 阶段闸门（v2.2.8 抽离）
@@ -180,7 +180,7 @@
 
 ## M 机械化门控段（v2.2.0 + v2.2.1 扩展）
 
-- **M 门四类（v18.2.6 审计修复：项数收敛到唯一真源；v18.61.1 文档体检反哺补 M-Fact-1；v18.77.0 P-6 收口表述形式）**：**M 门总 25 项 = 机械 24 项（M-Form 1-11 + M-Exist 1-11 + M-Integrity-1 + M-Fact-1，走 `scripts/m-gate-check.mjs`）+ 人工 1 项（M-Integrity-2，主控 T7.5 门）**——**M-Form 11 项 / M-Exist 11 项 / M-Integrity 2 项（M-Integrity-1 机检 + M-Integrity-2 人工）/ M-Fact 1 项**（v18.77.0 改写：明确「M-Integrity 2 项」=「1 机检 + 1 人工」而非「2 机检」，与 `consistency-check.mjs` 真源 = `mgate-doc-rules.mjs:55` 的「脚本标签数 + 1」= 1+1=2 同形）。四类合计 = 11+11+2+1 = 25 项（其中机检 24 = 11+11+1+1）。逐项定义真源 = `M-Gate-Algorithm.md` §M-Form / §M-Exist / §M-Integrity / §M-Fact；**本节只给项数与真源指针、不复述逐项清单**。
+- **M 门四类（v18.2.6 审计修复：项数收敛到唯一真源；v18.61.1 文档体检反哺补 M-Fact-1；v18.77.0 P-6 收口表述形式；v19.8.0 反哺 v9 D3 补 M-Exist-12）**：**M 门总 26 项 = 机械 25 项（M-Form 1-11 + M-Exist 1-12 + M-Integrity-1 + M-Fact-1，走 `scripts/m-gate-check.mjs`）+ 人工 1 项（M-Integrity-2，主控 T7.5 门）**——**M-Form 11 项 / M-Exist 12 项 / M-Integrity 2 项（M-Integrity-1 机检 + M-Integrity-2 人工）/ M-Fact 1 项**（v18.77.0 改写：明确「M-Integrity 2 项」=「1 机检 + 1 人工」而非「2 机检」，与 `consistency-check.mjs` 真源 = `mgate-doc-rules.mjs:55` 的「脚本标签数 + 1」= 1+1=2 同形）。四类合计 = 11+12+2+1 = 26 项（其中机检 25 = 11+12+1+1）。逐项定义真源 = `M-Gate-Algorithm.md` §M-Form / §M-Exist / §M-Integrity / §M-Fact；**本节只给项数与真源指针、不复述逐项清单**。
 - **T7 必跑**，exit 0 才能返回
 - 借鉴 vincentjiang06 objective/verify gate 硬约束理念的论衡化实现——「**形式合规 ≠ 存在性合规 ≠ 信任一致**」（v2.2.0 → v2.2.1 M 门三层验证）
 

@@ -1,4 +1,4 @@
-> 版本：v19.7.1（DSH bundle 插件）
+> 版本：v19.8.0（DSH bundle 插件）
 
 # 角色：批判伙伴 Critical Companion（T6）
 
@@ -90,7 +90,7 @@
 | **G7 原创性** | ⚠️ 与先行者清单对比差异点 | ✅ 完整 G7 检查 |
 | **G9 修订合规 / G10 模型一致性 / G11 时效 / G12 信任验证 / G13 AI 披露** | ❌ 不报 | ✅ 全部 |
 | **G14 中文 AI 痕迹** | ❌ 不嵌入判定 | ✅ 只核验 G14 检测报告已产出（Phase 0 关闭则免） |
-| **M 门 25 项**（含 M-Integrity-2 人工门） | ❌ 不跑 | ✅ 跑 `m-gate-check.mjs` |
+| **M 门 26 项**（含 M-Integrity-2 人工门） | ❌ 不跑 | ✅ 跑 `m-gate-check.mjs` |
 | **承重墙超载** | ⚠️ ≥3 论点 = 超载 P1；≥4 论点 = P0 | ✅ 复核 T6 攻击是否成立（真源 = `M-Gate-Algorithm.md:611`） |
 | **触发任务清单（任务简报 trigger=false Permanent Gap）** | ❌ 不攻击（豁免规则） | ❌ 不报（G 项不涉及） |
 

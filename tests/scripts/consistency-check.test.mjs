@@ -299,9 +299,9 @@ test('consistency-check ⑱：图件路径口径与「宣称的图件门」必�
   // ① 旧图件路径口径
   const t8 = join(R, 'references', 'agents', '08-终检-finalizer.md')
   writeFileSync(t8, readFileSync(t8, 'utf8') + '\n> 图件落在 `final/图N-标题.svg`。\n')
-  // ② M 门计数漂移（把当前值写回 13 项）——**注入串必须跟着真源走**：M 门总数 v18.25.0 起为 24
+  // ② M 门计数漂移（把当前值写回 13 项）——**注入串必须跟着真源走**：M 门总数 v19.8.0 起为 26
   const gl = join(R, 'references', 'glossary.md')
-  writeFileSync(gl, readFileSync(gl, 'utf8').replace('M 门 25 项复核', 'M 门 13 项复核'))
+  writeFileSync(gl, readFileSync(gl, 'utf8').replace('M 门 26 项复核', 'M 门 13 项复核'))
   const r = run([join(R, 'scripts', 'consistency-check.mjs')])
   {
     assertExitBySeverity(r, '注入漂移后必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
@@ -332,9 +332,9 @@ test('consistency-check ⑳+⑥b：M 门文档节头项数 / 编号跳号 / 文�
   {
     const { d, R } = mkRepo()
     const ag = join(R, 'AGENTS.md')
-    writeFileSync(ag, readFileSync(ag, 'utf8').replace('M 门 25 项中 24 项已脚本化', 'M 门 25 项中 14 项已脚本化'))
+    writeFileSync(ag, readFileSync(ag, 'utf8').replace('M 门 26 项中 25 项已脚本化', 'M 门 26 项中 14 项已脚本化'))
     const fin = join(R, 'references', 'agents', '08-终检-finalizer.md')
-    writeFileSync(fin, readFileSync(fin, 'utf8').replace('（**24 项**：M-Form 1-', '（**15 项**：M-Form 1-'))
+    writeFileSync(fin, readFileSync(fin, 'utf8').replace('（**25 项**：M-Form 1-', '（**15 项**：M-Form 1-'))
     const r = run([join(R, 'scripts', 'consistency-check.mjs')])
     {
       assertExitBySeverity(r, '旧写法漂移必须 exit 1（v18.62.4 §8.1 #12：含 P0→2，仅 P1→1）')
@@ -396,8 +396,8 @@ test('consistency-check ⑳：真源仓库自身必须自洽（M-Form 11 / M-Exi
   }
   assert.equal(secs.Form.declared, 11, 'M-Form 节头应写 11 项')
   assert.equal(secs.Form.subs.length, 11, 'M-Form 应有 11 个 ### 子节')
-  assert.equal(secs.Exist.declared, 11, 'M-Exist 节头应写 11 项（v18.27.0 QLT-4 新增 M-Exist-11）')
-  assert.equal(secs.Exist.subs.length, 11, 'M-Exist 应有 11 个 ### 子节')
+  assert.equal(secs.Exist.declared, 12, 'M-Exist 节头应写 12 项（v18.27.0 QLT-4 新增 M-Exist-11；v19.8.0 反哺 v9 D3 新增 M-Exist-12）')
+  assert.equal(secs.Exist.subs.length, 12, 'M-Exist 应有 12 个 ### 子节')
   assert.equal(secs.Integrity.declared, 2, 'M-Integrity 节头应写 2 项')
   assert.equal(secs.Integrity.subs.length, 2, 'M-Integrity 应有 2 个 ### 子节')
 })

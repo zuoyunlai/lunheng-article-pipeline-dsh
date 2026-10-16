@@ -29,10 +29,12 @@ installExitGuard();
 const argv = process.argv.slice(2);
 let file = null;
 let humanities = false;
+let kaiti = false;   // v19.8.0 反哺 v9 D7：开题报告九节模式
 let reportPath = null;
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
   if (a === '--humanities') humanities = true;
+  else if (a === '--kaiti') kaiti = true;
   else if (a === '--report') {
     // v18.12.0（全量审计 L-62）：缺值守卫（旧版静默不落盘却 exit 0）
     const v = argv[++i];
@@ -66,6 +68,33 @@ requireExistingFile(file, '待检查论文');
 }
 
 const text = readFileSync(file, 'utf8');
+
+// v19.8.0（反哺 v9 D7）：开题报告九节模式——开题是学位/长文的前置交付物，结构门与 IMRaD 完全不同。
+//   只做**节存在性**判定（≥3 缺 → P0 / 1-2 缺 → P1），不判漏斗/讨论要素（那些是正文的结构件，开题没有）。
+if (kaiti) {
+  const KAITI_SECTIONS = ['研究背景', '研究目的', '研究意义', '文献综述', '研究内容', '研究方法', '研究框架', '预期成果', '参考文献'];
+  const missing = KAITI_SECTIONS.filter((sec) => {
+    const b = sectionBody(text, sec);
+    return b === null || b.trim().length === 0;
+  });
+  const severity = missing.length >= 3 ? 'P0' : missing.length > 0 ? 'P1' : 'PASS';
+  const out = {
+    file,
+    mode: 'kaiti（开题九节）',
+    version: packageVersionTag(),
+    sections: KAITI_SECTIONS,
+    missing,
+    pass: missing.length === 0,
+    severity,
+    detail: missing.length === 0
+      ? '开题九节齐备'
+      : `开题报告缺 ${missing.length} 节：${missing.join(' / ')}`,
+  };
+  const payload = JSON.stringify(out, null, 2);
+  if (reportPath) writeReport(reportPath, payload + '\n', { protect: [file], label: '--report' });
+  else console.log(payload);
+  process.exit(severity === 'P0' ? 2 : (severity === 'P1' ? 1 : 0));
+}
 
 // --- S-IMRaD 检查 ---
 // IMRaD 5 节（自然科学/实证论文）；人文学科用 IMRaD-Alternate 3 节

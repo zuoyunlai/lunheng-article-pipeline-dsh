@@ -615,6 +615,28 @@ const g05 = (() => {
     evidence: { hits } };
 })();
 
+// --- G16 反方段骨架预扫（v19.8.0 反哺 v9 D2）---
+// 定位：**机械预扫 + P2 软提示**，不判 P1/P0（判定留给 T7/G14 的 LLM 层）。反方论证段的「模板化」
+//   是黑名单式去味修不出来的 AI 痕迹（同一「尽管…但是…」万能骨架连续出现）——本项只数**同构让步-转折
+//   骨架的段落数**，≥3 段即提示疑似模板化。**边界（如实）**：只数连接词共现，不判「是否真的同构」；
+//   不阻断交付（P2），与「反方论证是否触及核心」的语义判断（归 T6/T7）分离。
+const CONCESSIVE_RE = /尽管|虽然|诚然|固然|不可否认/;
+const ADVERSATIVE_RE = /然而|但是|但|不过|却/;
+const g16 = (() => {
+  const paras = bodyText.split(/\n{2,}/).filter((p) => !/^#|^\||^>|^```/.test(p.trim()));
+  const skeletonParas = paras.filter((p) => CONCESSIVE_RE.test(p) && ADVERSATIVE_RE.test(p));
+  return {
+    name: '反方段骨架预扫（让步-转折同构，软提示）',
+    checked: true,
+    pass: skeletonParas.length < 3,
+    severity: skeletonParas.length >= 3 ? 'P2' : 'PASS',
+    detail: skeletonParas.length >= 3
+      ? `${skeletonParas.length} 段出现「让步词 + 转折词」同构骨架 → 疑似反方段模板化（须 T7/G14 判是否真同构；不阻断）`
+      : skeletonParas.length === 0 ? '未命中让步-转折同构骨架' : `仅 ${skeletonParas.length} 段让步-转折骨架（未达提示阈值）`,
+    evidence: { skeletonParagraphCount: skeletonParas.length },
+  };
+})();
+
 // --- 汇总 ---
 const checks = {
   'G8-CharCount': g8,
@@ -623,6 +645,7 @@ const checks = {
   'G2.5-CaseCheck': g25,
   'G0.5-FirstPerson': g05,
   'G15-VolIssue': g15,
+  'G16-反方段骨架': g16,
 };
 const vals = Object.values(checks);
 // v18.62.4（全量审计-v18.62.3 §8.2 #17）：**不变量守卫**——本脚本现不产出 P0（见头部退出码表的说明）。
@@ -661,8 +684,8 @@ const result = {
   meta: {
     timestamp: new Date().toISOString(),
     description: '论衡 G 项机检门 / v18.41.0（EFF-1 起；本版新增 G15-VolIssue）/ scripts 白名单 24→25',
-    notes: '只机检 M 门与三个战略门未覆盖的 6 个 G 子项；判断力项（G1/G3/G5/G6/G7/G10/G14）维持 LLM 判定。'
-      + 'G2 与 G15-VolIssue 的命中项是**候选**，须 T7 逐条定性；SKIP ≠ 通过（exit 3 必须人工复核）。',
+    notes: '只机检 M 门与三个战略门未覆盖的 7 个 G 子项；判断力项（G1/G3/G5/G6/G7/G10/G14）维持 LLM 判定。'
+      + 'G2 与 G15-VolIssue 的命中项是**候选**，G16 反方段骨架是**软提示**，须 T7 逐条定性；SKIP ≠ 通过（exit 3 必须人工复核）。',
   },
 };
 

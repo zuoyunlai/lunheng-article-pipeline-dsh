@@ -73,7 +73,7 @@ test('F-BG：正文年份与素材不符 → M-Fact-1 报（P1）；**正确年�
   assert.ok(Number.isInteger(item.materialConflicts[0].line) && item.materialConflicts[0].line > 0, '须给出正整数的正文行号')
   assert.match(item.materialConflicts[0].sentence, /\[D-CASE27\]/, '须回引原句，供人核对')
   assert.match(item.materialConflicts[0].bad.join(' '), /2023/, '须给出素材侧的允许值')
-  assert.equal(total, 24, `并入 M-Fact-1 而非新增门项 → total 仍为 24：实测 ${total}`)
+  assert.equal(total, 25, `M-Fact-1 并入而非新增门项（v19.8.0 反哺 v9 D3 加 M-Exist-12 后 total = 25）：实测 ${total}`)
   rmSync(c.d, { recursive: true, force: true })
 
   // ② 反向控制：正确年份 → 不得报

@@ -110,10 +110,32 @@ const gapDirection = verdict.includes('超阻塞线') ? 'compress' : (verdict.in
 // ---- ③ 残留风险清单（哪些内容可能需要压缩）----
 // v18.12.3：正文区口径改走上面同一个 `bodyOf`（旧版在这里又写了一遍 `slice(0, firstEnd)`——
 //   同一文件两处口径，正是「同族缺陷复发」的典型形态）。
-const INTERNAL_TERMS = ['承重', '一处两用', '素材加载清单', '初稿', '草稿', '修订说明', '审计环节', '流水线', '批判报告'];
+// v19.8.0（反哺 v9 D5）：词表拆 **HARD / SOFT 两档**——「初稿/草稿/流水线/框架/审计环节/批判报告」
+//   是**双义词**（既是流水线内部阶段名，也是方法论章节的合法学术词），此前一律按字面命中判「元数据
+//   混入正文」→ 方法论章节被误伤。现 SOFT 走**上下文三规则**：① 位置排除（含文内引用 [n]/[Lxx] 的
+//   正文段 = 合法使用）；② 路径伴随（同行含 `run/`/`drafts/`/`audits/` = 真泄漏）；③ 否则视为泄漏。
+//   「框架」补入 SOFT（旧词表漏收，同类双义）。HARD（承重/一处两用/素材加载清单）是内部黑话，命中即泄漏。
+const HARD_TERMS = ['承重', '一处两用', '素材加载清单'];
+const SOFT_TERMS = ['初稿', '草稿', '修订说明', '审计环节', '流水线', '批判报告', '框架'];
 const text = readFileSync(targetPath, 'utf8');
 const body = bodyOf(text);
-const flowHits = INTERNAL_TERMS.map((w) => ({ word: w, count: (body.match(new RegExp(w, 'g')) || []).length })).filter((x) => x.count > 0);
+const bodyLines = body.split('\n');
+const isBodyParaWithRef = (line) => /\[\d+\]|\[(?:L|D|C|先)\s*[\d-]+\]/.test(line);
+const hasInternalPath = (line) => /(?:run\/|drafts\/|audits\/|\/drafts\/|\/audits\/)/.test(line);
+// SOFT 判定：含文内引用且无内部路径 → 正文合法使用（记 note 不处置）；否则 = 真泄漏。
+const softIsTrueLeak = (line) => hasInternalPath(line) || !isBodyParaWithRef(line);
+const countTerm = (word) => bodyLines.reduce((n, l) => (l.includes(word) ? n + (l.match(new RegExp(word, 'g')) || []).length : n), 0);
+const flowHits = [
+  ...HARD_TERMS.map((w) => ({ word: w, count: countTerm(w), soft: false })).filter((x) => x.count > 0),
+  ...SOFT_TERMS.map((w) => {
+    const leak = bodyLines.filter((l) => l.includes(w) && softIsTrueLeak(l)).reduce((n, l) => n + (l.match(new RegExp(w, 'g')) || []).length, 0);
+    const ok = bodyLines.filter((l) => l.includes(w) && !softIsTrueLeak(l)).reduce((n, l) => n + (l.match(new RegExp(w, 'g')) || []).length, 0);
+    return { word: w, count: leak, soft: true, softNoteCount: ok };
+  }).filter((x) => x.count > 0 || x.softNoteCount > 0),
+];
+// SOFT 合法使用（语境判定为正文术语，非元数据泄漏）——人读面单列，不处置、不判失败。
+const flowSoftNotes = flowHits.filter((x) => x.soft && x.softNoteCount > 0)
+  .map((x) => `「${x.word}」${x.softNoteCount} 处为正文合法使用（含文内引用且无内部路径）`);
 
 // ---- ④ sha256 校验（所有 final/ 文件）----
 const finalDir = dirname(targetPath);
@@ -398,6 +420,8 @@ const result = {
   gapDirection,
   // 旧字段名 `g5` 已随 2026-09-29 命名更正移除（字数归属 = G8，G5 = 学术规范），**刻意不留别名**。
   flowHits,
+  // v19.8.0（反哺 v9 D5）：SOFT 双义词被语境判定为「正文合法使用」的清单——只作人读提示，不处置。
+  flowSoftNotes,
   sha256: shaMap,
   consistencyCheck: ccResult ? ccResult.status : (dryRun ? 'dry-run' : 'skipped'),
   bundle: bundleResult ? bundleResult.status : (dryRun ? 'dry-run' : (flags.has('--skip-bundle') ? 'skipped(--skip-bundle)' : 'skipped')),

@@ -92,7 +92,7 @@ test('m-gate-check M-Form-9：未启用配图记 N/A 不算失败（配图默认
   assert.ok(item, '应存在 M-Form-9 项')
   assert.equal(item.pass, true, '无图位无图件 → N/A pass')
   assert.match(item.detail, /N\/A/)
-  assert.equal(j.total, 24, '脚本机械项应为 24 项（M-Form 1-11 + M-Exist 1-11 + M-Integrity-1 + M-Fact-1；v18.25.0 增 M-Fact 族、v18.27.0 增 M-Exist-11）')
+  assert.equal(j.total, 25, '脚本机械项应为 25 项（M-Form 1-11 + M-Exist 1-12 + M-Integrity-1 + M-Fact-1；v18.25.0 增 M-Fact 族、v18.27.0 增 M-Exist-11、v19.8.0 增 M-Exist-12）')
   rmSync(d, { recursive: true, force: true })
 })
 

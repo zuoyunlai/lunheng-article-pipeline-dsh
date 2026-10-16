@@ -8,14 +8,16 @@
 //                  M-Exist-4 审计条目闭环 / M-Exist-5 阶段闸门记录表 /
 //                  M-Exist-6 审稿报告与期刊匹配 / M-Exist-7 交付说明字段齐备 /
 //                  M-Exist-8 批判报告覆盖（C1-C7）/ M-Exist-9 审计报告 G 项覆盖；
-//                  M-Form-8 增补「承重墙超载」机检 → 本脚本机检 **24 项**（M-Form 11 + M-Exist 11 + M-Integrity-1 + M-Fact-1 佐证）
+//                  M-Form-8 增补「承重墙超载」机检（历史注记：当时为 24 项）
 // v18.25.0（QLT-2）: 新增 M-Fact-1 跨节事实一致性（数字跨节 + 术语近形）。
 // v18.27.0（QLT-4）: 新增 M-Exist-11 反方论证闭合（论点—证据—反方表）。
-// v18.61.1 口径收口（文档体检反哺）：M 门**总项数 25 项 = 机检 24 项 + 人工 1 项（M-Integrity-2 跨文件判断，T8 亲做）**。
+// v19.8.0（反哺 v9 D3）: 新增 M-Exist-12 贡献陈述（文类感知：academic-cn/-hum/-case / lit-review / kaiti
+//                  实检，其余文类与未传 --genre 记 SKIP）→ 本脚本机检 **25 项**（M-Form 11 + M-Exist 12 + M-Integrity-1 + M-Fact-1）
+// v18.61.1 口径收口（文档体检反哺）：M 门**总项数 26 项 = 机检 25 项 + 人工 1 项（M-Integrity-2 跨文件判断，T8 亲做）**。
 //   旧头注释写「机检 22 项 / 总 23 项」——**与本脚本自己输出的 `total` 矛盾**
-//   （实测 `total = 24`：机检 24 项就是 M-Form 11 + M-Exist 11 + M-Integrity-1 + M-Fact-1，没有第 25 个机械项）。
-//   真源口径见 `AGENTS.md`「M 门」节与 `references/_shared/M-Gate-Algorithm.md`：25 项中 24 项已脚本化。
-//   本脚本报告里的 `total` = **本次实际入账的机检项数（满配 24）**，人工项 M-Integrity-2 不由本脚本产出。
+//   （机检项数 = M-Form 11 + M-Exist 12 + M-Integrity-1 + M-Fact-1，没有第 26 个机械项）。
+//   真源口径见 `AGENTS.md`「M 门」节与 `references/_shared/M-Gate-Algorithm.md`：26 项中 25 项已脚本化。
+//   本脚本报告里的 `total` = **本次实际入账的机检项数（满配 25）**，人工项 M-Integrity-2 不由本脚本产出。
 // 用法: node m-gate-check.mjs <final/定稿.md> <final/证据包目录> [--summary] [--fig-dir <图件目录>] [--report <path>]
 //   --summary：仅输出聚合统计（total/pass/p0/p1/p2/soft/skips）+ 硬失败项；省略通过项 details[]（省 ~80% 输出字节，机器可读友好）
 //   --fig-dir：图件目录（缺省自动推 <定稿目录>/图件 或 <项目根>/final/图件）
@@ -43,7 +45,7 @@ import { writeReport } from './_lib/destructive-write.mjs';   // 报告写盘守
 import { parseArgs as parseCliArgs, USAGE_CODE as CLI_USAGE_CODE } from './_lib/cli-args.mjs';      // 参数解析唯一实现（v18.2.9，审计 A7）
 import { computeGateRev } from './_lib/gate-rev.mjs';   // 门版本指纹（v18.81.0 · 独立审计批 1.2）——把「可复现」从单版本内扩到跨版本可见
 import { escapeRegExp, latestReport, PROTECT_CH, tableCells, isSeparatorRow, sectionRange, indexSection, CARD_SPECS, ENTRY_ID_RE, entryIds, idsByToken, walkMd } from './_lib/mgate-helpers.mjs';
-import { mExist1, mExist2, mExist3, mExist4, mExist5, mExist6, mExist7, mExist8, mExist9, mExist10, mExist11 } from './_lib/mgate-gates/mexist-gates.mjs';  // M-Exist 门族（v18.3.1 审计 B2 阶段 1）
+import { mExist1, mExist2, mExist3, mExist4, mExist5, mExist6, mExist7, mExist8, mExist9, mExist10, mExist11, mExist12 } from './_lib/mgate-gates/mexist-gates.mjs';  // M-Exist 门族（v18.3.1 审计 B2 阶段 1；v19.8.0 反哺 v9 D3 加 M-Exist-12 贡献陈述）
 import { mIntegrity1 } from './_lib/mgate-gates/mintegrity-gate.mjs';
 import { mFact1 } from './_lib/mgate-gates/mfact-gate.mjs';   // v18.25.0 QLT-2：M-Fact 族（跨节事实一致性）
 import { mForm1, mForm2, mForm3, mForm4, mForm5, mForm6, mForm7, mForm8, mForm9, mForm10, mForm11, GENRE_MIN_L } from './_lib/mgate-gates/mform-gates.mjs';  // M-Form 门族（v18.3.1 审计 B2 阶段 2）  // M-Integrity-1（v18.3.1 审计 B2 阶段 1）   // 定位与解析纯函数（v18.2.9，审计 B2 抽离）
@@ -95,8 +97,8 @@ if (process.argv.includes('--dump-thresholds')) {
 }
 
 const args = process.argv.slice(2);
-const MGATE_USAGE = '用法: node m-gate-check.mjs <定稿.md> <证据包目录> [--summary] [--fig-dir <dir>] [--report <path>] [--adjudicate <T8裁定.json>] [--overwrite-adjudicated]'
-  + '（`--overwrite-adjudicated` 与 `--adjudicate` 同给时本旗标无效：裁定通道优先）';
+const MGATE_USAGE = '用法: node m-gate-check.mjs <定稿.md> <证据包目录> [--summary] [--fig-dir <dir>] [--report <path>] [--adjudicate <T8裁定.json>] [--overwrite-adjudicated] [--genre <code>] [--lite-profile]'
+  + '（`--overwrite-adjudicated` 与 `--adjudicate` 同给时本旗标无效：裁定通道优先；`--lite-profile` 只评估 M-Form-1/3/5/7 + M-Exist-2 五道快轨子集）';
 // v18.64.0（反哺报告-v5 §v5.0-1）：新增 `--overwrite-adjudicated` —— **阶段边界显式化**旗标。
 //   为什么要有它：目标报告已存在且含 T8 裁定时，普通 `--report` 复跑**默认拒绝覆盖**（exit 3），
 //   因为「谁有权写哪个阶段的产物」在工具层原本没有任何校验（实测事故：G14 终闸子代理用 `--report`
@@ -104,10 +106,10 @@ const MGATE_USAGE = '用法: node m-gate-check.mjs <定稿.md> <证据包目录>
 //   但 T8 自己的**换稿重裁**是正当的，且它与越界覆盖在工具层**无法凭身份区分**（身份只能自报，
 //   自报不可信）→ 故判据不挂在「你是谁」，而挂在「**是否显式声明**」：要跨越阶段边界，必须显式带旗标。
 //   判据一句话：**防的是静默越界，不是禁止越界**（同 `对照表` 的「不设防同改清单，防的是静默」）。
-let wantSummary, figDirArg, reportPath, adjudicatePath, overwriteAdjudicated, genre, positional;
+let wantSummary, figDirArg, reportPath, adjudicatePath, overwriteAdjudicated, genre, liteProfile, positional;
 try {
   const parsed = parseCliArgs(args, {
-    flags: ['--summary', '--overwrite-adjudicated'],
+    flags: ['--summary', '--overwrite-adjudicated', '--lite-profile'],
     values: { '--fig-dir': 'final/图件', '--report': 'final/M-Gate-Report.json', '--adjudicate': 'audits/t8-conclusion.json', '--genre': 'academic-cn' },
     minPositionals: 2,
     maxPositionals: 2,
@@ -118,6 +120,7 @@ try {
   reportPath = parsed.opts['--report'];
   adjudicatePath = parsed.opts['--adjudicate'];
   overwriteAdjudicated = parsed.flags.has('--overwrite-adjudicated');
+  liteProfile = parsed.flags.has('--lite-profile');
   genre = parsed.opts['--genre'];
   positional = parsed.positionals;
 } catch (e) {
@@ -407,6 +410,7 @@ mExist9(ctx);
 
 mExist10(ctx);
 mExist11(ctx);   // v18.27.0 QLT-4：反方论证闭合（论点—证据—反方表）
+mExist12(ctx);   // v19.8.0 反哺 v9 D3：贡献陈述（文类感知——学术文类实检，其余 SKIP）
 
 
 mExist2(ctx);
@@ -414,6 +418,17 @@ mExist2(ctx);
 mExist3(ctx);
 
 mIntegrity1(ctx);
+
+// ── --lite-profile 轻量快轨子集（v19.8.0 反哺 v9 D6-c）──────────────────
+//   只保留五道「快轨必查」：结构（M-Form-1/3/5/7）+ 证据包最小闭环（M-Exist-2）。
+//   exit 语义不变（0 过 / 1 P1 / 2 P0 / 3 仅软 / 10 参 / 30 裁定拒 / 70 内部），`total` 变 5。
+//   快轨定位 = 5 分钟 2500 字公众号：结构 + 证据包在盘即可，不跑全文审计链（M-Form-8/9/10/11、
+//   M-Exist-3~12、M-Integrity-1、M-Fact-1 全跳过）。全量档（无旗标）行为不变。
+if (liteProfile) {
+  const LITE_GATES = ['M-Form-1', 'M-Form-3', 'M-Form-5', 'M-Form-7', 'M-Exist-2'];
+  const kept = results.filter((r) => LITE_GATES.includes((r.gate || '').split(' ')[0]));
+  results.splice(0, results.length, ...kept);
+}
 
 // === 总判定：exit code + 严重度统计（soft=LLM 兜底不 gate，单独 bucket；total=pass+p0+p1+p2+soft+skips）===
 const skips = results.filter((r) => r.pass === 'SKIP').length;
