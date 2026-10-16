@@ -49,7 +49,7 @@
 <p style="margin:0 0 12px;">特别地，<strong>T3 任何量级必派发</strong>：即使主题「无需案例」，也走「0 条空卡协议」——显式声明无案例需求、输出空卡，保证流程可审计，不留下「到底查没查案例」的模糊地带。</p>
 
 <h3 style="margin:16px 0 8px;font-size:15px;color:#2e7d5b;font-weight:bold;">② 独立审计闭环（G0-G14 + M 门）</h3>
-<p style="margin:0 0 10px;">审计员 <strong>只审不改</strong>、与写手完全分离，执行 G0-G14 全项检查：C 级引用 100% 实测核验、每个数字有来源、过期数据告警、信任级别全量校验、核心论点与先行者对比防重复、文末四节双向 diff 防漏引，以及 <strong>G14 中文 AI 痕迹闸</strong>（8 类检测维度，0-2 类 Pass / 3-4 类 Warning / 5+ 类 Fail，LLM 推理判定零 exec）。</p>
+<p style="margin:0 0 10px;">审计员 <strong>只审不改</strong>、与写手完全分离，执行 G0-G14 全项检查：C 级引用 100% 实测核验、每个数字有来源、过期数据告警、信任级别全量校验、核心论点与先行者对比防重复、文末四节双向 diff 防漏引，以及 <strong>G14 中文 AI 痕迹闸</strong>（8 类检测维度，0-2 类 Pass / 3-4 类 Warning / 5+ 类 Fail，LLM 推理判定，本项不要求跑命令）。</p>
 <p style="margin:0 0 10px;">审计打回 → <strong>独立写手</strong>修订（主控不代笔）→ 复核，<strong>最多 2 轮</strong>（审计阶段独立预算；前序的主人洞察轮与批判反馈轮不计入），仍不过走 Acknowledged Limitations 模式诚实交付。事实类错误（P1-D）由主控 T8 亲修，结构性错误必须重启独立写手。</p>
 <p style="margin:0 0 12px;">终检前主控跑 <strong style="color:#2e7d5b;">M 门 25 项</strong>——LLM 兜底执行的机械化终检（机检 24 = M-Form 1-11 + M-Exist 1-11 + M-Integrity-1 + M-Fact-1；人工 1 = M-Integrity-2），对引用完整性、文末四节、临时编号残留、元数据泄漏、过程语言、信任级别、文末白名单、三角验证逐项机械判定，<strong>exit 0 才交付</strong>。</p>
 
@@ -61,7 +61,7 @@
 <p style="margin:0 0 8px;"><strong>角色编号重构</strong>：T3 案例检索归入三线并行，T8 终检由主控亲完成——编号 = Phase 顺序，流水线语义对齐。</p>
 <p style="margin:0 0 8px;"><strong>T6 批判伙伴 C1-C7</strong>：核心论点可攻击性 / 论证链薄弱环（含因果断面三问）/ 理论假设 / 立场中立性 / 反方完整性 / 元叙事清理（抓"AI 味"）/ 一处两用识别。不是对抗者，是帮你把论证磨得更硬。</p>
 <p style="margin:0 0 8px;"><strong>T9 同行评审</strong>：投稿前的「预演审稿人」——6 维度评分（原创性/方法论/证据强度/论证结构/写作质量/引文规范）→ accept/minor/major/reject；学术/行业分析默认开启。</p>
-<p style="margin:0 0 8px;"><strong>G14 中文 AI 痕迹闸</strong>：8 类检测维度深度扫描"AI 味"，0-2 类 Pass / 3-4 类 Warning / 5+ 类 Fail，LLM 推理判定零 exec。</p>
+<p style="margin:0 0 8px;"><strong>G14 中文 AI 痕迹闸</strong>：8 类检测维度深度扫描"AI 味"，0-2 类 Pass / 3-4 类 Warning / 5+ 类 Fail，LLM 推理判定，本项不要求跑命令。</p>
 <p style="margin:0 0 8px;"><strong>期刊匹配助手 + 多格式导出</strong>：基于 T9 评分从 25 中文 CSSCI + 12 英文 SSCI 期刊库输出 Top 3 推荐期刊；默认 md，按需 latex/docx/pdf；中文数据源 OpenAlex/Crossref 第一梯队（无需 Key）。</p>
 <p style="margin:0 0 8px;"><strong>M 门 13 项机械化终检</strong>：形式合规 ≠ 存在性合规 ≠ 信任一致；含文末白名单（防操作员报告混入定稿）与三角验证机械化（写手落地前拦截缺角论点）。</p>
 <p style="margin:0 0 8px;"><strong>修订回环语义定案</strong>：≤2 轮是审计阶段独立预算，不吞掉主人洞察轮与批判反馈轮；修订轮强制独立写手（事实类错误除外，T8 亲修）。</p>

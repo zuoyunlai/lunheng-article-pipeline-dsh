@@ -1,4 +1,4 @@
-> 版本：v19.6.9（DSH bundle 插件）
+> 版本：v19.7.0（DSH bundle 插件）
 > **历史叙事已外移**：正文只留现行规则；历史成因 / 逐版明细 / 教训编号见 CHANGELOG.md 对应版本段与 `memory/lessons.md`。
 
 
@@ -72,6 +72,6 @@ node scripts/md2html.mjs <定稿.md> <定稿.html> <SVG 文件路径>
 
 ## 六、限制
 
-- **执行边界**（非「零 exec」）：pandoc / rsvg-convert 由主人在 host shell 手动跑（论衡 agent 不直接调用外部格式转换工具）；随包白名单脚本（md2html/pdfcheck）可由主控执行
+- **执行边界**（能力边界）：pandoc / rsvg-convert 由主人在 host shell 手动跑（论衡 agent 不直接调用外部格式转换工具）；随包白名单脚本（md2html/pdfcheck）可由主控执行
 - **模板依赖**：latex/docx/pdf 需要主人提供对应的模板文件（academic-paper.tex / academic-paper-template.docx）
 - **中文支持**：用 xelatex 引擎 + csl=chinese-gb7714-2015-numeric 处理中文引用

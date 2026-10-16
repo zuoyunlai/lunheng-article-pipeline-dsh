@@ -189,6 +189,12 @@ function main() {
       }
     }
 
+    // ⚠️ **不要在这里改调 `ensurePoolSkeleton()`**（2026-10-16 验证记录 V5b 的**甲案试过、被回归网否决**）：
+    //   它会在**真正写盘之前**把目标池文件建成**空池** ⇒ 随后 `writeWithSafety` 认为「目标已存在」
+    //   ⇒ **首次写盘也留 `.bak`**，撞 `tests/scripts/pool-extract.test.mjs` 的 **P1-3** 用例
+    //   （该用例明文钉「**首次写盘目标不存在 → 无备份可做**」）。
+    //   池结构（四个池 JSON + `raw/` + `transcripts/`）由首次 `pool-query` / `pool-report` 补齐即可——
+    //   且 `pool-query` 已改为**如实报「补齐缺失的池文件」**、不再谎称「已创建骨架」（= 该缺陷的**乙案**）。
     mkdirSync(poolDir, { recursive: true })
     // v19.6.1（审计 P1-3）：池文件是持久化状态产物 → 走 `writeWithSafety`（temp→rename 原子写 + 时间戳
     //   `.bak` 回滚点）。旧版裸 `writeFileSync`：写入中途被 kill 会留半写文件且无任何回滚点。

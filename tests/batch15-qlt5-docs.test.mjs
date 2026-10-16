@@ -18,12 +18,12 @@ const read = (...p) => readFileSync(join(SKILL, ...p), 'utf8')
 const lines = (...p) => read(...p).split('\n')
 
 // ── F-AI：G14 自检口径必须与终闸同源（旧版自检口径一律窄于终闸：1 vs 10 / 1-2 处 vs 22 处） ──
-test('05 卡（F-AI）：G14 自检硬约束必须要求「可复算形态」，并写明零 exec', () => {
+test('05 卡（F-AI）：G14 自检硬约束必须要求「可复算形态」，并写明本项不要求跑命令', () => {
   const w = read('references', 'agents', '05-写作-writer.md')
   assert.match(w, /G14 自检的「口径」必须与终闸同源/, '缺「口径同源」这条硬约束')
   assert.match(w, /逐处列出行号 \+ 该行原文片段/, 'C 类须逐处列行号 + 原文片段（不许只给总数）')
   assert.match(w, /装饰性 \/ 半装饰 \/ 功能性/, 'E 类须给三分计数')
-  assert.match(w, /推理判定、零 exec/, '必须声明与「写手不调 shell」同口径（零 exec）')
+  assert.match(w, /本项不要求跑命令/, '必须声明与「写手不调 shell」同口径（本项不要求跑命令）')
 })
 
 // ── F-Z：「不用改 / 属豁免」是主张，举证责任在主张方 ──

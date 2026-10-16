@@ -124,3 +124,75 @@ test('v19.6.6 可见性：**空池**时须把「档 B 此刻不可用」摆到�
     assert.match(r.out, /§11\.5/, '提示须指向机制真源（否则主控只能临场约定）：' + r.out)
   } finally { rmSync(ws, { recursive: true, force: true }) }
 })
+
+// ── v19.6.10（反哺动议 E **丙案**）：负知识**跨项目只读提示**通道 ──────────────────────────────
+// **为什么必须有用例**：本通道是**主人侧读面**的新增行为（`负知识账本.md` §九.1 此前登记为「未做」），
+//   而它有一条**极易被重排掉**的时序约束——提示必须打印在「空池早退」**之前**（池空 + 有历史证伪，
+//   正是该提示价值最大的场景）。没有用例时，任何人重排 `main()` 这两段都会**静默**让通道在空池下消失。
+const mkDisproofs = (row = '{"id":"DP-001","claim":"生成式AI 提升了学术写作质量","verdict":"disproven","basis":"反向研究结论相反","evidence":["[L99] X（2023）"],"reproduce":"查文献卡 [L99] 条目","author":"T6","round":"v2"}') => {
+  const ws = tmp('lunheng-pool-dp-')
+  mkdirSync(join(ws, 'run', 'projA', 'audits'), { recursive: true })
+  writeFileSync(join(ws, 'run', 'projA', 'audits', 'disproofs.jsonl'), row + '\n')
+  return ws
+}
+
+test('E-丙案：**池 0 条**时负知识提示仍须出现（提示排在「空池早退」之前——反向后钉时序）', () => {
+  const ws = mkDisproofs()
+  try {
+    const r = run([QUERY(), ws, '学术写作'])
+    assert.equal(r.code, 0, '查池应 exit 0：' + r.out)
+    assert.match(r.out, /空池，无命中/, '空池仍须如实报：' + r.out)
+    assert.match(r.out, /负知识账本: 扫描 1 个项目账本，命中 1\/1 条/, '池 0 条不得吃掉负知识通道（时序约束）：' + r.out)
+    assert.match(r.out, /生成式AI 提升了学术写作质量/, '命中条目须**原文照印**（本层不做判同）：' + r.out)
+    assert.match(r.out, /projA/, '须带 `originProject` 回指：' + r.out)
+  } finally { rmSync(ws, { recursive: true, force: true }) }
+})
+
+test('E-丙案：关键词不命中 → 显形「命中 0/N」（不得与「没查」同形）', () => {
+  const ws = mkDisproofs()
+  try {
+    const r = run([QUERY(), ws, '完全无关词zzz'])
+    assert.equal(r.code, 0)
+    assert.match(r.out, /负知识账本: 扫描 1 个项目账本，命中 0\/1 条/, '不命中也须显形，否则「无负知识」与「没查」同形：' + r.out)
+    assert.ok(!/（0 条）/.test(r.out), '本文件既有负向断言的口径：任何形态都不得出现「（0 条）」：' + r.out)
+  } finally { rmSync(ws, { recursive: true, force: true }) }
+})
+
+test('E-丙案：无 `run/` 目录 → 不得打出负知识噪声（旧工作区零影响）', () => {
+  const ws = tmp('lunheng-pool-q-')
+  try {
+    const r = run([QUERY(), ws])
+    assert.equal(r.code, 0)
+    assert.ok(!/负知识账本/.test(r.out), '无 run/ 时不得提示：' + r.out)
+  } finally { rmSync(ws, { recursive: true, force: true }) }
+})
+
+test('E-丙案：账本含坏行**不得让查池崩**（它读的是人写的 append-only 账本；点名归 `disproofs-check`）', () => {
+  const ws = mkDisproofs('{"id":"DP-001","claim":"坏行')
+  try {
+    const r = run([QUERY(), ws, '学术写作'])
+    assert.equal(r.code, 0, '坏行不得让读面崩成 exit 70：' + r.out)
+    assert.match(r.out, /负知识账本: 扫描 1 个项目账本/, '坏行不影响「账本在场」这一事实被如实报出：' + r.out)
+  } finally { rmSync(ws, { recursive: true, force: true }) }
+})
+
+// ── v19.6.11（验证记录 V5b 修复 · **乙案**）：池**已存在但结构不完整**时不得声称「已创建骨架」 ─────
+// **反向钉**：`mkPoolNoManifest()` 造的正是「池里有 1 条数据、但只落了一个池 JSON」——
+//   即**旧版 `pool-extract` 的产物形态**。旧实现下 `ensurePoolSkeleton` 会补建缺失文件、
+//   `created` 置 true，于是输出「✅ 已创建素材池骨架」，与同一行的「（现有 1 条）」**互相打脸**
+//   （与审计 P1-2 同族：两条读数矛盾）。
+//   本用例同时钉「改报补齐」与「补齐后结构完整」。
+test('V5b-乙：池有数据但结构不完整 → 报「补齐缺失的池文件」，**不得**声称「已创建骨架」', () => {
+  const ws = mkPoolNoManifest()
+  try {
+    const r = run([QUERY(), ws])
+    assert.equal(r.code, 0, r.out)
+    assert.match(r.out, /现有 1 条/, '池内实有 1 条须如实报：' + r.out)
+    assert.match(r.out, /池结构此前不完整，已补齐缺失的池文件/, '缺池文件时须如实报「补齐」：' + r.out)
+    assert.ok(!/已创建素材池骨架/.test(r.out),
+      '池本已存在（内有 1 条）时**不得**声称「已创建骨架」——与「（现有 1 条）」并列即自相矛盾：' + r.out)
+    for (const f of ['literature.json', 'data.json', 'cases.json', 'databases.json']) {
+      assert.ok(existsSync(join(poolOf(ws), f)), `补齐后结构应完整（缺 ${f}）`)
+    }
+  } finally { rmSync(ws, { recursive: true, force: true }) }
+})
