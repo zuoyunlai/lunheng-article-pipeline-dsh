@@ -1216,6 +1216,33 @@ test('开工台（v19.0.0 §4.4）：zh/en 字典键集合必须逐字相同（�
   assert.ok(zh.length >= 40, '字典规模下限 = 40 键（防「文案又写回组件里」），实际 ' + zh.length)
 })
 
+test('开工台（v19.6.7）：授权串说明必须用串里的真段名，档 B 说明须写出 B 轨完整路径', async () => {
+  // 病灶（主人 2026-10-16 复核：「表单里已经没有 `推理=` 项，而下面开场白说明里还有关于该项的描述」）：
+  //   英文说明 ③ 写的是 `inference=`，而 `buildPrompt` 生成的三段式授权串**三段名恒为中文**
+  //   （`检索=` / `推理=` / `脱敏=`，与 locale 无关）；A11 也只认 `/推理\s*=/`（`scripts/handoff-check.mjs`）。
+  //   照英文说明「改写段名」⇒ 简报缺段 ⇒ **交付前 A11 判硬 21**。它能长期存活，正是因为英文侧
+  //   只被钉了**键集合**、没被钉**内容**（上一条用例只管键；本用例补内容面）。
+  // 同批（v19.6.6 ④ 的欠项）：档 B 的 B 轨在真源里是 `run/<项目>/materials/` **+** `主人投喂清单.md`
+  //   （`_shared/素材池.md` §11.1 表、`任务简报-template.md`），旧文案只写了清单文件（清单是登记表，
+  //   不是材料落点）——故钉 `materials/`。
+  // ⚠️ 刻意**不钉**措辞（如「不得写『上面』」）：措辞会随主人裁定反复改，钉措辞等于给旧词续命；
+  //   这里只钉四条**机制事实**（段名 / 不存在的段名 / B 轨路径 / 定档前置）。
+  const h = makeReactStub()
+  const mod = await loadClient(h, { fetch: fetchStub({}) })
+  const P = mod.__panel
+  for (const lang of ['zh', 'en']) {
+    const L = P.L10N[lang]
+    assert.ok(/推理\s*=/.test(L['wb.prompt.n3']),
+      lang + '：说明 ③ 必须使用串里的真段名 `推理=`（段名以生成串为准，不得改写）')
+    assert.ok(!/inference\s*=/.test(L['wb.prompt.n3']),
+      lang + '：不得出现机制里不存在的段名 `inference=`（照它改写段名 ⇒ 交付前 A11 判缺段硬 21）')
+    assert.ok(/materials\//.test(L['wb.prompt.n4']),
+      lang + '：档 B 说明必须写出 B 轨完整形态 `run/<项目>/materials/`（真源 = 素材池.md §11.1）')
+    assert.ok(/POOL=/.test(L['wb.prompt.n5']),
+      lang + '：说明 ⑤ 必须保留档 B 的 `POOL=` 定档前置（素材池.md §十二）')
+  }
+})
+
 test('开工台（v19.0.0 §4.4）：L10N 块外的中文字面量受棘轮约束（新文案只许进块；派生数据另计）', () => {
   const src = readFileSync(join(ROOT, 'lib', 'client.js'), 'utf8')
   const lines = src.split('\n')
