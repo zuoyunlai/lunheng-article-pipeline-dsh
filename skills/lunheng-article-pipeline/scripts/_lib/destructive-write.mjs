@@ -140,7 +140,10 @@ function pruneBackups(p) {
   //     ① 单纯加 `mtime → 序号 → 文件名`（不改主键）——同 mtime 实测仍错，因为主键本身无区分度；
   //     ② 反过来用文件名时间戳做主键——**自然场景直接错**（同秒内名字被复用，跨秒比较失真）。
   //   实测 30 次连写 + 回收：本机稳定保留最近 20 个（v10…v29），与用例期望一致。
-  const seqOf = (f) => { const m = /-(\d+)\.bak$/.exec(f); return m ? Number(m[1]) : 0 }
+  // v19.9.x（反哺 P0-2）：锚定完整「时间戳[—序号]」形态再取可选序号——旧正则 `/-(\d+)\.bak$/`
+  //   把时间戳的 `-HHmmss` 误当序号：无序号备份（本应最旧）在同毫秒并列时被排成「最新」，
+  //   pruneBackups 的 shift() 会误删较新的 `-1/-2`、保留较旧的无序号（与上方 110-111/138-142 行论证相反）。
+  const seqOf = (f) => { const m = /\d{8}-\d{6}(?:-(\d+))?\.bak$/.exec(f); return m && m[1] != null ? Number(m[1]) : 0 }
   backs.sort((a, b) => (a.mt - b.mt) || (seqOf(a.f) - seqOf(b.f)) || (a.f < b.f ? -1 : a.f > b.f ? 1 : 0))
   while (backs.length > BAK_MAX) {
     const victim = backs.shift()

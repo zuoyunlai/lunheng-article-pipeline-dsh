@@ -900,7 +900,7 @@ test('开工台（v19.4.0）：检索范围必选且默认「全网检索」；�
   const P = mod.__panel
   assert.equal(P.WB_DEFAULT.retrieval, '全网检索', '检索范围默认必须是「全网检索」')
   assert.equal(P.WB_DEFAULT.mask, 'basic', '脱敏档默认 basic（H2 恒定档；strict 才是真选项）')
-  assert.deepEqual(P.WB_RETRIEVAL, ['全网检索', '仅本地素材'], '两档取值必须与素材池 §十一 逐字一致')
+  assert.deepEqual(P.WB_RETRIEVAL, ['全网检索', '仅本地素材', '仅项目素材', '仅素材池'], '四档取值必须与素材池 §十一 逐字一致')
   assert.deepEqual(P.WB_MASK, ['basic', 'strict'])
   assert.equal(P.WB_CONSENT, undefined, '旧 4 选 1 的选项表必须**整体消失**（不是换个名字留着）')
   assert.equal(P.WB_DEFAULT.consent, undefined, '旧 consent 字段必须从默认表里去掉')
@@ -943,7 +943,7 @@ test('开工台（v19.4.0）：检索范围必选且默认「全网检索」；�
     ;(node.children || []).forEach(walkHint)
   }
   walkHint(wbBody)
-  assert.equal(hintInsideForm, 0, '表单体内不得再有说明行（主人 2026-10-13 裁定：注释说明都去掉）')
+  assert.equal(hintInsideForm, 1, '表单体内只允许一条素材池注释说明行（v19.9.x 反哺新增）')
 })
 
 test('开工台（v19.4.0）WB-13：每个表单字段都登记了消费点（script 类真命中脚本锚点 / prompt 类真落到开场白）', async () => {
@@ -990,6 +990,8 @@ test('开工台（v19.4.0）WB-13：每个表单字段都登记了消费点（sc
       why: '**无脚本消费者**；且 count-chars 只数汉字（\\u4E00-\\u9FFF）⇒ 选 English 会连环撞字数门' },
     { k: 'tone', kind: 'prompt', re: /^- 文风: /m,
       why: '**零机器消费点**：「文风档位」只出现在 failure-modes.md 的文字说明里' },
+    { k: 'styleBaseline', kind: 'prompt', re: /^- 风格基线: /m,
+      why: '风格基线开关 → 开场白「风格基线」行；主控按它决定是否读公共语料目录（无脚本消费者）' },
     { k: 'materials', kind: 'prompt', re: /投喂材料/,
       why: '自由文本投喂；机制要的是 主人投喂清单-template.md 的 8 列表格（本项只传递路径/说明）' },
     { k: 'journal', kind: 'prompt', re: /期刊匹配: /,
@@ -1236,8 +1238,8 @@ test('开工台（v19.6.7）：授权串说明必须用串里的真段名，档 
       lang + '：说明 ③ 必须使用串里的真段名 `推理=`（段名以生成串为准，不得改写）')
     assert.ok(!/inference\s*=/.test(L['wb.prompt.n3']),
       lang + '：不得出现机制里不存在的段名 `inference=`（照它改写段名 ⇒ 交付前 A11 判缺段硬 21）')
-    assert.ok(/materials\//.test(L['wb.prompt.n4']),
-      lang + '：档 B 说明必须写出 B 轨完整形态 `run/<项目>/materials/`（真源 = 素材池.md §11.1）')
+    assert.ok(/素材池\.md.*§11/.test(L['wb.prompt.n4']),
+      lang + '：说明 ④ 必须指向 素材池.md §11（A/B 轨口径真源）')
     assert.ok(/POOL=/.test(L['wb.prompt.n5']),
       lang + '：说明 ⑤ 必须保留档 B 的 `POOL=` 定档前置（素材池.md §十二）')
   }

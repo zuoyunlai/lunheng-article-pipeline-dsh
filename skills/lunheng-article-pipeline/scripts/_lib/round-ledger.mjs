@@ -148,9 +148,12 @@ export function parseLedger(projectDir) {
     //   ③ 取「已解析行数」与「`n`」中的较大者（一条 `n` 大于行数的行仍说明该轨至少用了 n 轮）。
     let capInferred = false
     if (cap != null && declared !== cap) {
+      // v19.9.x（反哺 P2-3）：`guess = Math.max(非负整数, n, cap)` 恒为 ≥n 的整数，原
+      //   `Number.isInteger(guess) && guess >= n` 恒真、else 永不执行（死代码）。「该轨无额度」
+      //   已由 `cap != null` 跳过整块兜住，此处直接推断即可，不保留伪兜底。
       const guess = Math.max(out.counts[track] || 0, n, cap)
-      if (Number.isInteger(guess) && guess >= n) { declared = guess; capInferred = true }
-      else out.malformed.push(`轨 ${track} 的 \`n/m\` 分母 ${declared} ≠ 该轨额度 ${cap ?? '（无额度）'}`)
+      declared = guess
+      capInferred = true
     }
     const row = { track, n, declared, draft: cells[2] || '', source: cells[3] || '', review: cells[4] || '', at: cells[5] || '' }
     // v19.5.0（§一.3）：复核报告列的**显式豁免**（`—（同轮无独立复核：<理由>）`）→ 记 reviewExempt
