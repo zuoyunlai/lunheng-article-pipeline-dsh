@@ -25,5 +25,12 @@
     }
   },
   "handoffSixElements": ["做了什么", "产物在哪", "怎么验证", "已知问题", "下一步", "状态更新"],
-  "artifactThreeElements": ["路径", "字节数", "结构自检结果"]
+  "artifactThreeElements": ["路径", "字节数", "结构自检结果"],
+  "continuationSeed": {
+    "$comment": "续写种子（开题 → 论文衔接，反哺 2026-10-17）。kaiti 文类 Phase 5 由 pool-extract.mjs --seed 产出，新项目 Phase 0 以任务简报 SEED= 行继承。",
+    "schema": "lunheng-continuation-seed/1",
+    "producer": "pool-extract.mjs --seed <path>",
+    "fields": ["schema", "originProject", "originGenre", "title", "keywords", "recommendedGenre", "targetJournal", "sourcePath", "framework", "gaps", "poolQueryHints", "generatedAt"],
+    "frameworkFields": ["theses", "propositions", "causalStrategy"]
+  }
 }

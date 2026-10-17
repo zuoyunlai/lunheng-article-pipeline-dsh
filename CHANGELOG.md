@@ -2,6 +2,26 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 19.9.0 — 2026-10-17
+
+<!-- 行为变更 5 条 | 锚点 = CHANGELOG.md § 19.9.0（policy 真试跑反哺落地 + kaiti 续写种子衔接机制 + 开题文类置顶） -->
+
+> **主题**：**policy 真试跑反哺落地 + kaiti「续写种子」衔接机制 + 开题文类置顶**（主人 2026-10-17「按规定升号发版」授权）——落地 policy 真试跑反哺（F/R/D/G/P 系列）+ 新增续写种子契约 + kaiti 文类置顶。
+> **版本判据 = minor**：新增续写种子契约（`contracts.json` 的 `continuationSeed`）+ `pool-extract --seed` 旗标 + 任务简报 `SEED=` 字段；落地 policy 反哺脚本修复与文档补行；kaiti 文类档案置顶（**不破存量**——12 行不变、仅排序）。
+> **门绿**：consistency-check exit 0；全量 `node --test` 1257/1257 全绿（静态用例 1149）。
+
+**行为变更摘要（5 条）**：
+
+- **① policy 反哺·脚本缺陷修复（F-1/F-2/F-3）**：`target-chars` 的 `parseTargetCandidates` 复用 `parseTargetChars` 数值提取路径（粗体/千分位/区间不再误解析）；`M-Exist-6` 的 `wantJournal` 改「字段名+值」匹配（`☐ 关闭` 不再误判启用）；`run-report` 的 `/gaudit/` glob 容忍连字符/下划线（对齐 `g-audit-check` 默认名）。
+- **② policy 反哺·角色卡硬规则（R-1~R-5 + 问题2/3）**：写手/分析/数据卡补 7 条硬规则（字数实测以脚本为准 / 修订说明不含元数据词 / policy 可验证指标带基数 / 反方回应须指回论据 / [Gnn] 缺口须登记 / 承重数值跨单位高危 / 二手转引不承重）。
+- **③ policy 反哺·模板与机制补行（D-1~D-4/G-1/P-1/P-2）**：任务简报「AI 使用披露」字段措辞对齐机检五节；图件「数据不足诚实降维」规范；SKILL/pipeline-readme/AGENTS 补图件暂扣留痕、承接说明归类、N/A 须写模式、主控代改后刷新数值、自述回盘实测等纪律。
+- **④ kaiti 开题文类置顶 + 开工卡片说明**：`文类档案.md` 的 `kaiti` 行移到首位（`lib/client.js` GENRES 同步，开工台下拉第一位）；QUICKSTART「类型」字段加「开题报告（kaiti）」+ 开题→论文衔接说明。
+- **⑤ 续写种子衔接机制（开题 → 论文）**：`contracts.json` 新增 `continuationSeed` schema；`pool-extract.mjs` 新增 `--seed <path>` 旗标（从开题报告+数据卡机械提取标题/关键词/创新点/命题/因果策略/缺口）；任务简报新增 `SEED=` 行；pipeline-readme 流水线全景新增「续写继承」分支。主人 Phase 0 一句「续写 X」→ 主控读种子预填任务简报。
+
+**其余同批改动（非行为变更，如实登记）**：
+
+- 反哺报告 [`audits/反哺报告-2026-10-17-kaiti续写种子衔接机制-v1.md`](audits/反哺报告-2026-10-17-kaiti续写种子衔接机制-v1.md) + 反哺汇总 [`audits/反哺汇总-2026-10-16-policy真试跑.md`](audits/反哺汇总-2026-10-16-policy真试跑.md)。
+
 ## 19.8.0 — 2026-10-16
 
 <!-- 行为变更 6 条 | 锚点 = CHANGELOG.md § 19.8.0（反哺报告 v9 九项动议 D1-D9 落地） -->

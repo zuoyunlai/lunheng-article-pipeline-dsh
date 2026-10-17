@@ -19,7 +19,7 @@
 //
 // 退出码：0 = 成功 ｜ 10 = 参数/路径错 ｜ 70 = 内部错误
 import { readFileSync, existsSync, mkdirSync } from 'node:fs'
-import { join, resolve, basename } from 'node:path'
+import { join, resolve, basename, dirname } from 'node:path'
 import { createHash } from 'node:crypto'
 import { installExitGuard, requireExistingDir, EXIT_USAGE } from './_lib/exit-guard.mjs'
 import { parseArgs, USAGE_CODE } from './_lib/cli-args.mjs'
@@ -28,11 +28,12 @@ import { writeWithSafety } from './_lib/destructive-write.mjs'   // v19.6.1（�
 
 installExitGuard()
 
-const USAGE = '用法: node scripts/pool-extract.mjs <项目目录> <工作区根>'
-let argv
+const USAGE = '用法: node scripts/pool-extract.mjs <项目目录> <工作区根> [--seed <续写种子.json>]'
+let argv, opts
 try {
-  ({ positionals: argv } = parseArgs(process.argv.slice(2), {
+  ({ positionals: argv, opts } = parseArgs(process.argv.slice(2), {
     flags: ['--help'],
+    values: { '--seed': 'final/续写种子.json' },
     minPositionals: 2, maxPositionals: 2,
     positionalHint: '<项目目录> <工作区根>',
   }))
@@ -141,6 +142,54 @@ function dedupKey(f) {
   return null
 }
 
+// ── 续写种子生成（--seed，kaiti 文类 Phase 5 可选输出）─────────────────
+// 反哺报告 2026-10-17「kaiti 续写种子衔接机制」：从开题报告 + 数据卡 + 任务简报
+// 机械提取「框架 / 命题 / 缺口」，供新项目 Phase 0 用 `SEED=` 继承。框架类字段为
+// 启发式提取（未命中 → 空数组，不判失败——主控仍可读 sourcePath 指向的开题报告）。
+function generateSeed(projDir, seedPath) {
+  const kaitiMd = join(projDir, 'final', '开题报告.md')
+  const kaitiText = existsSync(kaitiMd) ? readFileSync(kaitiMd, 'utf8') : ''
+  const dataMd = join(projDir, 'data', '数据卡.md')
+  const dataText = existsSync(dataMd) ? readFileSync(dataMd, 'utf8') : ''
+  const briefMd = join(projDir, '01-任务简报.md')
+  const briefText = existsSync(briefMd) ? readFileSync(briefMd, 'utf8') : ''
+
+  const title = (kaitiText.match(/题名[：:]\s*([^\n（(]{2,60})/) || [])[1]?.trim() || projectName
+  const keywords = ((kaitiText.match(/关键词[：:]\s*([^\n]{2,120})/) || [])[1] || '')
+    .split(/[；;、，,]/).map((s) => s.trim()).filter(Boolean)
+  const targetJournal = ((briefText.match(/目标期刊\**\s*[：:]\s*([^\n（(]{1,40})/) || [])[1] || '').trim()
+  // 创新点（§4.4）：排除表格行（| 开头），按「创新点①/②/③」或「本文提出」定位
+  const theses = [...kaitiText.matchAll(/^(?!\|).*?(?:创新点[①②③④⑤]|本文提出)[^。\n]{0,90}/gm)].map((m) => m[0].replace(/^\s*[-*\d.]+\s*/, '').trim()).filter(Boolean).slice(0, 8)
+  const propBlock = kaitiText.match(/可证伪预测[^\n]{0,400}/)
+  const propositions = propBlock
+    ? [...propBlock[0].matchAll(/F[1-9][^\n；;。]{0,100}/g)].map((m) => m[0].trim()).slice(0, 8)
+    : []
+  const causalStrategy = ((kaitiText.match(/(?:因果识别策略|识别策略)[^\n]{0,80}/) || [])[0] || '').trim()
+  // 缺口（[Gxx]）：只取数据卡行首 [Gxx] 条目，按编号去重（正文行内引用不计）
+  const gapSeen = new Set()
+  const gaps = []
+  for (const m of dataText.matchAll(/^#{1,6}\s*\[(G\d+)\]\s*([^\n]{0,120})/gm)) {
+    if (gapSeen.has(m[1])) continue
+    gapSeen.add(m[1])
+    gaps.push(`${m[1]} ${m[2].trim()}`)
+  }
+
+  const seed = {
+    schema: 'lunheng-continuation-seed/1',
+    originProject: projectName, originGenre: 'kaiti',
+    title, keywords, recommendedGenre: 'academic-cn', targetJournal,
+    sourcePath: `run/${projectName}/final/开题报告.md`,
+    framework: { theses, propositions, causalStrategy },
+    gaps, poolQueryHints: keywords, generatedAt: today,
+  }
+
+  const abs = resolve(seedPath)
+  mkdirSync(dirname(abs), { recursive: true })
+  writeWithSafety(abs, JSON.stringify(seed, null, 2) + '\n', { inPlace: false })
+  console.log(`SEED 续写种子: ${abs}`)
+  console.log(`SEED_SUMMARY 框架=${theses.length} 命题=${propositions.length} 缺口=${gaps.length} 池提示=${keywords.length}`)
+}
+
 function main() {
   let added = 0, reused = 0, skipped = 0
   const perType = { L: 0, D: 0, C: 0 }
@@ -210,6 +259,7 @@ function main() {
   // v19.6.6（素材池可见性批 · 反馈闭环）：**一行机器可读回执**——交付说明模板的「证据素材池贡献」
   //   字段直接抄本行，主人据此看到池在长（旧版只报本次增量，池累计不可见，滚雪球在体验上是断的）。
   console.log(`POOL_APPEND 本次新增=${added} 命中复用=${reused} 池累计=${total} 路径=${poolDir}`)
+  if (opts['--seed']) generateSeed(projDir, opts['--seed'])
   process.exit(0)
 }
 
