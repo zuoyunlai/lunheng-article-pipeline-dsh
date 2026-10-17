@@ -1,4 +1,4 @@
-> 版本：v19.11.0（DSH bundle 插件）
+> 版本：v19.11.1（DSH bundle 插件）
 
 # auto_cite 预标注补充清单
 

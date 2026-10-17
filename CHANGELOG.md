@@ -2,6 +2,23 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 19.11.1 — 2026-10-17
+
+<!-- 行为变更 1 条 | 锚点 = CHANGELOG.md § 19.11.1（0.2.x 装载证据通道更正：loader-smoke → install-smoke） -->
+
+> **主题**：**0.2.x 装载证据通道更正**（19.11.0 发布后 CI 实测反哺）——官方 `dsh-plugin-guide verify` 的 compat profile 模板仍固定装 `@deepseek-ai/dsh-headless@0.1.5-rc.1`（peer `^0.1.5-rc.1`），在 0.2.1-rc.2 上 `dsh plugin add` 必拒；0.2.x 线改用仓库既有的 `scripts/host-install-smoke.mjs`（真发布物 → 隔离 `DSH_HOME` → 真实 `dsh plugin add` → `--dump-config` 断言自注册层）。
+> **版本判据 = patch**：只改 CI 证据通道与文档表述；peer 区间、运行期代码、白名单零改动。
+> **门绿**：四道门全绿；`node --test` **1259/1259 全绿**（1258 pass / 1 POSIX-only skip / 0 fail）。
+
+**行为变更摘要（1 条）**：
+
+- **① 0.2.x 的真实装载证据改由 `install-smoke` 提供**：`ci.yml` 的 `loader-smoke` 恢复单 leg（`0.1.7-rc.2`，官方 verify 的支持线），新增 `install-smoke` 矩阵 `[0.1.7-rc.2, 0.2.1-rc.2]` 跑 `node scripts/host-install-smoke.mjs`。**为什么**：官方 verify 的 compat profile 固定装 `@deepseek-ai/dsh-headless@0.1.5-rc.1`，其 peer `^0.1.5-rc.1` 与 0.2.1-rc.2 不兼容，install 步必红（CI 日志实测）；这是上游模板，不是本包声明或运行期缺陷。
+
+**其余同批改动（非行为变更）**：
+
+- 文档表述更正：`docs/installation.md` / 五语 README / `CONTRIBUTING.md` 把「0.2.1-rc.2 由 loader-smoke 第二 leg 实测」改为「由 install-smoke 的 0.2.1 leg（真实 `dsh plugin add`）实测」，并写明官方 verify 在 0.2.x 的上游阻断。**19.11.0 的声明区间与可用性结论不变**。
+- `pnpm-lock.yaml` 的 importer specifier 同步 peer 区间（修 `lockfile-frozen`；解析版本仍钉 0.1.2-rc.1，发布物不受影响）——19.11.0 发布后补的 `fix:` 提交内容，随本版归档。
+
 ## 19.11.0 — 2026-10-17
 
 <!-- 行为变更 2 条 | 锚点 = CHANGELOG.md § 19.11.0（宿主兼容带上界扩到 <0.3.0 + 0.2.1-rc.2 实测） -->

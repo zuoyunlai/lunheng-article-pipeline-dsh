@@ -152,14 +152,6 @@ jobs:
   #   与本包代码无关（`pack / install / dump-config` 三个前置子步全过）。详见步骤内注释与
   #   `skills/lunheng-article-pipeline/references/maintainers.md` §五（含本机复现步骤与三条处方）。
   loader-smoke:
-    strategy:
-      fail-fast: false
-      matrix:
-        # v19.11.0：宿主兼容带扩到 `<0.3.0`，`VERIFIED_HOST_VERSIONS` 白名单每项各跑一条 leg。
-        #   0.1.7-rc.2 = 0.1.x 线代表（v18.12.1 起）；0.2.1-rc.2 = DSH Desktop 当前发行版。
-        #   新增白名单版本时必须先在这里加 leg、跑绿，再放宽 peer（不得先放宽后验证）。
-        dsh: ['0.1.7-rc.2', '0.2.1-rc.2']
-    name: loader-smoke (${{ matrix.dsh }})
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -168,16 +160,17 @@ jobs:
         with:
           node-version: '24'
           package-manager-cache: false # v5 默认反转为 true；本仓**刻意不开缓存**（缓存面=供应链面）；依赖一致性由 lockfile-frozen job 保证
-      - name: 装 dsh（verify 的 --dsh 默认从 PATH 找）· ${{ matrix.dsh }}
+      - name: 装 dsh（verify 的 --dsh 默认从 PATH 找）
         # v18.12.1（收口补丁）：0.1.5-rc.2 → **0.1.7-rc.2**。原因（用 `npm pack` 逐版核对过 app-boot）：
         #   0.1.5-rc.2 与 rc.3 的 `dsh-app-boot` 仍在 `patchReload === "live"` 时调 `watchUserPatches()`，
         #   而该函数拿不到 `ctx.get('hmr')` 就抛 `requires the Cordis HMR service` → **headless 冒烟必红**
         #   （该 profile manifest 由 `dsh plugin add` 写成 `patchReload: "live"`，非本包可控；本机已复现）。
         #   0.1.7-rc.2 的 app-boot 里 `patchReload` 与那条 HMR 守卫**都已不存在**，并内置 `headless`
         #   profile（`bundles: [dsh-base, dsh-headless]` + `headless-runner`）→ 该子步可跑通。
-        # v19.11.0：版本改由矩阵提供——0.2.1-rc.2 是 DSH Desktop 当前发行版，也是 peer 上界扩到
-        #   `<0.3.0` 的直接动因（旧上界 `<0.2.0` 会让 `dsh plugin add` 以 incompatible 拒绝安装）。
-        run: npm i -g @deepseek-ai/dsh@${{ matrix.dsh }}
+        # v19.11.1：**本 job 保持单 leg（0.1.7-rc.2）**——官方 verify 的 compat profile 模板仍钉
+        #   `@deepseek-ai/dsh-headless@0.1.5-rc.1`（peer `^0.1.5-rc.1`），在 0.2.x 宿主上 install 必拒；
+        #   0.2.x 线的真实装载证据改由下面的 `install-smoke` 提供（上游模板问题，非本包缺陷）。
+        run: npm i -g @deepseek-ai/dsh@0.1.7-rc.2
       - name: 真实 Loader 冒烟（官方 dsh-plugin-dev verify）
         env:
           DSH_PLUGIN_DEV_TIMEOUT: '420000'
@@ -188,6 +181,31 @@ jobs:
           SPEC="$(node scripts/plugin-surface-check.mjs --print-cli-spec)"
           echo "loader-smoke 使用的 CLI pin：$SPEC（单点来源 = scripts/plugin-surface-check.mjs）"
           pnpm dlx "$SPEC" verify .
+
+  # 真实安装烟测（v19.11.1 新增）：`VERIFIED_HOST_VERSIONS` 白名单的**真实 `dsh plugin add`** 证据。
+  #   为什么不用 loader-smoke 跑 0.2.x：官方 verify 的 compat profile 模板固定装
+  #     `@deepseek-ai/dsh-headless@0.1.5-rc.1`（peer `^0.1.5-rc.1`），在 0.2.1-rc.2 上
+  #   `dsh plugin add` 会以「headless incompatible」拒绝（CI 日志实测，属上游模板而非本包）。
+  #   本 job 用仓库既有的 `scripts/host-install-smoke.mjs`：真发布物（npm pack）→ 隔离 DSH_HOME →
+  #   真实 `dsh plugin add` → `--dump-config` 断言本包自注册层；同时保留 0.1.7 leg 防脚本自身漂移。
+  install-smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        dsh: ['0.1.7-rc.2', '0.2.1-rc.2']
+    name: install-smoke (${{ matrix.dsh }})
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+          package-manager-cache: false # v5 默认反转为 true；本仓**刻意不开缓存**（缓存面=供应链面）
+      - name: 装 dsh · ${{ matrix.dsh }}
+        run: npm i -g @deepseek-ai/dsh@${{ matrix.dsh }}
+      - name: 真实安装烟测（dsh plugin add → dump-config 断言自注册层）
+        run: node scripts/host-install-smoke.mjs
 
   # 随包脚本回归测试（v2.5.2-dsh.13 新增）
   # 矩阵含 windows-latest 与 macos-latest：final-check 的 POSIX 崩溃、路径含空格、

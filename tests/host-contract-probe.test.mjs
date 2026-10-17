@@ -132,13 +132,13 @@ test('多版本白名单（v19.11.0）：白名单内任一版本都通过「探
   assert.match(check.detail, /不在契约表核对过的宿主白名单/, `应指白名单未登记：${check.detail}`)
 })
 
-test('CI loader-smoke 矩阵：必须实测白名单最新版，且保留 0.1.x 线代表（v19.11.0）', () => {
+test('CI install-smoke 矩阵：必须实测白名单最新版，且保留 0.1.x 线代表（v19.11.1）', () => {
   const ci = readFileSync(join(ROOT, '.github/workflows/ci.yml'), 'utf8')
   const m = /dsh:\s*\[([^\]]+)\]/.exec(ci)
-  assert.ok(m, 'ci.yml 的 loader-smoke 必须声明 dsh 矩阵（v19.11.0 起宿主兼容带 = 白名单 × CI leg）')
+  assert.ok(m, 'ci.yml 的 install-smoke 必须声明 dsh 矩阵（v19.11.1 起宿主兼容带 = 白名单 × 真实安装 leg）')
   const versions = m[1].split(',').map((s) => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean)
   const newest = VERIFIED_HOST_VERSIONS[VERIFIED_HOST_VERSIONS.length - 1]
-  assert.ok(versions.includes(newest), `白名单最新版「${newest}」必须在 loader-smoke 矩阵里实测（不得只写进 peer 声明）`)
+  assert.ok(versions.includes(newest), `白名单最新版「${newest}」必须在 install-smoke 矩阵里实测（不得只写进 peer 声明）`)
   assert.ok(versions.some((v) => v.startsWith('0.1.')), '矩阵必须保留 0.1.x 线代表——放宽上界不得以丢旧线为代价')
 })
 

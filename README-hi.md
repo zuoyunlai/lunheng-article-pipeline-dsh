@@ -1,6 +1,6 @@
 # लुन्हेंग (lunheng-article-pipeline) — बहु-एजेंट दीर्घ-लेख पाइपलाइन
 
-> 版本：v19.11.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v19.11.1（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > 🌐 [English](README.md) ｜ [中文](README-zh.md) ｜ [Español](README-es.md) ｜ [Português](README-pt.md) ｜ **हिन्दी**（यह फ़ाइल）
 
@@ -117,7 +117,7 @@ patch परत दो काम करती है: **इस पैकेज �
 संस्करण **केवल tag से** प्रकाशित होते हैं; स्थानीय `npm publish` वर्जित है (यह CI द्वारों और OIDC provenance को दरकिनार करता है, और npm संस्करण कभी अधिलेखित नहीं हो सकता)।
 
 ```sh
-git tag v19.11.0 && git push origin v19.11.0   # एक बार में एक ही tag (GitHub: >3 tag एक push में कोई workflow नहीं चलाता)
+git tag v19.11.1 && git push origin v19.11.1   # एक बार में एक ही tag (GitHub: >3 tag एक push में कोई workflow नहीं चलाता)
 # publish.yml क्रम: द्वार 1 सुसंगति → द्वार 2 पैकेजिंग → द्वार 3 स्वच्छता → द्वार 4 पैकेज स्मोक → स्क्रिप्ट परीक्षण
 #   → tag/संस्करण समानता → idempotency गार्ड → OIDC publish --provenance --tag dsh → प्रकाशन-पश्चात लेखा-परीक्षा
 ```
@@ -148,7 +148,7 @@ dsh --profile web --dump-config   # "# == lunheng-article-pipeline" परत �
 | मद | आवश्यकता |
 |---|---|
 | DSH (उत्पाद संस्करण) | `dsh` CLI उपलब्ध; बंडल की `- insert:` पंक्तियों को **DSH 5.5.0+ उत्पाद संस्करण** चाहिए — ध्यान दें: `dsh` दो समानांतर संस्करण रेखाओं में आता है, **उत्पाद रेखा** (semver, जैसे `5.5.0`) और **npm पैकेज रेखा** `@deepseek-ai/dsh` (prerelease टैग, जैसे `0.1.7-rc.2`); **वे परस्पर विनिमेय नहीं हैं** |
-| `@deepseek-ai/dsh` (npm पैकेज संस्करण) | `peerDependencies` में `>=0.1.2-rc.1 <0.3.0` घोषित; **CI `0.1.7-rc.2` और `0.2.1-rc.2` दोनों का परीक्षण करता है** (`ci.yml` की `loader-smoke` मैट्रिक्स); सीमा के भीतर अन्य संस्करण (जैसे `0.2.0-rc.x`, `0.1.3`–`0.1.6`) **घोषित हैं, सत्यापित नहीं** |
+| `@deepseek-ai/dsh` (npm पैकेज संस्करण) | `peerDependencies` में `>=0.1.2-rc.1 <0.3.0` घोषित; **CI `0.1.7-rc.2` और `0.2.1-rc.2` दोनों का परीक्षण करता है** (`ci.yml` की `install-smoke` मैट्रिक्स); सीमा के भीतर अन्य संस्करण (जैसे `0.2.0-rc.x`, `0.1.3`–`0.1.6`) **घोषित हैं, सत्यापित नहीं** |
 | Node | `^22.19.0 \|\| >=24.0.0` (DSH न्यूनतम; `package.json` का `engines` देखें) |
 | pnpm | स्थापना/विस्थापन हेतु आवश्यक (`dsh plugin` pnpm को सौंपता है) |
 | प्लेटफ़ॉर्म | Windows / macOS / Linux (स्क्रिप्ट निर्भरता-रहित) |

@@ -9,7 +9,7 @@
 #    ⚠️ **务必钉版本**：不写 `@<版本>` 时，装到哪个版本取决于本机包管理器**当时**的解析状态。
 #    实测过一次：同一条命令装到 **18.15.0**，而 registry 上的 `latest` 已是 18.20.4 —— 差了五个小版本，
 #    且按下面流程走下去**没有任何一步能让人察觉**。版本真源只有一处：`npm view lunheng-article-pipeline version`。
-dsh plugin --profile <profile> add lunheng-article-pipeline@19.11.0
+dsh plugin --profile <profile> add lunheng-article-pipeline@19.11.1
 
 # 1b) **核对装到的版本**（钉了版本也值得跑一次——它读的是 profile 里**实际落盘**的 package.json）
 node -e "console.log(require('<DSH_HOME>/profiles/<profile>/node_modules/lunheng-article-pipeline/package.json').version)"
@@ -35,10 +35,11 @@ node -e "console.log(require('<DSH_HOME>/profiles/<profile>/node_modules/lunheng
 3. **dshmarket 市场**：v18.0.0 起本包带 JS 包入口（`main` → `lib/index.js`），「只认 JS 入口」的校验器不再误报（详见 `docs/faq.md`）。
 4. **宿主（`@deepseek-ai/dsh`）版本**（v19.11.0 扩面；三次复审 N-4 如实声明）：本包 `peerDependencies` 写 `>=0.1.2-rc.1 <0.3.0`，**已实测**的宿主有两条线：
    - `0.1.2-rc.1`（本仓 lockfile 实装 + 全量回归测试）与 `0.1.7-rc.2`（CI 的 `loader-smoke` 第一 leg）；
-   - `0.2.1-rc.2`（DSH Desktop 当前发行版）：`loader-smoke` 第二 leg 真实装载，并用 `host-contract-probe` 对 app.asar 内产物核对三处派发点与 `materializeFinalResult` 字段白名单（与 0.1.2 **逐字同形**）。
+   - `0.2.1-rc.2`（DSH Desktop 当前发行版）：CI 的 `install-smoke` 0.2.1 leg 用真实 `dsh plugin add` 装载，并用 `host-contract-probe` 对 app.asar 内产物核对三处派发点与 `materializeFinalResult` 字段白名单（与 0.1.2 **逐字同形**）。
    **声明区间仍宽于实测证据**：区间内的 `0.2.0-rc.x`、`0.1.3`–`0.1.6` 等 rc 档未逐一装载；落在未测档位时先跑 `node scripts/host-contract-probe.mjs` 与 `node scripts/host-install-smoke.mjs` 自证。
    已知不兼容：`0.1.5-rc.2` / `rc.3` 的 `dsh-app-boot` 在 profile 的 `patchReload: "live"`（`dsh plugin add` 生成的默认值）且无 HMR 时会抛 `requires the Cordis HMR service` → **headless 启动必红**，与本包代码无关（`pack` / `install` / `dump-config` 三个前置子步全过）。规避：用 `0.1.7-rc.2` 及以上，或避开 headless 启动路径。
-   > **v19.6.1（审计 P2-20）处置**：**刻意不收窄区间**——下限 `0.1.2-rc.1` 是 lockfile 解析值且全量测试通过，收窄会把**实际可用**的旧宿主一并拒之门外（假拒绝）；专挑已知两版排除又只是把它们刻进声明。**收口走「扩证据」**：v19.11.0 已把 `0.2.1-rc.2` 实测并入 `VERIFIED_HOST_VERSIONS` 白名单，并给 CI 的 `loader-smoke` 加第二 leg；见三次复审报告 §三.3 定案 1。
+   > **v19.6.1（审计 P2-20）处置**：**刻意不收窄区间**——下限 `0.1.2-rc.1` 是 lockfile 解析值且全量测试通过，收窄会把**实际可用**的旧宿主一并拒之门外（假拒绝）；专挑已知两版排除又只是把它们刻进声明。**收口走「扩证据」**：v19.11.1 已把 `0.2.1-rc.2` 实测并入 `VERIFIED_HOST_VERSIONS` 白名单，并给 CI 增 `install-smoke` 的 0.2.1 leg；见三次复审报告 §三.3 定案 1。
+   > **为什么 0.2.x 不走官方 verify**：`dsh-plugin-guide verify` 的 compat profile 模板固定装 `@deepseek-ai/dsh-headless@0.1.5-rc.1`（peer `^0.1.5-rc.1`），在 0.2.x 上会在 install 步被 `dsh plugin add` 以 headless incompatible 拒绝——**上游模板问题，不是本包缺陷**。故 0.2.x 线的真实装载证据由 `install-smoke`（`scripts/host-install-smoke.mjs`：真发布物 → 隔离 `DSH_HOME` → 真实 `dsh plugin add` → `--dump-config` 断言自注册层）提供；`loader-smoke` 继续守 0.1.7-rc.2 的官方 verify 线。
    > **机械面**：上面「声明区间宽于实测证据」+「0.1.5-rc.2」两句**不得被静默删除**——`tests/host-contract.test.mjs` 的 peer 对账用例钉住：只要 peer 仍是宽区间，披露就必须在场（**如实披露本身就是交付面的一部分**）。
    > **0.2.x 的差异化事实（v19.11.0 实测登记）**：`@deepseek-ai/dsh-tool-subagent` 在 `0.2.1-rc.2` 移除了 `backgroundMode`（`enableRunInBackground` / `persona` / `toolFilter` 同批移除），新增 `agentPreset` / `allowedAgentPresets`。本包三档分档行仍写 `backgroundMode: continuable`：**0.2.1 的 Config 接受该键但代码不再读取**（实测 Config 原样保留该键、加载不报错），故分档行可正常装载；`continuable` 语义在 0.2.x 交回 provider（`spawn` 仍具备 `prepareContinuable`）。这不是装载阻断项，但属行为差异，如实登记。
 

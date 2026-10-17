@@ -1,6 +1,6 @@
 # 开题报告 — <项目名>
 
-> 版本：v19.11.0（DSH bundle 插件）
+> 版本：v19.11.1（DSH bundle 插件）
 > 位置：`run/<项目名>/final/开题报告.md`　｜　产出者：**T4 分析（kaiti 文类，Phase 2 后分岔终止）**
 > 用途：**学位论文 / 期刊长文的开题报告**（v19.8.0 反哺 v9 D7 新增文类 `kaiti`）。开题是动笔前的**结构化论证交付物**，
 >   结构门 = `structure-check.mjs --kaiti` 的**开题九节**；T5-T9/G14 全免，机检只跑 M-Form-1/3/5/7 + M-Exist-2 + `--genre kaiti` 的 M-Exist-12 贡献陈述。

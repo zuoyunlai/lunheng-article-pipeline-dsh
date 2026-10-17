@@ -2,7 +2,7 @@
 
 > 🌐 [English](README.md) ｜ **中文**（本文件）｜ [Español](README-es.md) ｜ [Português](README-pt.md) ｜ [हिन्दी](README-hi.md)
 
-> 版本：v19.11.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v19.11.1（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > 一个 DeepSeek Harness（DSH）bundle 插件，注册**两个按需加载的 agent 技能**：`lunheng-article-pipeline`（9 角色主流水线）与 `lunheng-commands`（薄壳包装 11 个 `/lunheng-*` 斜杠命令：draft / resume / cite / audit / journal / ppt / history / rollback / status / stats / help；**不引入新角色、不引入新 M 门**，详见 `skills/lunheng-commands/SKILL.md`）。主技能把深度长文的生产——学术论文、行业分析、商业评论、公众号深文——变成**带人在环节点的 9 角色流水线**。
 
@@ -119,7 +119,7 @@ patch 层做两件事：**插入一行本包自注册行**（`- id: lunheng-arti
 **只推 tag 发布，禁止本地 `npm publish`**（本地直发会绕过 CI 四道门与 OIDC 来源证明，且 npm 版本不可覆盖）。
 
 ```sh
-git tag v19.11.0 && git push origin v19.11.0   # 一次只推 1 个 tag（GitHub：单次 push >3 个 tag 不触发任何 workflow）
+git tag v19.11.1 && git push origin v19.11.1   # 一次只推 1 个 tag（GitHub：单次 push >3 个 tag 不触发任何 workflow）
 # publish.yml 依次跑：门 1 一致性 → 门 2 打包面 → 门 3 机械卫生 → 门 4 打包产物冒烟 → 脚本回归测试
 #   → tag/版本一致校验 → 幂等守卫 → OIDC 发布 --provenance --tag dsh → 发布后审计
 ```
@@ -150,7 +150,7 @@ dsh --profile web --dump-config   # 应出现 "# == lunheng-article-pipeline" �
 | 项 | 要求 |
 |---|---|
 | DSH（产品版） | `dsh` CLI 可用；bundle 的 `- insert:` 增量 patch 行需 **DSH 5.5.0+ 产品发行版**——注意：`dsh` 有两条并行版本线，**产品发行线**（semver，如 `5.5.0`）与 **npm 包线** `@deepseek-ai/dsh`（prerelease tags，如 `0.1.7-rc.2`），**两者不可互换** |
-| `@deepseek-ai/dsh`（npm 包版） | `peerDependencies` 声明 `>=0.1.2-rc.1 <0.3.0`；**CI 实测 `0.1.7-rc.2` 与 `0.2.1-rc.2`**（`ci.yml` 的 `loader-smoke` 矩阵）；区间内其余 rc 档（如 `0.2.0-rc.x`、`0.1.3`–`0.1.6`）是**声明**而非验证 |
+| `@deepseek-ai/dsh`（npm 包版） | `peerDependencies` 声明 `>=0.1.2-rc.1 <0.3.0`；**CI 实测 `0.1.7-rc.2` 与 `0.2.1-rc.2`**（`ci.yml` 的 `install-smoke` 矩阵）；区间内其余 rc 档（如 `0.2.0-rc.x`、`0.1.3`–`0.1.6`）是**声明**而非验证 |
 | Node | `^22.19.0 \|\| >=24.0.0`（DSH 运行时下限；见 `package.json` 的 `engines`） |
 | pnpm | 安装/卸载依赖它（`dsh plugin` 内部转 pnpm） |
 | 平台 | Windows / macOS / Linux（脚本零依赖，跨平台可跑） |
