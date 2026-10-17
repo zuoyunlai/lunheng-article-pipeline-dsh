@@ -9,13 +9,13 @@ importers:
   .:
     dependencies:
       '@deepseek-ai/dsh':
-        specifier: '>=0.1.2-rc.1 <0.2.0'
+        specifier: '>=0.1.2-rc.1 <0.3.0'
         version: 0.1.2-rc.1(012040b8d95a0b37446c54bc6938fd3b)
       '@deepseek-ai/dsh-tool-subagent':
-        specifier: '>=0.1.2-rc.1 <0.2.0'
+        specifier: '>=0.1.2-rc.1 <0.3.0'
         version: 0.1.2-rc.1(9e64b1cab8e9a7136581e8aba6fd4935)
       '@deepseek-ai/dsh-tools':
-        specifier: '>=0.1.2-rc.1 <0.2.0'
+        specifier: '>=0.1.2-rc.1 <0.3.0'
         version: 0.1.2-rc.1(d0fa177dedc98c68de99600c4e2ac332)
 
 packages:
