@@ -25,6 +25,7 @@ import {
   HOST_CONTRACT,
   HOST_DISPATCH,
   MATERIALIZE_WHITELIST,
+  VERIFIED_HOST_VERSIONS,
 } from '../scripts/_lib/host-contract.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -42,7 +43,10 @@ skipIfBare('探针能解析真宿主产物（dsh-tools/agent-loop/system-prompt�
   assert.ok(files['dsh-tools'], 'dsh-tools 解析失败（pnpm store 里查不到 @deepseek-ai+dsh-tools 兄弟目录）')
   assert.ok(files['dsh-agent-loop'], 'dsh-agent-loop 解析失败')
   assert.ok(files['dsh-system-prompt'], 'dsh-system-prompt 解析失败')
-  assert.equal(toolsVersion, CONTRACT_HOST_VERSION, `实装 ${toolsVersion} ≠ 契约 ${CONTRACT_HOST_VERSION}`)
+  assert.ok(
+    VERIFIED_HOST_VERSIONS.includes(toolsVersion),
+    `实装 ${toolsVersion} 不在白名单 ${VERIFIED_HOST_VERSIONS.join(', ')}`,
+  )
 })
 
 skipIfBare('真产物驱动探针 → 0 错误（绿）', () => {
@@ -114,6 +118,28 @@ skipIfBare('反事实 R3-B：agent/request payload 多塞一个键 → 探针红
   assert.equal(check.ok, false, 'agent/request 派发形态应红（tables 被篡改）')
   assert.match(check.detail, /找不到归一化形态/, `应指派发形态：${check.detail}`)
   assert.match(check.detail, /tokenCount/, `应指名被多塞的键：${check.detail}`)
+})
+
+test('多版本白名单（v19.11.0）：白名单内任一版本都通过「探针目标版本」，未登记版本红', () => {
+  for (const v of VERIFIED_HOST_VERSIONS) {
+    const out = probeContracts({ toolsSrc: '', agentLoopSrc: '', systemPromptSrc: '', installedToolsVersion: v })
+    const check = out.checks.find((c) => c.name === '探针目标版本')
+    assert.equal(check.ok, true, `白名单版本 ${v} 应通过版本检查：${check.detail}`)
+  }
+  const out = probeContracts({ toolsSrc: '', agentLoopSrc: '', systemPromptSrc: '', installedToolsVersion: '0.2.2-rc.1' })
+  const check = out.checks.find((c) => c.name === '探针目标版本')
+  assert.equal(check.ok, false, '未入白名单的版本必须红（防「声明放宽了、证据没跟上」）')
+  assert.match(check.detail, /不在契约表核对过的宿主白名单/, `应指白名单未登记：${check.detail}`)
+})
+
+test('CI loader-smoke 矩阵：必须实测白名单最新版，且保留 0.1.x 线代表（v19.11.0）', () => {
+  const ci = readFileSync(join(ROOT, '.github/workflows/ci.yml'), 'utf8')
+  const m = /dsh:\s*\[([^\]]+)\]/.exec(ci)
+  assert.ok(m, 'ci.yml 的 loader-smoke 必须声明 dsh 矩阵（v19.11.0 起宿主兼容带 = 白名单 × CI leg）')
+  const versions = m[1].split(',').map((s) => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean)
+  const newest = VERIFIED_HOST_VERSIONS[VERIFIED_HOST_VERSIONS.length - 1]
+  assert.ok(versions.includes(newest), `白名单最新版「${newest}」必须在 loader-smoke 矩阵里实测（不得只写进 peer 声明）`)
+  assert.ok(versions.some((v) => v.startsWith('0.1.')), '矩阵必须保留 0.1.x 线代表——放宽上界不得以丢旧线为代价')
 })
 
 test('反事实 R3-C：本地版本与 CONTRACT_HOST_VERSION 不一致 → 探针红并指版本', () => {

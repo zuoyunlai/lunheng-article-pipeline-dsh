@@ -15,12 +15,20 @@
 //   旧版这里写死「宿主 `@deepseek-ai/dsh` **0.2.0-rc.2**，核对日期 2026-10-01；0.1.7-rc.2 同形」——
 //   三个数字互相打架且**无人校验**：本文件注 `0.2.0-rc.2` / `ci.yml` 的 loader-smoke pin `0.1.7-rc.2`
 //   / lockfile 实装 `0.1.2-rc.1`。现改为：本常量 = **探针实际核对的产物版本**，由
-//   `scripts/host-contract-probe.mjs` 断言「本地已装 `@deepseek-ai/dsh-tools` 的 version 必须 == 它」。
+//   `scripts/host-contract-probe.mjs` 断言「本地已装 `@deepseek-ai/dsh-tools` 的 version 必须在白名单内」。
+//
+// v19.11.0（2026-10-17）：宿主兼容带上界抬到 `<0.3.0` 后，契约表升级为**多版本白名单**：
+//   0.1.2-rc.1（lockfile 实装 + 全量测试）与 0.2.1-rc.2（Desktop 当前发行 + CI loader-smoke 第二 leg）
+//   的三处派发形态与 `materializeFinalResult` 字段白名单**逐字同形**（0.2.1 以 app.asar 内产物核对）。
+//   两版共用一张表，`since` 仍记最低验证版本；探针按**实装版本**查白名单，未知版本即红。
 //   三条版本轴的分工（**不再假装它们是同一个数**）：
-//     · 本常量 / 探针目标 = lockfile 实装的宿主（本包 dev + CI 的 `pnpm install --frozen-lockfile` 产物）；
-//     · `ci.yml` 的 `loader-smoke` pin = 全局 npm 装一个**更新的**宿主，只验「宿主能加载本插件」；
-//     · 契约表条目本身只在**探针目标**上被核对，跨 rc 线的 arity/payload 变化由探针红来暴露。
-export const CONTRACT_HOST_VERSION = '0.1.2-rc.1'
+//     · VERIFIED_HOST_VERSIONS = 契约表已核对过的宿主白名单（探针目标 = 其中任一实装版本）；
+//     · `ci.yml` 的 `loader-smoke` = 白名单每项各跑一条 leg（0.1.7-rc.2 / 0.2.1-rc.2）；
+//     · 新增版本入白名单前必须**先**跑探针 + loader-smoke，再放宽 peer——不得先放宽后补证据。
+export const VERIFIED_HOST_VERSIONS = Object.freeze(['0.1.2-rc.1', '0.2.1-rc.2'])
+
+// 探针默认目标 = lockfile 实装值。保留旧导出名：测试与脚本仍按 `CONTRACT_HOST_VERSION` 引用。
+export const CONTRACT_HOST_VERSION = VERIFIED_HOST_VERSIONS[0]
 
 // 更新契约表的口径：宿主升版后**重新核对上面三个派发点**（真源出处已写在 host 字段），实参个数变了就
 //   同步改本表；**不要凭记忆改**（这正是本门要守的「凭记忆推断」病）。

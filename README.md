@@ -2,7 +2,7 @@
 
 > 🌐 **English** (this file) ｜ [中文](README-zh.md) ｜ [Español](README-es.md) ｜ [Português](README-pt.md) ｜ [हिन्दी](README-hi.md)
 
-> 版本：v19.10.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v19.11.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > A DeepSeek Harness (DSH) bundle that registers **two on-demand agent skills**:
 > - `lunheng-article-pipeline` — the main 9-role pipeline (T1–T9, see below).
@@ -122,7 +122,7 @@ The patch layer does two things: it **inserts one row for this package** (`- id:
 Releases are **tag-only**; a local `npm publish` is forbidden (it would bypass the CI gates and OIDC provenance, and a published npm version can never be overwritten).
 
 ```sh
-git tag v19.10.0 && git push origin v19.10.0   # push one tag at a time (GitHub: >3 tags in one push triggers no workflow)
+git tag v19.11.0 && git push origin v19.11.0   # push one tag at a time (GitHub: >3 tags in one push triggers no workflow)
 # publish.yml then runs gate 1 consistency → gate 2 packaging surface → gate 3 hygiene → gate 4 pack smoke → script tests
 #   → tag/version equality → idempotency guard → OIDC publish --provenance --tag dsh → post-publish audit
 ```
@@ -153,7 +153,7 @@ A plain directory carries no `dsh.bundle` declaration, so `dsh plugin add` insta
 | Item | Requirement |
 |---|---|
 | DSH (product version) | `dsh` CLI available; the bundle's `- insert:` incremental patch rows need **DSH 5.5.0+ product release** — note: `dsh` ships as two parallel version lines, a **product release line** (semver, e.g. `5.5.0`) and the **npm package line** `@deepseek-ai/dsh` (prerelease tags, e.g. `0.1.7-rc.2`); they are **not** interchangeable |
-| `@deepseek-ai/dsh` (npm package version) | `>=0.1.2-rc.1 <0.2.0` declared in `peerDependencies`; **CI only exercises `0.1.7-rc.2`** (the prerelease tag pinned in `ci.yml`); earlier `0.1.x` versions may or may not work — the lower bound is a **declaration**, not a verification |
+| `@deepseek-ai/dsh` (npm package version) | `>=0.1.2-rc.1 <0.3.0` declared in `peerDependencies`; **CI exercises `0.1.7-rc.2` and `0.2.1-rc.2`** (the `loader-smoke` matrix in `ci.yml`); other releases inside the range (e.g. `0.2.0-rc.x`, `0.1.3`–`0.1.6`) are **declared, not verified** |
 | Node | `^22.19.0 \|\| >=24.0.0` (DSH runtime floor; see `engines` in `package.json`) |
 | pnpm | Required by install/uninstall (`dsh plugin` delegates to pnpm) |
 | Platform | Windows / macOS / Linux (the scripts have zero dependencies and run cross-platform) |

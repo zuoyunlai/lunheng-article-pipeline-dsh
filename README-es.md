@@ -1,6 +1,6 @@
 # Lunheng (lunheng-article-pipeline) — pipeline multiagente para textos largos
 
-> 版本：v19.10.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v19.11.0（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > 🌐 [English](README.md) ｜ [中文](README-zh.md) ｜ **Español**（este archivo）｜ [Português](README-pt.md) ｜ [हिन्दी](README-hi.md)
 
@@ -117,7 +117,7 @@ La capa patch hace dos cosas: **inserta una fila para este paquete** (`- id: lun
 Las versiones se publican **solo por tag**; `npm publish` local está prohibido (evita las puertas de CI y la procedencia OIDC, y una versión npm nunca se puede sobrescribir).
 
 ```sh
-git tag v19.10.0 && git push origin v19.10.0   # un tag por push (GitHub: >3 tags en un push no dispara workflow)
+git tag v19.11.0 && git push origin v19.11.0   # un tag por push (GitHub: >3 tags en un push no dispara workflow)
 # publish.yml ejecuta: puerta 1 consistencia → puerta 2 empaquetado → puerta 3 higiene → puerta 4 humo del paquete → tests
 #   → tag/versión iguales → guarda de idempotencia → OIDC publish --provenance --tag dsh → auditoría posterior
 ```
@@ -148,7 +148,7 @@ Un directorio simple no declara `dsh.bundle`, así que `dsh plugin add` solo lo 
 | Elemento | Requisito |
 |---|---|
 | DSH (versión de producto) | `dsh` CLI disponible; las filas `- insert:` del bundle necesitan **DSH 5.5.0+ versión de producto** — nota: `dsh` se distribuye en dos líneas de versión paralelas, una **línea de producto** (semver, p.ej. `5.5.0`) y la **línea npm** `@deepseek-ai/dsh` (tags prerelease, p.ej. `0.1.7-rc.2`); **no son intercambiables** |
-| `@deepseek-ai/dsh` (versión npm) | `peerDependencies` declara `>=0.1.2-rc.1 <0.2.0`; **CI solo prueba `0.1.7-rc.2`** (tag prerelease fijado en `ci.yml`); versiones `0.1.x` anteriores pueden o no funcionar — el límite inferior es **declaración**, no verificación |
+| `@deepseek-ai/dsh` (versión npm) | `peerDependencies` declara `>=0.1.2-rc.1 <0.3.0`; **CI prueba `0.1.7-rc.2` y `0.2.1-rc.2`** (matriz `loader-smoke` en `ci.yml`); otras versiones dentro del rango (p. ej. `0.2.0-rc.x`, `0.1.3`–`0.1.6`) están **declaradas, no verificadas** |
 | Node | `^22.19.0 \|\| >=24.0.0` (mínimo de DSH; ver `engines` en `package.json`) |
 | pnpm | Necesario para instalar/desinstalar (`dsh plugin` delega en pnpm) |
 | Plataforma | Windows / macOS / Linux (scripts sin dependencias) |

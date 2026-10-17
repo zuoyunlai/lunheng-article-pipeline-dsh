@@ -11,7 +11,8 @@
 // 三条断言（对齐 R3 的最小修复）：
 //   ① 三处派发点的**实参形态**（含 `agent/request` 的 payload 键集合）必须与契约表一致；
 //   ② `materializeFinalResult()` 引用的 `result.*` 字段集合必须**恰好等于**字段白名单（增删即红）；
-//   ③ 本地已装 `@deepseek-ai/dsh-tools` 的 version 必须 == `CONTRACT_HOST_VERSION`（版本不再靠散文注释）。
+//   ③ 本地已装 `@deepseek-ai/dsh-tools` 的 version 必须在 `VERIFIED_HOST_VERSIONS` 白名单内
+//      （v19.11.0：单点版本 → 多版本白名单；每入一版都先跑本探针 + CI loader-smoke）。
 //
 // 退出码：0 通过（或产物缺失且未要求 host）；1 任一断言失败 / 产物缺失但 `--require-host`。
 // 用法：`node scripts/host-contract-probe.mjs [--require-host] [--json]`
@@ -23,6 +24,7 @@ import {
   HOST_CONTRACT,
   HOST_DISPATCH,
   MATERIALIZE_WHITELIST,
+  VERIFIED_HOST_VERSIONS,
 } from './_lib/host-contract.mjs'
 
 export const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -102,7 +104,7 @@ export function probeContracts(input) {
     agentLoopSrc = '',
     systemPromptSrc = '',
     installedToolsVersion = null,
-    tables = { HOST_CONTRACT, HOST_DISPATCH, MATERIALIZE_WHITELIST, CONTRACT_HOST_VERSION },
+    tables = { HOST_CONTRACT, HOST_DISPATCH, MATERIALIZE_WHITELIST, CONTRACT_HOST_VERSION, VERIFIED_HOST_VERSIONS },
   } = input
   const errors = []
   const checks = []
@@ -147,15 +149,19 @@ export function probeContracts(input) {
     )
   }
 
-  // ④ 版本：本地实装宿主的 version 必须 == 契约表注明的探针目标版本
+  // ④ 版本：本地实装宿主的 version 必须在契约表核对过的**白名单**内（v19.11.0 多版本）
   if (installedToolsVersion === null) {
     add('探针目标版本', false, '读不到已装 @deepseek-ai/dsh-tools 的 version（未安装？）')
   } else {
+    const verified = Array.isArray(tables.VERIFIED_HOST_VERSIONS)
+      ? tables.VERIFIED_HOST_VERSIONS
+      : [tables.CONTRACT_HOST_VERSION]
     add(
       '探针目标版本',
-      installedToolsVersion === tables.CONTRACT_HOST_VERSION,
-      `实装 ${installedToolsVersion} ≠ 契约表 CONTRACT_HOST_VERSION ${tables.CONTRACT_HOST_VERSION}` +
-        '（要么同步常量并重核三处派发点，要么把 lockfile 钉回该版本——**不得只改注释**）',
+      verified.includes(installedToolsVersion),
+      `实装 ${installedToolsVersion} 不在契约表核对过的宿主白名单 [${verified.join(', ')}] 内` +
+        '（要么把该版本跑通探针 + loader-smoke 后加进 VERIFIED_HOST_VERSIONS 并重核三处派发点，' +
+        '要么把 lockfile 钉回白名单版本——**不得只改注释**）',
     )
   }
 
@@ -179,7 +185,7 @@ function main() {
   if (asJson) {
     console.log(JSON.stringify({ ok, requireHost, missing, toolsVersion, errors, checks }, null, 2))
   } else {
-    console.log(`宿主契约产物探针（目标版本 ${CONTRACT_HOST_VERSION}｜实装 dsh-tools ${toolsVersion ?? '未安装'}）`)
+    console.log(`宿主契约产物探针（白名单 ${VERIFIED_HOST_VERSIONS.join(' / ')}｜实装 dsh-tools ${toolsVersion ?? '未安装'}）`)
     for (const c of checks) console.log(`  ${c.ok ? '✓' : '✗'} ${c.name}${c.ok ? '' : ` — ${c.detail}`}`)
     if (missing.length) console.log(`  ○ 产物缺失：${missing.join(' / ')}`)
   }

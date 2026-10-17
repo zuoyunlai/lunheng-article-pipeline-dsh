@@ -2,6 +2,29 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 19.11.0 — 2026-10-17
+
+<!-- 行为变更 2 条 | 锚点 = CHANGELOG.md § 19.11.0（宿主兼容带上界扩到 <0.3.0 + 0.2.1-rc.2 实测） -->
+
+> **主题**：**宿主兼容带扩面**（主人 2026-10-17「dsh 已升到 0.2.1-rc.2，希望论衡兼容更多版本」授权）——`peerDependencies` 上界 `<0.2.0` → `<0.3.0`，并补 0.2.1-rc.2 的装载证据。
+> **版本判据 = minor**：兼容带从 0.1.x 扩到 0.2.x 线（新增白名单版本 + CI 第二条 loader-smoke leg）；**不新增门/脚本/契约/文类**，技能内容零改动。
+> **门绿（本批实测）**：四道门全绿（consistency / plugin-surface `STRICT_WARN=1` / repo-hygiene / pack-smoke）；0.2.1-rc.2 隔离 `DSH_HOME` 下 `dsh plugin add` 由「incompatible 拒绝」转为安装成功，`--dump-config` 含本包自注册层。全量 `node --test` **1259/1259 全绿**（19.10.0 的 1257 + 本批 2 条白名单/矩阵用例；本机 Windows 下 1258 pass / 1 条 POSIX-only 平台用例按设计跳过 / 0 fail）。
+
+**行为变更摘要（2 条）**：
+
+- **① 宿主兼容带上界 `<0.2.0` → `<0.3.0`**：`@deepseek-ai/dsh` / `@deepseek-ai/dsh-tool-subagent` / `@deepseek-ai/dsh-tools` 三条 peer 同步。旧上界会让 `dsh plugin add` 在 0.2.1-rc.2 上以 `Plugin … is incompatible with dsh 0.2.1-rc.2` 拒绝安装（本机隔离 profile 实测复现，非推断）。
+- **② 0.2.1-rc.2 进入 `VERIFIED_HOST_VERSIONS` 白名单 + CI 第二 leg**：`scripts/_lib/host-contract.mjs` 由单点 `CONTRACT_HOST_VERSION` 升级为多版本白名单（`CONTRACT_HOST_VERSION` 保留为白名单首项，兼容既有引用）；`host-contract-probe` 按实装版本查表，未登记版本仍红；`ci.yml` 的 `loader-smoke` 改为 `dsh: [0.1.7-rc.2, 0.2.1-rc.2]` 矩阵。
+
+**0.2.x 行为差异（如实登记，非阻断项）**：
+
+- `@deepseek-ai/dsh-tool-subagent@0.2.1-rc.2` 移除 `backgroundMode` / `enableRunInBackground` / `persona` / `toolFilter`，新增 `agentPreset` / `allowedAgentPresets`。本包三档分档行仍写 `backgroundMode: continuable`：实测 0.2.1 的 Config **接受该键并原样保留、加载不报错**（schemastery 对象不拒绝未知键），但代码不再读取该键；`continuable` 语义在 0.2.x 交回 provider（`spawn` 仍具备 `prepareContinuable`）。
+
+**其余同批改动（非行为变更）**：
+
+- 五语 README、`docs/installation.md`、`CONTRIBUTING.md` 同步兼容区间与证据来源；`docs/installation.md` 增「0.2.x 的差异化事实」披露。
+- `docs/installation.md` **词预算上限 13 KB → 15 KB**（实测 14,517 B，按棘轮公式向上取整；理由登记在 `scripts/_lib/doc-budget-reasons.mjs`）：第 4 条是 `host-contract` / `third-review` 两道测试的**直接检查对象**，外移会让用户与门同时读不到披露。
+- 0.2.1-rc.2 核对口径：`app.asar` 内 `dsh-tools` / `dsh-agent-loop` / `dsh-system-prompt` 产物的三处派发形态、`materializeFinalResult` 字段白名单、`defineTool` 形参，以及 Host `Service`/`Event` 目录中 `skills` / `tools` / `commands` / `webServer` 与两条 waterfall 的签名。
+
 ## 19.10.0 — 2026-10-17
 
 <!-- 行为变更 4 条 | 锚点 = CHANGELOG.md § 19.10.0（插件代码全量审查反哺 + 风格基线文类化 + 素材池台面化 + 开场白瘦身） -->
