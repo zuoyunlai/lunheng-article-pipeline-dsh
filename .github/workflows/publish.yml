@@ -27,12 +27,16 @@ jobs:
   #   `publish` 作业 `needs: gates`，门失败即**不可能**开始发布。
   # 保守改动声明：只调整作业边界与权限，不改任何既有发布语义（OIDC / `--tag dsh` / 幂等守卫 / gitHead 断言全部保留）。
   gates:
+    # v19.11.2（反哺 2026-10-17 §P1-9）：发布链同样必须有界超时（此前三个作业全部零超时）。
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       # Actions 固定到 commit SHA（v2.5.2-dsh.13）：可移动的大版本 tag 一旦被上游改动即可被利用来发布恶意版本
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0   # v19.11.2（反哺 §P0-5）：发布来源闸要判「tag 提交是否在默认分支上」，需要历史
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4  # v5 setup-node 仍按 packageManager 探测 pnpm（package-manager-cache: false 只关缓存不关探测），故显式装上
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
@@ -55,6 +59,37 @@ jobs:
       - name: 门 4/4 打包产物冒烟（npm pack → 解包 → 入口 apply 真跑）
         run: node scripts/pack-smoke.mjs
 
+      # ── v19.11.2（反哺 2026-10-17 §P0-5）：**发布来源闸** ─────────────────────────
+      # 病灶：此前只校验「tag == package.json version」，**不校验该提交从哪来**——从游离分支或未合入
+      #   默认分支的提交打 tag 也能一路发布，而 npm 版本不可撤回。判据 = git 祖先关系（廉价、确定）。
+      # 边界（如实）：本步只证明「在默认分支上」，不证明「ci 已绿」——后者由 `ci.yml` 的 push 触发保证；
+      #   若有人推了 tag 却没推分支，本步会红（这正是我们要挡的形态）。
+      - name: 发布来源闸（tag 提交必须在默认分支上）
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          # v19.11.2 修：上游默认分支是 **master**，旧版写死 `main` → `git fetch origin main` 必失败、
+          #   闸门恒定红 = **发布永远不可能成功**（比没有闸更糟：它会伪装成「拦住了不合规发布」）。
+          #   现取仓库真实默认分支，master/main 两种命名都不再受影响。
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$DEFAULT_BRANCH"
+          if git merge-base --is-ancestor "$GITHUB_SHA" "origin/$DEFAULT_BRANCH"; then
+            echo "✓ tag $GITHUB_REF_NAME 指向的提交在 origin/$DEFAULT_BRANCH 上"
+          else
+            echo "::error::tag $GITHUB_REF_NAME 指向的提交**不在 origin/$DEFAULT_BRANCH 上**——禁止从游离分支/未合入提交发布（npm 版本不可撤回）"
+            exit 1
+          fi
+
+      # ── v19.11.2（反哺 §P0-5）：**真实安装证据**（原 gates 缺这一层）────────────────
+      # 此前 gates 只有「四门 + 回归」，没有一次真实 `dsh plugin add`；而 ci 侧有 install-smoke。
+      # 现补上最高已验证宿主（0.2.1-rc.2）的安装烟测——发布物的**可装载性**不再是只在 push 侧验过。
+      - name: 真实安装烟测（npm pack 发布物 → 隔离 DSH_HOME → dsh plugin add → dump-config）
+        run: |
+          set -euo pipefail
+          npm i -g @deepseek-ai/dsh@0.2.1-rc.2
+          node scripts/host-install-smoke.mjs
+
       - name: 随包脚本回归测试（根测试 + 内嵌子技能测试）
         # v18.57.x（审计修订 P1-2）：旧版只有 1 个 glob，漏掉 `skills/*/tests/**`——
         #   子技能 lunheng-commands 的 route.test.mjs（22 用例）不在发布 gates 的验证范围内，
@@ -69,6 +104,7 @@ jobs:
   # ── 发布（唯一持有发布身份的作业）─────────────────────────────────────────────
   publish:
     needs: gates                 # 门失败即不发布（v18.2.6：断链式依赖，比同作业内串跑更强）
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     permissions:
       id-token: write            # 必须：OIDC 信任发布的令牌（只在本作业提权）
@@ -177,6 +213,24 @@ jobs:
           echo '--- 发布后 dist-tags（后） ---'
           npm view "$PKG" dist-tags --json
 
+      # v19.11.2（反哺 §P0-5）：**latest 漂移的硬断言（opt-in）**。
+      #   默认不启用——当前 npm 侧未开 `Allow npm dist-tag`、本仓也无 NPM_TOKEN，此时 latest 必然
+      #   不前移（上一步已 warning 并给出两条闭合路径）。若一刀切升 `::error`，**每次发版都会红**，
+      #   却没给出可执行的修法（真正的修法在 npm 侧，不在仓库里）。
+      #   故做成开关：在仓库变量里设 `LUNHENG_REQUIRE_LATEST=true`（Settings → Variables）后，
+      #   本步硬断言「latest == 本次版本」；届时任何 latest 落后都会让发布作业红。
+      - name: latest 前移硬断言（opt-in：repo variable LUNHENG_REQUIRE_LATEST=true）
+        if: vars.LUNHENG_REQUIRE_LATEST == 'true'
+        run: |
+          set -euo pipefail
+          LATEST="$(npm view "$PKG" dist-tags.latest 2>/dev/null | tr -d '[:space:]')"
+          if [ "$LATEST" = "$VER" ]; then
+            echo "✓ latest == $VER"
+          else
+            echo "::error::latest=$LATEST ≠ 本次发布 $VER —— 用户执行 npm i 会装到旧版。修法见上一步提示（npm 侧开 OIDC dist-tag 权限 / 配 token / 手工 dist-tag add）"
+            exit 1
+          fi
+
       # 发布后审计：核对 npm 上该版本的 gitHead 与本次提交一致、dist-tag 指向本版本。
       # v2.5.2-dsh.14 修（实测教训）：**registry 元数据有传播延迟**——publish 步骤刚成功就 `npm view gitHead`
       # 会拿到空值，旧写法因此误判「产物与 tag 不对应」并红灯（dsh.14 首跑即如此，事后核验 gitHead 其实完全正确）。
@@ -231,6 +285,7 @@ jobs:
   release:
     needs: publish
     if: startsWith(github.ref, 'refs/tags/')
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     permissions:
       contents: write          # 唯一需要仓库写权的地方（建 release + 传资产）；**不含** id-token

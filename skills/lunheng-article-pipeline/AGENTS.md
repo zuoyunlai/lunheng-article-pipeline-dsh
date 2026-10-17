@@ -1,4 +1,4 @@
-> 版本：v19.11.1（DSH bundle 插件）
+> 版本：v19.11.2（DSH bundle 插件）
 
 # AGENTS.md — 论文流水线操作手册
 
@@ -8,7 +8,7 @@
 
 > **清单真源 = `SKILL.md` §启动清单 与 §⚡ 启动速查表**——本处**不再复述**（v18.2.2 收敛：旧版此处复述，构成同一事实两处维护，只要还复述就会再漂）。**改启动清单只改 `SKILL.md`**。
 
-> **包形态（v18.0.0 起）**：包根 = `package.json`（`main` → `lib/index.js` 入口；`dsh.bundle.patch` → `cordis.patch.yml`）+ `lib/` + `skills/`。**`cordis.patch.yml` 里那行自注册条目不可删**（loader 靠它按包名 import 入口；删了技能就不注册——v18.0.0 缺陷、v18.0.1 修复）。两种部署均受支持：① `dsh plugin add` 装 bundle；② 把 `skills/lunheng-article-pipeline/` 复制到任一 skill 根（项目级 rank 100 / 用户级 rank 400）。**包面自检**：`dsh-plugin-dev check`（14 项，目标 0 fail / 0 warn）+ `node --test "tests/**/*.test.mjs" "skills/*/tests/**/*.test.mjs"`（**两个 glob 都要**——内嵌子技能 `lunheng-commands` 的 22 个用例只在后一个里）。**逐项清单、打包层序与官方契约见 [`references/maintainers.md`](references/maintainers.md) §八**（v18.79.0 瘦身：细节外移，此处只留判据）。
+> **包形态（v18.0.0 起）**：包根 = `package.json`（`main` → `lib/index.js` 入口；`dsh.bundle.patch` → `cordis.patch.yml`）+ `lib/` + `skills/`。**`cordis.patch.yml` 里那行自注册条目不可删**（loader 靠它按包名 import 入口；删了技能就不注册——v18.0.0 缺陷、v18.0.1 修复）。两种部署均受支持：① `dsh plugin add` 装 bundle；② 把 `skills/lunheng-article-pipeline/` 复制到任一 skill 根（项目级 rank 100 / 用户级 rank 400）。**包面自检**：`STRICT_WARN=1 node scripts/plugin-surface-check.mjs`（本仓门；内部按需获取官方 `dsh-plugin-dev check`（14 项）并转述其结论，**目标 0 fail / 0 warn**）+ `node --test "tests/**/*.test.mjs" "skills/*/tests/**/*.test.mjs"`（**两个 glob 都要**——内嵌子技能 `lunheng-commands` 的用例只在后一个里）。**逐项清单、打包层序与官方契约见 [`references/maintainers.md`](references/maintainers.md) §八**（v18.79.0 瘦身：细节外移，此处只留判据）。
 
 ## 流水线协议
 
@@ -49,10 +49,14 @@
 3. **改后**：`wc -l` 对比 + `diff <file> <备份目录>/<file>.bak` 验证（不一致立即从 .bak 恢复）；**若改动动了正文的字节/字数/编号，须同步刷新依赖该数值的记录**（字数表 / 素材加载清单 / 证据包视图 / sha 引用——P-1 · policy 真试跑反哺：本会话 3 次主控代改漏刷新产生连带失真）
 4. **跨文件 sync**：用 `cp` 不带任何转换，直接覆盖（skill 副本同步是 `references/` 路径映射）
 5. **改动位置（v18.0.1 新增，教训 #153）**：机制 / 角色卡 / 脚本 / 模板的改动**一律在真源仓库里做**（`<repo>/skills/lunheng-article-pipeline/`——那里才有 `tests/` 与仓库门（真源 = `CONTRIBUTING.md`）），四道门全绿、提交之后**再同步到部署镜像**（项目技能根 `.dsh/skills/<name>/` 或用户技能根）。**不要反过来**：镜像不含 `tests/`，在镜像上改完再回流 = 跳过契约验证（实例：一处 `exit 10` 中止在镜像上自测通过、官方门全绿，合入仓库后 18 个用例红）。**判据：实现与测试同居的目录才是真源**。镜像里不得出现 `package.json` / `cordis.patch.yml` / `docs` / `examples` / `.git` / `lib` / 包级 README / `*.tgz`（`consistency-check` 规则⑨ 判 P1 污染）。
-6. **验证**：本修改走完后必 `grep` 关键词 + 结构性 grep（如本手册的「## 交接报告」所有角色卡齐整性）；改论衡机制/文档后额外跑**四道门 + 回归测试**（门数与命令真源 = `CONTRIBUTING.md` §2）：
-   - `node scripts/consistency-check.mjs` —— 文档一致性（**规则表见脚本头注释**——v18.0.3 起此处不再抄数字，防「加规则忘改数字」；**exit 0 才提交**）
-   - `dsh-plugin-dev check` —— 包面静态门（14 项，清单见 `references/maintainers.md` §八；**目标 0 fail / 0 warn**）
-   - `node --test "tests/**/*.test.mjs" "skills/*/tests/**/*.test.mjs"` —— 随包脚本 + **组合包契约** + 入口回归 + 内嵌子技能（改脚本输出契约、`cordis.patch.yml`、`package.json` 时**必跑**）
+6. **验证**：本修改走完后必 `grep` 关键词 + 结构性 grep（如本手册的「## 交接报告」所有角色卡齐整性）；改论衡机制/文档后额外跑**门 1-4 + 回归测试**（命令真源 = `CONTRIBUTING.md` §2；**此处只列命令，不另立清单**）：
+   - `node skills/lunheng-article-pipeline/scripts/consistency-check.mjs` —— 门 1/4 文档一致性（**规则表见脚本头注释**，此处不抄数字；**exit 0 才提交**）
+   - `STRICT_WARN=1 node scripts/plugin-surface-check.mjs` —— 门 2/4 打包面静态门（内部调用官方 `dsh-plugin-dev check`（14 项）；**warn 也阻塞**）
+   - `node scripts/repo-hygiene-check.mjs` —— 门 3/4 机械卫生门
+   - `node scripts/pack-smoke.mjs` —— 门 4/4 打包产物冒烟（npm pack → 解包 → 入口 apply）
+   - `node --test "tests/**/*.test.mjs" "skills/*/tests/**/*.test.mjs"` —— 回归测试（**两个 glob 都要**，内嵌子技能用例只在后一个里；改脚本输出契约 / `cordis.patch.yml` / `package.json` 时**必跑**）
+   > **受限会话（DSH `workspace-write` 沙箱）降级跑法**：门 2 需从 registry 解析第三方 CLI、门 4 需 `npm pack`、默认 `node --test` 由 runner 派生进程 —— 三者都禁命名管道时会 fail-closed（`spawnSync … EPERM`），**这是环境限制不是本包缺陷**。测试改用 `npm run test:no-isolation`（`--test-isolation=none` 同一进程内跑）；两处结论不一致时**以 CI 为准**。
+   > **v19.11.2（反哺 §P1-7）**：不再把 `dsh-plugin-dev check` 当可执行命令单列——本仓无该可执行体（`package.json` 无 script），等价门即门 2；官方 CLI 的说明只留在 `maintainers.md` §八。
    > **维护期固定动作**（布局探测 / 改规范时登记对照表 / 收口批 `closeout-verify` / 发版前 `no-write-check` / 词预算门 / 跑门前清 staging / 仓库级打包面 CI）——**逐条判据与原理见 [`references/maintainers.md`](references/maintainers.md) §十四**（v18.86.0 常驻集真外移：本节七条长说明逐字迁入该节，原位只留本条指针）。
 
 7. **读中文文件一律显式 `-Encoding UTF8`（v18.2.5 新增）**：`Get-Content` 等文本读取必带该参数。
@@ -60,7 +64,7 @@
 
 ## 开发参考资料（维护者向，v18.22.1 CTX-2 已整体外移）
 
-> **单一真源 = [`references/maintainers.md`](references/maintainers.md) §八**——**官方资料入口表**（契约速查 / 开发路径 / 官方文档全文 / skill 子系统契约 / 打包层序 / 文档写作规范 / 服务签名 / 能力接缝）+ **机械层**（`dsh-plugin-dev check` 14 项 / `verify` / `new`）+ **冲突裁决顺序**（官方 > 本包 > 其他）+ **何时必须查官方资料** + **本包与官方的刻意偏离指针** + **仓库级打包面检查清单**，全在该节。
+> **单一真源 = [`references/maintainers.md`](references/maintainers.md) §八**——**官方资料入口表**（契约速查 / 开发路径 / 官方文档全文 / skill 子系统契约 / 打包层序 / 文档写作规范 / 服务签名 / 能力接缝）+ **机械层**（官方 `dsh-plugin-guide` 的 `dsh-plugin-dev check`（14 项）/`verify`/`new`——**需 `npx`/`dlx` 从 registry 获取，本仓不内置该可执行体；本仓等价门 = `scripts/plugin-surface-check.mjs`**）+ **冲突裁决顺序**（官方 > 本包 > 其他）+ **何时必须查官方资料** + **本包与官方的刻意偏离指针** + **仓库级打包面检查清单**，全在该节。
 >
 > **判据（主人 2026-09-11 指示）**：凡涉及**包形态、插件契约、服务/事件、工具注册、打包发布、官方文档规范**的改动，**先查官方资料再动手**——不得凭记忆、也不得凭本包既有写法推断。
 >

@@ -12,7 +12,7 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join, dirname, basename } from 'node:path'
 import { refsOf, dataCardIds, REF_ID_TOKEN } from '../refs.mjs'
-import { TRUST_COMPLIANT_RE, TRUST_LOOSE_RE } from '../trust.mjs'
+import { TRUST_COMPLIANT_RE, TRUST_LOOSE_RE, trustConflictTokens } from '../trust.mjs'
 import { splitCard } from '../cards.mjs'
 import { ENDNOTE_SECTIONS, ENDNOTE_ORDER, h2Headings, titleMatches } from '../sections.mjs'
 import { countHan } from '../han.mjs'
@@ -391,11 +391,17 @@ if (dataCard) {
   const uniqueDataIds = dataCardIds(text);
   const trustLevelMiss = [];
   const trustLevelDescOnly = [];
+  // v19.11.2（反哺 2026-10-17 §P0-4）：**并列多档 = 歧义**，不得取首个档位当通过。
+  //   旧行为：`TRUST_COMPLIANT_RE` 只认紧跟冒号的首词 → 模板一旦被照抄（`已发布 / 主人投喂 / 二手转引`），
+  //   该条被判「已发布」（最高档）且本门绿灯，证据分级的下游（G1/G12）同步按最高档统计且无人察觉。
+  const trustAmbiguous = [];
   for (const id of uniqueDataIds) {
     // v3 实际格式：### [Dxx] 标题（三级标题）| 数据卡.md 一级 # + [Dxx] 行内（v3 头部）
     const card = splitCard(dataCard, id);
     if (!card) { trustLevelMiss.push(`D${id}(整段缺失)`); continue; }
     const section = card.body;
+    const conflict = trustConflictTokens(section);
+    if (conflict) trustAmbiguous.push(`D${id}(${conflict.join('/')})`);
     const hasStdTrust = TRUST_COMPLIANT_RE.test(section);
     const hasDescTrust = TRUST_LOOSE_RE.test(section);
     if (!hasStdTrust) {
@@ -407,7 +413,7 @@ if (dataCard) {
     }
   }
   let mform6Pass, mform6Detail, mform6Severity;
-  if (trustLevelMiss.length === 0 && trustLevelDescOnly.length === 0) {
+  if (trustLevelMiss.length === 0 && trustLevelDescOnly.length === 0 && trustAmbiguous.length === 0) {
     mform6Pass = true;
     // v18.12.0（全量审计 L-35）**空集真空通过**：`uniqueDataIds` 为空时上面两个数组必然为空 →
     //   「数据卡 0 条」与「每条都标了」输出同一个 pass。审计实测空壳稿即走此路径通过。
@@ -429,8 +435,17 @@ if (dataCard) {
     }
   } else if (trustLevelMiss.length > 0) {
     mform6Pass = false;
-    mform6Detail = `独立段缺失: ${trustLevelMiss.slice(0, 5).join(',')}${trustLevelDescOnly.length ? `; 描述字段仅有: ${trustLevelDescOnly.slice(0, 3).join(',')}` : ''}`;
+    mform6Detail = `独立段缺失: ${trustLevelMiss.slice(0, 5).join(',')}${trustLevelDescOnly.length ? `; 描述字段仅有: ${trustLevelDescOnly.slice(0, 3).join(',')}` : ''}`
+      + (trustAmbiguous.length ? `; **另有并列多档（歧义）: ${trustAmbiguous.slice(0, 3).join(',')}**` : '');
     mform6Severity = trustLevelMiss.length > THRESHOLDS.mform6P0 ? 'P0' : (trustLevelMiss.length > THRESHOLDS.mform6P1 ? 'P1' : 'P2');
+  } else if (trustAmbiguous.length > 0) {
+    // v19.11.2（反哺 §P0-4）：并列多档**不得**被读成「合规且最高档」。判 P1 而非 P0——
+    //   它是「填写形式错」（可机械改写），但后果是证据分级静默失真，故不低于 P1。
+    mform6Pass = false;
+    mform6Detail = `信任级别歧义（同一行并列多档）: ${trustAmbiguous.slice(0, 5).join(',')}`
+      + '——并列写法会让机器只取紧跟冒号的首个档位（通常是最高的「已发布」），等于**静默标最高信任档**；'
+      + '请改写为单档（三档择一），说明放进括号内（括号里的其它档位词不参与判定）';
+    mform6Severity = 'P1';
   } else {
     mform6Pass = false;
     mform6Detail = `独立段缺失（描述字段仅提及）: ${trustLevelDescOnly.slice(0, 5).join(',')}（P2：建议统一迁移到独立段，防描述改写后失锚）`;
@@ -1407,7 +1422,15 @@ try {
     const hard11 = findings11.length > 0;
     results.push({
       gate: 'M-Form-11 素材按需加载闭环',
-      pass: !hard11 && soft11.length === 0,
+      // v19.11.2（反哺 2026-10-17 §P1-1）：**pass 只由硬项决定**。
+      //   旧判据 `pass: !hard11 && soft11.length === 0` 让「格式合规、仅有一条待确认提示」与「真失败」
+      //   在报告里同形（pass=false）。实测代价：25 份真实门报告中该门红 23 次，其中 21 次纯 P2
+      //   （占全部 P2 的 1/4），而 T8 每次都要为它写一段解释。软项并未消失——改由 `soft_only` 承载，
+      //   并在 `m-gate-check` 侧仍计入 exit 3（「需复核，不得当通过」的语义不丢）。
+      pass: !hard11,
+      // `soft_only` 只在**没有硬问题**时才有意义（有硬问题时 pass 已经是 false，不该再挂软标记，
+      // 否则消费方会读到「既失败又仅软」的自相矛盾形态）。
+      ...(soft11.length && !hard11 ? { soft_only: true } : {}),
       detail: [
         `已加载 ${loaded11.size} 条 / 正文引用 ${cited11.size} 个`,
         hard11 ? `硬问题：${findings11.slice(0, 3).join('；')}` : '引用 ⊆ 已加载，加载集有卡片支撑',

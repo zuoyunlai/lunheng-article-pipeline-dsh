@@ -194,7 +194,11 @@ for (const step of steps) {
         _stdoutOnlyNote: '该步非零退出：上面这些字段来自它的 **stdout**，其**落盘结果未确认**（磁盘产物可能未更新）——判定请以各产物自身为准',
       };
     }
-    exitCode = statusVal || 1;
+    // v19.11.2（反哺 2026-10-17 §P2-15）：`statusVal || 1` 把「**拿不到**退出状态」（`null`）回落成
+    //   **1 = P1 内容失败**——与「脚本根本没跑起来」是完全不同的两件事，而 `1` 会触发 T5 修订轮。
+    //   判据：拿不到状态 ⇒ 内部/环境缺陷 ⇒ `EXIT_INTERNAL`（70）。用 `??` 而非 `||` 同时避免 0 被替换
+    //   （理论上 `ok` 会先短路，此处只是不给它留可乘之机）。
+    exitCode = statusVal ?? EXIT_INTERNAL;
     break;
   }
   // v18.2.6（P1-9①）：可选步骤失败**必须可见**（旧版 `opt: true` 失败既不打印也不改退出码 → 静默）
@@ -241,6 +245,26 @@ if (charDegraded) {
   );
 }
 for (const f of optionalFailures) notes.push(`可选步骤「${f.step}」非零退出 ${f.exit}——该步骤的输入/产物不可信（缺则不是「通过」）`);
+
+// v19.11.2（反哺 2026-10-17 §P0-3）：**快轨 M 门不得当全量通过**。
+//   病灶：`--lite-profile` 只跑 5 门却产出与全量同形的报告（旧版连标记都没有），`exit:0` 会被
+//   下游读成「26 项全过」。现按报告里的 `lite_profile` 记一条 note → 归到 exit 3（需复核），
+//   **不硬失败**：快轨是 v19.8.0 的正式入口，是否允许「以快轨交付」属主人的语义裁定
+//   （见反哺报告 §P0-3 风险栏），脚本只负责让「这是子集」不可能被静默忽略。
+{
+  try {
+    const rp = join(project, 'final', 'M-Gate-Report.json');
+    if (existsSync(rp)) {
+      const lite = JSON.parse(readFileSync(rp, 'utf8'));
+      if (lite.lite_profile === true) {
+        notes.push(
+          `M 门为**快轨子集**（lite_profile=true：只跑 ${lite.total} 门，跳过 ${lite.gates_skipped ?? '?'} 门）`
+          + '——**不得当全量 M 门通过**；全量结论须重跑 `m-gate-check.mjs`（不带 `--lite-profile`）',
+        );
+      }
+    }
+  } catch { /* 报告不可读：M 门步已按自身语义报错，此处不重复判，避免把「读不动」伪装成「快轨」 */ }
+}
 
 // v18.2.6（P1-9①）：可选步骤失败 / 字数口径失真时，**不得**给出「✅ 终检通过」。
 //   归到既有语义码 3（「需复核，不得当作通过」）而不是造新码：它既不是内容 P0/P1，也不是脚本崩溃（70）。

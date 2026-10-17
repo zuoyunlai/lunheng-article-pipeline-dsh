@@ -1609,6 +1609,27 @@ try {
           '备注（不计失败）：精简段之后还有 >20 行实质章节（F3 检查 / 缺口表为 04 卡必填段，§11 位于其前）——本项不据此判失败；T5 按「## §11」标题定位读取不受影响',
         );
       }
+      // v19.11.2（反哺 §13.4 测量结论）：**大纲逐节结构是否被遵守**。
+      //   实测（39 个项目）：04 卡 :56/:65 早已要求「每节承重证据 top1」与「（预算 ≥N 字）」，
+      //   但只有 3 份写了承重、2 份写了预算（≈8% / 5%）——**规范没有消费者，写了也白写**。
+      //   这里把它接成**备注（notes）而非软提示**：存量项目因此零噪音（不改 pass / exit），
+      //   但每次跑门都会把「几节写了」报进 detail，T7 读报告即可见（07 卡已加对应审计项）。
+      //   为什么不做成 P2：M-Form-11 的教训——一条在 90% 项目上都红的 P2，等于把整门的信号淹掉。
+      const secHeads10 = ol10.map((l, i) => ({ l, i })).filter(({ l }) => /^##\s+\d+[\s、.]/.test(l));
+      let secNoTop1 = 0, secNoBudget = 0;
+      for (let k = 0; k < secHeads10.length; k++) {
+        const start = secHeads10[k].i;
+        const end = k + 1 < secHeads10.length ? secHeads10[k + 1].i : ol10.length;
+        const block = ol10.slice(start, end).join('\n');
+        if (!/承重证据\s*top1/.test(block)) secNoTop1++;
+        if (!/（\s*预算\s*≥\s*\d+\s*字\s*）/.test(secHeads10[k].l)) secNoBudget++;
+      }
+      if (secHeads10.length && (secNoTop1 || secNoBudget)) {
+        notes10.push(
+          `大纲逐节结构：${secHeads10.length} 个编号节中 **${secNoTop1} 节无「承重证据 top1」、${secNoBudget} 节无「（预算 ≥N 字）」**`
+          + '——04 卡 :56/:65 早已要求（全仓实测仅 3/39、2/39 遵守）；不影响本门判定，但 T7 应据此判「大纲规范未落实」',
+        );
+      }
       const hard10 = findings10.length > 0;
       results.push({
         gate: 'M-Exist-10 大纲 §11 精简段',

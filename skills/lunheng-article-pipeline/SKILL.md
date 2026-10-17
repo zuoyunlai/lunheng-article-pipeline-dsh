@@ -1,11 +1,11 @@
 ---
 name: "lunheng-article-pipeline"
-version: "19.11.1"
-description: "论衡 v19.11.1：DSH 原生多 Agent 深度长文流水线（学术论文/商业评论/行业分析/公众号）。9 个独立角色 T1-T9 + 主控；三角验证 + M 门 + G 审计 + 修订回环双轨 + 期刊匹配 + auto_cite + 内嵌 11 个 /lunheng 斜杠命令。适用 ≥2000 字、证据可追溯的长文（4 人在环、数小时）；不适用 <2000 字短文、文学创作、理工科论文、营销软文、缺一手数据。"
+version: "19.11.2"
+description: "论衡 v19.11.2：DSH 原生多 Agent 深度长文流水线（学术论文/商业评论/行业分析/公众号）。9 个独立角色 T1-T9 + 主控；三角验证 + M 门 + G 审计 + 修订回环双轨 + 期刊匹配 + auto_cite + 内嵌 11 个 /lunheng 斜杠命令。适用 ≥2000 字、证据可追溯的长文（4 人在环、数小时）；不适用 <2000 字短文、文学创作、理工科论文、营销软文、缺一手数据。"
 whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 description（v18.0.5：官方目录只渲染 name + description，本字段对模型不可见，保留仅供工具链与维护者阅读）。"
 ---
 
-> 版本：v19.11.1（DSH bundle 插件）
+> 版本：v19.11.2（DSH bundle 插件）
 > **逐版明细与历史成因外移（v18.22.1 CTX-1）**：本文件只留**现行口径**；逐版明细与成因（v18.12.1 / v18.12.0 / v18.11.0 / v18.10.0 / v18.8.0 / v18.7.x …）全部在**仓库根 `CHANGELOG.md`** 同名版本段——该文件**不在随包目录内**（npm 发布物与纯技能目录部署都没有它），读不到就跳过，**不要当成断链**。
 > **v2.5.2-dsh.8 角色语义定案（主人指令）**：**9 个角色 T1-T9 各自独立、不可相互替代**——T8 终检不是「主控兼做的杂活」而是独立角色（有独立角色卡），只是执行者由主控担任（**主控 = T0 调度 + T8 终检执行双重身份**），不 spawn 子代理；**T9 审稿启用与否按 [`references/_shared/文类档案.md`](references/_shared/文类档案.md)**（`academic-cn/-hum/-case` 必选不可关、`lit-review` 可选、其余默认不选；v18.75.0 由旧「默认选中」改）。
 
@@ -49,11 +49,11 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 - ✅ **随包脚本白名单（v18.96.0 增补素材池三脚本后：共 36 个）**：`scripts/*.mjs` = consistency-check / m-gate-check / g-audit-check / fix-gates / md2html / pdfcheck / token-cost / count-chars / segment-chars / ref-get / build-evidence-bundle / final-check / refresh-gates / normalize-trust-level / model-routing / token-budget / apply-diff / lunheng-stats / handoff-check / apply-revision-cycle / apply-compression-cycle / structure-check / methodology-check / cite-coverage-check / journal-fit / meta-synthesize / quality-score / sources-index / self-check / disproofs-check / cite-format / run-report / preflight / pool-query / pool-extract / pool-report + 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等）——**受限 shell 使用**（另：`_lib` 子目录为共享库，非入口、不单独调用）——主流程按需执行随包脚本白名单与有限验证命令；其余命令须经主人同意。
   > **本行是「随包脚本清单与计数」的唯一真源**（`scripts/self-check.mjs` 拿它做**白名单 ↔ 磁盘双向对账**）——**不得外移、不得改计数**。**各脚本的用法 / exit 语义 / 边界**见 [`operations-capability.md`](operations-capability.md)。
 - ❌ **不做**：凭据访问 / 浏览器自动化 / 定时任务（除白名单脚本与验证命令外，主控默认不执行任意 shell，LLM 推理判定）。
-- ⚙️ **主控亲跑路径（v18.77.0 P-2 收口）**：`final-check.mjs` / `m-gate-check.mjs --adjudicate` / `handoff-check.mjs` / **`run-report.mjs`（v18.93.0 起 Phase 5 交付动作必跑**：产 `final/运行报告.html` + `final/运行报告.json` 边车，后者即运行面板全部图表的数字层；同批 `token-cost.mjs` 写 `final/token-cost.json`）** / `m-gate-check.mjs`（终检期）**四条**属「主控亲跑」——**不走子代理 spawn、不经 `subagent` 代发**。`--adjudicate` 前的 `<裁定.json>` 由主控 LLM 亲写（判据：08 卡写死「T8 不 spawn」，子代理产出的"裁定 JSON"在本门禁止出现）。
+- ⚙️ **主控亲跑路径（v18.77.0 P-2 收口）**：`final-check.mjs` / `m-gate-check.mjs`（**含 `--adjudicate` 与终检期复跑**）/ `handoff-check.mjs` / **`run-report.mjs`（v18.93.0 起 Phase 5 交付动作必跑**：产 `final/运行报告.html` + `final/运行报告.json` 边车，后者即运行面板全部图表的数字层；同批 `token-cost.mjs` 写 `final/token-cost.json`）** —— **四条**属「主控亲跑」——**不走子代理 spawn、不经 `subagent` 代发**（计数口径：**同一条命令算一条路径**，`--adjudicate` 与终检期复跑同属 `m-gate-check`）。`--adjudicate` 前的 `<裁定.json>` 由主控 LLM 亲写（判据：08 卡写死「T8 不 spawn」，子代理产出的"裁定 JSON"在本门禁止出现）。
 - 🔒 **机制文件写保护**：`SKILL.md` / `AGENTS.md` / `references/**` / `scripts/**` / `cordis.patch.yml` 属**机制文件**——任何角色（含主控与子代理）**不得**用 write/edit 改动；改进动议只写 `audits/反哺报告-vN.md`，由主人在 host shell apply。**改机制文件 = P0 违规，本次交付作废**。主人授权走 `LUNHENG_ALLOW_MECH_EDIT=1`；**已知边界：guard 只看工具调用，`pwsh` 不经此门**。
-- 🧾 **闸门必须留机械证据**：T2.5/T7.5 与 M 门**不得只凭自述**——附脚本 exit code + 产物路径。exit：`0` 通过 / `1` P1 / `2` P0 / `3` 仅 P2·soft·SKIP（**需复核，不得当通过**）/ `10` 参数路径错（**不得与 P1 混用**）/ **`30` `--adjudicate` 裁定被拒**（拒绝裁定 ≠ 内容失败）/ `70` 内部错误。`model-routing.mjs` 另有 `4`＝需人工决定；`handoff-check.mjs` 用 `20/21/22`。
+- 🧾 **闸门必须留机械证据**：T2.5/T7.5 与 M 门**不得只凭自述**——附脚本 exit code + 产物路径。exit：`0` 通过 / `1` P1 / `2` P0 / `3` 仅 P2·soft·SKIP（**需复核，不得当通过**）/ `10` 参数路径错（**不得与 P1 混用**）/ **`30` `--adjudicate` 裁定被拒**（拒绝裁定 ≠ 内容失败）/ `70` 内部错误。`model-routing.mjs` 另有 `4`＝需人工决定；`handoff-check.mjs` 用 `20/21/22`。**`3` 是「需人工复核」语义族**（M 门=仅 P2·soft·SKIP；`run-report`=缺 status.md；`cite-format`/`journal-fit` 等=适用但缺输入）——**不是 M 门专属码**，判读以各脚本 `--help` 为准。
 - 🛠 **原生工具 / 人类命令（可选）**：工具 `lunheng_m_gate`（M 门机械预检；给了 `report` 会写那一份门报告，v19.6.1 起只允许落在会话工作区或系统临时目录内）/ `lunheng_char_count` / `lunheng_handoff_check` / `lunheng_ethics_sanitize`——清单里有就优先用，没有就 `pwsh` 直调脚本（**两条路径等价，脚本是唯一真源**）；主人可用 `/lunheng-status` 自查进展。
-- 🪪 **技能来源自检**：启动时用 `read` 核对本文件版本头「> 版本：v…」与期望一致；**不一致即停机**并报告主人「技能来源可疑」——同名 skill 按 **rank 数字越小越近（胜出）**（`100 < 200 < 250 (bundle) < 300 < 500 < 600`），低 rank 会**静默顶替**。完整 rank 表见 [`references/maintainers.md`](references/maintainers.md) §一。
+- 🪪 **技能来源自检**：启动时用 `read` 核对本文件版本头「> 版本：v…」与期望一致；**不一致即停机**并报告主人「技能来源可疑」——同名 skill 按 **rank 数字越小越近（胜出）**（`100 < 200 < 250 (bundle) < 300 < 400 (用户级) < 500 < 600`），低 rank 会**静默顶替**。完整 rank 表见 [`references/maintainers.md`](references/maintainers.md) §一。
 - ℹ️ **M 门**：**机检 25 项（M-Form 1-11 + M-Exist 1-12 + M-Integrity-1 + M-Fact-1）+ 人工 1 项（M-Integrity-2）= 总 26 项**——文档内 shell 示例仅供人类复核，agent 不执行任意 shell。
 - 💰 **长会话体量治理**：会话成本 ≈ **步数 × 每步上下文**；最贵的是**人驱动的主会话**。① 审计类长会话**按 Phase 拆 session**（靠落盘产物 + `status.md` 交接）；② **先跑机械门，只把失败项交给会话**（`m-gate-check` / `final-check` / `handoff-check` / `consistency-check` / `repo-hygiene-check` 零模型成本）。使用者向说明见 [`docs/usage.md`](../../docs/usage.md)。
 
@@ -72,7 +72,7 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 
 **必读（3 项｜**本清单是唯一真源**，`AGENTS.md` §启动时必读 只做指针）**
 1. `references/pipeline-readme.md#overview` / `#dispatch` / `#model-config`——**只需**「流水线全景 / 派发话术 / 模型配置」三节（锚点存活性由 `consistency-check.mjs` 断言；派发话术是 spawn 前必读，勿凭记忆复制，教训 #57）
-2. `references/glossary.md`——核心概念单一真源（**按需查节**，不必全文，锚点 `#concepts`）；其中 **§十二 本技能自用术语与文档约定**（与官方文档规范的刻意偏离及理由）**改动机制前必读**——不读会把刻意设计当疏漏改掉
+2. `references/glossary.md`——核心概念单一真源（**按需查节**，不必全文；**不要用 `#concepts`**——它是全文级锚点，占 99.9%）。取节前先 `node scripts/ref-get.mjs references/glossary.md --list` 看可用锚点与字节数，再取具体节）；其中 **§十二 本技能自用术语与文档约定**（与官方文档规范的刻意偏离及理由）**改动机制前必读**——不读会把刻意设计当疏漏改掉
 3. `MEMORY.md` + `memory/YYYY-MM-DD.md`（**项目目录侧**、非技能包内置；主人偏好 + 最近关注，无则跳过）
 
 **按需读（派发时再读，不必预习）**
@@ -80,7 +80,7 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 5. 各模板 `references/templates/*`——用到哪份读哪份
 
 **T7/T8 阶段读**
-6. **G 体系**（`references/_shared/audit-checklist-quickref.md` + `_shared/M-Gate-Algorithm.md#mgate`）——仅 T7 审计 / T8 终检读；**该文档 97 KB——按需读请用 `node scripts/ref-get.mjs references/_shared/M-Gate-Algorithm.md #mgate` 只取该节（输出带真字节数），不要整读**（v18.22.2 CTX-3）；机械项先跑 `scripts/m-gate-check.mjs`（**注意**：脚本第二参数必须是**证据包目录** `<final/证据包>`，不是项目目录；缺 `数据卡.md`/`文献卡.md` 时脚本在 stderr 告警——**先看告警再读结论**：缺卡会让你看到「无对应条目」类 P0，多半是路径传错而非内容缺陷，且更常见的原因是证据包还没刷新——v18.0.0）
+6. **G 体系**（`references/_shared/audit-checklist-quickref.md` + `references/_shared/M-Gate-Algorithm.md#mform`）——仅 T7 审计 / T8 终检读；**该文档全文 116 KB——按族取节（v19.11.2 起有短锚点，实测占比）：`references/_shared/M-Gate-Algorithm.md#mform` 43 KB(37%) / `references/_shared/M-Gate-Algorithm.md#mexist` 42 KB(36%) / `references/_shared/M-Gate-Algorithm.md#mintegrity` 12 KB(10%)，用 `node scripts/ref-get.mjs references/_shared/M-Gate-Algorithm.md #mform` 取；**不要用 `references/_shared/M-Gate-Algorithm.md#mgate`（全文锚点 99.7%，等于整读）**（v18.22.2 CTX-3）；机械项先跑 `scripts/m-gate-check.mjs`（**注意**：脚本第二参数必须是**证据包目录** `<final/证据包>`，不是项目目录；缺 `数据卡.md`/`文献卡.md` 时脚本在 stderr 告警——**先看告警再读结论**：缺卡会让你看到「无对应条目」类 P0，多半是路径传错而非内容缺陷，且更常见的原因是证据包还没刷新——v18.0.0）
 
 **全程硬约束**
 7. **Phase 0 决策必须落盘 `阶段确认-Phase0.md`**：四门/通知（0 门-A / 2.5 通知 / 3.5 通知 / 5 门-B）通用同一模板；Phase 0 的「外部服务授权串（检索/推理/脱敏）+ 项目名 + 篇幅 + 文类（= 引用格式等 11 项的上位选择）」写入 §6 可回填表（**v18.12.0，L-41**：删幽灵字段「学派」——全库无采集点）。**四份必须落盘**：默认「门-A / 门-B 阻塞 + P2.5/P3.5 通知不阻塞」，四份都要有 §6 五字段回填（阻塞门=主人真实回复，通知单=主控自决并标注）；Phase 5 交付前跑 `handoff-check --role T8 --require-gates --session-log <本会话 id> [--session-root $DSH_HOME/sessions]` 机械验收（缺门 → 20 / §6 未回填 → 21）。**`--session-log` 是「人在环真的答过」的唯一独立核对层**（v19.6.0 起列为 Phase 5 必跑；账本由主控写＝自述，宿主会话日志主控改不了）——**不加它，则留痕只剩自述**；不加时账本 `callId` 可选，**加了则该字段必填**。**缺门 → 补开那一门，不是写「未留痕」了事**。
@@ -94,7 +94,7 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 
 ## ⚡ 启动速查表
 
-- 版本：v19.11.1｜角色：T0 主控（= T8 终检执行者）＋ T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / T8 终检（主控亲执行）/ T9 审稿（启用按文类档案：`academic-cn/-hum/-case` 必选，其余默认不选）
+- 版本：v19.11.2｜角色：T0 主控（= T8 终检执行者）＋ T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / T8 终检（主控亲执行）/ T9 审稿（启用按文类档案：`academic-cn/-hum/-case` 必选，其余默认不选）
 - Phase：**主干 6 步 = S1 定题与授权 → S2 检索 → S3 分析与大纲 → S4 写作与批判 → S5 审计与终检 → S6 交付**（v19.8.0 反哺 v9 D1 起**主干 + 挂件两层模型**）；挂件（`挂件@S` 声明触发条件/产物/豁免）：查池@S1 → 补检索@S2 → 大纲人闸@S3 → 洞察人闸@S4 → 批判@S4 → 修订回环@S5 → 配图@S5 → G14 终闸@S5 → 审稿@S5。**兼容别名（至少保留一个 major 版本，旧编号不改写）**：0→0.5 查池→1→1.5 补检索→2→2.5 大纲→3→3.5 洞察→3.6 批判→4→4.2 修订→4.5 配图→4.6 G14→4.7 审稿→5。
   > **兼容别名说明**：上行的旧小数编号是**纯别名**——`agents-log.md` / `status.md` / 闸门记录里的旧编号**不改写**；新文档与 `todo_write` 排程用 S1-S6；流水线全景（pipeline-readme）仍是各阶段的详述真源（保留旧编号）。
   > **本行的权威性**：本行是主控排 `todo_write` 的**唯一 Phase 真源**；机检规则 **㉔** 断言「流水线全景出现的 Phase 编号 ⊆ 本行」（上行的别名数字链承担旧编号的白名单职责）。
@@ -129,7 +129,7 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 
 **定位**：中文学术/深度长文专用流水线（G14 中文 AI 痕迹闸 / GB/T 7714-2015 / Top 3 中文期刊 / 中文新闻源为设计定位）；非中文场景请换用其他工具或 Phase 0 显式声明语言。
 
-**适用**：需事实/数据/多方观点的证据型长文；需人在环把关；**愿意等数小时**（本包审计实测：17 个有效项目里 8 个跨度 ≥8 h、另 8 个 ≤4 h——故不给小时区间；与 `description` 同口径）。
+**适用**：需事实/数据/多方观点的证据型长文；需人在环把关；**愿意等数小时**（本包审计实测：17 个有效项目里 8 个跨度 ≥8 h、8 个 ≤4 h、**1 个介于两者之间**——故不给小时区间；与 `description` 同口径）。
 
 | 字数 | 建议 | 配置差异 |
 |---|---|---|
@@ -205,7 +205,7 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 ## 派发话术与审计必查项（按需加载）
 
 **派发话术**：**开工卡优先**——主控 spawn 前按 [`references/dispatch-cards.md`](references/dispatch-cards.md) 对应角色卡（≤12 行最小模板，含「读」清单与格式样例指针）发起；卡覆盖不到的长话术见 [`references/pipeline-readme.md#派发话术`](references/pipeline-readme.md)（T8 终检主控亲执行、不 spawn）。**卡优先、话术兜底**。
-**审计必查项**：G0-G14（**15 主项 + 3 子项 = G0.5 / G2.5 / G4-2**，与 `m-gate-check.mjs` 的 M-Exist-9 同口径）+ M 门 + 实战子项见 [`references/_shared/audit-checklist-quickref.md`](references/_shared/audit-checklist-quickref.md)；审计卡主体见 [`references/agents/07-审计-auditor.md`](references/agents/07-审计-auditor.md)（SKILL 不重复维护）。
+**审计必查项**：G0-G14（**15 主项 + 3 子项 = G0.5 / G2.5 / G4-2**，与 `m-gate-check.mjs` 的 M-Exist-9 同口径）；**另有 G15（模式相关，按需）与 G16-反方段骨架预扫（`g-audit-check.mjs` 机检，P2 档）——两者不进 G 主清单**（`G_MAIN` 仍为 G0–G14 闭区间 15 项）。实战子项见 [`references/_shared/audit-checklist-quickref.md`](references/_shared/audit-checklist-quickref.md)；审计卡主体见 [`references/agents/07-审计-auditor.md`](references/agents/07-审计-auditor.md)（SKILL 不重复维护）。
 
 **派发话术锚点速查**（读 pipeline-readme.md 后定位）：T1 →「### 文献检索员（并行①，T1）」；T2 →「### 数据检索员（并行②，T2）」；T3 →「### 案例检索员（并行③，T3…）」；**T3.5 →「### 文献补标注检索员（T3.5…）」（可选，仅简报勾选时派发，开工卡见 dispatch-cards.md）**；T4 →「### 分析员（T4…）」；T5 →「### 写手（T5…）」；T6 →「### 批判伙伴（T6…）」；T7 →「### 审计员（T7…）」；T9 →「### 同行评审（T9…）」；G14 →「### G14 中文 AI 痕迹检测器」。
 
@@ -224,7 +224,7 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 ## 角色卡与模板
 
 - **9 个独立角色卡（T1-T9）**：`references/agents/01~09`（00-主控-coordinator.md = T0 调度 + T8 终检双重身份；**`00-主控-扩展职责.md` = T0 的实操手册（含 §一–§二十三：编排循环防空转 / 闸门公共动作 / 主人侧产物…）**；T8 独立卡 08-终检-finalizer.md，主控亲执行不 spawn；T9 启用按文类档案（`academic-cn/-hum/-case` 必选，其余默认不选）；T3 任何量级必 spawn 含 0 条空卡协议）。
-- **模板**：`references/templates/`（**清单以 `ls references/templates/` 为准，不在此写死数字——防 27/28 式计数漂移**；按用途取用，别整目录读）：`任务简报 / status / 交接报告 / 文献卡 / 数据卡 / 案例卡` 各含 **full + lite**（实战用 lite，培训/字段详解用 full）+ 单文件模板 `先行者清单 / G14检测报告 / 主人确认（= 阶段确认单通用模板）/ AI-使用声明 / 修订说明-template-full（无 lite 版） / 投稿就绪检查表 / 图表-SVG / 素材加载清单 / 闸门记录 / 交付说明 / 局限性 / 模型路由表 / 进展-主人版 / 主人投喂清单 / style-baseline`。
+- **模板**：`references/templates/`（**清单以 `ls references/templates/` 为准，不在此写死数字**；按用途取用，别整目录读）：`任务简报 / status / 交接报告 / 文献卡 / 数据卡 / 案例卡` 各含 **full + lite**（实战用 lite，培训/字段详解用 full）+ 单文件模板 `先行者清单 / G14检测报告 / 主人确认（= 阶段确认单通用模板）/ AI-使用声明 / 修订说明-template-full（无 lite 版） / 投稿就绪检查表 / 图表-SVG / 素材加载清单 / 闸门记录 / 交付说明 / 局限性 / 模型路由表 / 进展-主人版 / 主人投喂清单 / style-baseline / 审计报告 / 开题报告 / 复核报告 / COI / CRediT / 伦理审批 / 数据可用性 / sources-索引 / auto_cite-补充`。
   > `机检硬格式` 表已收口到 [`references/_shared/机检硬格式.md`](references/_shared/机检硬格式.md)。
 - **运行手册**：`references/pipeline-readme.md`（含 T1-T9/G14 派发话术 + M 门 + F 模式 + AI 披露）。
 - **新增文档索引**：字数判定表 / degraded-scenarios / 期刊数据库+匹配算法 / 中文数据源集成 / format-export / case-studies 均位于 `references/_shared/` 与 `references/`（路径见各节链接）。

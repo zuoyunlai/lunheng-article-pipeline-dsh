@@ -1,6 +1,6 @@
 # 执行能力边界（SKILL.md §执行能力边界 的**详述外移面**）
 
-> 版本：v19.11.1
+> 版本：v19.11.2
 > **本次外移**：独立审计批 3（常驻面瘦身）——该节原占 `SKILL.md` 的 36.8%，而常驻集是**每会话固定开销**。
 > **定位**：本文件是 `SKILL.md` §⚠️ 执行能力边界 的**逐脚本详述与边界论证**。**按需读**——只有当你真的要调用某个脚本、
 > 或要判「某项实测该谁跑」时才读它；主控启动只需读 `SKILL.md` 的那一版**要点 + 指针**。
@@ -12,7 +12,7 @@
 > **边界（如实）**：本文件与 `SKILL.md` 的分工是「**承重判据留在 SKILL.md ／ 逐脚本用法与论证外移到这里**」；
 > 两处若冲突，**以 `SKILL.md` 与脚本实现为准**（脚本是唯一真源）。
 >
-> **常驻面实测**：**逐轮以 `repo-hygiene-check` 规则 ⑨ 输出的「常驻集合计 X/54.0 KB」为准——此处不复述逐文件字节数**（复述即漂；同 `quick-facts.md` §常驻上下文面 判据）。合计上限 **54.0 KB**（v18.88.0「多宿主收口」裁定由 56 下调 54 KB；真源 = `repo-hygiene-check.mjs` 的 `ALWAYS_LIMIT`）。
+> **常驻面实测**：**逐轮以 `repo-hygiene-check` 规则 ⑨ 输出的「常驻集合计 X/<上限>」为准——此处不复述逐文件字节数，也不复述上限数值**（复述即漂；同 `quick-facts.md` §常驻上下文面 判据）。**上限的唯一真源 = `repo-hygiene-check.mjs` 的 `ALWAYS_LIMIT` 常量**（v19.11.2 起本文只留指针：旧值曾与常量脱节，一份自称真源的文档给出错误判据，棘轮即失效）。
 > **判据**：常驻面**再写入前先做外移或棘轮决策**，不得以「就加一行」逐次侵蚀。
 > **登记面余量（同批实测，供后续批次决策）**：`glossary.md` 36 B、`字数判定表.md` 20 B、`maintainers.md` 60 B、`M-Gate-Algorithm.md` 86 B、`docs/troubleshooting.md` 58 B、`docs/introduction.md` 190 B——**六份文档几乎不可再写**，任何增补都须同批外移或抬棘轮并写明理由。
 
@@ -43,7 +43,7 @@
   > **`disproofs-check.mjs`**：**负知识账本校验**（只读）——`node scripts/disproofs-check.mjs <项目目录> [--json] [--file <路径>]`，核 `audits/disproofs.jsonl`（一行一条）的**形状与必填**：`id/claim/verdict/basis/evidence/reproduce/author` 七字段齐备、`verdict ∈ disproven/weakened/unverifiable`、`evidence` 非空数组、`id` 不复用。exit `0` 合法 ｜ `1` 有非法行**或账本存在却 0 有效行**（空占位与「没记」同形，禁止）｜ **`3` 账本不存在**（须人工确认「确实无已证伪项」还是「漏记」——与 `g-audit-check` 的「`N/A` ≠ `SKIP`」同口径，**不把「没账本」读成通过**）｜ `10` / `70`。**它不是闸门、不判 P0/P1**（挂闸门会催生「为过门补一条像样的证伪」的刷分压力）；契约 = [`references/_shared/负知识账本.md`](references/_shared/负知识账本.md)。
   > **`self-check.mjs`**：**随包完整性自检**（给「装完包的人」的离线自证入口）——`node scripts/self-check.mjs [--json]`，五组：白名单↔磁盘**双向**对账 / 承重文件与关键目录 / 版本头一致性 / 包面齐备 / 相对导入可解析。**零 spawn、零写盘、零网络**，不依赖仓库与 DSH 会话。exit `0` 全过 ｜ `1` 有 FAIL（包不完整）｜ `3` 无 FAIL 但有 SKIP（须人工复核）｜ `10` 参数错 ｜ `70` 内部错。**它不是闸门、也不做任何内容判定**——只回答「手里这份包是不是完整的」（npm 发布物不含 `tests/`，故这是包内唯一可验物；详见 `QUICKSTART.md`）。
 - ❌ **不做**：凭据访问 / 浏览器自动化 / 定时任务（除白名单脚本与验证命令外，主控默认不执行任意 shell，LLM 推理判定）。
-- ⚙️ **主控亲跑路径（v18.77.0 P-2 收口）**：`final-check.mjs` / `m-gate-check.mjs --adjudicate` / `handoff-check.mjs` / `m-gate-check.mjs`（终检期使用）**四条路径**属「主控亲跑」——**不走子代理 spawn**，**不通过 `subagent` 工具代发**。其中 `m-gate-check --adjudicate` 前的 `<裁定.json>` 由主控 LLM 在裁定过程中推理写出（凭证伪四件套由主控亲生成），**不是子代理产物**。判据：08 卡的「T8 不 spawn 子代理」已写死，子代理路径产出的"裁定 JSON"在本门禁止出现——`subagent` 工具对新上下文不继承主控裁定，新上下文写出的 `<裁定.json>` 会让 `verdict_stale` 在终检期持续保留。
+- ⚙️ **主控亲跑路径（v18.77.0 P-2 收口）**：`final-check.mjs` / `m-gate-check.mjs`（**含 `--adjudicate` 与终检期复跑**）/ `handoff-check.mjs` / **`run-report.mjs`（v18.93.0 起 Phase 5 必跑）** —— **四条路径**属「主控亲跑」——**不走子代理 spawn**，**不通过 `subagent` 工具代发**（计数口径与 `SKILL.md` 同源：同一条命令算一条路径）。其中 `m-gate-check --adjudicate` 前的 `<裁定.json>` 由主控 LLM 亲写（凭证伪四件套由主控亲生成），**不是子代理产物**。判据：08 卡写死「T8 不 spawn」——子代理产出的 `<裁定.json>` 会让 `verdict_stale` 在终检期保留。
 - 🔒 **机制文件写保护**：`SKILL.md` / `AGENTS.md` / `references/**` / `scripts/**` / `cordis.patch.yml` 属**机制文件**——任何角色（含主控与子代理）**不得**用 write/edit 改动；改进动议只写 `audits/反哺报告-vN.md`，由主人在 host shell apply。**改机制文件 = P0 违规，本次交付作废**。bundle 部署下由入口注册的全局 `ctx.tools.guard()` 机制否决（主人授权走 `LUNHENG_ALLOW_MECH_EDIT=1` 或插件行 config）；已知边界与部署处方见 [`references/maintainers.md`](references/maintainers.md) §二（运行期只需记住：guard 不覆盖 pwsh）。
 - 🧾 **闸门必须留机械证据**：T2.5/T7.5 与 M 门**不得只凭自述**——附脚本 exit code + 产物路径。exit：`0` 通过 / `1` P1 / `2` P0 / `3` 仅 P2·soft·SKIP（需复核，不得当通过）/ `10` 参数路径错（含异常路径，`exit-guard` 统一映射，**不得与 P1 混用**）/ **`30` `--adjudicate` 裁定被拒**（红线命中 / 证伪四件套不全 / 缺 `true_p0`-`true_p1`；v18.12.0 L-05，**拒绝裁定 ≠ 内容失败**）/ `70` 内部错误。`model-routing.mjs` 用 `4`＝需人工决定；`handoff-check.mjs` 用 `20/21/22`（收报验收，见下 §⚡）；非闸门工具不共用本语义（见 `docs/troubleshooting.md §8`）。
 - 🛠 **原生工具 / 人类命令（可选）**：只读工具 `lunheng_m_gate` / `lunheng_char_count` / `lunheng_handoff_check` / `lunheng_ethics_sanitize`（伦理脱敏，v18.60.1）——清单里有就优先用（省 `pwsh` + stdout 解析），没有就 `pwsh` 直调脚本（两条路径等价，脚本是唯一真源）；主人可用 `/lunheng-status` 自查进展（不产生模型消息）。详见 `references/_shared/DSH-集成方案.md`。

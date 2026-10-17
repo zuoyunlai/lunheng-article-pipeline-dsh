@@ -10,9 +10,23 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 const ROOT = path.resolve(import.meta.dirname, '..')
-const [OLD, NEW] = process.argv.slice(2)
-if (!/^\d+\.\d+\.\d+$/.test(OLD || '') || !/^\d+\.\d+\.\d+$/.test(NEW || '')) {
-  console.error('用法：node scripts/bump-version.mjs <old x.y.z> <new x.y.z>')
+// v19.11.2（反哺 2026-10-17 §P1-10）：新增 `--check` —— **只判定、不写盘**。
+//   为什么需要：本脚本是发版链上唯一会写仓库文件的工具，却既无测试也无 CI 调用；
+//   `--check` 让 CI 能在**不写盘**的前提下回答「当前树里还有没有被漏 bump 的版本声明」。
+//   exit 语义（与仓内既有约定一致）：0 = 无待改（或已 bump 到位）；1 = 存在待改但未写；10 = 参数错。
+const CHECK = process.argv.includes('--check')
+// v19.11.2（反哺 §S3 第一步）：**`--sync` = 版本头生成化**。
+//   病灶：每次发版要人工/多脚本同步 89 份文档的 `> 版本：vX` 头，漏一份就是一次 P1 漂移
+//   （本仓历史上已发生多次）。`--sync` 把「该写什么」完全交给 `package.json`：
+//   不传 old/new，只把每份文档的**版本头行**改写成 package.json 的 version。
+//   与既有 `<old> <new>` 模式的区别：那条走 13 条 RULES（含安装 pin / 标题 / 表格行），
+//   本模式**只动版本头**（`> 版本：vX` 与 `- 版本：vX｜`），是最小、最安全的生成面。
+const SYNC = process.argv.includes('--sync')
+const PKG_VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version
+const [OLD, NEW] = process.argv.slice(2).filter((a) => !a.startsWith('--'))
+if (!SYNC && (!/^\d+\.\d+\.\d+$/.test(OLD || '') || !/^\d+\.\d+\.\d+$/.test(NEW || ''))) {
+  console.error('用法：node scripts/bump-version.mjs <old x.y.z> <new x.y.z> [--check]')
+  console.error('   或：node scripts/bump-version.mjs --sync [--check]   # 版本头一律对齐 package.json')
   process.exit(10)
 }
 
@@ -89,19 +103,45 @@ const RULES = [
 ]
 
 let patched = 0
+// `--sync` 的替换面：**只动主包版本头**（形如 `> 版本：vX`），目标值一律取 package.json。
+//
+// ⚠️ 两条踩过的坑（v19.11.2 首版实测，已修）：
+//   ① **不得碰子技能**：`skills/lunheng-commands/**` 的版本是**独立的 1.0.x**（规则㉖ 管它），
+//      首版把它的 `> 版本：v1.0.3` 改成了主包版本 → 直接制造语义错误。
+//   ② **不得用 `- 版本：vX｜` 那条形态**：它在速查表里指的是**子技能**版本；且首版把回调用成
+//      `(_m, p1, p3)`（漏了 `p2`）→ 第三个实参是 offset 而不是捕获组 → 写坏了那一行。
+//      现只保留 `>` 头形态，且回调参数与捕获组一一对应。
+const SYNC_RE = /(>\s*版本：v)(\d+\.\d+\.\d+)/g
+const inSubSkill = (p) => path.relative(ROOT, p).split(path.sep)[0] === 'skills'
+  && path.relative(ROOT, p).split(path.sep)[1] === 'lunheng-commands'
 for (const f of files) {
   let src
   try { src = fs.readFileSync(f, 'utf8') } catch { continue }
   const before = src
   const hits = []
-  for (const [from, to] of RULES) {
-    const n = src.split(from).length - 1
-    if (n > 0) { hits.push(`${from} ×${n}`); src = src.split(from).join(to) }
+  if (SYNC) {
+    if (inSubSkill(f)) continue   // 子技能版本独立，绝不参与主包 sync
+    const n = (src.match(SYNC_RE) || []).length
+    if (n > 0) { hits.push(`版本头 ×${n}`); src = src.replace(SYNC_RE, (_m, p1) => `${p1}${PKG_VERSION}`) }
+  } else {
+    for (const [from, to] of RULES) {
+      const n = src.split(from).length - 1
+      if (n > 0) { hits.push(`${from} ×${n}`); src = src.split(from).join(to) }
+    }
   }
   if (src !== before) {
-    fs.writeFileSync(f, src)
-    patched++
-    console.log(`[ok] ${path.relative(ROOT, f)}  <- ${hits.join(' | ')}`)
+    if (CHECK) {
+      console.log(`[pending] ${path.relative(ROOT, f)}  <- ${hits.join(' | ')}`)
+      patched++
+    } else {
+      fs.writeFileSync(f, src)
+      patched++
+      console.log(`[ok] ${path.relative(ROOT, f)}  <- ${hits.join(' | ')}`)
+    }
   }
 }
-console.log(`\n总计 ${patched} 个文件被改（${OLD} -> ${NEW}）`)
+console.log(`\n${CHECK ? '待改' : '已改'} ${patched} 个文件（${SYNC ? `版本头 → ${PKG_VERSION}` : `${OLD} -> ${NEW}`}）`)
+if (CHECK && patched > 0) {
+  console.error('✗ --check：存在未 bump 的版本声明（未写盘）——请去掉 --check 重跑，或确认这些文件本就该保留旧版本')
+  process.exit(1)
+}

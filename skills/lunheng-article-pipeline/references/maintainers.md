@@ -1,6 +1,6 @@
 # 维护者手册（maintainers.md）
 
-> 版本：v19.11.1｜**读者**：维护者/主人。**本文件不进任何运行期读清单**（角色/主控不读）；它承接 v18.8.0 文档瘦身从 SKILL.md 迁出的维护者向元信息（rank 考证 / guard 缺口 / 更正史）。改本文件不受「同一事实多处漂移」约束——运行期事实仍以 SKILL.md 为唯一真源，此处是背景与考证。
+> 版本：v19.11.2｜**读者**：维护者/主人。**本文件不进任何运行期读清单**（角色/主控不读）；它承接 v18.8.0 文档瘦身从 SKILL.md 迁出的维护者向元信息（rank 考证 / guard 缺口 / 更正史）。改本文件不受「同一事实多处漂移」约束——运行期事实仍以 SKILL.md 为唯一真源，此处是背景与考证。
 
 ## 一、技能来源 rank 考证（v18.0.0 对齐官方；v18.0.5 修两处官方事实）
 
@@ -180,6 +180,11 @@
 | 能力接缝（Service Definition / Provider / Consumer 三层） | `references/official-docs/docs/capability-seams.md` |
 
 **机械层（官方 CLI，随知识库分发）**：
+> **v19.11.2（反哺 2026-10-17 §P1-7）· 可用性更正**：以下三条是**官方 `dsh-plugin-guide` 包提供的 CLI**，
+> 需 `npx` / `pnpm dlx` 从 registry 获取；**本仓不内置该可执行体**（`package.json` 无对应 script），
+> 在无网络的受限会话里也跑不起来。**本仓的等价门 = `scripts/plugin-surface-check.mjs`（门 2/4，
+> 内部按需获取同一 CLI，见其头注释）**。因此 `AGENTS.md` / `CONTRIBUTING.md` 的验证清单**只列本仓门**，
+> 不再要求直接执行下面三条——此处保留它们，只为说明「官方能力面长什么样」，不是「你必须跑它」。
 - `dsh-plugin-dev check` —— 14 项静态门（patch 合法性 / `package.json` 元数据 / 多语 README 一致性 / 工程红线）；**目标 0 fail / 0 warn**
 - `dsh-plugin-dev verify` —— `pnpm pack` 后装入干净 `DSH_HOME` profile 做安装+启动+卸载冒烟
 - `dsh-plugin-dev new <name>` —— 参数化脚手架（生成契约模板 / Schemastery Config / `cordis.patch.yml` / 五语 README）

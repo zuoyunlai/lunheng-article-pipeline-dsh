@@ -702,6 +702,38 @@ if (strict && role === 'T7') {
   }
 }
 
+// A13 未跑项留痕（v19.11.2 · 反哺「把 LLM 自述搬进产物」第一条）
+//   病灶：全仓对「某步没跑」的要求只有散文（「如实声明该步未跑」），**没有载体、没有字段、没有门**——
+//   子代理写与不写都合规。修法 = 给 status.md 一个固定段（模板已加），并在这里做结构断言：
+//     · 段存在 → 每条 `- [跳过]` 必须三字段齐全（项= / 原因= / 替代验证=），或写 `- [跳过] 无`；
+//     · 段缺失 → **只记 soft**（存量项目容忍：不给老项目批量补一条假红）。
+{
+  const statusPath = join(project, 'status.md')
+  let statusTxt = ''
+  try { statusTxt = existsSync(statusPath) ? readFileSync(statusPath, 'utf8') : '' } catch { /* 不可读按缺失处理 */ }
+  if (statusTxt) {
+    const sec = /###?\s*未跑项[^\n]*\n([\s\S]*?)(?=\n#{2,3}\s|$)/.exec(statusTxt)
+    if (!sec) {
+      // 只在**交付阶段**（final/定稿.md 已存在）才提示——否则每个刚起步的项目都会平白多一条 soft、
+      // 把 exit 从 0 推成 22（实测：`V3b` 用例当场变红）。存量项目因此零噪音。
+      if (existsSync(join(project, 'final', '定稿.md'))) {
+        addSoft('A13', '未跑项留痕', 'status.md 无「未跑项（SKIP-ledger）」段——存量项目容忍；交付前请按模板补上，否则「如实声明未跑」仍只是口头承诺')
+      }
+    } else {
+      const rows = sec[1].split(/\r?\n/).filter((l) => /^\s*-\s*\[跳过\]/.test(l))
+      if (!rows.length) {
+        addHard('A13', '未跑项留痕', '「未跑项」段存在但没有任何 `- [跳过] …` 行（确实无跳过时须写 `- [跳过] 无`）', 21)
+      }
+      for (const l of rows) {
+        if (/^\s*-\s*\[跳过\]\s*无\s*$/.test(l)) continue
+        if (!(/项=/.test(l) && /原因=/.test(l) && /替代验证=/.test(l))) {
+          addHard('A13', '未跑项留痕', `未跑项缺字段（须 项= / 原因= / 替代验证=）：${l.trim().slice(0, 80)}`, 21)
+        }
+      }
+    }
+  }
+}
+
 // A5 成对产物（strict）：T7 审计报告 + 反哺报告 缺一不可
 if (strict && role === 'T7') {
   const audit = artifacts.find((a) => a.name === '审计报告')

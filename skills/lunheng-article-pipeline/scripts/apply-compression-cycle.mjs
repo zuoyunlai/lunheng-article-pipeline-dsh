@@ -65,13 +65,14 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const nodeBin = process.execPath;
 
 // ---- ① 量测字数 ----
-// v18.13.0（L-56 同族收口）：body 口径与 `count-chars.mjs` 对齐 ——「**摘要后** ~ 文末节前」，
-//   并把汉字统计先过 `maskFences`（围栏内文字不计入正文）。旧版 `slice(0, firstEnd)`（文件开头 → 文末节前）
-//   **含题名区与摘要**，与本仓唯一验收口径不同；`apply-revision-cycle` 同源缺陷已在本版一并修正。
+// v18.13.0（L-56 同族收口）：body 口径与 `count-chars.mjs` 对齐 ——「**摘要后** ~ 文末节前」。
+// v19.11.2（反哺 §P2-12）：**去掉 `maskFences`** —— `count-chars`（本仓字数权威）**不掩码**，
+//   而两轮 cycle 此前掩码 → 同一段正文实测 31 vs 19 字（差 12 来自含汉字的 ```json 块），
+//   修订说明写的「脚本实测」与闸门引用的 count-chars 对不上。现两侧同源：都按原文计。
 const bodyOf = (text) => {
   const from = bodyStartAfterAbstract(text).index;
   const i = firstEndnoteIndex(text, from);
-  return maskFences(text).slice(from, i === -1 ? text.length : i);
+  return text.slice(from, i === -1 ? text.length : i);
 };
 const measure = (p) => {
   const text = readFileSync(p, 'utf8');
@@ -446,5 +447,8 @@ console.log(JSON.stringify(result, null, 2));
 // v19.5.0（§三·15）：压缩后自动对账「不满足即 exit 非 0」——分节跌破最小硬指标、或任一不变量
 //   被破坏，与「超阻塞线」同解（都指向「须再进一轮修订」），故**合用 exit 1**、不新开码
 //   （`repo-hygiene-check` 规则⑧ 的登记集合 `[0,1,10,70]` 不变）。
-if (verdict.includes('超阻塞线') || reconcileFailed) process.exit(1);
+// v19.11.2（反哺 2026-10-17 §P0-2）：**补上「低于阻塞线」**。旧版只匹配「超阻塞线」，而 :99 的
+//   verdict 明写「低于阻塞线 N 字（**P0**，须扩写）」→ 越严重的 P0 反而 exit 0，P1 却 exit 1
+//   （严重度判反，已复现：正文 8 字 / 目标 3000 → exit 0）。主控铁律是只认 exit code，故必须为 1。
+if (verdict.includes('超阻塞线') || verdict.includes('低于阻塞线') || reconcileFailed) process.exit(1);
 process.exit(0);

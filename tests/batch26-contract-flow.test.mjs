@@ -141,7 +141,9 @@ test('⑰ 机读行与 CHANGELOG 该段「改动」小节的条目数一致（�
   const after = cl.slice(m.index)
   const nextVer = after.slice(1).search(/\n## /)
   const seg = nextVer === -1 ? after : after.slice(0, nextVer + 1)
-  const n = (seg.match(/^- \*\*[①②③④⑤⑥⑦⑧⑨]/gm) || []).length
+  // v19.11.2：编号字符类从「①-⑨」扩到「①-⑳」——旧类只认得 9 个，第 10 条起**不计入**，
+  //   于是「11 条」的登记行与「实测 9 条」假冲突。计数器必须覆盖它要数的全部形态。
+  const n = (seg.match(/^- \*\*[\u2460-\u2473]/gm) || []).length
   assert.equal(Number(m[1]), n, `机读行写 ${m[1]} 条，而该段「改动」小节实测 ${n} 条——登记数与真源必须一致`)
 })
 

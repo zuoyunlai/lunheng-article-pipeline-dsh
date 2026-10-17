@@ -177,6 +177,26 @@ const bodyEndOf = (from) => {
   return i === -1 ? text.length : i;
 };
 
+/**
+ * v19.11.2（反哺 2026-10-17 §P0-1）：`--report` 落盘**两个模式共用同一出口**。
+ *
+ * 病灶（已复现）：旧版 `--summary` 打印完就 `process.exit(0)`，而落盘块在它**之后** ——
+ *   `count-chars 定稿.md --summary --report out.json` = **exit 0、out.json 不存在、stderr 无告警**。
+ *   而 `--summary` 恰是 T7/T8 的标准调用方式 ⇒ 「闸门实据」静默缺失。同类事故本仓已发生过一次：
+ *   `run/不能评估的忠诚/audits/闸门记录-T7.5.md` 第 6 条记着「声称落盘的字数报告实际不存在」。
+ * 落盘失败**改为 exit 70**（与 `m-gate-check.mjs` 的「机械证据缺失」同码）：
+ *   证据存在与否属于门的语义，不再「warn 一句后照常返回 0」。
+ */
+const emitReport = (payload) => {
+  if (!reportPath) return;
+  try {
+    writeReport(reportPath, JSON.stringify(payload, null, 2) + '\n', { protect: [file], label: '--report' });
+  } catch (e) {
+    console.error(`✗ --report 落盘失败（闸门实据缺失，按内部错误 70 退出）：${e.message}`);
+    process.exit(70);
+  }
+};
+
 if (flag === '--summary') {
   // 分段：标题/摘要/关键词/正文/参考文献/数据来源/案例来源/先行者文献/AI 使用声明
   const segs = ['摘要', '关键词', ...ENDNOTE_SECTIONS];
@@ -209,7 +229,7 @@ if (flag === '--summary') {
     const han = countHan(text.slice(start, end));   // v18.0.3：走 _lib 真源
     headingCounts.push({ level: m[1], title, hanChars: han });
   }
-  console.log(JSON.stringify({
+  const summaryOut = {
     file,
     mode: 'summary',
     total: { hanChars: totalCount },
@@ -225,7 +245,9 @@ if (flag === '--summary') {
       })(),
     },
     ...degradedFields,   // v18.0.5：--summary 也必须带 degraded 标记（旧版在标记前就 exit 0）
-  }, null, 2));
+  };
+  console.log(JSON.stringify(summaryOut, null, 2));
+  emitReport(summaryOut);   // v19.11.2 P0-1：落盘必须在 exit 之前（旧版此处直接 exit，--report 永不到达）
   process.exit(0);
 }
 
@@ -265,13 +287,7 @@ if (warnThreshold !== null) {
 //   ① 不与本次运行**读过的源文件**同文件（`protect` 防不可回滚地销毁被审正文）；
 //   ② 覆盖既有文件前留**时间戳 `.bak`**；③ 缺失父目录自动建。
 //   判据：**报告类写盘一律经 `writeReport`** —— 裸写会绕开这三条，而本脚本的 `protect` 正是被审正文本身。
-if (reportPath) {
-  try {
-    writeReport(reportPath, JSON.stringify(out, null, 2) + '\n', { protect: [file], label: '--report' });
-  } catch (e) {
-    // 落盘失败**不得改变退出码语义**（字数统计本身已成功）——但必须显式告警，不得静默。
-    console.error(`⚠️ --report 落盘失败（字数统计结果仍有效，见 stdout）：${e.message}`);
-  }
-}
+// v19.11.2（反哺 2026-10-17 §P0-1）：出口抽成 `emitReport`，与 `--summary` 分支共用（见上方函数注释）。
+emitReport(out);
 console.log(JSON.stringify(out, null, 2));
 process.exit(0);

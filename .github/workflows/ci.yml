@@ -24,8 +24,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # v19.11.2（反哺 2026-10-17 §P1-9）：**每个 job 都显式设 `timeout-minutes`**。
+  #   病灶：8 个 job 此前零超时（`grep timeout-minutes` = 0）→ 默认吃 GitHub 的 360 分钟上限，
+  #   而 `loader-smoke` 里 `npm i -g @deepseek-ai/dsh` 是外网安装（无界等待），挂死会烧满 6 小时
+  #   且失败原因只剩「超时」，无法归因。取值按实测留 2–3 倍余量，不追求紧。
   # DSH 运行时下限为 Node 22.19+/24+（与 package.json 的 engines.node 一致）
   drift-check:
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       # Actions 固定到 commit SHA（v2.5.2-dsh.13）：可变 tag 是被上游移动即可放大攻击面的供应链风险
@@ -37,6 +42,16 @@ jobs:
           package-manager-cache: false # v5 默认反转为 true；本仓**刻意不开缓存**（缓存面=供应链面）。依赖一致性改由 lockfile-frozen job 的 --frozen-lockfile 保证（v18.67.0 审计批 3：旧注释称「本仓库无 lockfile」已失效——lockfile 自 v18.66.0 起入库）
       - name: 论衡一致性自检（版本点位/白名单/口径/工具名/CHANGELOG 段落）
         run: node skills/lunheng-article-pipeline/scripts/consistency-check.mjs
+      # v19.11.2（反哺 §S1 第一步）：**受管数字只有一个出口**——M 门项数 / 常驻集上限 / T8 清单件数。
+      #   与上一步的分工：consistency 管「结构性可派生量」（35 条规则），本步只管**散文里最容易手抄漂**的三个数，
+      #   且判据是「不得与派生值冲突」而非新增第 36 条规则。
+      - name: 受管数字对账（derive-facts --check）
+        run: node scripts/derive-facts.mjs --check
+      # v19.11.2（反哺 §S3 第一步）：**版本头生成化**——每份文档的 `> 版本：vX` 必须等于 package.json。
+      #   此前靠人工/多脚本同步 89 份文档，漏一份就是 P1 漂移（历史上已多次）。本步只判定不写盘；
+      #   修法 = `node scripts/bump-version.mjs --sync`（子技能 1.0.x 不在替换面内）。
+      - name: 版本头对齐（bump-version --sync --check）
+        run: node scripts/bump-version.mjs --sync --check
 
   # lockfile 一致性门（v18.67.0 审计批 3 新增）：lockfile 自 v18.66.0 起入库，但 CI 此前**无任何**
   #   `--frozen-lockfile` 校验；而旧注释又断言「本仓库不含 lockfile」→ 前提与实现对不上，
@@ -45,6 +60,7 @@ jobs:
   #   正是「漂移即红」的正面判据。构建脚本审批（pnpm-workspace.yaml 的 allowBuilds）也已显式裁决，
   #   故本 job 不需要交互式 approve-builds（若将来出现未裁决条目，本 job 会红，须同批裁决）。
   lockfile-frozen:
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -85,6 +101,7 @@ jobs:
   #      故：**本仓所有 `setup-node` 步骤必须显式写 `package-manager-cache: false`，勿删**（v4 时期
   #      不写是安全的，v5 起不写就等于打开缓存）。
   plugin-surface:
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -105,6 +122,7 @@ jobs:
   # 机械卫生门（v2.5.2-dsh.13 新增）：语法 / JSON / YAML 结构 / 行尾 / UTF-8 / 发布包内容
   # 零依赖（纯 Node 内置 + git/npm CLI），故可跑在运行时下限 22.19 上
   hygiene:
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -126,6 +144,7 @@ jobs:
   # v18.2.9（第三方审计 B7）：pack-smoke 内部有 **win32 分支**（npm pack/tar 的平台差异），
   #   旧版只跑 ubuntu = 跨平台易碎代码从未在 CI 的 win/mac 上执行过。零依赖、成本低，故进三平台矩阵。
   pack-smoke:
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -152,6 +171,8 @@ jobs:
   #   与本包代码无关（`pack / install / dump-config` 三个前置子步全过）。详见步骤内注释与
   #   `skills/lunheng-article-pipeline/references/maintainers.md` §五（含本机复现步骤与三条处方）。
   loader-smoke:
+    # 外网安装 dsh（可无界等待）——本仓最大超时面，给足但必须有界。
+    timeout-minutes: 45
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -189,6 +210,7 @@ jobs:
   #   本 job 用仓库既有的 `scripts/host-install-smoke.mjs`：真发布物（npm pack）→ 隔离 DSH_HOME →
   #   真实 `dsh plugin add` → `--dump-config` 断言本包自注册层；同时保留 0.1.7 leg 防脚本自身漂移。
   install-smoke:
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -217,6 +239,7 @@ jobs:
   #   而 npm 版本不可覆盖 ⇒ 只能 bump 重发）。现矩阵加 `24`，为省 CI 分钟**只跑 ubuntu**
   #   （跨平台 × 跨 Node 的组合收益递减：平台差异与 Node 版本差异是两个正交面，各覆盖一次即可）。
   script-tests:
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:

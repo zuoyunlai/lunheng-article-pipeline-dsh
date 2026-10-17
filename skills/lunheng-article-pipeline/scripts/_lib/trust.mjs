@@ -53,3 +53,28 @@ export const pickTrustToken = (block) => {
   }
   return TRUST_TOKENS.find((t) => s.includes(t))
 }
+
+/**
+ * 一行内并列**两个及以上不同档位词** → 判「歧义」（v19.11.2 · 反哺 2026-10-17 §P0-4，返回并列词数组；否则 null）。
+ *
+ * 病灶（已复核）：`数据卡-template.md` 曾把三档写成格式示例 `信任级别：已发布 / 主人投喂 / 二手转引`，
+ *   而 `TRUST_COMPLIANT_RE` **只取紧跟冒号的首个档位**（此处 = 「已发布」）→ 照抄模板即被判合规，
+ *   且证据分级（G1/G12 分母）同步按最高档计，**没有任何门会报**。
+ *
+ * 判据边界（刻意收紧，防误伤 v18.2.6 修过的「备注污染」）：
+ *   ① 只看**第一个冒号之后、第一个左括号之前**的片段——`信任级别：已发布（备注：本文二手转引自某日报）`
+ *      的括号内出现的第二个档位词**不算并列**（那正是 pickTrustToken 要忽略的部分）；
+ *   ② 「信任级别声明：已发布 33 条 / 主人投喂 0 条」这类**分布统计行**因「声明」二字不匹配前缀，天然不入判；
+ *   ③ 只用 `/`、`、` 或空格分隔的**并列写法**会命中；正文里分别出现在两行不算（那是两条卡）。
+ * @param block - 单条卡片的正文段。
+ * @returns {string[]|null} 并列的档位词（≥2 个不同值）；无歧义时 null。
+ */
+export const trustConflictTokens = (block) => {
+  const s = String(block ?? '')
+  const line = s.split(/\r?\n/).find((l) => /信任级别\**[:：]/.test(l))
+  if (line === undefined) return null
+  const after = line.slice(line.search(/[:：]/) + 1)
+  const head = after.split(/[（(]/)[0]
+  const hits = [...new Set(head.match(/已发布|主人投喂|二手转引/g) || [])]
+  return hits.length >= 2 ? hits : null
+}

@@ -217,6 +217,8 @@ const result = {
 
 const output = JSON.stringify(result, null, 2);
 if (reportPath) writeReport(reportPath, output, { protect: [file] });   // v18.12.0（L-50）：同文件 → exit 10
-else console.log(output);
+// v19.11.2（反哺 §P2-11）：**--report 不吞 stdout**——与 `count-chars` / `m-gate-check` 同口径。
+//   旧版是 if/else：给了 `--report` 就一行不打印，于是「跑完解析 stdout」的消费方拿到空串（同旗标两套 IO 契约）。
+console.log(output);
 
 process.exit(exitCode);

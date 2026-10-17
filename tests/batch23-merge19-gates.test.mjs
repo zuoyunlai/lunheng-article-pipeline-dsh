@@ -92,9 +92,10 @@ test('§一.1-①：任务书用 R 号、复核报告用 P 号（**语义已覆�
   })
   try {
     const r = await runE4(f)
-    // ⚠️ `pass` 在门里 = 「**无硬问题且无软提示**」（`!hard && soft.length === 0`）；任务书用 R 号本身
-    //   仍进一条软提示（「编号不符合 P0-n 约定」）→ 故**语义对账成立**时 `pass=false / severity='P2'`。
-    //   本用例要钉的是「**不得报硬**」——即不得出现「未覆盖 N 个审计编号」。
+    // ⚠️ v19.11.2（反哺 2026-10-17 §P1-1）：`pass` 的口径已改为「**只由硬项决定**」——软提示改由
+    //   `soft_only: true` 承载（仍计 exit 3），不再把 pass 打成 false。故此处只钉 `severity='P2'`
+    //   与「不得报硬」；若将来有人把软提示重新算进 pass，本用例**不会**变红，但 §P1-1 的回归用例
+    //   （`m-gate` 的 soft_only → pass:true / exit:3）会红。
     assert.equal(r.severity, 'P2', '语义对账成立时应为「仅软提示」档：' + JSON.stringify(r))
     assert.doesNotMatch(r.detail, /未覆盖/, '不得报「未覆盖」：' + r.detail)
     assert.match(r.detail, /编号体系不一致/, 'detail 必须写明已按语义对账：' + r.detail)

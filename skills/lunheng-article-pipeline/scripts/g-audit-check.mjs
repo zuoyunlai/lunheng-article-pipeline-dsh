@@ -615,25 +615,39 @@ const g05 = (() => {
     evidence: { hits } };
 })();
 
-// --- G16 反方段骨架预扫（v19.8.0 反哺 v9 D2）---
-// 定位：**机械预扫 + P2 软提示**，不判 P1/P0（判定留给 T7/G14 的 LLM 层）。反方论证段的「模板化」
-//   是黑名单式去味修不出来的 AI 痕迹（同一「尽管…但是…」万能骨架连续出现）——本项只数**同构让步-转折
-//   骨架的段落数**，≥3 段即提示疑似模板化。**边界（如实）**：只数连接词共现，不判「是否真的同构」；
-//   不阻断交付（P2），与「反方论证是否触及核心」的语义判断（归 T6/T7）分离。
+// --- G16 反方段骨架预扫（v19.8.0 反哺 v9 D2；v19.11.2 加结构判据）---
+// 定位：**机械预扫 + P2 软提示**，不判 P1/P0（判定留给 T7/G14 的 LLM 层）。
+// v19.11.2（反哺「把自述搬进产物」第二条）：在原有「让步-转折同构段计数」之外，**补一条结构判据**——
+//   凡是标题含「反方/反驳/对立/质疑」的节，正文里必须至少有一个**证据锚点**（`[Lxx]`/`[Dxx]`/`[Cxx]`、
+//   `§N`、或年份/页码）。理由：反方段最容易写成「也有人认为……但本文认为……」的纯立场对撞，
+//   而**没有锚点的反方 = 不可核**。仍然只报 P2，不阻断交付。
+//   边界（如实）：它只判「有没有锚点」，不判「锚点是否真的支持该反驳」——后者归 T6/T7。
 const CONCESSIVE_RE = /尽管|虽然|诚然|固然|不可否认/;
 const ADVERSATIVE_RE = /然而|但是|但|不过|却/;
+const OPPOSITION_HEAD_RE = /反方|反驳|对立观点|质疑|相反观点|批评者/;
+const ANCHOR_RE = /\[(?:L|D|C|先)\d{2}\]|§\s*\d|\[\d{1,3}\]|\b(?:19|20)\d{2}\b/;
 const g16 = (() => {
   const paras = bodyText.split(/\n{2,}/).filter((p) => !/^#|^\||^>|^```/.test(p.trim()));
   const skeletonParas = paras.filter((p) => CONCESSIVE_RE.test(p) && ADVERSATIVE_RE.test(p));
+  // 反方节切块：标题含反方语义 → 取到下一个同级或更高级标题之前
+  const secs = [...bodyText.matchAll(/^(#{1,4})[ \t]+([^\n]*)\n([\s\S]*?)(?=^#{1,4}[ \t]|(?![\s\S]))/gm)]
+    .filter((m) => OPPOSITION_HEAD_RE.test(m[2]));
+  const anchorless = secs.filter((m) => !ANCHOR_RE.test(m[3]));
+  const skeletonHit = skeletonParas.length >= 3;
+  const anchorHit = anchorless.length > 0;
+  const problems = [];
+  if (skeletonHit) problems.push(`${skeletonParas.length} 段出现「让步词 + 转折词」同构骨架 → 疑似反方段模板化`);
+  if (anchorHit) problems.push(`${anchorless.length} 个反方节**没有任何证据锚点**（[Lxx]/[Dxx]/[Cxx]/§N/年份）→ 反驳不可核`);
   return {
-    name: '反方段骨架预扫（让步-转折同构，软提示）',
+    name: '反方段骨架预扫（同构骨架 + 锚点结构，软提示）',
     checked: true,
-    pass: skeletonParas.length < 3,
-    severity: skeletonParas.length >= 3 ? 'P2' : 'PASS',
-    detail: skeletonParas.length >= 3
-      ? `${skeletonParas.length} 段出现「让步词 + 转折词」同构骨架 → 疑似反方段模板化（须 T7/G14 判是否真同构；不阻断）`
-      : skeletonParas.length === 0 ? '未命中让步-转折同构骨架' : `仅 ${skeletonParas.length} 段让步-转折骨架（未达提示阈值）`,
-    evidence: { skeletonParagraphCount: skeletonParas.length },
+    pass: !skeletonHit && !anchorHit,
+    severity: (skeletonHit || anchorHit) ? 'P2' : 'PASS',
+    detail: problems.length
+      ? `${problems.join('；')}（须 T7/G14 判是否真同构 / 锚点是否支持该反驳；不阻断）`
+      : (skeletonParas.length === 0 ? '未命中让步-转折同构骨架，且反方节均有证据锚点'
+        : `仅 ${skeletonParas.length} 段让步-转折骨架（未达提示阈值），反方节均有证据锚点`),
+    evidence: { skeletonParagraphCount: skeletonParas.length, oppositionSections: secs.length, anchorlessOpposition: anchorless.length },
   };
 })();
 
@@ -691,6 +705,7 @@ const result = {
 
 const output = JSON.stringify(result, null, 2);
 if (reportPath) writeReport(reportPath, output, { protect: [file] });
-else console.log(output);
+// v19.11.2（反哺 §P2-11）：`--report` 不吞 stdout（与 count-chars / m-gate-check 同口径）。
+console.log(output);
 
 process.exit(exitCode);

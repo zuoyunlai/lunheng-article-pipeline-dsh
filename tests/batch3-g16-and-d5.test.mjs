@@ -35,6 +35,27 @@ test('D2 G16：<3 段同构骨架 → PASS', () => {
   rmSync(d, { recursive: true, force: true })
 })
 
+// v19.11.2（反哺「把自述搬进产物」第二条）：反方节**必须有证据锚点**——纯立场对撞不可核。
+test('D2 G16：反方节无任何证据锚点 → P2（锚点判据）；带锚点 → 放行', () => {
+  const d = tmp('lunheng-g16c-')
+  try {
+    const bad = join(d, 'bad.md')
+    writeFileSync(bad, mkDraft('## 二、反方观点\n\n也有人认为该结论不成立，但本文认为其依然稳健。\n'))
+    const rb = run([G, bad, '--json'])
+    const jb = JSON.parse(rb.stdout.slice(rb.stdout.indexOf('{')))
+    const gb = jb.checks['G16-反方段骨架']
+    assert.equal(gb.severity, 'P2', '无锚点的反方节须提示：' + gb.detail)
+    assert.match(gb.detail, /锚点/, 'detail 须点名「锚点」：' + gb.detail)
+    assert.equal(gb.evidence.anchorlessOpposition, 1, 'evidence 须报出无数量的反方节数')
+
+    const good = join(d, 'good.md')
+    writeFileSync(good, mkDraft('## 二、反方观点\n\n也有研究认为该结论不成立（[L01]，2019），但本文以 [D01] 的样本量差异作出回应。\n'))
+    const rg = run([G, good, '--json'])
+    const jg = JSON.parse(rg.stdout.slice(rg.stdout.indexOf('{')))
+    assert.equal(jg.checks['G16-反方段骨架'].severity, 'PASS', '带锚点应放行：' + jg.checks['G16-反方段骨架'].detail)
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
 test('D5：SOFT 双义词「流水线」在含文内引用的正文段 → 记 flowSoftNotes 不判泄漏', () => {
   const d = tmp('lunheng-d5-')
   const proj = join(d, 'run', 'proj')

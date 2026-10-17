@@ -576,3 +576,37 @@ test('v19.6.7（反哺 M-03）：「全自动」形态与「Phase 0 预授权」
     '回执 id 不存在仍须判硬：' + JSON.stringify(j2.hard))
   rmSync(d2, { recursive: true, force: true })
 })
+
+// ── A13 未跑项留痕（v19.11.2 · 反哺「把自述搬进产物」）────────────────────────
+// 判据：段存在则每条 `- [跳过]` 三字段齐（项=/原因=/替代验证=）或写「无」；段缺失只记 soft（存量容忍）。
+test('A13：交付阶段缺此段 → soft（存量项目不判红）', () => {
+  const d = makeProject({ 'status.md': '- **审计视图刷新时间**: 2099-01-01 00:00\n' })
+  try {
+    // 只有到交付阶段（final/定稿.md 在盘）才提示——否则刚起步的项目会平白多一条 soft
+    mkdirSync(join(d, 'final'), { recursive: true })
+    writeFileSync(join(d, 'final', '定稿.md'), '# 定稿\n## 摘要\n正文。\n')
+    const j = parseJson(run([SCRIPT, '--project', d, '--role', 'T1']))
+    assert.ok(j.soft.some((x) => x.check === 'A13'), '缺段须留 soft：' + JSON.stringify(j.soft))
+    assert.equal(j.hard.some((x) => x.check === 'A13'), false, '缺段不得判硬（否则存量项目批量变红）')
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
+test('A13：跳过项缺字段 → 硬 21；三字段齐 / 写「无」→ 放行', () => {
+  const bad = makeProject({ 'status.md': '### 未跑项（SKIP-ledger）\n- [跳过] 跳了 T6\n' })
+  try {
+    const r = run([SCRIPT, '--project', bad, '--role', 'T1'])
+    const j = parseJson(r)
+    assert.equal(r.code, 21, '缺字段须 exit 21：实得 ' + r.code)
+    assert.ok(j.hard.some((x) => x.check === 'A13'), '须点名 A13：' + JSON.stringify(j.hard))
+  } finally { rmSync(bad, { recursive: true, force: true }) }
+
+  for (const line of ['- [跳过] 项=T6 批判 ｜ 原因=轻量档省略 ｜ 替代验证=T7 审计 G6 覆盖',
+    '- [跳过] 无']) {
+    const ok = makeProject({ 'status.md': `### 未跑项（SKIP-ledger）\n${line}\n` })
+    try {
+      const j = parseJson(run([SCRIPT, '--project', ok, '--role', 'T1']))
+      assert.equal(j.hard.some((x) => x.check === 'A13'), false,
+        `「${line}」应放行：` + JSON.stringify(j.hard.filter((x) => x.check === 'A13')))
+    } finally { rmSync(ok, { recursive: true, force: true }) }
+  }
+})

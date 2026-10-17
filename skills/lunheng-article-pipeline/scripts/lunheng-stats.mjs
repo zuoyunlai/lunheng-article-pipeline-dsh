@@ -13,7 +13,7 @@
 //       `exit_code`+`M-Form` 对象——共同点：无 `results[]` 数组）；③ 无报告。
 //   本脚本只对 machine 格式做机械聚合；llm-legacy 与「无报告」单独计数，作为「闸门证据覆盖率」如实呈现。
 import { readFileSync, readdirSync, existsSync, statSync, realpathSync } from 'node:fs';
-import { join, resolve, sep } from 'node:path';
+import { join, resolve, sep, basename, dirname } from 'node:path';
 import { countHan } from './_lib/han.mjs';   // 汉字口径真源（与 count-chars 同源）
 import { installExitGuard } from './_lib/exit-guard.mjs';   // 退出码硬化（v18.7.3 P1-5：旧版未装，run/ 下目录 readFileSync 抛错会以默认 exit 1 收场，与「1 = 内容失败」撞义）
 import { parseArgs, USAGE_CODE } from './_lib/cli-args.mjs'; // 参数解析唯一实现（v18.7.3 P1-5）
@@ -48,10 +48,24 @@ const runBase = join(process.cwd(), 'run');
 //   的 `norm()` 逐字同口径。旧内联版**无条件 `toLowerCase()`**：POSIX 路径大小写敏感，
 //   两侧都压低会把「与被保护根仅差大小写的**真实路径**」（如 `<cwd>/RUN` 与 `<cwd>/run` 是两个目录）
 //   误判为命中 → 只读扫描面被指向 `run/` 之外，与「三层缺一不可」的声明相悖（Windows 上不可利用）。
+// v19.11.2（反哺 2026-10-17 §P2-14）：**realpath 失败时先解析最近的已存在祖先**，再拼回剩余段。
+//   病灶（与真源 `lib/run-path-fence.mjs:18-27` 记过的是同一个坑，内联副本复发了它）：旧版
+//   `catch { /* 用原路径 */ }` 在「<junction>/尚不存在的子目录」上完全不展开物理层 —— 前缀没解析，
+//   比较时按字面路径算，与「三层缺一不可」的声明相悖。现在与真源的 canonicalBest 同判据。
 const rpNorm = (p) => {
-  let q = p;
-  try { q = realpathSync.native(p); } catch { /* 不存在/不可达 → 用原路径（存在性另查） */ }
-  const s = resolve(q).replace(/[\\/]+$/, '').replace(/\//g, sep);
+  const want = resolve(p);
+  let cur = want, real = null;
+  const rest = [];
+  for (let i = 0; i < 64; i++) {
+    try { real = realpathSync.native(cur); break; } catch {
+      const parent = dirname(cur);
+      if (parent === cur) break;   // 一路到盘根仍不存在 → 退回字面路径
+      rest.unshift(basename(cur));
+      cur = parent;
+    }
+  }
+  const full = real ? join(real, ...rest) : want;
+  const s = full.replace(/[\\/]+$/, '').replace(/\//g, sep);
   return process.platform === 'win32' ? s.toLowerCase() : s;
 };
 const aBase = rpNorm(runBase), aRoot = rpNorm(root);

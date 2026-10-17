@@ -2,6 +2,36 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 19.11.2 — 2026-10-18
+
+<!-- 行为变更 11 条 | 锚点 = CHANGELOG.md § 19.11.2（全量审计九维反哺落地：静默丢证据 / 门信号 / 文档漂移 / 发布链 / 消融前置） -->
+
+> **主题**：**全量审计（九维评分 75/100）反哺落地**。一句话概括：**先保证「证据真的在」，再把「红」变回有信息量，最后把「手抄」换成「派生」**；本版**不新增门、不新增角色、不新增文类**。
+> **来源**：`audits/反哺报告-2026-10-17-全量审计九维-v1.md`（P0×5 / P1×12 / P2×15 / 结构性 S1–S3，逐条含定位、修法与验收判据）+ `audits/实验-预注册-G14消融-v1.md`（口径前置）。
+> **版本判据 = patch**：无破坏性 API 变更；门集与角色数不变；但**6 类退出码/判定语义有变**（见下），故按 minor 内部行为调整计 patch。
+> **门绿**：`consistency` 0 漂移、`repo-hygiene` 全通过、`pack-smoke` 通过、`node --test` **1293/1293 全绿**（1292 pass / 1 skip / 0 fail）。
+
+**行为变更摘要（11 条）**：
+
+- **①** **`count-chars --summary` 不再吞 `--report`**（P0-1）：旧版 `--summary` 先 `exit(0)`、落盘在其后 → 标准调用「exit 0 但报告不存在」。现两分支共用 `emitReport()`；**落盘失败 → exit 70**（原 0）。
+- **②** **两轮 cycle 的「低于阻塞线」退出码修正**（P0-2）：旧版只匹配「超阻塞线」（P1），更严重的 P0「低于阻塞线」反而 exit 0。现两轮均 `exit 1`。
+- **③** **`--lite-profile` 报告自证**（P0-3）：报告新增 `lite_profile: true` / `gates_skipped`；`final-check` 读到即记 note → exit 3，**不再把 5 门当 26 门**。
+- **④** **M-Form-11 软提示不再记 `pass:false`**（P1-1）：改记 `soft_only: true`，`pass` 只由硬项决定；`soft_only_count` 仍计入 exit 3。全仓实测该门 92% 的「红」是纯软提示。
+- **⑤** **文类 N/A 生效（仅 `kaiti`，阶段 2）**（P1-2）：新增 `_lib/genre-profiles.json`，`kaiti` 的 M-Form-2 / M-Form-7 / M-Exist-12 不参与判定；其余文类**仍全量**（影子观测）。`--adjudicate` 若点名 N/A 项 → **exit 30**。实测「腐败资产外逃」exit 2→1、P0 1→0。
+- **⑥** **`--report` 不再吞 stdout**（P2-11）：`structure-check` / `cite-coverage` / `g-audit` / `journal-fit` / `meta-synthesize` / `methodology-check` 六处由 `if/else` 改为「落盘 + 一律打印」。
+- **⑦** **字数口径统一**（P2-12）：两轮 cycle 去掉 `maskFences`，与 `count-chars` 同源——**修订说明里的「字数实值」会变大**（含代码块内汉字），历史数值不可直接对比。
+- **⑧** **拒绝 Windows 保留设备名**（P2-13）：`--report NUL` / `CON.json` 等此前「写成功」但磁盘无文件；现 **exit 70**。
+- **⑨** **M-Form-6 新增「信任级别歧义」判据**（P0-4）：同一行并列多档（`已发布 / 主人投喂`）→ **P1**（旧版取首个档位＝静默标最高档）；数据卡模板改为单档占位。
+- **⑩** **`handoff-check` 新增 A13「未跑项留痕」**（S1 后续）：`status.md` 的 SKIP-ledger 每条须含 `项=`/`原因=`/`替代验证=` 或写「无」；**段缺失仅在交付阶段记 soft**（存量零噪音）。
+- **⑪** **G16 新增「反方节必须有证据锚点」**（S1 后续）：仍只报 P2、不加门；M-Exist-10 另把「大纲逐节承重 top1 / 预算」写进 detail 的 `notes`（**不改判定**）。
+
+**其余同批改动（非行为变更）**：
+
+- **发布链**（P0-5）：`publish.yml` 新增「发布来源闸」（tag 提交必须在 `origin/main`）、真实安装烟测（`dsh@0.2.1-rc.2`）、`latest` 硬断言（**opt-in**：`LUNHENG_REQUIRE_LATEST=true`）；`ci.yml` 8 个 job 全部补 `timeout-minutes`。
+- **CJK 文档与受管数字**：新增 `scripts/derive-facts.mjs`（M 门项数 / 常驻集上限 / T8 件数三处派生 + `--check` 进 CI）；`bump-version.mjs` 新增 `--sync [--check]`（版本头对齐 `package.json`，**子技能 1.0.x 不在替换面内**）。
+- **文档漂移清理**：M 门 `#mform/#mexist/#mintegrity` 族级短锚点（`#mgate` 仍 99.7% 全文，已明确「不要用」）；T8 清单改为以常量派生的指针；`operations-capability` 上限改为指针；`exit 3` 明确为「需人工复核语义族」。
+- **测试**：新增 `batch27-audit-2026-10-17` / `genre-profiles` / `bump-version` / `derive-facts` / `doc-anchors` / `mexist10-outline-structure` 六组；`batch25` 补「低于阻塞线 ⇒ exit 1」回归。
+
 ## 19.11.1 — 2026-10-17
 
 <!-- 行为变更 1 条 | 锚点 = CHANGELOG.md § 19.11.1（0.2.x 装载证据通道更正：loader-smoke → install-smoke） -->

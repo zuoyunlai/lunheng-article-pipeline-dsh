@@ -94,10 +94,23 @@ const outJson = opts['--json'] ? resolve(opts['--json']) : null;
 //   无 lib/）下自足运行（scripts/_lib 自足原则，同 exit-guard / cli-args）；两侧同入 realpath
 //   空间后判包含（防 junction 逃逸；realpath 失败降级字符串规范化，不劣于字符串比较）。
 // 大小写归一只在 Windows 做（POSIX 大小写敏感，无条件 toLowerCase 会把 RUN/ 与 run/ 误判为同一处）。
+// v19.11.2（反哺 2026-10-17 §P2-14）：与 lunheng-stats 同步——realpath 失败时**解析最近的已存在祖先**
+//   再拼回剩余段（真源 `lib/run-path-fence.mjs` 的 canonicalBest 判据）。旧版在「<junction>/不存在子目录」
+//   上不展开物理层，等于给三层围栏留了一个只在路径不存在时才出现的缺口。
 const rpNorm = (p) => {
-  let q = p;
-  try { q = realpathSync.native(p); } catch { /* 不存在/不可达 → 用原路径（存在性另查） */ }
-  const s = resolve(q).replace(/[\\/]+$/, '').replace(/\//g, sep);
+  const want = resolve(p);
+  let cur = want, real = null;
+  const rest = [];
+  for (let i = 0; i < 64; i++) {
+    try { real = realpathSync.native(cur); break; } catch {
+      const parent = dirname(cur);
+      if (parent === cur) break;
+      rest.unshift(basename(cur));
+      cur = parent;
+    }
+  }
+  const full = real ? join(real, ...rest) : want;
+  const s = full.replace(/[\\/]+$/, '').replace(/\//g, sep);
   return process.platform === 'win32' ? s.toLowerCase() : s;
 };
 {

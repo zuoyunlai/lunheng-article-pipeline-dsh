@@ -1,0 +1,63 @@
+{
+  "_comment": "文类 → 门集配置（P1-2 / S2 阶段 1：影子运行）。设计见 audits/设计-P1-2-文类门集配置化-v1.md。纪律：① gate_na 用黑名单（默认全跑，新增门不会因漏配而静默跳过）；② 每条 N/A 必须有 na_reason；③ 本文件的 minL / structure 必须与 references/_shared/文类档案.md 同名两列一致（tests/genre-profiles.test.mjs 对账）。阶段 1 只观测不改 exit：gates_na/shadow_fail 进报告，聚合逻辑不看它们。",
+  "profile_version": 1,
+  "default": "academic-cn",
+  "genres": {
+    "kaiti": {
+      "enabled": true,
+      "minL": 10,
+      "structure": "kaiti-nine",
+      "gate_na": ["M-Form-2", "M-Form-7", "M-Exist-12"],
+      "na_reason": {
+        "M-Form-2": "开题报告文末节 = 3（参考文献/数据来源/案例来源），五节口径不适用",
+        "M-Form-7": "同上：五节顺序断言不适用",
+        "M-Exist-12": "开题报告不要求正文「贡献陈述」"
+      }
+    },
+    "report-3rd": {
+      "enabled": false,
+      "minL": 1,
+      "structure": "off",
+      "gate_na": ["M-Form-8"],
+      "na_reason": {
+        "M-Form-8": "结构门=不跑（第三方报告），三角验证的「按结构段配证据」判据不适用"
+      }
+    },
+    "biz-review": {
+      "enabled": false,
+      "minL": 1,
+      "structure": "off",
+      "gate_na": ["M-Form-8"],
+      "na_reason": {
+        "M-Form-8": "结构门=不跑（商业评论），三角验证的「按结构段配证据」判据不适用"
+      }
+    },
+    "industry": {
+      "enabled": false,
+      "minL": 2,
+      "structure": "off",
+      "gate_na": ["M-Form-8"],
+      "na_reason": {
+        "M-Form-8": "结构门=不跑（行业分析），三角验证的「按结构段配证据」判据不适用"
+      }
+    },
+    "wechat": {
+      "enabled": false,
+      "minL": 1,
+      "structure": "off",
+      "gate_na": ["M-Form-8"],
+      "na_reason": {
+        "M-Form-8": "结构门=不跑（公众号），三角验证的「按结构段配证据」判据不适用"
+      }
+    },
+    "book-review": {
+      "enabled": false,
+      "minL": 2,
+      "structure": "off",
+      "gate_na": ["M-Form-8"],
+      "na_reason": {
+        "M-Form-8": "结构门=不跑（学术书评），三角验证的「按结构段配证据」判据不适用"
+      }
+    }
+  }
+}

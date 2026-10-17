@@ -216,12 +216,14 @@ const EXIT_GUARDED_EXEMPT = {}
 //   ⚠️ **每条的允许码都是实测的**（静态解析 `process.exit` / `process.exitCode` 全部取值 +
 //     该脚本是否真 import `_lib/exit-guard.mjs` 的 10/70）：口径 = 脚本头自述 + 实解析，两处对不上即以实解析为准。
 //     · `bump-version.mjs` 头注释只给用法；实解析只有 `process.exit(10)`，成功路径静默返回 → 0。
+//       **v19.11.2（反哺 2026-10-17 §P1-10）**：新增 `--check`（只判定不写盘）→ 存在待改时 `1`。
+//       该 `1` 的语义是「有未 bump 的版本声明」（不是 P1 内容缺陷），与 `link-check`/`plugin-surface` 同族。
 //     · `link-check.mjs` / `plugin-surface-check.mjs` / `repo-hygiene-check.mjs`：0 = 通过（无 exit 调用）／1 = 有发现。
 //     · `pack-smoke.mjs` 装了 guard（真 import `installExitGuard`）→ 异常路径 10/70 可达。
 // ──────────────────────────────────────────────────────────────────────────────
 const ROOT_EXIT_CONTRACT = {
   'agents-log-check.mjs': [0, 10, 70],           // v18.86.0-prep（台海反哺 F-5）：头注释自述；**刻意没有 1**——ADR-0003「非内容判定脚本用 1 = 撞码」，与 flow-metrics.mjs 同判据（只报事实：发现项进 stdout/--json，不进退出码）
-  'bump-version.mjs': [0, 10],                    // 0 = 已执行 bump / 10 = 用法错（未给 <old> <new>）
+  'bump-version.mjs': [0, 1, 10],                 // 0 = 已 bump / 1 = --check 发现有未 bump 的声明 / 10 = 用法错
   'closeout-verify.mjs': [0, 1, 10, 70],          // 头注释 :28 自述；70 = 内部错误（v18.62.4 #5 起真可达）
   'dist-tag-check.mjs': [0, 1, 10, 70],           // 头注释 :25 自述（1 含 latest 落后；10 含 registry 不可达）
   'flow-metrics.mjs': [0, 10, 70],                // 头注释 :21 自述；**刻意没有 1**——它不是门（只报事实）

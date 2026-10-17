@@ -22,7 +22,7 @@ import { installExitGuard, requireExistingDir, describeSpawn } from './_lib/exit
 import { parseArgs } from './_lib/cli-args.mjs';
 import { countHan } from './_lib/han.mjs';
 import { parseTargetChars } from './_lib/target-chars.mjs';   // v18.12.3：目标字数解析唯一实现
-import { firstEndnoteIndex, maskFences, bodyStartAfterAbstract } from './_lib/sections.mjs';   // v18.12.3 L-56：正文区口径与 count-chars 同源
+import { firstEndnoteIndex, bodyStartAfterAbstract } from './_lib/sections.mjs';   // v18.12.3 L-56：正文区口径与 count-chars 同源（v19.11.2 起不再掩码，故 maskFences 已移除）
 import { parseLedger, appendLedgerRow, TRACKS, ROUND_CAPS, LEDGER_REL } from './_lib/round-ledger.mjs';   // v18.81.0 批 2.1：轮次额度真源
 
 installExitGuard();
@@ -125,15 +125,16 @@ if (baselineCopied && !dryRun) copyFileSync(prevPath, nextPath);
 //   另：旧实现 `slice(0, firstEnd)`（= 文件开头 → 文末节前）**含题名区与摘要**，与唯一验收口径
 //   「摘要后 ~ 文末节前」不同，注释却写「同一口径」。现两者一起修正：
 //     · 口径 = `bodyStartAfterAbstract` → `firstEndnoteIndex`（与 count-chars.mjs 同源）；
-//     · 汉字统计先过 `maskFences`（围栏内文字不计入正文——与 count-chars 的围栏感知一致）；
+//     · 汉字统计**不再掩码**（v19.11.2 · 反哺 §P2-12）：与 `count-chars`（字数权威）同源。
+//       旧版先过 `maskFences`，而 `count-chars` 没有围栏感知——同一段正文实测 31 vs 19 字
+//       （差 12 来自含汉字的 ```json 块），于是修订说明的「脚本实测」与闸门引用的数字对不上。
 //     · **改后的值在 diff 应用之后重算**（见下方 `post = measure(...)`）。
 const measure = (p) => {
   const text = readFileSync(p, 'utf8');
-  const masked = maskFences(text);
   const from = bodyStartAfterAbstract(text).index;
   const i = firstEndnoteIndex(text, from);
   const to = i === -1 ? text.length : i;
-  return { body: countHan(masked.slice(from, to)), full: countHan(text) };
+  return { body: countHan(text.slice(from, to)), full: countHan(text) };
 };
 const pre = measure(prevPath);
 
@@ -348,3 +349,10 @@ console.log(JSON.stringify({
   bundle: bundleResult ? bundleResult.status : (dryRun ? 'dry-run' : (flags.has('--skip-bundle') ? 'skipped(--skip-bundle)' : 'skipped')),
   revNote,
 }, null, 2));
+
+// v19.11.2（反哺 2026-10-17 §P0-2）：**字数阻塞线此前没有任何退出判定**（全文无 process.exit 分支），
+//   于是「修订后仍低于下限（P0，须扩写）」与「已达标」在退出码上完全同形，主控按「只认 exit code」
+//   会把不达标读成通过。现与 `apply-compression-cycle.mjs` 同解：越界统一 exit 1（不新开码，
+//   `repo-hygiene-check` 规则⑧ 登记集合 `[0,1,10,70]` 不变）；dry-run 不测量（verdict 只是说明文案），不判。
+if (!dryRun && /低于阻塞线|超阻塞线/.test(charBandVerdict)) process.exit(1);
+process.exit(0);

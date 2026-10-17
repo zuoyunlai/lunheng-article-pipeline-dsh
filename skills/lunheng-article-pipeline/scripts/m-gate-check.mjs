@@ -97,8 +97,37 @@ if (process.argv.includes('--dump-thresholds')) {
 }
 
 const args = process.argv.slice(2);
-const MGATE_USAGE = '用法: node m-gate-check.mjs <定稿.md> <证据包目录> [--summary] [--fig-dir <dir>] [--report <path>] [--adjudicate <T8裁定.json>] [--overwrite-adjudicated] [--genre <code>] [--lite-profile]'
-  + '（`--overwrite-adjudicated` 与 `--adjudicate` 同给时本旗标无效：裁定通道优先；`--lite-profile` 只评估 M-Form-1/3/5/7 + M-Exist-2 五道快轨子集）';
+const MGATE_USAGE = '用法: node m-gate-check.mjs <定稿.md> <证据包目录> [--summary] [--fig-dir <dir>] [--report <path>] [--adjudicate <T8裁定.json>] [--overwrite-adjudicated] [--genre <code>] [--lite-profile] [--verify-report <report.json>]'
+  + '（`--overwrite-adjudicated` 与 `--adjudicate` 同给时本旗标无效：裁定通道优先；`--lite-profile` 只评估 M-Form-1/3/5/7 + M-Exist-2 五道快轨子集；'
+  + '`--verify-report` 是**只读体检**模式：不跑门，只判一份历史报告能否被当前版本解析）';
+
+// ── v19.11.2（反哺 2026-10-17 §P1-11）：`--verify-report <path>` 只读体检 ──────────────
+// 病灶（已核实）：`run/` 下 33 份历史门报告里存在**三套互不兼容的 schema**（英文键标准 / 缺 `results`
+//   的极简 / 中文键手写），且至少一份带 UTF-8 BOM —— 第三方无法批量复算，只能逐份人读。
+// 本模式的作用：把「这份报告能不能被当前门版本读」变成一条可批量跑的判定（CI 可扫 `run/**`）。
+// exit：0 = 可解析且字段齐（当前 schema）；1 = legacy/字段缺（需人工分诊）；10 = 参数或缺文件。
+const vrIdx = args.indexOf('--verify-report');
+if (vrIdx !== -1) {
+  const target = args[vrIdx + 1];
+  if (!target || target.startsWith('--')) { console.error('用法: node m-gate-check.mjs --verify-report <report.json>'); process.exit(10); }
+  let raw;
+  try { raw = readFileSync(target, 'utf8'); } catch { console.error(`✗ 读不到报告：${target}`); process.exit(10); }
+  const bom = raw.charCodeAt(0) === 0xfeff;
+  let j;
+  try { j = JSON.parse(bom ? raw.slice(1) : raw); } catch (e) {
+    console.log(JSON.stringify({ path: target, ok: false, parseable: false, bom, error: e.message }, null, 2));
+    process.exit(1);
+  }
+  const REQUIRED = ['draft', 'date', 'total', 'pass', 'p0', 'p1', 'p2', 'exit'];
+  const missing = REQUIRED.filter((k) => j[k] === undefined);
+  const schemaVersion = j.schema_version ?? null;
+  const legacy = schemaVersion == null;
+  const ok = !legacy && missing.length === 0;
+  console.log(JSON.stringify({ path: target, ok, parseable: true, bom, schema_version: schemaVersion, legacy, missing, exit: j.exit ?? null, total: j.total ?? null }, null, 2));
+  if (!ok) console.error(`⚠️ 需人工分诊：${legacy ? '无 `schema_version`（v19.11.2 之前的报告）' : ''}${missing.length ? ` 缺字段: ${missing.join(',')}` : ''}`);
+  process.exit(ok ? 0 : 1);
+}
+
 // v18.64.0（反哺报告-v5 §v5.0-1）：新增 `--overwrite-adjudicated` —— **阶段边界显式化**旗标。
 //   为什么要有它：目标报告已存在且含 T8 裁定时，普通 `--report` 复跑**默认拒绝覆盖**（exit 3），
 //   因为「谁有权写哪个阶段的产物」在工具层原本没有任何校验（实测事故：G14 终闸子代理用 `--report`
@@ -424,16 +453,79 @@ mIntegrity1(ctx);
 //   exit 语义不变（0 过 / 1 P1 / 2 P0 / 3 仅软 / 10 参 / 30 裁定拒 / 70 内部），`total` 变 5。
 //   快轨定位 = 5 分钟 2500 字公众号：结构 + 证据包在盘即可，不跑全文审计链（M-Form-8/9/10/11、
 //   M-Exist-3~12、M-Integrity-1、M-Fact-1 全跳过）。全量档（无旗标）行为不变。
+let liteSkipped = 0;   // v19.11.2（P0-3）：快轨裁剪掉的门数（报告 `gates_skipped` 的真值）
 if (liteProfile) {
   const LITE_GATES = ['M-Form-1', 'M-Form-3', 'M-Form-5', 'M-Form-7', 'M-Exist-2'];
   const kept = results.filter((r) => LITE_GATES.includes((r.gate || '').split(' ')[0]));
+  liteSkipped = results.length - kept.length;
   results.splice(0, results.length, ...kept);
+  // v19.11.2（反哺 2026-10-17 §P0-3）：快轨必须**自证是子集**——旧版只把 `total` 变成 5，
+  //   报告里没有任何「这是 5 门、其余未跑」的字段，下游（T8 复核 / final-check / M-Exist-5）
+  //   会把「21 门未跑」读成「全门通过」。故：控制台先响亮提示，报告再落机器可读字段（见下）。
+  console.error(`⚠️ --lite-profile：本次只评估 ${kept.length} 门（跳过 ${liteSkipped} 门）——`
+    + 'exit=0 只代表这 5 门通过，**不得当全量门通过**（报告含 `lite_profile: true`）。');
 }
 
+// ── v19.11.2（反哺 §P1-2 / S2 **阶段 1**）：文类 → 门集**影子运行** ────────────────────
+// 目的：在**不改变 exit** 的前提下，回答「某门在某文类上到底命中过几次真缺陷」——
+//   阶段 2 启用 N/A 之前的证据基础。设计 = `audits/设计-P1-2-文类门集配置化-v1.md`。
+// 纪律（与设计文档一致）：
+//   ① **黑名单**（只登记不适用项），故新增门默认照跑，不会因漏配而静默跳过；
+//   ② 阶段 1 **只读不改**：`results` 逐字段保持原样（聚合逻辑看不到这些字段），
+//      报告额外带 `genre/gates_na/shadow_fail`；阶段 2 才让聚合按 `na` 过滤；
+//   ③ 配置缺失/损坏 → **退回今天的行为**（无 N/A），观测面不得拖垮门本身。
+let genreProfile = null
+let gatesNa = []
+let shadowFail = []
+let naEnforced = new Set()   // 阶段 2：**已启用**文类的 N/A 集合（空 = 与今天行为相同）
+try {
+  const gp = JSON.parse(readFileSync(join(scriptDir, '_lib', 'genre-profiles.json'), 'utf8'))
+  const entry = gp?.genres?.[genre] ?? null
+  genreProfile = { version: gp?.profile_version ?? null, entry }
+  if (entry && Array.isArray(entry.gate_na)) {
+    const present = new Map(results.map((r) => [String(r.gate || '').split(' ')[0], r]))
+    for (const id of entry.gate_na) {
+      const r = present.get(id)
+      if (!r) continue          // 本次未跑该门（如 --lite-profile 子集）→ 不登记，避免「N/A 了也没跑」的歧义
+      gatesNa.push({ gate: id, reason: entry.na_reason?.[id] ?? '（未登记理由）' })
+      if (r.pass === false) shadowFail.push({ gate: id, severity: r.severity })
+    }
+    if (gatesNa.length) {
+      // 阶段 2：只有 `enabled: true` 的文类才真正排除出判定集；其余仍只是影子观测。
+      if (entry.enabled === true) {
+        naEnforced = new Set(gatesNa.map((x) => x.gate))
+        for (const r of results) {
+          const id = String(r.gate || '').split(' ')[0]
+          if (naEnforced.has(id)) {
+            r.na = true
+            r.na_reason = gatesNa.find((x) => x.gate === id)?.reason ?? ''
+          }
+        }
+        console.error(`ℹ️ 文类 N/A **已生效**（--genre ${genre}）：${[...naEnforced].join(' / ')} 不参与判定`
+          + '（影子值仍写入 shadow_fail，供复核 N/A 表是否合理）')
+      }
+      console.error(`ℹ️ 文类影子（--genre ${genre}）：${gatesNa.length} 项在本文类下不适用，`
+        + `其中 ${shadowFail.length} 项本次会失败——`
+        + (naEnforced.size
+          ? '影子值**仅供复核、不影响判定**（N/A 已在本文类生效）'
+          : '**本批不改变 exit**，仅记录（该文类尚未 enable）')
+        + (shadowFail.length ? `：${shadowFail.map((x) => `${x.gate}(${x.severity})`).join(' / ')}` : ''));
+    }
+  }
+} catch { /* 配置不可读 → 按今天的行为跑（无 N/A），不报错 */ }
+
 // === 总判定：exit code + 严重度统计（soft=LLM 兜底不 gate，单独 bucket；total=pass+p0+p1+p2+soft+skips）===
-const skips = results.filter((r) => r.pass === 'SKIP').length;
-const pass = results.filter((r) => r.pass === true).length;
-const fail = results.filter((r) => r.pass === false);
+// v19.11.2（P1-2 **阶段 2**）：**已启用的文类**（`enabled: true`，当前仅 `kaiti`）把 `gate_na` 项
+//   逐条标 `na: true` 并**排除出判定集**。未启用的文类（含全部学术档）`naEnforced` 为空 ⇒ `counted === results`
+//   ⇒ 逐字段与今天相同（阶段 1 的「零行为变化」用例仍覆盖这条）。
+//   为什么 `total` 保持 `results.length`：契约是「total = pass+p0+p1+p2+soft+skips」，
+//   故另给 `evaluated_total` 与 `na_count`，使 `total = evaluated_total + na_count` 可对账。
+const counted = naEnforced.size > 0
+  ? results.filter((r) => !naEnforced.has(String(r.gate || '').split(' ')[0]))
+  : results;
+const skips = counted.filter((r) => r.pass === 'SKIP').length;
+const pass = counted.filter((r) => r.pass === true).length;
+const fail = counted.filter((r) => r.pass === false);
 const soft = fail.filter((r) => r.severity === 'LLM 兜底').length;
 const hard = fail.filter((r) => r.severity !== 'LLM 兜底');
 // v18.62.4（P1-3）：门内**解析/读取失败**单独成类 → exit 70（见头部注释与下方 exitCode）
@@ -441,7 +533,7 @@ const errors = hard.filter((r) => r.severity === 'ERROR').length;
 // v18.62.4（P1-6）：**子检查未执行**的显式清单（门自己用 `unchecked: [原因…]` 声明）。
 //   与 SKIP 的区别：SKIP 表示「本门整体未检」（→ exit 3）；`unchecked` 表示「本门主体检了，
 //   但其中某个子项因缺输入没跑」——**如实列出、不改退出码**，让机器侧也能看见人读 detail 才看得到的信息。
-const unchecked = results.flatMap((r) => (Array.isArray(r.unchecked) ? r.unchecked.map((u) => `${(r.gate || '').split(' ')[0]}：${u}`) : []));
+const unchecked = counted.flatMap((r) => (Array.isArray(r.unchecked) ? r.unchecked.map((u) => `${(r.gate || '').split(' ')[0]}：${u}`) : []));
 
 // === 激活时序标记（v18.0.0 新增，冲突⑪）===
 // 实战教训：M-Exist-4/5/6/9 的前提均为「报告文件已落盘」（审计报告 / 审稿报告等）——
@@ -485,14 +577,18 @@ const p2 = hard.filter((r) => r.severity === 'P2').length;
 //   「**不允许** LLM 兜底的红线」自相矛盾；后者表示「门自己没跑通」（未对内容下结论，另有 exit 70）。
 const HARD_RED_LINE_RE = /^M-(?:Form-2|Form-7|Exist-1|Integrity-1)(?=\s|$)/;
 const NON_ADJUDICABLE_SEVERITIES = new Set(['LLM 兜底', 'ERROR']);
-const hardRedLineHits = results
+const hardRedLineHits = counted
   .filter((r) => r.pass === false && !NON_ADJUDICABLE_SEVERITIES.has(String(r.severity || ''))
     && HARD_RED_LINE_RE.test(String(r.gate || '')))
   .map((r) => `${String(r.gate).split(' ')[0]}(${r.severity})`);
-const anyFail = results.some((r) => r.pass === false);
+const anyFail = counted.some((r) => r.pass === false);
+// v19.11.2（反哺 2026-10-17 §P1-1）：**仅软提示**（`soft_only`）不再伪装成失败，但仍须 exit 3。
+//   旧形态把这些门记成 `pass:false`（与真失败同形）；现由门侧打 `soft_only` 标记，这里单独计入
+//   「需复核」，从而保住 exit 语义（软提示 ≠ 通过），同时让 `pass`/`p2` 的统计只反映硬缺陷。
+const softOnlyCount = results.filter((r) => r.soft_only === true).length;
 // v18.62.4（P1-3）：ERROR 优先级最高 —— 门自己没跑通时，p0/p1 的计数没有意义（可能漏检），
 //   故一律 70，让下游 `final-check.mjs` 读成「脚本/环境缺陷，勿触发修订轮」而不是「内容有 P1」。
-const exitCode = errors > 0 ? 70 : (p0 > 0 ? 2 : (p1 > 0 ? 1 : (anyFail || skips > 0 ? 3 : 0)));
+const exitCode = errors > 0 ? 70 : (p0 > 0 ? 2 : (p1 > 0 ? 1 : (anyFail || softOnlyCount > 0 || skips > 0 ? 3 : 0)));
 
 // === v18.52.0（反哺 F-BB）：换稿重裁的**中间态**识别 —— 报告曾忠实记录「只存在几秒」的状态 ===
 // 实测缺陷：主控**先改** `audits/闸门记录-T7.5.md` 的指纹互锁值、**后重写** `final/M-Gate-Report.json`，
@@ -580,8 +676,28 @@ let finalExit = exitCode;
 const report = {
   draft: draftPath,
   date: new Date().toISOString().slice(0, 10),
+  // v19.11.2（反哺 §P1-11）：**schema 版本**。历史报告存在三套互不兼容形态（英文键 / 缺 results /
+  //   中文键手写），而没有任何字段能说明「这份报告是哪种」。故自此写入 `schema_version`，
+  //   并由 `--verify-report` 批量判定；缺该字段 = v19.11.2 之前的历史报告（legacy，须人工分诊）。
+  schema_version: 2,
+  // v19.11.2（P1-2 阶段 1）：文类与「本文类下不适用的门」——**只记录，不参与 exit**。
+  //   阶段 2 启用后，聚合会按 `gates_na` 过滤；阶段 1 保留全量判定，好让影子数据与真实判定并存可比。
+  ...(genre ? { genre } : {}),
+  ...(genreProfile?.version != null ? { genre_profile_version: genreProfile.version } : {}),
+  ...(gatesNa.length ? { gates_na: gatesNa } : {}),
+  ...(shadowFail.length ? { shadow_fail: shadowFail } : {}),
   total: results.length,
+  // v19.11.2（P1-2 阶段 2）：`total` 仍是**本次跑的门数**（契约「total = pass+…+skips」的分子面），
+  //   已生效的 N/A 项单列 `na_count`，并给 `evaluated_total`，使 `total = evaluated_total + na_count` 可对账。
+  ...(naEnforced.size ? { evaluated_total: counted.length, na_count: naEnforced.size } : {}),
+  // v19.11.2（反哺 2026-10-17 §P0-3）：快轨子集**必须可辨**。缺这两个字段时，`total:5` 是唯一线索，
+  //   而历史上出现过 12/22/24/25 四种 total（门版本演进），读者无法区分「快轨少跑」与「旧版门少项」。
+  //   `gates_skipped` 取裁剪前的真实门数差（不是写死的常量），门集变化时自动跟随。
+  ...(liteProfile ? { lite_profile: true, gates_skipped: liteSkipped } : {}),
   pass, p0, p1, p2, soft, skips,
+  // v19.11.2（P1-1）：仅软提示的门数（这些门 pass=true，但 exit 仍为 3 —— 让「有多少条待复核」
+  //   在报告里可数，而不是只能靠逐条读 detail）
+  ...(softOnlyCount ? { soft_only_count: softOnlyCount } : {}),
   // v18.62.4（P1-6）：**子检查未执行**的显式清单（门用 `unchecked: [...]` 声明）。
   //   为什么单列而不是并进 skips：skips 会把整门记为「未检」并推到 exit 3；而这里描述的是
   //   「本门主体检了、某个子项没跑」——**不改退出码**，但让机器侧看得见（旧版只有 detail 字符串里有人读的信息）。
@@ -825,6 +941,19 @@ if (reportPath) {
           + 'path-misconfig（路径/环境配置不当）/ not-applicable（本条对本文类不适用）/ '
           + 'false-positive（判据与真实文本形态不匹配）/ spec-conflict（两条规范互相冲突）/ real（确是真缺陷，经裁定降级）');
         process.exit(10);
+      }
+      // v19.11.2（P1-2 阶段 2）：**拒绝对已 N/A 的项写裁定**。
+      //   为什么必须有这一条：N/A 表若能被「一纸裁定」绕过，就等于把 profile 变成了另一种裁定通道，
+      //   而且绕过的痕迹（refutations）还长得很像「认真复核过」。判据：refutations 里点名了 N/A 项 → exit 30。
+      if (naEnforced.size && Array.isArray(adj.refutations)) {
+        const bad = [...new Set(adj.refutations
+          .map((r) => String(r?.gate || '').split(' ')[0])
+          .filter((g) => naEnforced.has(g)))];
+        if (bad.length) {
+          console.error(`裁定被拒：${bad.join(',')} 在文类 ${genre} 下**已 N/A**（见 scripts/_lib/genre-profiles.json 的 na_reason）`
+            + '——无需人力兜底；请删去这些 refutations 后重试（exit 30 = 拒绝裁定，不等于内容失败）');
+          process.exit(30);
+        }
       }
       const aP0 = adj.true_p0 ?? adj.true_p0_count;
       const aP1 = adj.true_p1 ?? adj.true_p1_count;

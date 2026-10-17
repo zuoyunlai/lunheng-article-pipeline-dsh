@@ -203,8 +203,29 @@ function renameWithRetry(from, to, attempts = 3) {
   }
 }
 
+/**
+ * v19.11.2（反哺 2026-10-17 §P2-13）：**拒绝 Windows 保留设备名**。
+ *
+ * 病灶（已复现）：`--report NUL` → 写入"成功"、`statSync('NUL').size = 7`、退出码 0，
+ *   而磁盘上没有任何可读报告——OS 把 NUL 当设备吞掉了。`CON`/`AUX`/`PRN`/`COM1-9`/`LPT1-9`
+ *   同理（含 `aux.json` 这种「带扩展名」形态，Windows 仍按设备解析）。
+ *   后果与 `count-chars --summary` 丢报告同族：**闸门实据不存在，而工具说成功**。
+ * 边界：只在 Windows 上拒（POSIX 上 `nul` 是合法文件名）；判据按「主干名」比对，并剥掉尾随点/空格
+ *   （Windows 会把 `NUL.` / `NUL ` 也归一成设备名）。
+ */
+const WIN_RESERVED_RE = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i
+function assertNotDevicePath(p) {
+  if (process.platform !== 'win32') return
+  const base = basename(String(p)).replace(/[. ]+$/, '')
+  const stem = base.includes('.') ? base.slice(0, base.indexOf('.')) : base
+  if (WIN_RESERVED_RE.test(stem)) {
+    throw new Error(`拒绝写入 Windows 保留设备名 "${base}"：写进它不会产生可读文件（工具会假装成功）`)
+  }
+}
+
 export function writeWithSafety(p, text, { inPlace = false, source = null } = {}) {
   if (!p) throw new Error('writeWithSafety: 缺少写入路径（p 为空）')
+  assertNotDevicePath(p)
   if (source && !inPlace) assertNotSameFile(source, p)
   const backup = backupFile(p)
   const tmp = join(dirname(resolve(p)), `.${Math.random().toString(36).slice(2, 10)}-${process.pid}.lunheng-tmp`)
