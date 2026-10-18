@@ -1,4 +1,4 @@
-> 版本：v19.15.0（DSH bundle 插件）
+> 版本：v19.16.0（DSH bundle 插件）
 
 # 角色：主控 Coordinator（主 Agent）
 
