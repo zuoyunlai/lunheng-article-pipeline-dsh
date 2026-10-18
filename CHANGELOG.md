@@ -2,6 +2,34 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 19.18.1 — 2026-10-19
+
+<!-- 行为变更 2 条 | 锚点 = CHANGELOG.md § 19.18.1（plugin-info 在 GUI 宿主下静默失明） -->
+
+> **主题**：修 19.18.0 的一个**静默失效**——插件详情页的 `envWarnings`（档位对账）在**真实 GUI 宿主里根本不出现**。主人装 v19.18.0 后截图实测：只有版本/档位/配置三块，**警告一节整块消失**。
+> **来源**：主人 2026-10-19 截图反馈「只是多了这些信息」+ 本地复现。
+> **版本判据 = patch**：只修缺陷，不新增能力。
+
+**根因（两个缺陷叠加）**：
+
+- **①** `providers` 的定位只认 `process.env.DSH_PROFILE_DIR`（`lib/panel.mjs`）。而**GUI 宿主进程里没有这个 env**（它只在 CLI/子进程里存在）→ `cordis.patch.yml` 读不到 → `providers = null` → `envWarnings` 恒为空。
+- **②** Client 只判断「有警告才渲染」，且 **`providersError` 从未在 UI 上出现** → 解析失败时**整块静默消失**，用户看到的信息面是"完整"的假象。
+
+**修法**：
+
+- **路径改三候选回退链**，其中第 2 条**不依赖任何 env**：`lib/` 上溯三级即 profile 目录（`lib → 包根 → node_modules → profile`）——插件代码本身就在 profile 里，这是最稳的定位方式。候选顺序：`DSH_PROFILE_DIR` → **自身路径反推** → `DSH_HOME/profiles/$DSH_PROFILE`。全落空时 `providersError` 写明「试过 N 个候选位置」。
+- **Client 增加 `providersError` 可见行**：解析失败不再静默，直接把原因打在 section 里。
+
+**验证（本地复现 + 修复后）**：
+| 场景 | 修复前 | 修复后 |
+|---|---|---|
+| 有 `DSH_PROFILE_DIR`（CLI） | providers 正常 | 正常（不变） |
+| **无 `DSH_PROFILE_DIR`（模拟 GUI 宿主）** | providers=null、`envWarnings=[]`、UI 静默 | **providers 正常、`envWarnings` 精确命中 `LUNHENG_RETRIEVAL_MODEL=MiniMax-M2.7 未在 minimax-cn 的 models[] 内`** |
+
+**门绿**：`consistency` 0 漂移、`repo-hygiene` 全通过、`plugin-surface(STRICT_WARN=1)` 11 通过、`pack-smoke` 通过、`node --test` **1306/1306 全绿**（1306 例，1 例按环境跳过；其中 `tests/panel.test.mjs` **58/58**）。
+**回滚点**：`lib/panel.mjs` / `lib/client.js` 的 19.18.0 版本见 git `e0e69c4c`。
+
+**教训（值得记）**：① 只读信息面**必须有"降级可见"通道**，否则"没警告"与"没读到"在 UI 上完全同形；② **插件在宿主进程内不能假定自己有 CLI env**——`process.env` 在 GUI 与 CLI 下不是同一份。
 ## 19.18.0 — 2026-10-18
 
 <!-- 行为变更 1 条 | 锚点 = CHANGELOG.md § 19.18.0（插件详情页只读信息面：P-1/P-3/P-4） -->
