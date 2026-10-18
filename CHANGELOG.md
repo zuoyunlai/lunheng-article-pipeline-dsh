@@ -2,6 +2,32 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 19.18.0 — 2026-10-18
+
+<!-- 行为变更 1 条 | 锚点 = CHANGELOG.md § 19.18.0（插件详情页只读信息面：P-1/P-3/P-4） -->
+
+> **主题**：**让「装没装上 / 配得对不对」在插件页上一眼可见**。一句话：新增 `/lunheng-panel/plugin-info` 只读路由 + `plugins.detail.section` 席位——展示版本实况（loaded vs onDisk）、三档 env 模型档位、provider `models[]` 登记表、**`envWarnings`（档位与登记表对账）**、以及 10 项 Config 实况。
+> **来源**：`audits/反哺报告-2026-10-18-插件设置面与可配项评估-v1.md` §五 P-1/P-3/P-4（主人 2026-10-18「开始做」）。
+> **版本判据 = minor**：新增一条只读 HTTP 路由 + 一个新客户端席位 + 7 条 L10N 键；**不改任何门、不改任何判级**。
+> **门绿**：`consistency` 0 漂移、`repo-hygiene` 全通过、`plugin-surface`（`STRICT_WARN=1`）11 通过、`pack-smoke` 通过、`node --test` **1306/1306 全绿**（1306 例，1 例按环境跳过；其中 `tests/panel.test.mjs` **58/58**）。
+
+**行为变更摘要（1 条）**：
+
+- **①** **插件详情页只读信息面**：
+  - **Host**（`lib/panel.mjs`）：新增 `GET /lunheng-panel/plugin-info`。边界与整条路由同源——只读 `process.env` / profile 的 `cordis.patch.yml` / 自身 `package.json`，**不写盘、不起子进程、不联网**。返回 `loadedVersion` / `onDiskVersion`（判「装没装上」）、三档 env（`LUNHENG_*_MODEL` / `_PROVIDER`）、provider `models[]` 登记表、`envWarnings`（档位与登记表对账）、10 项 Config 实况。
+  - **provider 解析**：用**相对缩进**（不绑绝对空格数），解析失败**如实降级**为 `providersError`，不猜、不静默。
+  - **Client**（`lib/client.js`）：注册 `plugins.detail.section`（`id=lunheng-plugin-info`），按 `subject.kind === 'bundle' && subject.pkg.name === 'lunheng-article-pipeline'` 过滤，只在本插件页渲染；宿主无该 slot 时 `inject` 不回调 → 自然不注册（不报错、不假装）。
+  - **实测值（Host 侧桩调用）**：`providers` 解析出 `minimax-cn`（2 个模型）/ `zai-coding-cn`（4 个）；`envWarnings` 精确命中本机 `LUNHENG_RETRIEVAL_MODEL=MiniMax-M2.7 未在 minimax-cn 的 models[] 内 → 该档派发会直接报 has no configured model`。
+
+**刻意未做**：
+
+- **P-5「检查更新」**：UI 主动访问 npm registry 属**新增外发面**，按本仓对 A11 的严肃程度，须**先登记外部服务声明**再实现——不能默认「只读请求就不算外发」。
+- **UI 写回配置 / 素材池路径可配 / 风格基线路径可配**：报告 §六 / §七 已论证不划算（Config 非 Schemastery + `Volatile` = 0 ⇒ UI 设置的收益上限只是「少编辑一个 yaml」；池是工作区级、进 profile 级配置会错层）。
+
+**验证边界（如实）**：Host 侧已实测（JSON 正确、provider 解析正确、`envWarnings` 命中真问题）；**UI 渲染未能在会话内验证**——须装本版并重启 GUI 后打开「插件 → lunheng-article-pipeline」自查。测试侧的机械约束本次抓出 3 处（`--dsw-color-warning` 不在主题 token 目录、L10N 外中文字面量 251 > 基线 250、席位注册缺 `inject(sessionId)`），均已修。
+
+**其余登记**：无新增随包脚本（仍 37 个）、无新增 M 门、不改任何判级门槛。
+**回滚点**：`run/中国古典学的学科划界/audits/_mech-backup-v19.13.0/`（`panel.mjs.v19.17.0` / `client.js.v19.17.0`）。
 ## 19.17.0 — 2026-10-18
 
 <!-- 行为变更 2 条 | 锚点 = CHANGELOG.md § 19.17.0（字数口径统一 + 档位对账：F-03 / F-05） -->
