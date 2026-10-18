@@ -1,4 +1,4 @@
-> 版本：v19.12.0（DSH bundle 插件）
+> 版本：v19.13.0（DSH bundle 插件）
 
 
 <a id="concepts"></a>
@@ -357,6 +357,7 @@
 1. **Web 检索 provider**（DSH 配置的 web_search / web_fetch 提供方，可能含 Google/Bing）
 2. **图像生成 MCP**（可选，默认关闭）：主人勾选「启用封面生成」并配图像生成 MCP（如 MiniMax `image-01`）才外发
 3. **大模型推理 provider**（当前模型，如 deepseek / MiniMax / Anthropic / GLM 等）：各角色卡调用 LLM 时，将**文献卡/数据卡/案例卡/草稿/分析大纲全文**发送给模型 provider
+4. **书目索引 API**（可选，仅启用「引用机械核验」时）：`Crossref` / `OpenAlex` / `arXiv` 直连；外发**仅题名 / DOI / 作者**，受 A11 `检索=` 约束（`仅本地素材` 等档位禁跑，详见 [`_shared/外部检索源接入面.md`](_shared/外部检索源接入面.md) §3.6）
 
 > **内置功能（零外发）**：**数据图表 SVG + 封面 SVG 矢量风**由主控用 `write` 工具本地手写矢量图，**零外发，不依赖任何外部服务**（符合「零外发」原则）。仅主人勾选「启用封面生成」并配图像 MCP 时才外发（可选默认关闭）。
 

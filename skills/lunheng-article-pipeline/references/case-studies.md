@@ -1,4 +1,4 @@
-> 版本：v19.12.0（DSH bundle 插件）
+> 版本：v19.13.0（DSH bundle 插件）
 
 # 论衡实战案例库（references/case-studies.md）
 
