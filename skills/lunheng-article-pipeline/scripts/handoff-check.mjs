@@ -954,7 +954,7 @@ if (opt.requireGates) {
       else if (!Number.isInteger(o.chosenIndex) || o.chosenIndex < 0 || o.chosenIndex >= o.options.length) problems.push('chosenIndex 越界或非整数')
       else if (o.chosenLabel !== o.options[o.chosenIndex]) problems.push('chosenLabel ≠ options[chosenIndex]（账本自身不自洽）')
       if (problems.length) { badLines.push(`第 ${i + 1} 行：${problems.join(' / ')}`); return }
-      receipts.push({ ...o, _line: i + 1, _key: `${o.gate}#${o.round ?? 1}` })
+      receipts.push({ ...o, _line: i + 1, _key: o.id || `${o.gate}#${o.round ?? 1}` })
     })
     if (badLines.length) {
       addHard('A7', 'gate-receipts.jsonl',
@@ -964,7 +964,7 @@ if (opt.requireGates) {
   }
   /** 取 §6 段内某固定字段的值（字段名真源 = 模板 §6；此处按名字匹配，不抄行文）。 */
   const fieldVal = (s, k) => {
-    const m = new RegExp(`\\*\\*${k}\\*\\*[：:]\\s*([^\\n]*)`).exec(s)
+    const m = new RegExp(`\\*\\*${k}\\*\\*\\s*(?:[（(][^）)\\n]*[）)])?\\s*[：:]\\s*([^\\n]*)`).exec(s)
     return m ? m[1].trim() : null
   }
   const missingDocs = []
@@ -1056,7 +1056,10 @@ if (opt.requireGates) {
         + '主人的决策将只剩主控自述这一个来源（模板 §6 已列该字段为必填；预授权门填 Phase 0 确认门的回执，如 `Phase0#1`）', 21)
       continue
     }
-    const idList = idRaw.split(/[、,，\s]+/).filter(Boolean)
+    // v19.14.0（反哺 R-03）：先按 `gate#N` 模式提取——自动剥掉反引号/括注/说明文字；一个都提不到才退回
+    //   分隔符切分（保持对自定义 id 的旧行为）。旧实现直接 split，于是
+    //   `- **回执 id**：`Phase0#1`、`Phase0#2`（账本 …）` 会切出 5 个碎片 → 全部「找不到」（实测）。
+    const idList = (idRaw.match(/\b[A-Za-z][\w-]*#\d+\b/g) || idRaw.split(/[、,，\s]+/).filter(Boolean))
     const hit = idList.map((id) => receipts.find((r) => r._key === id)).filter(Boolean)
     if (hit.length !== idList.length) {
       const miss = idList.filter((id) => !receipts.some((r) => r._key === id))

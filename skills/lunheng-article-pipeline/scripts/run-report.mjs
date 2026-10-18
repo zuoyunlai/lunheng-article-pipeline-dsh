@@ -176,6 +176,16 @@ else {
     byItem.set(mm[1].trim(), { item: mm[1].trim(), path: mm[2].trim(), bytes: mm[3].trim(), sha: mm[4].trim() });
   }
   st.deliveryRows = [...byItem.values()];
+// v19.14.0（反哺 R-10）：status.md 的「未跑项（SKIP-ledger）」段（模板 status-template.md:144 已定义，
+//   每行 `- [跳过] 项=… ｜ 原因=… ｜ 替代验证=…`）。面板此前**完全不读它**（全文无「未跑项」字样），
+//   于是「快轨按设计不跑」与「该跑没跑」在面板上同形。此处读出，供渲染层逐条标注原因。
+const skipSec = /###?\s*未跑项[^\n]*\n([\s\S]*?)(?=\n#{2,3}\s|$)/.exec(statusText);
+st.skipRows = (skipSec ? skipSec[1].split(/\r?\n/).filter((l) => /^\s*-\s*\[跳过\]/.test(l)) : [])
+  .map((l) => {
+    const pick = (k) => { const m = new RegExp(`${k}\\s*=\\s*([^｜|\\n]*)`).exec(l); return m ? m[1].trim() : ""; };
+    return { item: pick('项'), reason: pick('原因'), alt: pick('替代验证') };
+  })
+  .filter((r) => r.item && r.item !== '无');
   const loop = /## 修订回环记录\n([\s\S]*?)(?=\n## )/.exec(statusText);
   if (loop) st.loopBullets = loop[1].split('\n').filter((l) => l.trim().startsWith('- ')).map((l) => l.trim().slice(2));
   const pend = /## 待主人决策（当前）\n([\s\S]*?)(?=\n## |$)/.exec(statusText);
@@ -318,9 +328,32 @@ if (agentLog !== null) {
   }
 } else warn('agents-log.md', '角色执行记录缺 —— 角色面板为空（不是「零角色」，是没读到）');
 const roleRows = [...roleCounts.entries()].map(([role, count]) => ({ role, count }));
+// v19.14.0（反哺 R-08）：三分支——「文件不在盘」/「在盘但解析不到 ### Tn」/「有角色段」。旧版把三种情形
+//   都渲染成「无 agents-log.md」，把**解析失败说成文件缺失**（本脚本上文自己写过「错报比漏报更伤」，
+//   此处正是反例：实测 agents-log.md 在盘 6,129 B，面板却说「无该文件」）。
+const roleState = agentLog === null ? 'missing' : (roleRows.length ? 'ok' : 'unparsed');
+const roleNote = roleState === "missing"
+  ? "未找到 agents-log.md（文件不在盘）"
+  : roleState === "unparsed"
+    ? `agents-log.md 在盘（${Buffer.byteLength(agentLog, "utf8")} B）但未匹配到 \`### Tn\` 段——解析失败，不是「零角色」`
+    : "";
 const handoffCount = listDir(join(projectDir, 'audits')).filter((f) => /^交接报告-/.test(f)).length;
 const manifest = readJson(join(projectDir, 'final', '证据包', 'manifest.json'));
 if (manifest === null) warn('final/证据包/manifest.json', '证据包 manifest 缺 —— 证据包条目数标 N/A');
+// v19.14.0（反哺 R-09）：`status.md` 的「交付物清单」段在全库文档中**从未定义**（status 模板无该段；
+//   grep「交付物清单」对 references/** 与 SKILL.md 零命中），而面板却要求它 → 所有项目该面板恒空。
+//   这里在 status 解析不到时回落 manifest.files[]（本来就有 path / bytes / sha256），并如实写数据源。
+if (!st.deliveryRows.length && manifest && Array.isArray(manifest.files) && manifest.files.length) {
+  st.deliveryRows = manifest.files.map((f) => ({
+    item: String(f.path || '').split('/').pop(),
+    path: `final/证据包/${f.path}`,
+    bytes: f.bytes != null ? String(f.bytes) : '—',
+    sha: f.sha256 ? `${String(f.sha256).slice(0, 8)}…` : '—',
+  }));
+  st.deliverySource = 'final/证据包/manifest.json（status.md 无该段，已回落）';
+} else {
+  st.deliverySource = 'status.md';
+}
 // ── 采集 ⑦b：图位 ↔ 图件 对账（v19.1.8，与面板共用 `_lib/figure-reconcile.mjs`）
 //   旧实现只收 `.svg` —— 本机 cairo 库缺失、SVG 渲染链路不可用，Pillow 直出 PNG 是既定工作流，
 //   于是「图已交付」被如实报成「无图」（实测 `cn-llm-inference-cost-econ` 6 张 PNG 全被漏掉）。
@@ -627,7 +660,7 @@ function render() {
       <table><thead><tr><th>门</th><th>轮</th><th>提问</th><th>回复</th><th>等待</th><th>选项</th><th>主人所选</th></tr></thead><tbody>${gateTable || '<tr><td colspan="7" class="small">无</td></tr>'}</tbody></table></div>
     <div class="panel"><h3>Phase 进度（status.md）</h3>
       ${st.phaseRows.length ? `<table><thead><tr><th>Phase</th><th>内容</th><th>状态</th></tr></thead><tbody>${st.phaseRows.map((r) => `<tr><td>${esc(mdPlain(r.phase))}</td><td>${esc(cut(mdPlain(r.what), 130))}</td><td>${esc(cut(mdPlain(r.state), 120))}</td></tr>`).join('')}</tbody></table>` : '<p class="small">status.md 未解析到 Phase 进度表</p>'}</div>
-    <div class="panel split"><div><h3>角色执行段（agents-log.md 的 <code>### Tn</code> 记录数）</h3>${svgBars(roleRows.map((r) => ({ label: r.role, value: r.count, note: `${r.count} 段`, color: '#7c9bd4' }))) || '<p class="small">无 agents-log.md</p>'}</div>
+    <div class="panel split"><div><h3>角色执行段（agents-log.md 的 <code>### Tn</code> 记录数）</h3>${svgBars(roleRows.map((r) => ({ label: r.role, value: r.count, note: `${r.count} 段`, color: '#7c9bd4' }))) || `<p class="small">${esc(roleNote || "无角色段")}</p>`}</div>
       <div><h3>交接与来源</h3><table><tbody>
       <tr><td>交接报告文件</td><td>${handoffCount} 份（audits/交接报告-*.md）</td></tr>
       <tr><td>来源分片</td><td>${srcRows.map((r) => `${esc(r.name)} ${r.lines}`).join(' ｜ ') || '—'}</td></tr>
@@ -659,8 +692,8 @@ function render() {
   </section>
 
   <section id="artifacts"><h2>产物</h2>
-    <div class="panel"><h3>交付物清单（status.md 回填）</h3>
-      ${st.deliveryRows.length ? `<table><thead><tr><th>项</th><th>路径</th><th>字节</th><th>sha / 校验</th></tr></thead><tbody>${st.deliveryRows.map((r) => `<tr><td>${esc(r.item)}</td><td class="mono">${esc(r.path)}</td><td>${esc(r.bytes)}</td><td class="small">${esc(r.sha)}</td></tr>`).join('')}</tbody></table>` : '<p class="small">status.md 未解析到交付物清单</p>'}</div>
+    <div class="panel"><h3>交付物清单（数据源：${esc(st.deliverySource || 'status.md')}）</h3>
+      ${st.deliveryRows.length ? `<table><thead><tr><th>项</th><th>路径</th><th>字节</th><th>sha / 校验</th></tr></thead><tbody>${st.deliveryRows.map((r) => `<tr><td>${esc(r.item)}</td><td class="mono">${esc(r.path)}</td><td>${esc(r.bytes)}</td><td class="small">${esc(r.sha)}</td></tr>`).join('')}</tbody></table>` : '<p class="small">status.md 与 证据包/manifest.json 都没有交付物条目</p>'}</div>
     <div class="panel"><h3>图件（图位对账）</h3>
       <p class="small"><b>${esc(figureSummaryLine(figRec))}</b></p>
       ${figRec.reason ? `<p class="small">项目自述（${esc(figRec.reason.source)}）：${esc(figRec.reason.text)}</p>` : ''}
@@ -675,6 +708,8 @@ function render() {
 
   <section id="provenance"><h2>口径与数据源</h2>
     <div class="panel"><h3>数据源状态（缺什么就写什么，不静默补数）</h3><ul class="notes">${noteRows}</ul>
+      ${st.skipRows && st.skipRows.length ? `<h3>未跑项（status.md 的 SKIP-ledger，共 ${st.skipRows.length} 项——本页的空格多数由此产生）</h3>`
+        + `<table><thead><tr><th>项</th><th>原因</th><th>替代验证</th></tr></thead><tbody>${st.skipRows.map((r) => `<tr><td>${esc(r.item)}</td><td>${esc(r.reason)}</td><td>${esc(r.alt)}</td></tr>`).join('')}</tbody></table>` : ''}
       <h3>口径声明</h3><ul class="notes">
         <li>正文区纯汉字 = <code>## 摘要</code> 之后 → 首个文末节之前（含摘要正文与关键词段，不含题名与文末节）——import <span class="mono">_lib/sections.mjs</span> + <span class="mono">_lib/han.mjs</span>，与 <code>count-chars.mjs</code> 同源。</li>
         <li>四门等待时长优先取 <code>audits/gate-receipts.jsonl</code> 的 askedAt→answeredAt；无回执时才回退解析阶段确认单 §6「回复时间」。</li>

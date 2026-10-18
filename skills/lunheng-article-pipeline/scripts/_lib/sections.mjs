@@ -182,6 +182,23 @@ export const bodyStartAfterAbstract = (text, marker = '摘要') => {
   return { index: nextLineAfter(text, h.index), found: true }
 }
 
+/** 非学术文类的正文区起点（v19.14.0 反哺 R-11，方案 A）。
+ *  **为什么**：`bodyStartAfterAbstract` 把起点绑在 `## 摘要` 上，而评论/公众号/行业分析类文类（`biz-review` /
+ *  `wechat` / `industry` / `report-3rd` / `policy` / `book-review`）本无摘要 → 起点退化为**文件开头**（含题名），
+ *  字数虚高且置 `degraded`（实测夹具：35 vs 真实 25）。此前唯一绕法是给评论稿硬加一段「摘要」，属文体异物。
+ *  **口径**：非学术文类取「**首个二级标题行末**」为起点（题名 H1 与任何前言都不计入），终点仍是首个文末白名单节。
+ *  **兼容**：默认行为不变——不传 genre 或传学术文类时，本函数原样委托 `bodyStartAfterAbstract`。
+ *  其余消费者（m-gate / g-audit / quality-score / apply-*-cycle / cite-coverage）**未接**本函数、仍走旧口径；
+ *  对**有摘要**的稿件两者等价，对无摘要稿件需按 R-11b 逐个接入（已登记反哺报告）。 */
+export const NON_ACADEMIC_GENRES = ['biz-review', 'wechat', 'industry', 'report-3rd', 'policy', 'book-review']
+export const bodyStartForGenre = (text, genre) => {
+  const g = String(genre || '').trim()
+  if (!NON_ACADEMIC_GENRES.includes(g)) return bodyStartAfterAbstract(text)
+  const hs = h2Headings(text)
+  if (!hs.length) return { index: 0, found: false, genre: g }
+  return { index: bodyStartOfHeading(text, hs[0].index), found: true, genre: g }
+}
+
 /** 取某二级节的段体（标题行之后 → 下一个二级标题之前）；无该节 → 返回 null（区分「空节」与「无此节」）。 */
 export const sectionBody = (text, marker) => {
   const hs = h2Headings(text)

@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 // 论衡字数统计脚本（v2.5.2-dsh.5 新增，v2.5.2-dsh.7 加 --summary，v18.2.3 修 --summary body 终点）
-// 用法：node count-chars.mjs <文件.md> [--full | --summary | --warn-threshold <N>]
+// 用法：node count-chars.mjs <文件.md> [--full | --summary | --warn-threshold <N>] [--genre <code>]
 //   --full    = 统计全文纯汉字（含题名/摘要/文末五节）；默认只统计正文区（## 摘要 之后、## 参考文献 之前）
 //   --summary = 关键节点分段字数 + 全文配比（T7/T8 一眼可见结构，省 LLM 读全文）
 //               ⚠️ 其 `body.hanChars` **与默认口径同源**（v18.2.3 修：此前误用含「关键词」的列表求终点 → 只剩摘要正文，差 21 倍）
+//   --genre <code> = v19.14.0（反哺 R-11 方案 A）：非学术文类（biz-review/wechat/industry/report-3rd/policy/
+//                    book-review）的正文区起点改用「首个二级标题行末」，不再要求 `## 摘要`；不传或传学术文类时行为不变
 //   --warn-threshold <N> = 字数软警告阈值；不参与 `hanChars` 口径与退出码语义，
 //                          仅当实际字数 > N 时在 JSON 输出里加 `warnOvershoot: true`（v18.16.0 S-2 反哺实装）
 // 口径：纯中文字符数（Unicode 汉字 \u4e00-\u9fff），不含标点/数字/英文/引用编号
@@ -22,7 +24,7 @@ import { writeReport } from './_lib/destructive-write.mjs';   // 报告类写盘
 import { countHan } from './_lib/han.mjs';   // 汉字口径唯一真源（v2.5.2-dsh.13 抽 _lib；v18.0.3 计数改走 countHan）
 // v18.2.6：`HAN_RE` 曾是**死导入**（v18.0.3 计数改走 countHan 后无人引用）——连带把 `_lib/han.mjs`
 //   的模块级 `g` 正则状态问题遮住（见该文件注释）。现删除死导入，边界口径改走 sections。
-import { ENDNOTE_SECTIONS, bodyStartAfterAbstract, firstEndnoteIndex, sectionBody } from './_lib/sections.mjs';
+import { ENDNOTE_SECTIONS, bodyStartAfterAbstract, bodyStartForGenre, firstEndnoteIndex, sectionBody } from './_lib/sections.mjs';
 import { installExitGuard, requireExistingFile } from './_lib/exit-guard.mjs'; // 退出码硬化（v18.0.5）
 installExitGuard();   // 传目录/权限错 → exit 10（旧版未捕获 EISDIR → exit 1 = 被读成「P1 内容失败」）
 
@@ -35,14 +37,15 @@ installExitGuard();   // 传目录/权限错 → exit 10（旧版未捕获 EISDI
 //   不传该旗标时，`argvTokens` 与旧版逐 token 相同，**行为零变化**。
 const rawTokens = process.argv.slice(2);
 let reportPath = null;
-let wordMetric = false;   // v19.8.0 反哺 v9 D4：加 Word 口径字数列（估算，不作门判据）
+let wordMetric = false;
+let genre = null;   // v19.14.0（反哺 R-11 方案 A）：文类 code；非学术文类改走「首个二级标题」起点   // v19.8.0 反哺 v9 D4：加 Word 口径字数列（估算，不作门判据）
 const argvTokens = [];
 for (let i = 0; i < rawTokens.length; i++) {
   if (rawTokens[i] === '--report') {
     const v = rawTokens[++i];
     if (!v || v.startsWith('-')) {
       console.error('--report 缺少值（示例：--report audits/count-chars.json）');
-      console.error('用法: node count-chars.mjs <文件.md> [--full | --summary | --warn-threshold <N>] [--report <path>]');
+      console.error('用法: node count-chars.mjs <文件.md> [--full | --summary | --warn-threshold <N>] [--genre <code>] [--report <path>]');
       process.exit(10);
     }
     reportPath = v;
@@ -52,10 +55,22 @@ for (let i = 0; i < rawTokens.length; i++) {
     wordMetric = true;
     continue;
   }
+  // v19.14.0（反哺 R-11 方案 A）：`--genre <code>` / `--genre=<code>` 可选；从 token 流摘出，其余原样喂既有逻辑。
+  if (rawTokens[i] === '--genre' || rawTokens[i].startsWith('--genre=')) {
+    const eq = rawTokens[i].indexOf('=');
+    const v = eq >= 0 ? rawTokens[i].slice(eq + 1) : rawTokens[++i];
+    if (!v || v.startsWith('-')) {
+      console.error('--genre 缺少值（示例：--genre biz-review）');
+      console.error('用法: node count-chars.mjs <文件.md> [--full | --summary | --warn-threshold <N>] [--genre <code>] [--report <path>] [--genre <code>]');
+      process.exit(10);
+    }
+    genre = v;
+    continue;
+  }
   argvTokens.push(rawTokens[i]);
 }
 if (argvTokens.length === 0) {
-  console.error('用法: node count-chars.mjs <文件.md> [--full | --summary | --warn-threshold <N>] [--report <path>]');
+  console.error('用法: node count-chars.mjs <文件.md> [--full | --summary | --warn-threshold <N>] [--genre <code>] [--report <path>]');
   process.exit(10);
 }
 const file = argvTokens[0];
@@ -66,7 +81,7 @@ if (flag === '--warn-threshold') {
   const v = argvTokens[2];
   if (!v || v.startsWith('-')) {
     console.error('--warn-threshold 缺少值（必须紧跟一个正整数）');
-    console.error('用法: node count-chars.mjs <文件.md> [--full | --summary | --warn-threshold <N>]');
+    console.error('用法: node count-chars.mjs <文件.md> [--full | --summary | --warn-threshold <N>] [--genre <code>]');
     process.exit(10);
   }
   const n = Number(v);
@@ -83,22 +98,22 @@ if (flag === '--warn-threshold') {
   const extra = argvTokens.slice(3);
   if (extra.length > 0) {
     console.error(`--warn-threshold 之后有多余参数: ${extra.join(' ')}（--warn-threshold 不与其它旗标同用）`);
-    console.error('用法: node count-chars.mjs <文件.md> [--full | --summary | --warn-threshold <N>]');
+    console.error('用法: node count-chars.mjs <文件.md> [--full | --summary | --warn-threshold <N>] [--genre <code>]');
     process.exit(10);
   }
   flag = undefined;  // 不与 --full/--summary 同用
 } else if (argvTokens.length > 2) {
   // 非 --warn-threshold 形态下，多余 token 一律拒绝（与 handoff-check 同源「带值旗标缺值守卫」）
   console.error(`多余参数: ${argvTokens.slice(1).join(' ')}`);
-  console.error('用法: node count-chars.mjs <文件.md> [--full | --summary | --warn-threshold <N>]');
+  console.error('用法: node count-chars.mjs <文件.md> [--full | --summary | --warn-threshold <N>] [--genre <code>]');
   process.exit(10);
 }
-if (!file) { console.error('用法: node count-chars.mjs <文件.md> [--full | --summary | --warn-threshold <N>]'); process.exit(10); } // v18.0.2：参数/路径错统一 10
+if (!file) { console.error('用法: node count-chars.mjs <文件.md> [--full | --summary | --warn-threshold <N>] [--genre <code>]'); process.exit(10); } // v18.0.2：参数/路径错统一 10
 if (!existsSync(file)) { console.error(`文件不存在: ${file}`); process.exit(10); } // v18.0.2：同上
 requireExistingFile(file, '待统计文件');   // v18.0.5：必须是文件（目录 → 10，不再等到 readFileSync 炸）
 // 未知 flag（如 `--ful` 拼错）静默降级会走错口径 —— v18.0.5 改为显式拒绝（第三方审计 P3）
 if (flag !== undefined && !['--full', '--summary'].includes(flag)) {
-  console.error(`未知参数: ${flag}\n用法: node count-chars.mjs <文件.md> [--full | --summary | --warn-threshold <N>]`);
+  console.error(`未知参数: ${flag}\n用法: node count-chars.mjs <文件.md> [--full | --summary | --warn-threshold <N>] [--genre <code>]`);
   process.exit(10);
 }
 
@@ -150,14 +165,22 @@ const countWordMetric = (t) => {
 //   `--summary` 在标记逻辑之前就 process.exit(0)，导致该模式口径失真却**不带 degraded 标记**，
 //   正是 v2.5.2-dsh.13 专门要消灭的静默退化；第三方审计 P1-3）。
 // v18.2.6：起点解析改走 `_lib/sections.mjs`（标题按「行首 ## + 任意空白」解析，不再依赖 `'## 摘要'` 字面量）。
-const abstractStart = bodyStartAfterAbstract(text);
+// v19.14.0（反哺 R-11 方案 A）：非学术文类（无摘要）改用「首个二级标题」起点；学术文类与不传 genre 时行为完全不变。
+const abstractStart = bodyStartForGenre(text, genre);
 const bodyStartIdx = abstractStart.index;
 const degraded = !abstractStart.found;
 if (degraded && flag !== '--full') {
-  console.error(`⚠️ ${file}：未找到「## 摘要」，正文区起点退化为文件开头（口径已失真）——请补写摘要，或改用 --full 明确按全文统计`);
+  console.error(abstractStart.genre
+    ? `⚠️ ${file}：文类 ${abstractStart.genre} 下未找到任何二级标题（## ），正文区起点退化为文件开头（口径已失真）——请给正文加小标题，或改用 --full`
+    : `⚠️ ${file}：未找到「## 摘要」，正文区起点退化为文件开头（口径已失真）——请补写摘要、用 --genre 指定文类，或改用 --full 明确按全文统计`);
 }
 const degradedFields = degraded && flag !== '--full'
-  ? { degraded: true, degradedReason: '缺「## 摘要」→ 正文区起点退化为文件开头' }
+  ? {
+    degraded: true,
+    degradedReason: abstractStart.genre
+      ? `文类 ${abstractStart.genre} 下未找到任何二级标题 → 正文区起点退化为文件开头`
+      : '缺「## 摘要」→ 正文区起点退化为文件开头',
+  }
   : {};   // `--full` 不受正文区起点影响，故不标 degraded（v18.0.5：与既有契约一致）
 
 // === 文末五节标记 + 正文区终点（v18.2.3：单一真源，默认口径与 --summary **共用**）===
