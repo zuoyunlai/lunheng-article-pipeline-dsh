@@ -164,6 +164,25 @@ if (genre != null && !Object.hasOwn(GENRE_MIN_L, genre)) {
 }
 const draftPath = positional[0];
 const evDir = positional[1];
+// v19.12.0（L1 批）：**快轨（`--lite-profile`）与文类绑定校验 + 快轨不做学术交付**——两条都是 soft 提示，
+//   不改 exit（快轨是 v19.8.0 的正式入口，是否「以快轨交付」属主人的语义裁定，不是脚本能判死的）。
+//   真源 = `references/_shared/文类档案.md` §三入口与文类候选集（快写入口候选 = 结构门「不跑」的四类）。
+//   why soft：v19.8.0 起 `--lite-profile` 是**独立旗标**，存量项目可能存在「学术文类 + lite」的中间态——
+//   硬失败会把历史交付判红，而本仓的判据是「让中间态可见」，不是「让存量失败」。
+const LITE_GENRES = ['report-3rd', 'biz-review', 'industry', 'wechat'];
+if (liteProfile && genre != null && !LITE_GENRES.includes(genre)) {
+  console.error(`⚠️ 快轨与文类不匹配：\`--lite-profile\` 只用于「结构门 = 不跑」四类（${LITE_GENRES.join(' / ')}），`
+    + `本次 --genre ${genre} → 该文类按文类档案应走**全量 25 门**。本次仍按快轨子集跑，**不得当全量 M 门通过**。`);
+}
+if (liteProfile && existsSync(draftPath)) {
+  // 快轨只允许 5 文末节；出现学术四声明 = 有人在拿快轨做学术交付——此前**没有任何门**覆盖这一形态。
+  const draftHead = readFileSync(draftPath, 'utf8');
+  const academicMarks = ['CRediT', '数据可用性', '伦理审批', '利益冲突', 'COI'].filter((w) => draftHead.includes(w));
+  if (academicMarks.length) {
+    console.error(`⚠️ 快轨稿内出现学术交付声明（${academicMarks.join(' / ')}）——快轨**不是**学术交付，`
+      + '交付说明须标「快轨模式·非学术投稿」；若确需按学术交付，请改走全量档并补 T9 / 期刊匹配。');
+  }
+}
 // v18.62.4（全量审计-v18.62.3 §8.3 #42）：**此处原有 `if (!draftPath || !evDir)` 守卫是不可达的** ——
 //   上方 `parseCliArgs({ minPositionals: 2, maxPositionals: 2 })` **已保证**恰好两个位置参数；
 //   不足或超出都会在那里以 `UsageError` → exit 10 收场。留着它读起来像一道「活的保险」，

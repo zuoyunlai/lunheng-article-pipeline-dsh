@@ -984,6 +984,8 @@ test('开工台（v19.4.0）WB-13：每个表单字段都登记了消费点（sc
     { k: 'brief', kind: 'script', file: 'scripts/g-audit-check.mjs', re: /'--brief'/,
       why: '研究问题/写作要点 → G 审计读简报的落点' },
     // ── prompt：无脚本消费者，只有主控读开场白（照抄进简报）后按文字约定执行 ──────────────
+    { k: 'entry', kind: 'prompt', re: /^- 入口: /m,
+      why: '入口 → **机检档**（快写 = `--lite-profile` 5 门 / 写一篇 · 学术投稿 = 全量 25 门）；**无脚本消费者**，主控读开场白决定跑几门。候选集真源 = `_shared/文类档案.md` §三入口与文类候选集（v19.12.0 L1 批）' },
     { k: 'title', kind: 'prompt', re: /^- 题名: /m,
       why: '开场白题名 → 简报题名；**无脚本消费者**（题名本身不参与任何机检）' },
     { k: 'lang', kind: 'prompt', re: /^- 语言: /m,
@@ -1323,15 +1325,20 @@ test('开工台（v19.0.0 §4.2）：三处硬校验 + 结构化开场白 + 只 
   const mod = await loadClient(h, { fetch: fetchStub({}) })
   const P = mod.__panel
   // ① 校验：题目 / 项目名（正则，含路径穿越）/ 检索范围（必须显式选；v19.4.0 起取代旧的「外发同意」）
-  assert.equal(P.wbValidate({ title: '', project: 'p', retrieval: '全网检索' }), 'wb.need.title')
-  assert.equal(P.wbValidate({ title: 't', project: '', retrieval: '全网检索' }), 'wb.need.project')
-  assert.equal(P.wbValidate({ title: 't', project: '../escape', retrieval: '全网检索' }), 'wb.need.projectChars')
-  assert.equal(P.wbValidate({ title: 't', project: 'a'.repeat(33), retrieval: '全网检索' }), 'wb.need.projectChars')
-  assert.equal(P.wbValidate({ title: 't', project: 'p', retrieval: '' }), 'wb.need.retrieval')
-  assert.equal(P.wbValidate({ title: 't', project: '我的项目-1', retrieval: '全网检索' }), null, '中文/连字符合法')
+  //   v19.12.0（L1 批）：新增入口（必填）与「入口 ↔ 文类」同族校验，故各夹具补 `entry`。
+  assert.equal(P.wbValidate({ title: '', project: 'p', retrieval: '全网检索', entry: '写一篇' }), 'wb.need.title')
+  assert.equal(P.wbValidate({ title: 't', project: '', retrieval: '全网检索', entry: '写一篇' }), 'wb.need.project')
+  assert.equal(P.wbValidate({ title: 't', project: '../escape', retrieval: '全网检索', entry: '写一篇' }), 'wb.need.projectChars')
+  assert.equal(P.wbValidate({ title: 't', project: 'a'.repeat(33), retrieval: '全网检索', entry: '写一篇' }), 'wb.need.projectChars')
+  assert.equal(P.wbValidate({ title: 't', project: 'p', retrieval: '', entry: '写一篇' }), 'wb.need.retrieval')
+  assert.equal(P.wbValidate({ title: 't', project: '我的项目-1', retrieval: '全网检索', entry: '写一篇' }), null, '中文/连字符合法')
+  assert.equal(P.wbValidate({ title: 't', project: 'p', retrieval: '全网检索' }), 'wb.need.entry', '入口必填')
+  assert.equal(P.wbValidate({ title: 't', project: 'p', retrieval: '全网检索', entry: '学术投稿', genre: 'wechat' }),
+    'wb.need.genreScope', '「学术投稿 + 公众号」必须被拒（否则会跑出三视角 T9 + 期刊匹配的错配组合）')
   // ② 开场白：结构化字段块（**不是散文**）+ 授权串 + 四条例律
-  const prompt = P.buildPrompt(Object.assign({}, P.WB_DEFAULT, { title: 'T', project: 'P1', genre: 'academic-cn', retrieval: '全网检索', mask: 'basic', materials: 'data.csv' }))
+  const prompt = P.buildPrompt(Object.assign({}, P.WB_DEFAULT, { title: 'T', project: 'P1', entry: '学术投稿', genre: 'academic-cn', retrieval: '全网检索', mask: 'basic', materials: 'data.csv' }))
   assert.match(prompt, /- 项目名: P1/)
+  assert.match(prompt, /- 入口: 学术投稿/, '入口必须进开场白（主控据此决定跑 5 门还是 25 门）')
   assert.match(prompt, /- 题名: T/)
   assert.match(prompt, /academic-cn（期刊投稿（社科实证））/, '选文类必须带出它的场景（一选定 11 项）')
   assert.match(prompt, /- 外部服务授权：检索=全网检索 \/ 推理=<[^>]+> \/ 脱敏=basic/, '三段式授权串必须整条出现在开场白里')
@@ -1412,6 +1419,39 @@ test('开工台（v19.0.0 §4.2）：内置文类表必须与 references/_shared
     sections: c[10], t9: c[11], journal: c[13], minLit: Number(c[14]),
   }))
   assert.deepEqual(mod.__panel.GENRES, parsed, '内置文类表与文类档案.md 不一致（客户端副本必须同批同步）')
+})
+
+test('开工台（v19.12.0 L1）：三入口的候选文类闭包 + 越界即拒', async () => {
+  // 为什么需要：入口 → 文类候选集是**新的一张映射表**，而映射表最容易「拼错一个 code」或「漏登记一个文类」，
+  //   两种错都不会让门变红、只会让某类稿件在界面上选不到（或选到不允许的组合）。故把三条性质钉死：
+  //   ① 候选 ⊆ 档案的 12 个 code；② 快写候选 == 档案里「结构门 = 不跑」的那几类（不另立判据）；
+  //   ③ 越界组合必须被 `genreAllowed` 与 `wbValidate` 双重拒绝。
+  const h = makeReactStub()
+  const mod = await loadClient(h, { fetch: fetchStub({}) })
+  const P = mod.__panel
+  const codes = P.GENRES.map((g) => g.code)
+  // ① 候选集闭包（防拼错 code：拼错的项永远选不到，且不会有任何报错）
+  for (const e of P.WB_ENTRY) {
+    for (const c of P.entryScope(e)) assert.ok(codes.includes(c), `入口「${e}」的候选 ${c} 不在文类档案的 12 个 code 里`)
+  }
+  // ② 快写 = 结构门「不跑」的那几类（判据直接取自档案副本的 structure 列）
+  const noGate = P.GENRES.filter((g) => g.structure === '不跑（记 N/A）').map((g) => g.code).sort()
+  assert.deepEqual(P.entryScope('快写').slice().sort(), noGate,
+    `快写候选必须恰为「结构门 = 不跑」的文类（实得 ${P.entryScope('快写').join('/')}）`)
+  assert.equal(noGate.length, 4, '「结构门 = 不跑」当前应为四类；若档案改了，本用例与入口候选集须同批更新')
+  // ③ 学术投稿不收发布向文类；单视角类也不该混进去
+  for (const c of ['wechat', 'industry', 'biz-review', 'report-3rd', 'policy']) {
+    assert.ok(!P.entryScope('学术投稿').includes(c), `学术投稿不得含发布向文类 ${c}`)
+  }
+  for (const c of ['academic-cn', 'academic-hum', 'academic-case', 'kaiti']) {
+    assert.ok(P.entryScope('学术投稿').includes(c), `学术投稿必须含 ${c}`)
+  }
+  // ④ 空文类（自定义 / 跟随主控定档）永远合法；越界组合双重拒绝
+  assert.equal(P.genreAllowed('学术投稿', ''), true, '留空 = 由主控定档，不得被拒')
+  assert.equal(P.genreAllowed('写一篇', 'wechat'), true)
+  assert.equal(P.genreAllowed('快写', 'academic-cn'), false)
+  assert.equal(P.wbValidate({ title: 't', project: 'p', retrieval: '全网检索', entry: '快写', genre: 'academic-cn' }),
+    'wb.need.genreScope', '提交前校验必须与 genreAllowed 同判（两处判据漂移 = 界面能选、提交才报错）')
 })
 
 test('客户端半边（v19.0.0）：注入的 hover 类样式必须是真调用（不得再拼出 T(...) 源码文本）', async () => {

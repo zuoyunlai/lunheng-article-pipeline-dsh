@@ -180,6 +180,10 @@ const WAIVER_MARKER_RE = /(?<![A-Za-z0-9_])WAIVER\s*=\s*(on|off)(?![A-Za-z0-9_])
 //   容忍带本体 = 超限 +5%~+9%（即 v18.11.0 F-3 的原容忍带），且要求 T5 交接报告已标注估算字数
 //   （第 3 条是留痕条件，脚本不核——它不在正文与简报里，故 detail 里显式点名由 T7 核）。
 const BUF_MARKER_RE = /(?<![A-Za-z0-9_])BUF\s*=\s*(on|off)(?![A-Za-z0-9_])/i;
+// **不足侧硬 / 软标记（v19.12.0 · L1 批）**：简报 `FLOOR=hard|soft`，**缺标记 = hard**（现行行为）。
+//   文类 → 档位映射单一真源 = `references/_shared/文类档案.md` §`FLOOR` 档；本脚本只认标记、不认识文类。
+//   同 `BUF=` 一样：**只浮出事实并影响「义务档位」**，最终判级仍归 T7。
+const FLOOR_MARKER_RE = /(?<![A-Za-z0-9_])FLOOR\s*=\s*(hard|soft)(?![A-Za-z0-9_])/i;
 const g8 = (() => {
   const hanChars = countHan(bodyText);
   if (!briefPath) {
@@ -187,6 +191,8 @@ const g8 = (() => {
       skipReason: '未传 --brief：无法取得目标篇幅（不拿默认目标假装核过）', evidence: { hanChars } };
   }
   const briefText = readFileSync(briefPath, 'utf8');
+  const floorMarker = (() => { const m = FLOOR_MARKER_RE.exec(briefText); return m ? m[1].toLowerCase() : null; })();
+  const floorSoft = floorMarker === 'soft';
   const waiverMarker = (() => { const m = WAIVER_MARKER_RE.exec(briefText); return m ? m[1].toLowerCase() : null; })();
   if (waiverMarker === 'on') {
     return { name: '字数偏差（正文纯汉字 vs 任务简报篇幅字段）', checked: false, pass: null, severity: 'SKIP',
@@ -234,7 +240,9 @@ const g8 = (() => {
   const shortPct = +((hanChars / lo - 1) * 100).toFixed(1);
   const overPct = +((hanChars / hi - 1) * 100).toFixed(1);
   const adjudicationRequired = inBand ? null : (shortfall
-    ? { by: 'T7', level: 'P0', why: '字数判定表 §二：不足 >10%（低于下限 ×0.9）→ P0，须扩写（2026-09-29 主人裁定明示保留该档）', floor: Math.round(lo * 0.9) }
+    ? { by: 'T7', level: floorSoft ? 'P2' : 'P0', why: floorSoft
+      ? '字数判定表 §二：不足 >10%，但简报标 `FLOOR=soft`（发布向文类）→ **P2 提示、不触发扩写轮**，T8 记录偏差'
+      : '字数判定表 §二：不足 >10%（低于下限 ×0.9）→ P0，须扩写（2026-09-29 主人裁定明示保留该档；`FLOOR=hard` 或缺标记）', floor: Math.round(lo * 0.9) }
     // 超限侧只有一档：`!inBand` 且非不足 ⇒ 必然 > 上界 ×1.05 ⇒ 就是「>5% 记 P1」。
     //   ⚠️ 刻意**不写** `overPct > 5 ? 'P1' : 'P2'`：那个 P2 分支**不可达**（≤5% 全在候选区间内 → 走 null），
     //   留着它会让人以为「超限 ≤5% 也会产生义务」——死分支比没有分支更误导（本批自证：P3 用例当场证伪）。
@@ -242,12 +250,12 @@ const g8 = (() => {
   const detail = inBand
     ? `在候选区间内：${hanChars} 字 vs 候选 ${lo}${hi !== lo ? `–${hi}` : ''} 字 ｜ ${candNote}`
     : shortfall
-      ? `${hanChars} 字 vs 简报候选 ${lo}${hi !== lo ? `–${hi}` : ''} 字 → **不足侧**：低于下限（${Math.round(lo * 0.9)}）${Math.abs(shortPct)}% → 按 \`字数判定表\` §二 该档为 **P0（须扩写）**；**判级仍归 T7**（先核 status.md / 交付说明.md 是否已声明篇幅变更或豁免——简报篇幅可能是已失效的早期值） ｜ ${candNote}`
+      ? `${hanChars} 字 vs 简报候选 ${lo}${hi !== lo ? `–${hi}` : ''} 字 → **不足侧**：低于下限（${Math.round(lo * 0.9)}）${Math.abs(shortPct)}% → 按 \`字数判定表\` §二 该档为 **${floorSoft ? 'P2（提示，不触发扩写轮——简报标 `FLOOR=soft`）' : 'P0（须扩写）'}**；**判级仍归 T7**（先核 status.md / 交付说明.md 是否已声明篇幅变更或豁免——简报篇幅可能是已失效的早期值） ｜ ${candNote}`
       : `${hanChars} 字 vs 简报候选 ${lo}${hi !== lo ? `–${hi}` : ''} 字 = ${(hanChars / hi).toFixed(3)}×（对上界，+${overPct}%）→ **候选，判级归 T7**：先核 status.md / 交付说明.md 是否已声明字数豁免或篇幅变更（实测存在「简报 16k / 定稿 40k + 交付说明记主人豁免」与「简报为 Phase 0 原始文档、后经 v4 增补扩篇」两类真实情形，均不构成缺陷） ｜ ${candNote}${bufNote}`;
   return {
     name: '字数偏差（正文纯汉字 vs 任务简报篇幅字段）', checked: true, pass: inBand, severity: inBand ? 'PASS' : 'P2',
     detail, evidence: { hanChars, candidates: cand.candidates, briefField: cand.raw, ratioToUpper: +(hanChars / hi).toFixed(4), brief: briefPath,
-      bufMarker, inBufferBand, bufferBand, waiverMarker, shortfall, shortPct, overPct, adjudicationRequired,
+      bufMarker, inBufferBand, bufferBand, waiverMarker, floorMarker, floorSoft, shortfall, shortPct, overPct, adjudicationRequired,
       note: '只判「是否落在候选区间」；候选之外不自动升 P1/P0——目标值本身可能是档位下限/过期值/已通过 WAIVER=on 显式豁免，判级归 T7。**`adjudicationRequired` = T7 对该候选应给出的档位（义务可见，判定仍归人）**。`bufferBand` = 例外通道的 ①② 条是否满足（标记 + 落带），**不含第 ③ 条**（T5 交接报告的估算标注不在本脚本输入内，须 T7 核）' },
   };
 })();

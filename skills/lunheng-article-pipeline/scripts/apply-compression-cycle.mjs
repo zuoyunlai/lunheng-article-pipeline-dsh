@@ -86,9 +86,14 @@ const m = measure(targetPath);
 // 命名更正（2026-09-29，主人裁定）：字数归属 = **G8（成品度 + 字数偏差）**，机检项 = `G8-CharCount`；
 //   旧称「G5 阻塞线」是误称（**G5 = 学术规范（查重 / AI 痕迹）**，与字数无关）。
 const briefPath = join(projRoot, '01-任务简报.md');
-const tParse = existsSync(briefPath)
-  ? parseTargetChars(readFileSync(briefPath, 'utf8'))
+const briefText = existsSync(briefPath) ? readFileSync(briefPath, 'utf8') : null;
+const tParse = briefText !== null
+  ? parseTargetChars(briefText)
   : { value: null, raw: null, reason: '未找到 01-任务简报.md' };
+// v19.12.0（L1 批）：不足侧硬 / 软由简报 `FLOOR=hard|soft` 决定（映射真源 = `文类档案.md` §`FLOOR` 档）。
+//   **缺标记 = hard**（= 现行行为）；`soft` 只改不足侧的判级与退出码，超限侧一字不动。
+const floorSoft = briefText !== null
+  && /(?:^|[^A-Za-z0-9_])FLOOR\s*=\s*soft(?![A-Za-z0-9_])/i.test(briefText);
 const target = tParse.value;
 if (target === null) {
   console.error(`⚠️ 目标字数未解析到 → **G8 字数硬阈判定跳过**（这是「未核」，不是「已核」）：${tParse.reason}`);
@@ -97,7 +102,7 @@ if (target === null) {
 const charBand = target ? { floor: Math.round(target * 0.9), ceil: Math.round(target * 1.05) } : null;
 // ⚠️ verdict 的**前缀**（`超阻塞线` / `低于阻塞线` / `✓ 阻塞线内`）在本文件下方被 `includes()` 当
 //   控制信号消费（第 132-142 行：recommendation 与 `process.exit(1)`），**不得改字**。
-const verdict = charBand ? (m.body > charBand.ceil ? `超阻塞线 +${m.body - charBand.ceil} 字（P1，须压缩）` : (m.body < charBand.floor ? `低于阻塞线 ${charBand.floor - m.body} 字（P0，须扩写）` : '✓ 阻塞线内')) : '（未解析到目标字数）';
+const verdict = charBand ? (m.body > charBand.ceil ? `超阻塞线 +${m.body - charBand.ceil} 字（P1，须压缩）` : (m.body < charBand.floor ? `低于阻塞线 ${charBand.floor - m.body} 字（${floorSoft ? 'P2，不阻塞——FLOOR=soft' : 'P0，须扩写'}）` : '✓ 阻塞线内')) : '（未解析到目标字数）';
 
 // v18.57.x（审计修订 P2）：缺口数字必须**结构化**取值，不得从 verdict 文本里按空格切。
 //   旧写法 `verdict.split(' ')[2]` 对 `低于阻塞线 1710 字（P0，须扩写）` 取到的是
@@ -450,5 +455,8 @@ console.log(JSON.stringify(result, null, 2));
 // v19.11.2（反哺 2026-10-17 §P0-2）：**补上「低于阻塞线」**。旧版只匹配「超阻塞线」，而 :99 的
 //   verdict 明写「低于阻塞线 N 字（**P0**，须扩写）」→ 越严重的 P0 反而 exit 0，P1 却 exit 1
 //   （严重度判反，已复现：正文 8 字 / 目标 3000 → exit 0）。主控铁律是只认 exit code，故必须为 1。
-if (verdict.includes('超阻塞线') || verdict.includes('低于阻塞线') || reconcileFailed) process.exit(1);
+// v19.12.0（L1 批）：v19.11.2 那条「不足也 exit 1」的修法**保留其本意**，但补 `FLOOR=` 分流——
+//   简报标 `FLOOR=soft`（发布向文类）时，不足侧只报告、不阻塞（exit 0）；`hard` / 缺标记时行为不变。
+//   **不改文案前缀**（`低于阻塞线` 仍被 `gapDirection` / `recommendation` 的 `includes()` 消费）。
+if (verdict.includes('超阻塞线') || (!floorSoft && verdict.includes('低于阻塞线')) || reconcileFailed) process.exit(1);
 process.exit(0);

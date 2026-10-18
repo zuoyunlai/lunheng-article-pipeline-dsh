@@ -145,9 +145,17 @@ const pre = measure(prevPath);
 //   现在解析不到就**说出原因**（stderr 可见），不再让闸门无声失效。
 // v19.6.7：本解析**上移到 ③ 应用之前**——净变化预检要用同一个 `charBand`；④ 只消费结果（同一事实一处）。
 const briefPath = [join(projRoot, '01-任务简报.md')].find(existsSync);
-const tParse = briefPath
-  ? parseTargetChars(readFileSync(briefPath, 'utf8'))
+const briefText = briefPath ? readFileSync(briefPath, 'utf8') : null;
+const tParse = briefText !== null
+  ? parseTargetChars(briefText)
   : { value: null, raw: null, reason: '未找到 01-任务简报.md（无法判定目标篇幅）' };
+// v19.12.0（L1 批）：不足侧硬 / 软由简报 `FLOOR=hard|soft` 标记决定（文类 → 档位映射单一真源 =
+//   `references/_shared/文类档案.md` §`FLOOR` 档）。**缺标记 = hard**（= 现行行为，历史项目不回填）；
+//   `soft` **只作用于下限**——超限侧判定与退出码完全不变。
+//   why 不用 `--genre`：本脚本本来就不收该旗标，为它加一个「文类 → 档位」表会造第二份真源
+//   （`mform-gates.mjs` 的 `GENRE_MIN_L` 已是唯一那张，见该文件的受控取值注释）。
+const floorSoft = briefText !== null
+  && /(?:^|[^A-Za-z0-9_])FLOOR\s*=\s*soft(?![A-Za-z0-9_])/i.test(briefText);
 const target = tParse.value;
 if (target === null) {
   console.error(`⚠️ 目标字数未解析到 → **G8 字数硬阈判定跳过**（这是「未核」，不是「已核」）：${tParse.reason}`);
@@ -245,7 +253,7 @@ const postMeasurement = dryRun
 //   用 `includes()` 当作控制信号消费，**不得改字**；本次只改括注里的档位。
 const charBandVerdict = dryRun
   ? '（dry-run 未测量改后字数——G8 字数硬阈不在本次判定内，须在真实修订轮后重跑）'
-  : (charBand ? (post.body > charBand.ceil ? `超阻塞线 +${post.body - charBand.ceil} 字（P1，须压缩）` : (post.body < charBand.floor ? `低于阻塞线 ${charBand.floor - post.body} 字（P0，须扩写）` : '✓ 阻塞线内')) : '（未解析到目标字数，跳过 G8 字数硬阈判定）');
+  : (charBand ? (post.body > charBand.ceil ? `超阻塞线 +${post.body - charBand.ceil} 字（P1，须压缩）` : (post.body < charBand.floor ? `低于阻塞线 ${charBand.floor - post.body} 字（${floorSoft ? 'P2，不阻塞——FLOOR=soft' : 'P0，须扩写'}）` : '✓ 阻塞线内')) : '（未解析到目标字数，跳过 G8 字数硬阈判定）');
 
 // ---- ⑤ 内部流程词快扫（M-Form-4/5 前哨）----
 const FLOW_WORDS = ['Phase\\s*\\d(\\.\\d)?', '承重', '一处两用', '素材加载清单', '修订说明', '初稿-v\\d', '审计环节', '批判报告'];
@@ -354,5 +362,8 @@ console.log(JSON.stringify({
 //   于是「修订后仍低于下限（P0，须扩写）」与「已达标」在退出码上完全同形，主控按「只认 exit code」
 //   会把不达标读成通过。现与 `apply-compression-cycle.mjs` 同解：越界统一 exit 1（不新开码，
 //   `repo-hygiene-check` 规则⑧ 登记集合 `[0,1,10,70]` 不变）；dry-run 不测量（verdict 只是说明文案），不判。
-if (!dryRun && /低于阻塞线|超阻塞线/.test(charBandVerdict)) process.exit(1);
+// v19.12.0（L1 批）：不足侧按 `FLOOR=` 分流——`soft` 时只报告、不阻塞（exit 0）。
+//   ⚠️ **前缀 `低于阻塞线` 一字不改**：它是 `apply-compression-cycle.mjs` 的 `includes()` 控制信号
+//   （见 `:244-245` 的既有告诫），因此分流点在**退出条件**上，不在文案前缀上。
+if (!dryRun && (/超阻塞线/.test(charBandVerdict) || (!floorSoft && /低于阻塞线/.test(charBandVerdict)))) process.exit(1);
 process.exit(0);
