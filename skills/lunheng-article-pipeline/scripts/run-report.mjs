@@ -271,8 +271,9 @@ function hanOf(p) {
   const t = readText(p);
   if (t === null) return null;
   const start = bodyStartAfterAbstract(t);
-  const { to, abstractFound, endnoteFound } = bodyBounds(t);
-  return { bytes: sizeOf(p), han: countHan(t.slice(start.index, to)), degraded: !abstractFound || !endnoteFound };
+  const { to, bodyStartFound, endnoteFound } = bodyBounds(t);
+  // v19.17.0（F-03）：判「有没有可用正文起点」，而不是「有没有摘要」。
+  return { bytes: sizeOf(p), han: countHan(t.slice(start.index, to)), degraded: !bodyStartFound || !endnoteFound };
 }
 const draftsDir = join(projectDir, 'drafts');
 const versions = [];

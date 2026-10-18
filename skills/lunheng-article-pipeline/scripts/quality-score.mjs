@@ -396,7 +396,7 @@ if (existsSync(evidence) && existsSync(brief)) {
   const text = readFileSync(draft, 'utf8');
   const a = bodyStartAfterAbstract(text);
   const e = firstEndnoteIndex(text);
-  const body = text.slice(a.found ? a.index : 0, e === -1 ? text.length : e);
+  const body = text.slice(a.index, e === -1 ? text.length : e);   // v19.17.0（F-03）：index 恒可用
   const r = readabilityEvaluate(body);
   const m = r.metrics;
   add('readability', '可读性剖面（4 指标，纯观测，不进总分）', 0, null,

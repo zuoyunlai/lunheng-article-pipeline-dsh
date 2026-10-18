@@ -87,7 +87,7 @@ const bodyStartIdx = (() => {
   //   bodyStartIdx 退化成 0 → 摘要又进了扫描面，于是「Keywords(7)」这类命中再次出现）。
   for (const marker of ['摘要', 'Abstract', 'ABSTRACT']) {
     const a = bodyStartAfterAbstract(text, marker);
-    if (a.found) return a.index;
+    if (a.source !== 'none') return a.index;   // v19.17.0（F-03）：无摘要时也返回首个二级标题起点
   }
   return 0;
 })();

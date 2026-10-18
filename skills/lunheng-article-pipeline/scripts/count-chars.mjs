@@ -168,18 +168,19 @@ const countWordMetric = (t) => {
 // v19.14.0（反哺 R-11 方案 A）：非学术文类（无摘要）改用「首个二级标题」起点；学术文类与不传 genre 时行为完全不变。
 const abstractStart = bodyStartForGenre(text, genre);
 const bodyStartIdx = abstractStart.index;
-const degraded = !abstractStart.found;
+// v19.17.0（F-03）：degraded 只在「连正文起点都没有」时置位——无摘要但有二级标题 = 起点可用，不再算降级。
+const degraded = (abstractStart.source || 'none') === 'none';
 if (degraded && flag !== '--full') {
   console.error(abstractStart.genre
-    ? `⚠️ ${file}：文类 ${abstractStart.genre} 下未找到任何二级标题（## ），正文区起点退化为文件开头（口径已失真）——请给正文加小标题，或改用 --full`
-    : `⚠️ ${file}：未找到「## 摘要」，正文区起点退化为文件开头（口径已失真）——请补写摘要、用 --genre 指定文类，或改用 --full 明确按全文统计`);
+    ? `⚠️ ${file}：文类 ${abstractStart.genre} 下既无「## 摘要」也无正文二级标题（## ），正文区起点退化为文件开头（口径已失真）——请给正文加小标题，或改用 --full`
+    : `⚠️ ${file}：未找到「## 摘要」，也没有正文二级标题（## ；文末节不计），正文区起点退化为文件开头（口径已失真）——请给正文加节标题，或改用 --full 明确按全文统计`);
 }
 const degradedFields = degraded && flag !== '--full'
   ? {
     degraded: true,
     degradedReason: abstractStart.genre
-      ? `文类 ${abstractStart.genre} 下未找到任何二级标题 → 正文区起点退化为文件开头`
-      : '缺「## 摘要」→ 正文区起点退化为文件开头',
+      ? `文类 ${abstractStart.genre} 下既无「## 摘要」也无正文二级标题 → 正文区起点退化为文件开头`
+      : '缺「## 摘要」且无正文二级标题（文末节不计）→ 正文区起点退化为文件开头',
   }
   : {};   // `--full` 不受正文区起点影响，故不标 degraded（v18.0.5：与既有契约一致）
 

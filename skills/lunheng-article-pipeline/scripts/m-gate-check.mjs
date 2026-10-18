@@ -692,6 +692,40 @@ if (transientInfo?.transient) {
 // v18.12.0（L-05）：进程退出码默认 = 机械值；`--adjudicate` 成功写入裁定时改为**裁定值**
 //   （否则会重演「报告 exit=0 而进程 exit=2」——审计把这称作「产物说放行、退出码说 P0」）。
 let finalExit = exitCode;
+// v19.17.0（反哺 F-05）：**入口/文类 ↔ 机检档对账**（advisories，**不改判级、不改退出码**）。
+//   病灶：跑 5 门还是 25 门全凭主控照 `文类档案.md` §三 手工决定，选错无人发现——
+//   快写跑 25 门 = 假红（实测同一稿件 exit 0 → exit 2 / P0×3）；学术只跑 5 门 = 漏检。
+//   为什么走 `advisories` 而不是 soft bucket：`severity: "LLM 兜底"` 会把 exit 推到 3，
+//   等于用一个提示把合规项目判成「需复核」——那正是本仓反对的「提示当判据」。
+const advisories = [];
+{
+  // 项目根：从被审正文上溯最多 3 层找 01-任务简报.md（兼容 final/定稿.md 与 drafts/初稿-vN.md）
+  let dir = dirname(draftPath);
+  let briefPath = null;
+  for (let i = 0; i < 3; i++) {
+    const c = join(dir, '01-任务简报.md');
+    if (existsSync(c)) { briefPath = c; break; }
+    const up = dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  if (briefPath) {
+    let bt = '';
+    try { bt = readFileSync(briefPath, 'utf8'); } catch { bt = ''; }
+    const entry = ((/入口[:：]\s*([^\n|｜]+)/.exec(bt) || [])[1] || '').trim();
+    const briefGenre = ((/文类[:：]\s*`?([a-z][a-z0-9-]*)`?/.exec(bt) || [])[1] || '').trim();
+    const isFast = /快写/.test(entry);
+    if (isFast && !liteProfile) advisories.push('简报入口=快写，但本次**未加 --lite-profile** → 会按全量 25 门审快轨稿，典型结果是「缺批判/审计/审稿报告」的假红');
+    if (!isFast && entry && liteProfile) advisories.push('简报入口=' + entry + '，但本次**加了 --lite-profile** → 只跑 5 门，审计链可能漏检');
+    if (genre && briefGenre && genre !== briefGenre) advisories.push('--genre=' + genre + ' 与简报文类=' + briefGenre + ' **不一致**');
+    if (!genre && briefGenre && Object.hasOwn(GENRE_MIN_L, briefGenre) && GENRE_MIN_L[briefGenre] !== 3) {
+      advisories.push('简报文类=' + briefGenre + '（档案文献下限 ' + GENRE_MIN_L[briefGenre] + '），但**未传 --genre** → M-Form-1 按缺省 3 判');
+    }
+  }
+}
+if (advisories.length) {
+  for (const a of advisories) console.error('💡 档位对账提示（不改判级、不改退出码）：' + a);
+}
 const report = {
   draft: draftPath,
   date: new Date().toISOString().slice(0, 10),
@@ -721,6 +755,9 @@ const report = {
   //   为什么单列而不是并进 skips：skips 会把整门记为「未检」并推到 exit 3；而这里描述的是
   //   「本门主体检了、某个子项没跑」——**不改退出码**，但让机器侧看得见（旧版只有 detail 字符串里有人读的信息）。
   ...(unchecked.length ? { unchecked } : {}),
+  // v19.17.0（反哺 F-05）：档位对账提示——**独立字段、不进任何统计桶**（见上方 block 注释：
+  //   走 soft bucket 会把 exit 推到 3，等于把提示当判据）。
+  ...(advisories.length ? { advisories } : {}),
   hard_red_line_hits: hardRedLineHits,   // v18.12.0（L-44）：非空 ⇒ 不接受 T8 LLM 兜底（T8/门侧共同强制）
   results: wantSummary ? results.filter((r) => !r.pass && r.severity !== 'LLM 兜底') : results,  // --summary 仅保留硬失败项，省 token
   exit: exitCode,

@@ -177,9 +177,20 @@ export const firstEndnoteIndex = (text, from = 0) => {
  *
  *  `found=false` 表示无该节 → **调用方必须显式置 degraded 并告警**（禁止静默退化，v2.5.2-dsh.13 契约）。 */
 export const bodyStartAfterAbstract = (text, marker = '摘要') => {
-  const h = h2Headings(text).find((x) => titleMatches(x.title, marker))
-  if (!h) return { index: 0, found: false }
-  return { index: nextLineAfter(text, h.index), found: true }
+  const hs = h2Headings(text)
+  const h = hs.find((x) => titleMatches(x.title, marker))
+  if (h) return { index: nextLineAfter(text, h.index), found: true, source: 'abstract' }
+  // v19.17.0（反哺 F-03 · 主人 2026-10-18 定案「不留开关」）：**无摘要不再退化为文件开头**。
+  //   旧行为把题名与任何前言都算进正文（实测夹具 35 vs 真实 27），而本函数被 **7 个消费者共享**
+  //   （count-chars / g-audit / quality-score / apply-*-cycle / cite-coverage / run-report）。
+  //   新行为：回落到「首个二级标题行末」——**口径统一，不保留旧口径开关**。
+  //   `found` 仍表示「是否找到摘要」（要区分来源看 `source`）；`index` 恒为**可直接使用**的正文起点。
+  //   注意：回落**必须跳过文末节标题**（参考文献 / 数据来源 / 案例来源 / 先行者文献 / AI 使用声明）——
+  //   「首个二级标题」若正好是文末节，起点会落到正文之后，反而算出 0 字（本批自测抓到的实现缺陷：
+  //   夹具 `# 标题 + 正文 + ## 参考文献` 曾因此把起点定到参考文献之后）。
+  const firstBody = hs.find((x) => !ENDNOTE_SECTIONS.some((m) => titleMatches(x.title, m)))
+  if (firstBody) return { index: bodyStartOfHeading(text, firstBody.index), found: false, source: 'first-h2' }
+  return { index: 0, found: false, source: 'none' }
 }
 
 /** 非学术文类的正文区起点（v19.14.0 反哺 R-11，方案 A）。
@@ -195,8 +206,10 @@ export const bodyStartForGenre = (text, genre) => {
   const g = String(genre || '').trim()
   if (!NON_ACADEMIC_GENRES.includes(g)) return bodyStartAfterAbstract(text)
   const hs = h2Headings(text)
-  if (!hs.length) return { index: 0, found: false, genre: g }
-  return { index: bodyStartOfHeading(text, hs[0].index), found: true, genre: g }
+  // 同样跳过文末节标题（与 bodyStartAfterAbstract 的回落同源，避免两处口径漂移）。
+  const firstBody = hs.find((x) => !ENDNOTE_SECTIONS.some((m) => titleMatches(x.title, m)))
+  if (!firstBody) return { index: 0, found: false, genre: g, source: 'none' }
+  return { index: bodyStartOfHeading(text, firstBody.index), found: true, genre: g, source: 'first-h2' }
 }
 
 /** 取某二级节的段体（标题行之后 → 下一个二级标题之前）；无该节 → 返回 null（区分「空节」与「无此节」）。 */
@@ -213,7 +226,15 @@ export const sectionBody = (text, marker) => {
  *  两个脚本的**起点**语义不同（count-chars 从 `## 摘要` 之后起算；m-gate-check 的 `body` 从文件头起算
  *  以便扫题名/摘要），故此处只提供共用的**边界解析**，切片由各自组装。 */
 export const bodyBounds = (text) => {
-  const { found: abstractFound } = bodyStartAfterAbstract(text)
+  const src = bodyStartAfterAbstract(text)
   const e = firstEndnoteIndex(text)
-  return { to: e === -1 ? String(text ?? '').length : e, abstractFound, endnoteFound: e !== -1 }
+  // v19.17.0（F-03）：额外暴露 `bodyStartFound`——「有没有可用正文起点」与「有没有摘要」是两件事，
+  //   旧调用方把二者当同一件事，导致「无摘要但有节标题」被判降级。
+  return {
+    to: e === -1 ? String(text ?? '').length : e,
+    abstractFound: src.found,
+    bodyStartFound: src.source !== 'none',
+    bodyStartSource: src.source,
+    endnoteFound: e !== -1,
+  }
 }

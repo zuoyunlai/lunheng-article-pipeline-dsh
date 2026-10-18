@@ -104,7 +104,8 @@ if (text.charCodeAt(0) === 0xfeff) text = text.slice(1)
 // 正文区与 `count-chars.mjs` **同源同切法**（`## 摘要` 之后 → 第一个文末节之前）——
 //   v18.23.0 EFF-1 校准：首版从文件头起算，实测同一份定稿比 count-chars 多 41 字（标题+摘要），
 //   会让 T7 看到「两个正文字数」。字数类判据的**权威口径唯一 = count-chars**，本脚本只复用。
-const bodyFrom = (() => { const a = bodyStartAfterAbstract(text); return a.found ? a.index : 0; })();
+// v19.17.0（F-03）：`index` 现在恒为可用起点（无摘要时 = 首个二级标题行末），不再回落到 0。
+const bodyFrom = bodyStartAfterAbstract(text).index;
 const bodyEnd = (() => { const i = firstEndnoteIndex(text); return i === -1 ? text.length : i; })();
 const bodyText = bodyEnd > bodyFrom ? text.slice(bodyFrom, bodyEnd) : '';
 /** 行号（1-based）：按字符下标数换行。 */
