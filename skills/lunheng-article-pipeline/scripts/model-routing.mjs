@@ -383,6 +383,36 @@ const envOf = (r) => {
     ? [`$env:${P}_PROVIDER = '${r.pickProvider}'`, `$env:${P}_MODEL = '${r.pick}'`]
     : [`$env:${P}_MODEL = '${r.pick}'`];
 };
+// v19.14.0（反哺 R-14）：env 档位与 provider 登记表**对账**。
+//   病灶（本机 2026-10-18 实测）：env 写 `LUNHENG_RETRIEVAL_PROVIDER=minimax-cn` + `_MODEL=MiniMax-M2.7`，
+//   而 `cordis.patch.yml` 的 minimax-cn 只登记 MiniMax-M3.1-Flash-Preview / MiniMax-M3 →
+//   `subagent_retrieval` 派发直接抛 `provider "minimax-cn" has no configured model "MiniMax-M2.7"`，
+//   而**本脚本仍 exit 0**：它按候选池映射，却不校验 env 是否落在登记表内（主人会以为「路由正常」）。
+//   修法：**只报事实**（stderr 警告 + --json 字段），**不改退出码语义**（0/4/10 不变）——
+//   「env 写错」不等于「本脚本路由失败」，改码会让既有断言与 CI 翻车。
+const envRoutingWarnings = [];
+for (const r of routing) {
+  const P = `LUNHENG_${r.tier.toUpperCase()}`;
+  const ep = process.env[`${P}_PROVIDER`];
+  const em = process.env[`${P}_MODEL`];
+  if (!ep && !em) continue;
+  const idsOf = (pv) => (pv && Array.isArray(pv.models) ? pv.models.map((m) => (typeof m === "string" ? m : m && m.id)).filter(Boolean) : []);
+  const prov = ep ? providers.get(ep) : null;
+  if (ep && !prov) {
+    envRoutingWarnings.push(`${P}_PROVIDER=${ep}：该 provider 未登记（已登记：${[...providers.keys()].join(" / ") || "无"}）`);
+    continue;
+  }
+  if (em) {
+    const pool = ep ? idsOf(prov) : [...providers.values()].flatMap((p) => idsOf(p));
+    if (!pool.includes(em)) {
+      envRoutingWarnings.push(`${P}_MODEL=${em}：未在 ${ep || "任何已登记 provider"} 的 models[] 内 → 该档派发会直接报 "has no configured model"`);
+    }
+  }
+}
+if (envRoutingWarnings.length) {
+  for (const w of envRoutingWarnings) console.error(`⚠️ 路由警告（不影响本脚本退出码）：${w}`);
+  console.error("   → 修法：env 改成已登记模型，或在 provider 的 models[] 补登记后重载插件行（见 references/_shared/模型路由.md）。");
+}
 const out = {
   dshHome: DSH_HOME, settings: configPath,
   // v18.79.0（T0-1）：**真源与部署形态必须显式落盘**——调用方（Phase 0「模型策略」）要能分辨
@@ -402,6 +432,7 @@ const out = {
     powershell: [...new Set(routing.filter((r) => r.pick).flatMap(envOf))],
     bash: [...new Set(routing.filter((r) => r.pick).flatMap((r) => envOf(r).map((l) => l.replace(/^\$env:/, 'export ').replace(/ = /, '='))))],
   },
+  envRoutingWarnings,
   fallbackPolicy: '宿主**无模型级回退**：某档模型报错时，主控按「兜底链」改派——① 该档 fallback（脚本已给）；② 仍失败 → 设 LUNHENG_TIERING=off 用分档工具但继承会话模型；③ 再失败 → 用标准 subagent 重派并在进展页如实记录。',
   safeDefault: '不设任何 LUNHENG_* 变量 = 三档全部继承会话模型（任何 provider 都能跑）。',
   killSwitch: 'LUNHENG_TIERING=off = 强制全部继承（即便其它变量已设）。',

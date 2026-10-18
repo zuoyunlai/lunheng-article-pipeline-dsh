@@ -499,6 +499,22 @@ for (const artifact of required) {
     addHard('A2', artifact, `产物 0 字节（写盘前失败）: ${art.path}`, 20)
     continue
   }
+  // v19.14.0（反哺 R-13·basic 侧）：图位「独占一行」软检——**basic 也判**。
+  //   为什么要在 strict 之外再做一份：A3 的正文结构检查整段在 `if (!strict) continue` 之后，而**快轨走 basic**，
+  //   恰恰是最需要它的场景（本次快轨稿的图位就是从段落里捞出来的）。只多读一个正文文件、只判行形态，代价可忽略；
+  //   命中只记 soft、不阻塞交付。strict 侧另有同一判据（避免两处口径漂移：两边都只判「整行就是一个 [图…]」）。
+  if (!strict) {
+    try {
+      const ft = readText(art.path);
+      const figOnly = function (s) {
+        if (!s.startsWith('[图') || !s.endsWith(']')) return false;
+        const inner = s.slice(1, -1);
+        return inner.length > 2 && inner.indexOf('[') === -1 && inner.indexOf(']') === -1;
+      };
+      const looseFig = ft.split('\n').map(function (s) { return s.trimEnd(); }).filter(function (s) { return s.indexOf('[图') !== -1 && !figOnly(s); });
+      if (looseFig.length) addSoft('A3', artifact, '图位未独占一行 ' + looseFig.length + ' 处——md2html --fig-dir 会替换失败，图位将以纯文本留在正文');
+    } catch (e) { /* 不可读已由 A2 报，此处不重复 */ }
+  }
   if (!strict) continue
 
   // A3 结构（strict）
@@ -522,6 +538,20 @@ for (const artifact of required) {
   } else {
     const h = headCount(text)
     if (h === 0) addHard('A3', artifact, `非卡片产物无任何二级标题（结构可疑）: ${art.path}`, 21)
+    // v19.14.0（反哺 R-13）：图位结构（soft）——`[图N：标题]` 必须**独占一行**。
+    //   病灶（快轨实战）：写手把图位塞进段落中间 → `md2html --fig-dir` 的替换失效、图位以纯文本留在正文。
+    //   **刻意不判**「图位落在哪一节」：那要靠 T5 的自然语言回报做语义判断、机械不可判（本次「回报称第二节、
+    //   实物在开篇」正是如此），故只判结构，不假装能判位置。
+    const isFigOnly = (s) => {
+      if (!s.startsWith('[图') || !s.endsWith(']')) return false;
+      const inner = s.slice(1, -1);
+      return inner.length > 2 && inner.indexOf('[') === -1 && inner.indexOf(']') === -1;
+    };
+    const figLines = text.split('\n').map(function (s, i) { return { s: s.trimEnd(), i: i }; }).filter(function (x) { return x.s.indexOf('[图') !== -1; });
+    const figLoose = figLines.filter(function (x) { return !isFigOnly(x.s); });
+    if (figLoose.length) {
+      addSoft('A3', artifact, '图位未独占一行 ' + figLoose.length + ' 处（行 ' + figLoose.map(function (x) { return x.i + 1; }).join('/') + '）——md2html --fig-dir 会替换失败，图位将以纯文本留在正文');
+    }
   }
 
   // A4 版本对齐（strict；仅版本化报告类；正文轮次无关的报告族豁免——见 VERSION_INDEPENDENT）
