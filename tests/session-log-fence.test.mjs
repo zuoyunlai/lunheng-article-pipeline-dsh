@@ -65,3 +65,15 @@ test('handoff 接线钉：sessionLog / sessionRoot 都传 extraRoots（不退回
   assert.match(src, /resolveReadablePath\(exec, String\(args\.sessionRoot\)\.trim\(\), 'sessionRoot', \{ extraRoots: sessionExtra \}\)/,
     'sessionRoot 必须走专用只读根（否则 id 形态仍 exit 10）')
 })
+
+// v19.19.1（验收复现批 A-2）：**文案与实现同源**。
+//   病灶：`--help` 写「（默认 $DSH_HOME/sessions）」，而脚本 `:209-211` 无 root 即 exit 10、
+//   `:202-204` 明说**刻意不做**兜底。这类句子没有机械消费者，所以能在两次修复里都活下来
+//   （R1 只改了工具参数描述与 SKILL.md，没改脚本 --help）。此处给它一个消费者。
+test('--help 不再承诺「默认 $DSH_HOME/sessions」：文案与实现同源', () => {
+  const src = read('skills', 'lunheng-article-pipeline', 'scripts', 'handoff-check.mjs')
+  assert.doesNotMatch(src, /默认 \$DSH_HOME\/sessions/,
+    '脚本刻意不做 DSH_HOME 兜底（防跨宿主假红）——--help 不得再写「默认 …」')
+  assert.match(src, /--session-root <目录>[^\n]*\*\*必给\*\*/,
+    '--session-root 的文案须明写「必给」，与 :209-211 的 exit 10 对齐')
+})

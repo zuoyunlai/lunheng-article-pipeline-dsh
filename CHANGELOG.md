@@ -4,21 +4,25 @@
 
 ## 19.19.1 — 2026-10-19
 
-<!-- 行为变更 4 条 | 锚点 = CHANGELOG.md § 19.19.1（架构审计 R1–R4 落地批） -->
+<!-- 行为变更 8 条 | 锚点 = CHANGELOG.md § 19.19.1（架构审计 R1–R4 落地批 + 验收复现批） -->
 
-> **主题**：把 v19.19.0 的「接线 ≠ 可用」与两处边界失配收口——**Phase 5 唯一独立核对层在工具面真正可达**；`/plugin-info` 从「未披露的读面」变成登记面；H2 的 place-only 豁免不再被候选数击穿；`lib/**` 的「M 门 24 项」旧口径清零。
-> **来源**：`audits/反哺报告-2026-10-19-架构审计R1R2R3R4-v1.md`（软件架构师全量审计 R1–R4 动议核实）+ `audits/机制文件修订记录-2026-10-19-架构审计R1R2R3R4批.md`；主人 2026-10-19 指令「结合论衡插件实际按规则落成反哺报告后开始修订」。
-> **版本判据 = patch**：只修缺陷，不新增门 / 退出码 / 角色；工具面参数集合不变（`sessionLog` / `sessionRoot` 是 v19.19.0 已声明的参数，本版修的是**可达性**）。
+> **主题**：把 v19.19.0 的「接线 ≠ 可用」与两处边界失配收口——**Phase 5 唯一独立核对层在工具面真正可达**；`/plugin-info` 从「未披露的读面」变成登记面；H2 的 place-only 豁免不再被候选数击穿；`lib/**` 的「M 门 24 项」旧口径清零。同批并入**验收复现批**（发布后复现 R1 仍活在产物里）：面板与运行报告图件的可访问名补齐、`--session-root` 文案与实现同源、`scopeSource` 不再被 schema 丢弃、**新增三向同版核对**（源码 / 产物 / 发行）。
+> **来源**：`audits/反哺报告-2026-10-19-架构审计R1R2R3R4-v1.md`（软件架构师全量审计 R1–R4 动议核实）+ `audits/机制文件修订记录-2026-10-19-架构审计R1R2R3R4批.md` + `audits/反哺报告-2026-10-19-验收复现与工具面可达性-v1.md`（验收测试工程师只读验收，逐条独立复现后才定级）+ `audits/修订记录-2026-10-19-图件与面板可视化批.md`；主人 2026-10-19 指令「结合论衡插件实际按规则落成反哺报告后开始修订」→「核实以上报告中的问题，如此真实存在，请按规则生成反哺报告成文落盘」→「请依次全部修订」。
+> **版本判据 = patch**：只修缺陷，**不新增随包门 / 退出码 / 角色 / 工具参数**——`sessionLog` / `sessionRoot` 是 v19.19.0 已声明的参数（本版修的是**可达性**）；`scopeSource` 是脚本早已产出的字段（本版修的是**被 schema 丢弃**）；`release-sync-check` 是仓库级维护助手（**不随包**，与 `dist-tag-check` 同类、刻意不进 CI）。
 
 - **① `sessionLog` / `sessionRoot` 真正可达（R1）**：v19.19.0 只接参数、没验证可达性——`$DSH_HOME/sessions` 在工作区 / tmp 之外 → 路径形态被读面围栏拦死、id 形态又因缺 `--session-root` 而 `exit 10`。现由 `sessionLogRoots()`（`DSH_HOME` 派生，缺省 `~/.dsh`）给这两个参数**单独登记只读根**；`resolveReadablePath` 增可选 `extraRoots`（默认不放宽）；`sessionRoot` 描述改为「传 id 时必须给」。新增 `tests/session-log-fence.test.mjs`（默认拒绝 / 登记放行 / 越界仍拒 / 接线钉）。
 - **② `/plugin-info` 进入披露面（R2）**：默认开启面板里唯一读 `run/` 之外的端点，SECURITY.md / docs/architecture.md / 运行面板-读面明细.md 三处补齐；新增 `PANEL_ROUTES` 唯一真源并让 404 文案从它派生；新增 `tests/panel-route-disclosure.test.mjs`（源码路由 == 路由表，且每条都见于披露文档）。
 - **③ place-only 豁免不再被候选数击穿（R3）**：旧判据「除 place 外全 0」把 `personLow`（候选数，近乎恒 > 0）算进「替换」→ 1 个地名 + 95 个候选仍注入约 190 字（本会话实测 4 次）。现判据只看**真实替换**（`person` / `personLow` 不参与）；候选数仍留在 `ethicsSanitized.counts` 与工具面。`tests/h2-h5-listeners.test.mjs` 增行为用例（place=1 + personLow=2 → 不注入）。
 - **④ `lib/**` 的「M 门 24 项」旧口径清零（R4）**：工具 1 头注释改「机检 25 项；默认只读（给 `report` 时写门报告）」；面板两条**用户可见**文案改用 `{total}` 占位、由 `rerun.total` 注入（删掉可漂常量，而不是加门看住它）。新增 `tests/count-literals.test.mjs`。
+- **⑤ 面板与运行报告图件的可访问名补齐（a11y 批）**：`lib/client.js` 的 4 个 SVG（字数演进 / 雷达 / 48 小时节律 / 草稿体积）与 `scripts/run-report.mjs` 的 5 个 SVG（时间线 / 热力图 / 合规雷达 / 字数折线 / 条形图）此前只有中文 `aria-label` 或**根本没有**可访问名——屏幕阅读器读到的是「image」。现统一 `aria-label` + `tabIndex`（客户端）并走 i18n 键，标签内附**关键数值**（末版字数与增量、每维 x/5、峰值、草稿数），图件叙事不再依赖肉眼读数。
+- **⑥ `--session-root` 文案与实现同源（A-2）**：`handoff-check.mjs` 的 `--help` 仍写「（默认 `$DSH_HOME/sessions`）」，而实现 `:209-211` 无 root 即 `exit 10`、`:202-204` 明说**刻意不做**兜底（防跨宿主假红）——两次修复都只改了工具描述与 `SKILL.md`，脚本 `--help` 是漏网处。现改为「**必给** … 缺它即 exit 10」，并在 `tests/session-log-fence.test.mjs` 加一条**文案断言**（这类句子没有别的机械消费者，所以能长期漂移）。
+- **⑦ `lunheng_char_count` 不再丢弃 `scopeSource`（A-3）**：脚本早已产出该字段（`bodyStartSource` 派生），却被 `output.schema` 的 `additionalProperties:false` 静默丢弃——与 19.19.0 修 `advisories` **同族**，是漏网的第四个。现进 schema 并在首行以「起点：xxx」呈现；`scope` 标签本来带同义信息，故这是**契约不一致**而非误导（定级 P2）。
+- **⑧ 三向同版核对 `release-sync-check.mjs`（A-4）**：新增仓库级只读脚本 + `npm run check:release-sync` + `ROOT_EXIT_CONTRACT` 登记 + `tests/scripts/release-sync-check.test.mjs`（8 例）。**主判据 = profile 已装版本 == 源码 `package.json` 版本**；git 断点（`at-tag` / `ahead` / `behind` / `diverged` / `no-tag`）与 registry dist-tags（`--online`）作**证据列**，默认不改退出码——「待发版」是预期态，把它判红只会制造「习以为常的红」（判据与 `dist-tag-check` 同源）；`--strict` 才把证据列异常计入失败。它回答的正是 R1 复现里那句缺话：**源码绿 ≠ 产物绿**。
 
-**验证**：`node --test` **1317/1317 全绿**（1317 例，1 例按环境跳过；`pass 1316 / fail 0`）。
-**门绿**：`consistency` 0 漂移、`repo-hygiene` 全通过、`plugin-surface(STRICT_WARN=1)` 通过、`pack-smoke` 通过、`node --test` 全绿。
-**回滚点**：批前 `v19.19.0`（`c6abc10e`）；受控文件与逐条落点见 `audits/机制文件修订记录-2026-10-19-架构审计R1R2R3R4批.md` §七。
-**教训（值得记）**：① **接线 ≠ 可用**——参数存在但组合跑不到脚本，等于没接；验收必须跑到「脚本产出」而不是「schema 有字段」；② **豁免判据要区分「候选」与「替换」**——把候选数并进替换面，会让豁免在真实输入下恒不可达。
+**验证**：`node --test` **1326/1326 全绿**（1326 例，1 例按环境跳过；`pass 1325 / fail 0`）。
+**门绿**：`consistency` 0 漂移、`repo-hygiene` 全通过、`plugin-surface(STRICT_WARN=1)` 通过、`pack-smoke` 通过、`node --test` 全绿；`check:release-sync` 装包前如实 `exit 1`（`已装 19.19.0 ≠ 源码 19.19.1`，**这正是它该说的话**），装包后转 0。
+**回滚点**：批前 `v19.19.0`（`c6abc10e`）；受控文件与逐条落点见 `audits/机制文件修订记录-2026-10-19-架构审计R1R2R3R4批.md` §七与 `audits/修订记录-2026-10-19-图件与面板可视化批.md`；本批改前备份在 `audits/_bak-v19.19.1-accept/`（7 个 `.bak`）。
+**教训（值得记）**：① **接线 ≠ 可用**——参数存在但组合跑不到脚本，等于没接；验收必须跑到「脚本产出」而不是「schema 有字段」；② **豁免判据要区分「候选」与「替换」**——把候选数并进替换面，会让豁免在真实输入下恒不可达；③ **源码修好 ≠ 产物修好**——R1 修在源码、带回归测试、五门全绿，而 npm latest 与已装 profile 仍是旧版，于是「验收通过」测的是上一版；同版核对必须是**三向**（源码 / 产物 / 发行），只核 `loaded == onDisk` 只能证明「装的和盘上的一致」。
 
 ## 19.19.0 — 2026-10-19
 

@@ -443,7 +443,8 @@ function svgTimeline(items) {
     return `<g><line x1="${x(t).toFixed(1)}" y1="28" x2="${x(t).toFixed(1)}" y2="${H - 18}" stroke="#e2e8f0"/>
       <text x="${x(t).toFixed(1)}" y="${H - 6}" text-anchor="middle" font-size="11" fill="#718096">${lbl}</text></g>`;
   }).join('');
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" font-family='${FONT}'>${ticks}${rows}</svg>`;
+  const aria = `门禁时间线：${items.map((i) => i.gate).join(' / ')}`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${esc(aria)}" font-family='${FONT}'>${ticks}${rows}</svg>`;
 }
 
 function svgHeatmap(items, cols = 6) {
@@ -460,7 +461,9 @@ function svgHeatmap(items, cols = 6) {
   const legend = Object.entries({ 通过: '#12805c', P2: '#b7791f', P1: '#d97706', P0: '#c53030', SKIP: '#718096' })
     .map(([k, v], i) => `<g><rect x="${gap + i * 92}" y="${H - 21}" width="11" height="11" rx="3" fill="${v}" opacity="0.35" stroke="${v}"/>
       <text x="${gap + i * 92 + 17}" y="${H - 11}" font-size="11" fill="#4a5568">${esc(k)}</text></g>`).join('');
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" font-family='${FONT}'>${cells}${legend}</svg>`;
+  const counts = items.reduce((a, it) => { a[it.severity] = (a[it.severity] || 0) + 1; return a; }, {});
+  const aria = `M 门热力图：${items.length} 项（${Object.entries(counts).map(([k, v]) => `${k} ${v}`).join('、')}）`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${esc(aria)}" font-family='${FONT}'>${cells}${legend}</svg>`;
 }
 
 function svgRadar(comps, size = 420) {
@@ -483,7 +486,8 @@ function svgRadar(comps, size = 420) {
     const [x, y] = pt(i, R * Math.max(0, Math.min(1, c.ratio)));
     return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" fill="#1a56db"/>`;
   }).join('');
-  return `<svg viewBox="-46 0 ${size + 92} ${size}" width="100%" style="max-width:${size}px" role="img" font-family='${FONT}'>
+  const aria = `合规分雷达：${comps.map((c) => `${c.id}${c.applicable && Number.isFinite(c.ratio) ? ' ' + (c.ratio * 100).toFixed(0) + '%' : ' N/A'}`).join('、')}`;
+  return `<svg viewBox="-46 0 ${size + 92} ${size}" width="100%" style="max-width:${size}px" role="img" aria-label="${esc(aria)}" font-family='${FONT}'>
     ${rings}${spokes}<polygon points="${poly}" fill="#1a56db" fill-opacity="0.18" stroke="#1a56db" stroke-width="2"/>${dots}${labels}</svg>`;
 }
 
@@ -508,7 +512,8 @@ function svgLine(points, band) {
        <text x="${x(i).toFixed(1)}" y="${(y(p.han) - 10).toFixed(1)}" text-anchor="middle" font-size="10.5" fill="#2d3748">${p.han}</text>
        <text x="${x(i).toFixed(1)}" y="${H - 22}" text-anchor="middle" font-size="11" fill="#4a5568">${esc(p.label)}</text></g>` : '').join('');
   const bandLbl = band ? `<text x="${W - padR}" y="${(y(band.hi) - 6).toFixed(1)}" text-anchor="end" font-size="10.5" fill="#12805c">目标带 ${band.lo}–${band.hi}</text>` : '';
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" font-family='${FONT}'>${bandRect}${grid}<path d="${path}" fill="none" stroke="#1a56db" stroke-width="2"/>${dots}${bandLbl}</svg>`;
+  const aria = `字数演进：${points.filter((p) => Number.isFinite(p.han)).map((p) => `${p.label} ${p.han} 字`).join('、')}`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${esc(aria)}" font-family='${FONT}'>${bandRect}${grid}<path d="${path}" fill="none" stroke="#1a56db" stroke-width="2"/>${dots}${bandLbl}</svg>`;
 }
 
 function svgBars(rows, padL = 118) {
@@ -523,7 +528,8 @@ function svgBars(rows, padL = 118) {
       <rect x="${padL}" y="${y + 3}" width="${w.toFixed(1)}" height="17" rx="5" fill="${r.color || '#4a7fd4'}" opacity="0.85"/>
       <text x="${(padL + w + 8).toFixed(1)}" y="${y + 16}" font-size="11.5" fill="#4a5568">${esc(r.note ?? String(r.value))}</text></g>`;
   }).join('');
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" font-family='${FONT}'>${bars}</svg>`;
+  const aria = `条形图：${rows.map((r) => `${r.label} ${r.value}`).join('、')}`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${esc(aria)}" font-family='${FONT}'>${bars}</svg>`;
 }
 
 // 内联图件：剥 XML 声明 / DTD / script，去掉固定宽高，交给卡片自适应

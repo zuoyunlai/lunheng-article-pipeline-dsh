@@ -1,9 +1,10 @@
-# 论衡 v19.18.1 · 运行机制（Mermaid 源码）
+# 论衡 v19.19.1 · 运行机制（Mermaid 源码）
 
 > 本文件是随包的**机制全景图**（Mermaid 源码，装包即可读）；原 6 视图 HTML 由维护者在仓库外的 `diagrams/` 目录生成，不随包。
+> 展示副本 `diagrams/lunheng-mechanism.mmd.md` 的正文须与本文件一致（`_tools/check-drift.mjs` 校验）。
 > 由 `lunheng-mechanism.html` 的 6 视图转写而来，内容**不改写、不补考据** —— 6 视图压成 4 张图，覆盖装载面 / 编排面 / 门禁面 / 修订回环。
 > 真源：本仓库根（`SKILL.md` · `references/pipeline-readme.md` · `cordis.patch.yml` · `lib/`）。
-> 数字核对：`_facts/plugin-layer.md`（带 文件:行号）。
+> 数字核对：`_facts/plugin-layer.md`（行号会漂，以 `_tools/check-drift.mjs` 复核为准）。
 
 ## 使用说明
 
@@ -171,8 +172,8 @@ flowchart TD
   end
 
   subgraph l5["第 5 层 · 收报验收 handoff-check"]
-    hc["机械验收替代手工 ls<br/>exit 20 产物缺失或 0 字节 → 重派<br/>exit 21 结构 版本 成对不合 → 补交<br/>exit 22 仅软提示 → 放行"]
-    hg["Phase 5 交付前必加<br/>--require-gates --session-log 会话 id<br/>后者是主人真的答过的唯一独立核对层"]
+    hc["机械验收替代手工 ls<br/>exit 20 产物缺失或 0 字节 → 重派<br/>exit 21 结构 版本 成对不合 → 补交<br/>exit 22 仅软提示 ≠ 已验收（total=0 另标无可核项）"]
+    hg["Phase 5 交付前必加<br/>--require-gates --session-log 会话 id --session-root $DSH_HOME/sessions<br/>后者是主人真的答过的唯一独立核对层"]
   end
 
   p0 --> p25
@@ -192,7 +193,7 @@ flowchart TD
   class t25,t75,mq mech
 ```
 
-> 要点：`M-Gate-Report.json` 须同时含 `script_exit_raw`（脚本原值，禁改）与 `exit`（T8 裁定值），两者不同必须附证伪四件套 + `_t8_conclusion`。`script_exit_raw ≠ 0` **不等于**存在真缺陷。已知陈旧值：`lib/tools.js:253` 段注释写「24 项」，以工具 description 与 `SKILL.md` 的「25 机检 + 1 人工 = 26」为准。另：第 2–5 层内部不画箭头，因为 T2.5/T7.5、M-Form/M-Exist/M-Integrity/M-Fact、G 主项/G14/G15-16、handoff-check 两段都是**并列族**，写成先后关系即失真。
+> 要点：`M-Gate-Report.json` 须同时含 `script_exit_raw`（脚本原值，禁改）与 `exit`（T8 裁定值），两者不同必须附证伪四件套 + `_t8_conclusion`。`script_exit_raw ≠ 0` **不等于**存在真缺陷。M 门口径 = 机检 25 项 + 人工 `M-Integrity-2` = 26 项（19.19.1 起 `lib/tools.js` 段注释已同步为 25 项，无陈旧值）。另：第 2–5 层内部不画箭头，因为 T2.5/T7.5、M-Form/M-Exist/M-Integrity/M-Fact、G 主项/G14/G15-16、handoff-check 两段都是**并列族**，写成先后关系即失真。
 
 ---
 

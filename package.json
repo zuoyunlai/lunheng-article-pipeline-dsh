@@ -74,6 +74,7 @@
     "check:link": "node scripts/link-check.mjs",
     "check:closeout": "node scripts/closeout-verify.mjs",
     "check:no-write": "node scripts/no-write-check.mjs",
+    "check:release-sync": "node scripts/release-sync-check.mjs",
     "test": "node --test --test-timeout=180000 \"tests/**/*.test.mjs\" \"skills/*/tests/**/*.test.mjs\"",
     "test:no-isolation": "node --test --test-isolation=none --test-timeout=180000 \"tests/**/*.test.mjs\" \"skills/*/tests/**/*.test.mjs\""
   },

@@ -238,6 +238,7 @@ const ROOT_EXIT_CONTRACT = {
   'no-write-check.mjs': [0, 1, 10, 70],           // 头注释 :8-9 自述（1 = 有改写**或**有步骤没跑起来）
   'pack-smoke.mjs': [0, 1, 10, 70],               // 头注释 :15 自述 + 真 import installExitGuard → 70 可达
   'plugin-surface-check.mjs': [0, 1],             // 头注释 :24 自述（**B5 修复后**：未知 status 也进 1，见该脚本 blockingProblems）
+  'release-sync-check.mjs': [0, 1, 10, 70],       // v19.19.1 验收复现批 A-4 头注释自述：1 = 产物与源码不同版（或 --strict 下证据列异常）；10 = 非 git 仓 / registry 不可达；70 = 内部错（main 的 catch 真可达）
   'repo-hygiene-check.mjs': [0, 1],               // 头注释 :40 自述（本文件；1 = 有失败，fail-closed）
 }
 // 仓库根面的 guard 豁免（与上表同理：豁免必须是**显式登记的理由**，不是静默跳过）。当前为空。
