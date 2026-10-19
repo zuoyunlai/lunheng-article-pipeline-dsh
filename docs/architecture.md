@@ -68,7 +68,7 @@ Mermaid 源码 4 张图（装载面 / 编排面 / 门禁面 / 修订回环）：
 | `lib/guard.js` **机制文件写保护** | 经 `ctx.tools.guard()` 全局否决命中**受保护根**的写调用（技能副本 / `lib/` / 仓库 `scripts/` / `cordis.patch.yml`；写工具**与**登记过的写参数） | 开 | 主人授权：env `LUNHENG_ALLOW_MECH_EDIT=1`（或 profile 里的同名开关） |
 | `lib/tools.js` **原生工具 ×4** | `lunheng_m_gate` / `lunheng_char_count` / `lunheng_handoff_check` / `lunheng_ethics_sanitize`（前三个薄包装随包脚本；`m_gate` 可写门报告，受**可写范围围栏**） | 宿主有 `tools` 服务即注册 | 宿主不含 `tools` 服务时自动降级 |
 | `lib/commands.js` **人类命令** | `/lunheng-status`（读单项目进展）/ `/lunheng-stats`（跨项目遥测看板）/ 子技能侧的 `/lunheng-*` 路由 | 开 | 无需开关 |
-| `lib/panel.mjs` **运行面板（只读 HTTP 读面）** | 在宿主 `ctx.webServer` 上挂 `prefix` 路由 `/lunheng-panel/*`：`/ping`、`/projects`、`/snapshot`、`/file`（只读下载项目内产物）、`/events`（SSE） | **开**（v18.93.0 起「装完即用」） | `Config.panel: false` 或 `LUNHENG_PANEL=0` |
+| `lib/panel.mjs` **运行面板（只读 HTTP 读面）** | 在宿主 `ctx.webServer` 上挂 `prefix` 路由 `/lunheng-panel/*`：`/ping`、`/plugin-info`（插件详情只读信息面）、`/projects`、`/snapshot`、`/file`（只读下载项目内产物）、`/events`（SSE） | **开**（v18.93.0 起「装完即用」） | `Config.panel: false` 或 `LUNHENG_PANEL=0` |
 | `lib/client.js` + 开工台 | 浏览器半边：运行面板视图 + 「开工台」表单；只写 `localStorage`，**不新增宿主路由** | 随面板 | 同面板 |
 
 **共同口径**：以上模块都**零第三方依赖**、不联网、不写盘（例外逐条写明：面板只读、工具仅 `m_gate` 的门报告可写、监听器默认只标记）；所有路径判定统一走 `lib/run-path-fence.mjs` 的**三层围栏**（词法 → 结构 → realpath 物理层），**新入口不得自写一套**（审计 §优化方向 2）。逐项信任边界与残余风险见 [`SECURITY.md`](../SECURITY.md)。

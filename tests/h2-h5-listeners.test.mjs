@@ -203,6 +203,24 @@ test('H2 ③ 低置信候选**不得单独**触发标记注入（候选数仍在
     '无真替换 / 无超限跳过 / 无词表缺失时**不得注入**标记（低置信候选只通知结构化字段与工具面）')
 })
 
+test('H2 ④ place-only 豁免不得被低置信候选击穿（v19.19.1 架构审计 R3）', async () => {
+  // 病灶（本会话实测）：旧判据 `every(除 place 外全 0)` 把 `personLow`（候选数，近乎恒 > 0）算进来
+  //   → 「1 个地名 + 95 个候选」仍注入约 190 字标记，v19.14.0 的 place-only 豁免实际不可达。
+  // 夹具刻意同时带 place=1 与 personLow≥1（张量/研究 等姓氏命中但无角色词）：只修计数口径、
+  //   不修豁免判据时本用例必红。
+  const { decision } = await driveH2({ text: '四川大学的研究团队用张量分解处理各阶段数据，成本明细见下文明细。' })
+  const es = decision.ethicsSanitized
+  assert.ok(es, '须有 ethicsSanitized 结构化字段')
+  assert.equal(es.counts.place, 1, `夹具应恰好命中 1 处地名，实际 ${JSON.stringify(es.counts)}`)
+  assert.ok((es.counts.personLow || 0) >= 1,
+    '夹具必须带低置信候选（否则测不到「候选击穿豁免」这一面）——实测该句 personLow=2')
+  assert.equal(es.counts.personHigh, 0, '不得有高置信真人名替换（否则不是 place-only）')
+  assert.equal(es.replacements, 1, `唯一替换应来自 place，实际 ${es.replacements}`)
+  assert.ok(!decision.additionalContexts || decision.additionalContexts.length === 0,
+    '替换全部来自 place 时不得注入标记——personLow 是候选数（≠替换），不参与 place-only 判定；'
+    + `实际注入：${JSON.stringify((decision.additionalContexts || []).map((m) => m.content.map((b) => b.text).join('')))}`)
+})
+
 test('H2 必须调用 next() 且**只调一次**（不截断下游、也不重复驱动下游）', async () => {
   let calls = 0
   let sawExec = null

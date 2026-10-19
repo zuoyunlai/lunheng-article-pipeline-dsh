@@ -2,6 +2,24 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 19.19.1 — 2026-10-19
+
+<!-- 行为变更 4 条 | 锚点 = CHANGELOG.md § 19.19.1（架构审计 R1–R4 落地批） -->
+
+> **主题**：把 v19.19.0 的「接线 ≠ 可用」与两处边界失配收口——**Phase 5 唯一独立核对层在工具面真正可达**；`/plugin-info` 从「未披露的读面」变成登记面；H2 的 place-only 豁免不再被候选数击穿；`lib/**` 的「M 门 24 项」旧口径清零。
+> **来源**：`audits/反哺报告-2026-10-19-架构审计R1R2R3R4-v1.md`（软件架构师全量审计 R1–R4 动议核实）+ `audits/机制文件修订记录-2026-10-19-架构审计R1R2R3R4批.md`；主人 2026-10-19 指令「结合论衡插件实际按规则落成反哺报告后开始修订」。
+> **版本判据 = patch**：只修缺陷，不新增门 / 退出码 / 角色；工具面参数集合不变（`sessionLog` / `sessionRoot` 是 v19.19.0 已声明的参数，本版修的是**可达性**）。
+
+- **① `sessionLog` / `sessionRoot` 真正可达（R1）**：v19.19.0 只接参数、没验证可达性——`$DSH_HOME/sessions` 在工作区 / tmp 之外 → 路径形态被读面围栏拦死、id 形态又因缺 `--session-root` 而 `exit 10`。现由 `sessionLogRoots()`（`DSH_HOME` 派生，缺省 `~/.dsh`）给这两个参数**单独登记只读根**；`resolveReadablePath` 增可选 `extraRoots`（默认不放宽）；`sessionRoot` 描述改为「传 id 时必须给」。新增 `tests/session-log-fence.test.mjs`（默认拒绝 / 登记放行 / 越界仍拒 / 接线钉）。
+- **② `/plugin-info` 进入披露面（R2）**：默认开启面板里唯一读 `run/` 之外的端点，SECURITY.md / docs/architecture.md / 运行面板-读面明细.md 三处补齐；新增 `PANEL_ROUTES` 唯一真源并让 404 文案从它派生；新增 `tests/panel-route-disclosure.test.mjs`（源码路由 == 路由表，且每条都见于披露文档）。
+- **③ place-only 豁免不再被候选数击穿（R3）**：旧判据「除 place 外全 0」把 `personLow`（候选数，近乎恒 > 0）算进「替换」→ 1 个地名 + 95 个候选仍注入约 190 字（本会话实测 4 次）。现判据只看**真实替换**（`person` / `personLow` 不参与）；候选数仍留在 `ethicsSanitized.counts` 与工具面。`tests/h2-h5-listeners.test.mjs` 增行为用例（place=1 + personLow=2 → 不注入）。
+- **④ `lib/**` 的「M 门 24 项」旧口径清零（R4）**：工具 1 头注释改「机检 25 项；默认只读（给 `report` 时写门报告）」；面板两条**用户可见**文案改用 `{total}` 占位、由 `rerun.total` 注入（删掉可漂常量，而不是加门看住它）。新增 `tests/count-literals.test.mjs`。
+
+**验证**：`node --test` **1317/1317 全绿**（1317 例，1 例按环境跳过；`pass 1316 / fail 0`）。
+**门绿**：`consistency` 0 漂移、`repo-hygiene` 全通过、`plugin-surface(STRICT_WARN=1)` 通过、`pack-smoke` 通过、`node --test` 全绿。
+**回滚点**：批前 `v19.19.0`（`c6abc10e`）；受控文件与逐条落点见 `audits/机制文件修订记录-2026-10-19-架构审计R1R2R3R4批.md` §七。
+**教训（值得记）**：① **接线 ≠ 可用**——参数存在但组合跑不到脚本，等于没接；验收必须跑到「脚本产出」而不是「schema 有字段」；② **豁免判据要区分「候选」与「替换」**——把候选数并进替换面，会让豁免在真实输入下恒不可达。
+
 ## 19.19.0 — 2026-10-19
 
 <!-- 行为变更 7 条 | 锚点 = CHANGELOG.md § 19.19.0（UX 可达面与工具面契约批） -->
