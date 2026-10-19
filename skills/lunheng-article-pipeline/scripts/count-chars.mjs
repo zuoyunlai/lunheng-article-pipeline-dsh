@@ -36,6 +36,25 @@ installExitGuard();   // 传目录/权限错 → exit 10（旧版未捕获 EISDI
 //   实现策略：**把 `--report <path>` 从 token 流里摘出，其余 token 原样喂给既有位置式逻辑** ——
 //   不传该旗标时，`argvTokens` 与旧版逐 token 相同，**行为零变化**。
 const rawTokens = process.argv.slice(2);
+// v19.19.0（反哺 2026-10-19 U-11）：**补 `--help`（exit 0）**——此前 `--help` 被当位置参数，
+//   报「文件不存在: --help」+ exit 10，与 `handoff-check --help`（exit 0）不一致。
+//   本段同时是**工具面旗标对账的派生真源**（`tests/batch21-seam-gates-v18-80-1.test.mjs` 从这里解析旗标）
+//   ——新增旗标必须同步写进本帮助，否则该门直接红。
+if (rawTokens.includes('--help')) {
+  console.log(
+    '用法: node count-chars.mjs <文件.md> [--full | --summary] [--warn-threshold <N>] [--genre <code>] [--report <path>] [--word-metric]\n'
+    + '\n旗标：\n'
+    + '  --full                按全文统计（不受正文区起点影响）\n'
+    + '  --summary             分段字数 + 结构密度\n'
+    + '  --warn-threshold <N>  字数告警阈值（正整数）\n'
+    + '  --genre <code>        文类 code（非学术文类改用首个正文二级标题为起点；缺省 = 学术口径）\n'
+    + '  --report <path>       把结果 JSON 落盘\n'
+    + '  --word-metric         附 Word 口径字数列（估算，不进 M 门）\n'
+    + '  --help                本帮助\n'
+    + '\n退出码：0 已统计 / 10 参数或路径错 / 70 内部错（本脚本不做内容判定，故无 1/2/3）',
+  );
+  process.exit(0);
+}
 let reportPath = null;
 let wordMetric = false;
 let genre = null;   // v19.14.0（反哺 R-11 方案 A）：文类 code；非学术文类改走「首个二级标题」起点   // v19.8.0 反哺 v9 D4：加 Word 口径字数列（估算，不作门判据）
@@ -168,6 +187,14 @@ const countWordMetric = (t) => {
 // v19.14.0（反哺 R-11 方案 A）：非学术文类（无摘要）改用「首个二级标题」起点；学术文类与不传 genre 时行为完全不变。
 const abstractStart = bodyStartForGenre(text, genre);
 const bodyStartIdx = abstractStart.index;
+// v19.19.0（反哺 2026-10-19 U-10）：**`scope` 标签必须说真话**。
+//   病灶：标签硬编码「摘要后~文末节前」，而 v19.17.0 起无摘要稿的起点已回落到「首个正文二级标题」——
+//   数字对了、解释错了（实测无摘要稿仍回显「摘要后」）。现按 `source` 派生标签。
+const bodyScopeLabel = abstractStart.source === 'abstract'
+  ? '摘要后~文末节前'
+  : abstractStart.source === 'first-h2'
+    ? '首个正文二级标题后~文末节前'
+    : '文件开头~文末节前（起点失真）';
 // v19.17.0（F-03）：degraded 只在「连正文起点都没有」时置位——无摘要但有二级标题 = 起点可用，不再算降级。
 const degraded = (abstractStart.source || 'none') === 'none';
 if (degraded && flag !== '--full') {
@@ -257,7 +284,7 @@ if (flag === '--summary') {
     file,
     mode: 'summary',
     total: { hanChars: totalCount },
-    body: { hanChars: bodyCount, scope: '摘要后~文末节前' },
+    body: { hanChars: bodyCount, scope: bodyScopeLabel, scopeSource: abstractStart.source },
     endnotes: sections,
     sectionsByHeading: headingCounts.slice(0, 15),
     density: {
@@ -289,7 +316,8 @@ if (flag !== '--full') {
 const count = countHan(target);   // v18.0.3：走 _lib/han.mjs 真源（旧版在此内联 match）
 const out = {
   file,
-  scope: flag === '--full' ? 'full(全文纯汉字)' : 'body(正文区纯汉字: 摘要后~文末节前)',
+  scope: flag === '--full' ? 'full(全文纯汉字)' : `body(正文区纯汉字: ${bodyScopeLabel})`,
+  scopeSource: flag === '--full' ? 'full' : abstractStart.source,
   hanChars: count,
   ...degradedFields,
 };

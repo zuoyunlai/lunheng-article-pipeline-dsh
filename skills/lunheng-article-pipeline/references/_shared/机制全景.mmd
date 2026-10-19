@@ -1,0 +1,249 @@
+# 论衡 v19.18.1 · 运行机制（Mermaid 源码）
+
+> 本文件是随包的**机制全景图**（Mermaid 源码，装包即可读）；原 6 视图 HTML 由维护者在仓库外的 `diagrams/` 目录生成，不随包。
+> 由 `lunheng-mechanism.html` 的 6 视图转写而来，内容**不改写、不补考据** —— 6 视图压成 4 张图，覆盖装载面 / 编排面 / 门禁面 / 修订回环。
+> 真源：本仓库根（`SKILL.md` · `references/pipeline-readme.md` · `cordis.patch.yml` · `lib/`）。
+> 数字核对：`_facts/plugin-layer.md`（带 文件:行号）。
+
+## 使用说明
+
+- 每个代码块都是**完整可粘贴**的 Mermaid 源码（含图型声明行），直接粘进 README 的 ```` ```mermaid ```` 围栏即可。
+- 语法约定（为跨渲染器兼容而统一，请勿随手改）：
+  - 节点 id 一律纯 ASCII（`host` / `patch` / `s1` …），中文只在标签里；
+  - 标签一律双引号包裹，换行只用 `<br/>`；
+  - 标签内**不使用** `[` `]` `{` `}` `(` `)` `|` `;` 与英文双引号（需引号用「」）；
+  - 边标签用 `-->|"文字"|` 形式；
+  - 每个块首行是 `%%` 注释，标版本与真源。
+- 主题适配：仅用 `classDef` 设色，深色/浅色模板都能渲染（深色下效果最佳）。
+
+---
+
+## 1 装载链
+
+宿主启动一次 → patch 求值 → 入口 `apply` → 注册面；三档 subagent 不经过 `apply`。
+
+```mermaid
+%% 论衡 v19.18.1 · 装载链 · 真源 SKILL.md / pipeline-readme.md
+flowchart LR
+  host["DSH 宿主<br/>cordis loader<br/>profile 层 本机 desktop"]
+  pkg["package.json<br/>main = lib/index.js · exports 4 条<br/>engines node ^22.19.0 或 ≥24"]
+  patch["cordis.patch.yml<br/>4 条 insert · 0 处 id 覆盖<br/>6 处 !!js 加载期求值<br/>即 3 处 disabled + 3 处 agentOptions"]
+  entry["lib/index.js apply<br/>按包名 import 入口<br/>Config 走 standard-schema 校验<br/>非法配置在加载期抛错 不静默回落"]
+
+  subgraph reg["注册面 · 由 apply 顺序决定"]
+    r1["① 运行面板<br/>宿主半边 panel.mjs · 浏览器半边 client.js 走 dsh.client"]
+    r2["② 主技能 lunheng-article-pipeline<br/>+ 子技能 lunheng-commands · 11 个斜杠命令"]
+    r3["③ 原生工具 ×4 全部 parallel<br/>lunheng_m_gate · lunheng_char_count<br/>lunheng_handoff_check · lunheng_ethics_sanitize"]
+    r4["④ 钩子 H2 伦理脱敏 / H4 prompt 追加"]
+    r5["⑤ guard 写保护<br/>5 条静态受保护根 + rank 100/200/400/500 四处镜像落点"]
+    r6["⑥ 人类命令 ×2<br/>/lunheng-status · /lunheng-stats"]
+  end
+
+  subgraph tier["三档 subagent · 不经 apply"]
+    t1["subagent_retrieval<br/>T1 T2 T3 检索档"]
+    t2["subagent_strong<br/>T4 T5 强推理档"]
+    t3["subagent_audit<br/>T6 T7 T9 G14 顶配档"]
+  end
+
+  bad["装载断裂形态<br/>删掉第 1 行 insert → 入口从不 import → 技能不注册<br/>v18.0.0 事故 · v18.0.1 修复<br/>tests/bundle-contract.test.mjs 防守"]
+
+  host -->|"启动时读组合补丁"| patch
+  patch -->|"第 1 条 insert 的自注册行 按包名解析"| pkg
+  pkg -->|"main = lib/index.js"| entry
+  entry --> r1
+  entry --> r2
+  entry --> r3
+  entry --> r4
+  entry --> r5
+  entry --> r6
+  patch -->|"insert 行直接进组合树"| tier
+  patch -.->|"这一行不可删"| bad
+```
+
+> 要点：**顺序易错点** —— 不是先有 `package.json` 再有 patch。loader 先读 `cordis.patch.yml` 的自注册行，再**按包名**解析到 `package.json#main`（`cordis.patch.yml:8-14` 明写「插件行按包名而不是相对源码路径引用这个包，这样 Node 的模块解析才能找到已安装的代码」）。patch 里的 insert 行才是「被 import 的东西」，`package.json#main` 不会因为包被列进 profile 就自动执行。三档 subagent 三条行同形、`disabled` 表达式完全一致（同进同退）；默认关，设任一 `LUNHENG_*_PROVIDER` / `_MODEL` 即装载，`LUNHENG_TIERING=off` 优先级最高。
+
+---
+
+## 2 主干与挂件
+
+S1→S6 是必经骨架；挂件按触发条件挂载，可省略，但必须留「省略 → 对应机检记 N/A」的痕。
+
+```mermaid
+%% 论衡 v19.18.1 · 主干与挂件 · 真源 SKILL.md / pipeline-readme.md
+flowchart LR
+  s1["S1 定题与授权 · Phase 0 · 0.5<br/>角色 T0 主控<br/>产物 01-任务简报.md · status.md · 阶段确认-Phase0.md"]
+  s2["S2 并行检索 · Phase 1 · 1.5<br/>角色 T1 文献 / T2 数据 / T3 案例 三真并行<br/>产物 literature/ · data/ · cases/ 信任级别必填"]
+  t25["▣ T2.5 主控闸门<br/>不 spawn 不引入新 agent<br/>数据条数 ≥ 需求数 · 信任级别完整"]
+  s3["S3 分析与大纲 · Phase 2 · 2.5<br/>角色 T4 分析<br/>产物 analysis/分析大纲.md"]
+  s4["S4 写作与批判 · Phase 3 · 3.5 3.6<br/>角色 T5 写手 / T6 批判<br/>产物 drafts/初稿-vN.md · analysis/批判报告-vN.md"]
+  s5["S5 审计与终检 · Phase 4 → 4.7<br/>角色 T7 审计 / G14 / T9 审稿<br/>产物 audits/审计报告 · 复核报告 · G14 报告 · 审稿报告"]
+  t75["▣ T7.5 主控闸门<br/>审计最新版 + M 门全 exit 0 + 交付物隔离"]
+  s6["S6 交付 · Phase 5<br/>角色 T8 终检 · 主控亲执行 不 spawn<br/>产物 final/定稿.md · 证据包/ · M-Gate-Report.json · 运行报告"]
+
+  hp["挂件 查池 @S1<br/>pool-query.mjs 命中即注入派发话术<br/>池在 evidence-pool/ 跨项目 A 轨"]
+  hs["挂件 补检索 @S2<br/>T1 定向回查 · 按来源拆子任务<br/>每子任务 ≤30 步 · 连续 2 次失败熔断"]
+  ho["挂件 大纲人闸 @S3<br/>图位数量 / 类型 / 数据源当场拍板<br/>改方向成本最低的一点"]
+  hi["挂件 洞察人闸 @S4<br/>主人过目初稿 v1 · 洞察由 T5 融入 v2"]
+  hc["挂件 批判 @S4<br/>T6 反方攻击 C1–C7 出批判报告<br/>内部依赖 非闸门"]
+  hr["挂件 修订 @S5<br/>A 轨 ≤2 轮 · 判据 = 缺陷条件关闭率"]
+  hf["挂件 配图 @S5<br/>图位 → SVG → M-Form-9 闭环"]
+  hg["挂件 G14 终闸 @S5<br/>8 类判定 · 3–4 类 G 环 1 轮 / 5 类以上 2 轮"]
+  hw["挂件 审稿 @S5<br/>T9 六维 + 期刊 Top3 · 在 G14 之后"]
+
+  subgraph human["四道人在环门 · 阻塞或通知"]
+    g0["▲ P0 定题 · 阻塞<br/>等主人真实回复 · 工具失败 ≠ 同意"]
+    g25["◯ P2.5 大纲 · 通知<br/>主控自决 + 落单留痕"]
+    g35["◯ P3.5 洞察 · 通知<br/>主控自决 + 落单留痕"]
+    g5["▲ P5 终稿 · 阻塞<br/>唯一例外 主人显式授权全自动 但四份单照落"]
+  end
+
+  s1 --> s2
+  s2 --> t25
+  t25 --> s3
+  s3 --> s4
+  s4 --> s5
+  s5 --> t75
+  t75 --> s6
+
+  hp -.-> s1
+  hs -.-> s2
+  ho -.-> s3
+  hi -.-> s4
+  hc -.-> s4
+  hr -.-> s5
+  hf -.-> s5
+  hg -.-> s5
+  hw -.-> s5
+
+  g0 -.-> s1
+  g25 -.-> s3
+  g35 -.-> s4
+  g5 -.-> s6
+
+  classDef block fill:#2a1620,stroke:#f87171,color:#fecaca
+  classDef notify fill:#2a2412,stroke:#fbbf24,color:#fde68a
+  classDef mech fill:#0d1f2e,stroke:#38bdf8,color:#bae6fd
+  classDef hang fill:#141c2e,stroke:#2a3b5c,color:#95a6bf
+  class g0,g5 block
+  class g25,g35 notify
+  class t25,t75 mech
+  class hp,hs,ho,hi,hc,hr,hf,hg,hw hang
+```
+
+> 要点：挂件是虚线挂载，主干是实线必经。T2.5 与 T7.5 是**主控闸门**（不 spawn、不引入新 agent），与人在环四门（要主人真实回复）性质不同；「实据」列必须是路径 / exit code / 命令 / sha256。
+
+---
+
+## 3 五层门禁
+
+越往下越机械、越便宜；唯一判据是「只有机械证据算数」—— 正文写「已检查」判 P1。
+
+**读图注意**：层间箭头（`l1 --> l2 --> … --> l5`）表示**过滤顺序**，不是时间顺序。五层不是一条时间链，而是「越往下越机械」的五道筛子 —— 第 1 层的门-B 终稿在时间上晚于第 2 层的 T2.5，画成节点级时序链就是错的。只有第 1 层内部 `p0 → p25 → p35 → p5` 是真的相位顺序；第 2–5 层内部各族是**并列**的，不画箭头。
+
+```mermaid
+%% 论衡 v19.18.1 · 五层门禁 · 真源 SKILL.md / pipeline-readme.md
+flowchart TD
+  subgraph l1["第 1 层 · 人在环四门 · 4 份确认单"]
+    p0["P0 定题 · ▲ 阻塞<br/>等主人真实回复 · 工具失败 ≠ 同意"]
+    p25["P2.5 大纲 · ◯ 通知<br/>主控自决 + 落单留痕"]
+    p35["P3.5 洞察 · ◯ 通知<br/>主人过目初稿 v1"]
+    p5["P5 终稿 · ▲ 阻塞<br/>唯一例外 主人显式授权全自动"]
+  end
+
+  subgraph l2["第 2 层 · 主控闸门 T2.5 / T7.5 · 2 份闸门记录"]
+    t25["T2.5 · 检索 → 分析之间<br/>数据条数 ≥ 需求数 · 信任级别完整"]
+    t75["T7.5 · 审计 → 终检之间<br/>审计最新版 + M 门全 exit 0 + 交付物隔离"]
+  end
+
+  subgraph l3["第 3 层 · M 门 26 项 = 25 机检 + 1 人工"]
+    mq["M 门机械预检 · 不修改被审正文与证据包<br/>exit 0 通过 / 1 P1 / 2 P0<br/>exit 3 仅 P2 需人工复核 不得当通过"]
+    mf["M-Form 1–11 · 11 项<br/>篇幅 结构 文类 图件闭环"]
+    me["M-Exist 1–12 · 12 项<br/>产物存在性与结构"]
+    mi["M-Integrity-1 · 1 项"]
+    mfa["M-Fact-1 · 1 项 · 佐证对照"]
+    mm["人工 M-Integrity-2 · 1 项<br/>唯一不脚本化项"]
+  end
+
+  subgraph l4["第 4 层 · G 审计 G0–G14"]
+    gm["15 主项 + 3 子项 = 18 个检查点<br/>T7 只审不改<br/>引用分级抽验 C 100% / B ≥50% / A ≥10%"]
+    g14["G14 中文 AI 痕迹检测 · 8 类判定<br/>终闸只 spawn 一次 · 3–4 类 G 环 1 轮 / 5 类以上 2 轮"]
+    gx["G15 模式相关 / G16 反方才预扫<br/>不进 G 主清单<br/>G_MAIN 仍是 G0–G14 闭区间 15 项"]
+  end
+
+  subgraph l5["第 5 层 · 收报验收 handoff-check"]
+    hc["机械验收替代手工 ls<br/>exit 20 产物缺失或 0 字节 → 重派<br/>exit 21 结构 版本 成对不合 → 补交<br/>exit 22 仅软提示 → 放行"]
+    hg["Phase 5 交付前必加<br/>--require-gates --session-log 会话 id<br/>后者是主人真的答过的唯一独立核对层"]
+  end
+
+  p0 --> p25
+  p25 --> p35
+  p35 --> p5
+
+  l1 -->|"过滤"| l2
+  l2 -->|"过滤"| l3
+  l3 -->|"过滤"| l4
+  l4 -->|"过滤"| l5
+
+  classDef block fill:#2a1620,stroke:#f87171,color:#fecaca
+  classDef notify fill:#2a2412,stroke:#fbbf24,color:#fde68a
+  classDef mech fill:#0d1f2e,stroke:#38bdf8,color:#bae6fd
+  class p0,p5 block
+  class p25,p35 notify
+  class t25,t75,mq mech
+```
+
+> 要点：`M-Gate-Report.json` 须同时含 `script_exit_raw`（脚本原值，禁改）与 `exit`（T8 裁定值），两者不同必须附证伪四件套 + `_t8_conclusion`。`script_exit_raw ≠ 0` **不等于**存在真缺陷。已知陈旧值：`lib/tools.js:253` 段注释写「24 项」，以工具 description 与 `SKILL.md` 的「25 机检 + 1 人工 = 26」为准。另：第 2–5 层内部不画箭头，因为 T2.5/T7.5、M-Form/M-Exist/M-Integrity/M-Fact、G 主项/G14/G15-16、handoff-check 两段都是**并列族**，写成先后关系即失真。
+
+---
+
+## 4 修订回环
+
+把「改过几轮」当质量论据是已知错误 —— 判据是缺陷条件关闭率，不是轮次或分数。
+
+```mermaid
+%% 论衡 v19.18.1 · 修订回环 · 真源 SKILL.md / pipeline-readme.md
+flowchart LR
+  t7a["T7 出 P0/P1 清单<br/>只审不改 · 与写手分离<br/>产物 audits/审计报告-vN.md"]
+  t5a["T5 交修订说明 + 修订稿<br/>逐条回应 P0/P1<br/>修订轮由独立写手覆盖同路径"]
+  t7b["T7 对照复核<br/>按缺陷条件是否关闭逐条核 · 指纹绑定<br/>产物 audits/复核报告-vN.md"]
+  ok["缺陷条件全关闭 → 冻结一份正文<br/>注意 还不是 final/"]
+  esc["仍不过 → 升级主控<br/>三选一 重写 / 砍段 / 咨询人类<br/>走 Acknowledged Limitations 交付"]
+  t8["T8 落 final/ 并交付<br/>主控亲执行 · 唯一写入者"]
+
+  ra["A 轨 · 计入额度 ≤2 轮<br/>T7 打回 → T5 修订 → T7 复核<br/>满 2 轮仍不过即升级 不得无限循环"]
+  bt["B 轨 · 不计入 2 轮<br/>主控触发轮 T6 批判 / T9 审稿 / G14 终闸 / 洞察补充<br/>另可至多 +1 深化轮"]
+  gr["G 环 · 不占 B 轨额度<br/>G14 判定 3–4 类 → G 环 1 轮 · 5 类以上 → 2 轮<br/>改完重跑 G14 过则冻结正文"]
+
+  t7a --> t5a
+  t5a --> t7b
+  t7b -->|"关闭率达标"| ok
+  ok --> t8
+  t7b -.->|"仍有 P0/P1 · 进第 2 轮"| t5a
+  t7b -->|"2 轮用尽"| esc
+  esc --> t8
+  ra -.-> t7b
+  bt -.-> t5a
+  gr -.-> t7b
+
+  classDef pass fill:#0d2318,stroke:#34d399,color:#a7f3d0
+  classDef block fill:#2a1620,stroke:#f87171,color:#fecaca
+  classDef lane fill:#141c2e,stroke:#2a3b5c,color:#95a6bf
+  class ok pass
+  class esc block
+  class ra,bt,gr lane
+```
+
+> 要点：A 轨「满 2 轮仍不过」的出口是三选一（重写 / 砍段 / 咨询人类），落地形态是 Acknowledged Limitations 交付，**不得无限循环**。B 轨（T6 / T9 / G14 / 洞察）由主控触发，不占 A 轨额度；G 环单独记账，也不占 B 轨额度。相位顺序不得倒挂：G14 终闸 → T9 → T8 落 `final/`。
+
+---
+
+## 转写说明（与原图视图的对应关系）
+
+| 原视图 | 本文件 | 处理 |
+|---|---|---|
+| 01 装载与三面 | 图 1 | 只保留「加载期」主链；运行期/发布期与本次 4 图主题无关，未转写 |
+| 02 主干与挂件 | 图 2 | 完整转写：6 段主干 + 9 个挂件 + 四门 + T2.5/T7.5 |
+| 03 角色与档位 | 图 1 的三档 subgraph | 只保留「三档怎么装上来」，角色清单与 T9 决策树未转写 |
+| 04 门禁五层 | 图 3 | 完整转写：5 层 + M 门 26 项展开 + G 审计 + handoff-check |
+| 05 产物与写入权 | — | 未转写（目录树 + 写入权表以表格呈现更合适，不适合 Mermaid） |
+| 06 修订回环 | 图 4 | 完整转写：A 轨回边 + B 轨 + G 环 |

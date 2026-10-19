@@ -72,6 +72,32 @@ const skillRoot = join(scriptDir, '..');
 //   正面冲突：**同一个脚本里，一种旗标走严格解析、另一种旗标绕过解析**。
 //   修法：保留短路（该模式**确实**不接受 `<定稿.md> <证据包目录>`），但**只允许 argv 里出现它自己**——
 //   任何多余 token（含空格形式的 `--dump-thresholds=1`）一律 exit 10。位置参数与其它旗标都无意义。
+// v19.19.0（反哺 2026-10-19 U-11）：**补 `--help`（exit 0）**。
+//   病灶：本脚本此前对 `--help` 走「未知参数」分支 → exit 10，而 `handoff-check --help` 是 exit 0；
+//   同一族三个脚本的帮助行为不一致，调用方无法判断「10 = 参数错」还是「10 = 我在看帮助」。
+//   且 `SKILL.md` 写明「判读以各脚本 --help 为准」——没有帮助的脚本让该判据落空。
+//   本段同时是**工具面旗标对账的派生真源**（`tests/batch21-seam-gates-v18-80-1.test.mjs` 从本输出
+//   解析旗标，再判「已接线 ∪ 已登记缺口」）——新增旗标必须同步写进本帮助，否则该门直接红。
+if (process.argv.includes('--help')) {
+  console.log(
+    '用法: node m-gate-check.mjs <定稿.md> <证据包目录> [--summary] [--fig-dir <dir>] [--report <path>] [--adjudicate <T8裁定.json>] [--overwrite-adjudicated] [--genre <code>] [--lite-profile] [--verify-report <report.json>]\n'
+    + '       node m-gate-check.mjs --dump-thresholds\n'
+    + '       node m-gate-check.mjs --help\n'
+    + '\n旗标：\n'
+    + '  --summary                 只打印聚合统计与硬失败项（省 token）\n'
+    + '  --fig-dir <dir>           图件目录（M-Form-9 图件闭环的唯一输入）\n'
+    + '  --report <path>           门报告落盘路径（默认 final/M-Gate-Report.json）\n'
+    + '  --adjudicate <path>       T8 裁定 JSON（裁定通道优先）\n'
+    + '  --overwrite-adjudicated   允许覆盖已含裁定的报告（阶段边界显式化）\n'
+    + '  --genre <code>            文类 code（决定 M-Form-1 的文献下限）\n'
+    + '  --lite-profile            快轨档：只评估 M-Form-1/3/5/7 + M-Exist-2 五道\n'
+    + '  --verify-report <path>    只读体检：不跑门，只判一份历史报告能否被当前版本解析\n'
+    + '  --dump-thresholds         打印阈值总表（唯一生成源）\n'
+    + '  --help                    本帮助\n'
+    + '\n退出码：0 通过 / 1 有 P1 / 2 有 P0 / 3 仅 P2·soft·SKIP（需人工复核，不得当通过）/ 10 参数或路径错 / 70 内部错误',
+  );
+  process.exit(0);
+}
 if (process.argv.includes('--dump-thresholds')) {
   const stray = process.argv.slice(2).filter((a) => a !== '--dump-thresholds');
   if (stray.length > 0) {

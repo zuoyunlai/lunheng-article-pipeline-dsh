@@ -47,6 +47,10 @@ T1 先行者检索 → T4 差异点声明 → T7 G7 原创性审计，防止「�
 - **三个脚本**：`pool-query.mjs`（Phase 0 显形 + Phase 0.5 查池）/ `pool-extract.mjs`（Phase 5 回写）/ `pool-report.mjs`（统计），均属随包白名单；**不随包分发的是数据**。
 - 机制真源 = [`../skills/lunheng-article-pipeline/references/_shared/素材池.md`](../skills/lunheng-article-pipeline/references/_shared/素材池.md)。
 
+## 机制全景图（v19.19.0 起随包）
+
+Mermaid 源码 4 张图（装载面 / 编排面 / 门禁面 / 修订回环）：[`机制全景.mmd`](../skills/lunheng-article-pipeline/references/_shared/机制全景.mmd)。装包即可读，**不需要**仓库外的 6 视图 HTML；图内数字核对记录留在维护者的 `diagrams/_facts/`（不随包）。
+
 ## DSH 适配
 
 技能以「bundle」形态发布，两部分各司其职：**包入口 `lib/index.js`** 经 `ctx.skills.register()` 注册**两个技能**（`lunheng-article-pipeline` 主技能 + `lunheng-commands` 内嵌子技能；`resourceBase` 指向随包的 `skills/lunheng-article-pipeline/`，故角色卡/模板/脚本的相对引用在任意 cwd 下可解析，且注册即 effect、卸载自动清理）；**`cordis.patch.yml`**（由 `package.json` 的 `dsh.bundle.patch` 声明）只叠加 3 档 subagent 工具。工具集由 DSH Agent 预设决定，模型路由由 `settings.yaml` 配置。

@@ -1,4 +1,4 @@
-> 版本：v19.18.1（DSH bundle 插件）
+> 版本：v19.19.0（DSH bundle 插件）
 
 
 # 论衡（lunheng-article-pipeline）— 通用深度长文多 Agent 流水线 运行手册
@@ -119,7 +119,7 @@
 
 ## 进阶用法：/lunheng 斜杠命令（v18.8.0 借鉴 Ai4Scholar v2.9.5）
 
-论衡还提供 11 个斜杠命令供中途干预使用（详见独立技能 `lunheng-commands`，本仓库 v18.8.0 起独立发布）：
+论衡还提供 11 个 `/lunheng` 口令供中途干预使用（**宿主斜杠命令只有 `/lunheng-status`、`/lunheng-stats` 两条**，其余 9 条是模型口令、经主控翻译；详见独立技能 `lunheng-commands`，本仓库 v18.8.0 起独立发布）：
 
 ```
 /lunheng -draft [task]      # 启动完整流水线（轻量别名）
@@ -133,7 +133,7 @@
 /lunheng -history            # 列 run/* 历史
 /lunheng -rollback <id> --confirm  # 回滚到历史版本（必须 --confirm 二次确认）
 /lunheng -status [id]        # 显示当前进度（≤15 行人类可读）
-/lunheng -status --pending   # 跨项目「待我决策」聚合收件箱（v18.62.0 F4）
+/lunheng -status --pending   # 跨项目「待我决策」聚合收件箱（v18.62.0 F4；**真命令 = /lunheng-status --pending**）
 /lunheng -stats              # run/ 项目汇总看板
 /lunheng -help               # 列可用命令
 ```

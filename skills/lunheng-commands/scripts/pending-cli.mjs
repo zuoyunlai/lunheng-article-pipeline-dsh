@@ -78,7 +78,14 @@ export function parseOwnerTodos(text) {
     if (/^\*\*[^*]+\*\*/.test(t0)) break;
     if (/^\s*$/.test(l)) continue;
     if (/^---/.test(l)) break;
-    const t = l.replace(/^[-*•]\s+/, '').trim();
+    // v19.19.0（反哺 2026-10-19 U-05）：**只认显式待办标记**——`- [ ]` checkbox，或行内 `<!-- todo -->`。
+    //   病灶：旧实现按任意列表符抓行 → 「读 final/定稿.md」「读 final/交付说明.md」这类**已完成的
+    //   阅读步骤**被当成待办（实测本机 20 项里多数不是决策点），收件箱被自己的数据污染杀死。
+    //   判据：**自由文本一律不进「待我决策」**；主人真要做的事必须能被机械识别。
+    const checkbox = /^[-*]\s+\[\s\]\s+(.+)$/.exec(t0);
+    const marked = /<!--\s*todo\s*-->/i.test(t0);
+    if (!checkbox && !marked) continue;
+    const t = (checkbox ? checkbox[1] : t0.replace(/^[-*•]\s+/, '').replace(/<!--\s*todo\s*-->/i, '')).trim();
     if (!t) continue;
     if (/^(无|无。|无（.*）)$/.test(t)) continue;                    // 「无」类占位
     if (/^(现在|稍后|最后)[:：]\s*无/.test(t)) continue;             // 「稍后：无」
@@ -131,8 +138,11 @@ export function scanPending(runDir) {
       pendingGates,
       todos,
     };
-    // 已交付 **且** 没有主人侧待办 → 只是历史留痕缺口，不进收件箱
-    if (delivered && !todos.length) historical.push(row);
+    // 已交付项目一律归**历史留痕**（不阻塞主人）——v19.19.0（反哺 U-05）收紧：
+    //   旧判据是「已交付 **且** 无 todos」，于是已交付项目只要还有一条自由文本列表就进收件箱
+    //   （实测「读 final/定稿.md」这类条目把 20 项里的多数塞满）。已交付 = 交付物在盘，
+    //   剩下的缺口只可能是留痕问题 → 只报计数，不进「待我决策」。
+    if (delivered) historical.push(row);
     else actionable.push(row);
   }
   const byMtimeDesc = (a, b) => (a.mtime < b.mtime ? 1 : -1);

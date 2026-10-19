@@ -131,10 +131,16 @@ function parseFlagGaps() {
   const block = TOOLS_SRC.match(/TOOL_FACE_FLAG_GAPS = Object\.freeze\(\{([\s\S]*?)\n\}\)/)
   assert.ok(block, '未能定位 TOOL_FACE_FLAG_GAPS 表——解析失效时本组用例必须红，不得静默空集')
   const out = {}
-  for (const line of block[1].split('\n')) {
-    const m = /(?:'([\w]+)'|(\w+)):\s*Object\.freeze\(\[([^\]]*)\]\)/.exec(line)
-    if (!m) continue
-    out[m[1] || m[2]] = m[3].split(',').map((s) => s.trim().replace(/^'|'$/g, '')).filter(Boolean)
+  // v19.19.0（反哺 2026-10-19）：支持**多行数组**与**行内理由注释**（每项一行、附「为什么刻意不接」）。
+  //   旧正则要求 `])` 与键同行 → 多行登记被整体漏读 → 本组三条文案门**全部静默空集**（假绿）。
+  for (const m of block[1].matchAll(/(?:'([\w]+)'|(\w+)):\s*Object\.freeze\(\[([\s\S]*?)\]\)/g)) {
+    out[m[1] || m[2]] = m[3]
+      .split('\n')
+      .map((line) => line.replace(/\/\/.*$/, ''))
+      .join(' ')
+      .split(',')
+      .map((s) => s.trim().replace(/^'|'$/g, ''))
+      .filter(Boolean)
   }
   return out
 }

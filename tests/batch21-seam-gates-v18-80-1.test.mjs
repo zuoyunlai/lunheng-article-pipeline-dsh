@@ -22,7 +22,15 @@ test('① 工具面旗标缺口：文档要求的旗标必须已接线（args.X�
   const src = read('lib', 'tools.js')
   const gaps = {}
   for (const m of src.matchAll(/(lunheng_[a-z_]+):\s*Object\.freeze\(\[([^\]]*)\]/g)) {
-    gaps[m[1]] = m[2].split(',').map((s) => s.trim().replace(/['"]/g, '')).filter(Boolean)
+    // v19.19.0：**先剥行内注释再取值**——缺口表允许「每项带理由」的写法（如 `'verifyReport', // 维护期只读面`），
+    //   旧解析把注释并进值里，导致 `includes()` 判不中（等于登记了也读不到）。
+    gaps[m[1]] = m[2]
+      .split('\n')
+      .map((line) => line.replace(/\/\/.*$/, ''))
+      .join(' ')
+      .split(',')
+      .map((s) => s.trim().replace(/['"]/g, ''))
+      .filter(Boolean)
   }
   assert.ok(Object.keys(gaps).length >= 3,
     `须能派生出工具面缺口表（至少三个脚本工具），实得 ${JSON.stringify(Object.keys(gaps))}`)
@@ -38,16 +46,37 @@ test('① 工具面旗标缺口：文档要求的旗标必须已接线（args.X�
   }
   const wiredIn = (tool, flag) => new RegExp(`args\\.${flag}\\b`).test(sliceOf(tool))
 
-  // 文档面明确要求、而脚本确有该旗标的那些（本表 = 报告 §D2 的实测清单）
-  const REQUIRED = [
-    { tool: 'lunheng_handoff_check', flag: 'requireGates', why: 'SKILL.md Phase 5「handoff-check --role T8 --require-gates」（缺它则 A7 四门从不核、B0 降软）' },
-    { tool: 'lunheng_handoff_check', flag: 'level', why: 'references/templates/审计报告-template.md「--role T7 --level strict」' },
-    { tool: 'lunheng_m_gate', flag: 'report', why: 'AGENTS.md 闸门留证「--report <项目>/final/M-Gate-Report.json」（M-Exist-5 指纹互锁与 M-Exist-9 的共同输入）' },
-  ]
-  for (const r of REQUIRED) {
-    assert.ok(wiredIn(r.tool, r.flag) || (gaps[r.tool] || []).includes(r.flag),
-      `${r.tool} 的 ${r.flag} 既未接线、也未登记缺口——调用方按文档走会静默少做一步（来源：${r.why}）`)
+  // v19.19.0（反哺 2026-10-19 U-01/U-10）：**旗标真源 = 各脚本 `--help`**，不再手抄清单。
+  //   旧写法是一张三条的手抄表（「本表 = 报告 §D2 的实测清单」）——于是 `--session-log`（Phase 5 必跑）
+  //   与 `--genre` 都在表外，门恒绿而缺口恒在。现改为：跑脚本 `--help` → 解析旗标 → 逐条判
+  //   「已接线（args.X）∪ 已登记缺口」。新增旗标若两处都没有，本门直接红。
+  const SCRIPT_OF = {
+    lunheng_handoff_check: ['skills', 'lunheng-article-pipeline', 'scripts', 'handoff-check.mjs'],
+    lunheng_m_gate: ['skills', 'lunheng-article-pipeline', 'scripts', 'm-gate-check.mjs'],
+    lunheng_char_count: ['skills', 'lunheng-article-pipeline', 'scripts', 'count-chars.mjs'],
   }
+  // 非 1:1 映射的显式例外（写在这里而不是塞回手抄表）：`--full` / `--summary` 在工具面是 `mode` 枚举值。
+  const EQUIVALENT = { lunheng_char_count: { full: 'mode', summary: 'mode' } }
+  // `--help` 自身不进工具参数面（工具描述即帮助）。
+  const IGNORED = new Set(['help'])
+  const toCamel = (s) => s.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase())
+  let derivedCount = 0
+  for (const [tool, seg] of Object.entries(SCRIPT_OF)) {
+    const script = join(ROOT, ...seg)
+    assert.ok(existsSync(script), `脚本不存在：${seg.join('/')}（派生面失效时本用例必须红，不得静默空集）`)
+    const help = execFileSync(process.execPath, [script, '--help'], { encoding: 'utf8', timeout: 60_000 })
+    const flags = [...new Set([...help.matchAll(/--([a-z][a-z0-9-]*)/g)].map((m) => m[1]))]
+      .filter((f) => !IGNORED.has(f))
+    assert.ok(flags.length >= 3, `${tool} 的 --help 应列出至少 3 个旗标（实得 ${flags.length}：${flags.join(',')}）`)
+    for (const f of flags) {
+      const arg = (EQUIVALENT[tool] || {})[f] || toCamel(f)
+      assert.ok(wiredIn(tool, arg) || (gaps[tool] || []).includes(arg),
+        `${tool}.${arg}（来自 --${f}）既未接线、也未登记缺口——调用方按文档走会静默少做一步；`
+        + `旗标真源 = ${seg[seg.length - 1]} 的 --help`)
+      derivedCount++
+    }
+  }
+  assert.ok(derivedCount >= 8, `派生出的旗标对账条目过少（${derivedCount}）——派生实现可能失效`)
 
   // 反向：缺口表不得有**陈旧项**（登记为缺口、其实该工具已经接线）
   for (const [tool, flags] of Object.entries(gaps)) {

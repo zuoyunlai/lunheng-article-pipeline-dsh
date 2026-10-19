@@ -41,18 +41,26 @@ test('parseSection6：缺字段 → 记入 missingFields；整段缺失 → foun
   assert.equal(none.missingFields.length, SECTION6_FIELDS.length);
 });
 
-test('parseOwnerTodos：「无」类占位不得进收件箱，只留真待办', () => {
+test('parseOwnerTodos：只认显式待办标记（「无」类占位、自由文本 bullets、已完成项都不得进收件箱）', () => {
+  // v19.19.0（反哺 2026-10-19 U-05）**契约变更**：旧实现按任意列表符抓行，于是「读 final/定稿.md」
+  //   这类**已完成的阅读步骤**被当待办（实测本机 20 项里多数不是决策点）。现只认 `- [ ]` 或行内
+  //   `<!-- todo -->`；`- [x]`（已完成）与普通 `- ` bullets 一律不进。
   const text = [
     '**🙋 需要你做的事**：',
     '- 现在：无（等 v1 落盘）',
     '- 稍后：Phase 3.5 请提供洞察补充',
-    '- 最后：Phase 5 终稿验货',
+    '- [ ] 最后：Phase 5 终稿验货',
+    '- [x] 已完成：Phase 2.5 已确认',
+    '- <!-- todo --> 补第三条数据卡',
+    '- 读 `final/定稿.md`（U-05 实测的噪声行）',
     '',
     '**已知缺口 / 风险**：案例仅 5 条',
   ].join('\n');
   const todos = parseOwnerTodos(text);
-  assert.deepEqual(todos, ['稍后：Phase 3.5 请提供洞察补充', '最后：Phase 5 终稿验货']);
+  assert.deepEqual(todos, ['最后：Phase 5 终稿验货', '补第三条数据卡']);
   assert.ok(!todos.some((t) => /^现在：无/.test(t)), '「现在：无」不得进收件箱');
+  assert.ok(!todos.some((t) => /读 `final\/定稿\.md`/.test(t)), '自由文本 bullets 不进收件箱（U-05）');
+  assert.ok(!todos.some((t) => /已完成/.test(t)), '`- [x]` 已完成项不得进收件箱');
 });
 
 test('parseOwnerTodos：无该段 → 空数组（不抛）', () => {
