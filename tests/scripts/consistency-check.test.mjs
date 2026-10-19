@@ -509,6 +509,30 @@ test('v18.95.0 ㊳：G14 类数口径漂移必须报（8 类 → 9 类注入）'
   rmSync(d, { recursive: true, force: true })
 })
 
+// v19.19.3（反哺报告-2026-10-19 M5）—— ㊶ M 门项数表述口径：**双侧锁**
+//   负向：注入「全量 24 项」（真源 25）→ 必报 P1 M 门项数漂移；
+//   正向：写「全量 25 项」→ 不得报。两侧都断言，防「规则恒真」（本仓 ㊳/㊵ 都栽过恒真）。
+//   病根实测：v19.8.0 新增 M-Exist-12 后机检 24→25，而 07卡:51 / SKILL:142,147 / 闸门记录模板:35 四处
+//   仍写 24 达三天，⑥b（只抓「机检 N 项」）/⑳（只抓附录节头）/㉟（只抓规则编号）三者盲区正好覆盖。
+test('v19.19.3 ㊶：M 门「全量 N 项」漂移必须报，正确值不得报（双侧）', () => {
+  const { d, R } = mkRepo()
+  const cc = join(R, 'scripts', 'consistency-check.mjs')
+  const card = join(R, 'references', 'agents', '07-审计-auditor.md')
+  assert.ok(existsSync(card), '夹具缺少 07-审计-auditor.md（本用例会空转）')
+  const src = readFileSync(card, 'utf8')
+  assert.ok(src.includes('必跑全量 25 项'), '夹具基线须含「必跑全量 25 项」才能注入')
+
+  // ① 正向：正确值不报
+  const okOut = run([cc]).out
+  assert.doesNotMatch(okOut, /\[P1 M 门项数漂移\]/, '正确值 25 不得报漂移：' + okOut.slice(-400))
+
+  // ② 负向：注入旧值 24 → 必报
+  writeFileSync(card, src.replace('必跑全量 25 项', '必跑全量 24 项'))
+  const badOut = run([cc]).out
+  assert.match(badOut, /\[P1 M 门项数漂移\]/, '㊶ 必须抓到「全量 24 项」：' + badOut.slice(-400))
+  rmSync(d, { recursive: true, force: true })
+})
+
 // v18.85.0（CONTRIBUTING §26 扩面落地）—— ⑫ 仓库级版本头负向用例：
 //   **旧实现硬编码 3 文件**（README.md / docs/introduction.md / skills/README.md）= SECURITY.md 等
 //   「必同步」文件版本漂移**门看不见**（v18.2.5 C-3 抓到 SECURITY.md + troubleshooting.md 双双

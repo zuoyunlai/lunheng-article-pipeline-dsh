@@ -627,6 +627,45 @@ const HISTORY_TOKEN_RE = /此前|曾经|旧版|已删|已移除|已作废|历史
     }
   }
 
+  // ㊶ M 门项数表述口径（v19.19.3 新立 · 反哺报告-2026-10-19 M5）
+  //   教训（本仓「改 A 漏 B」的活样本，非假想）：v19.8.0 新增 M-Exist-12 后机检 24→25，
+  //   而 `07-审计-auditor.md:51` / `SKILL.md:142` / `SKILL.md:147` / `闸门记录-template.md:35`
+  //   四处仍写 24——其中 `SKILL.md:57` 自己已写「机检 25 项 + 人工 1 = 总 26」，**同一文件内自相矛盾**，
+  //   三天无人发现。为什么既有门兜不住：⑥b 只抓「机检 N 项」句式；⑳ 只管 `M-Gate-Algorithm.md`
+  //   的节头括注；㉟ 只管规则编号。三者的盲区合起来正好盖住「全量 N 项」这一族表述。
+  //   判据：四种句式里的 N 必须 == `GATE_DERIVED.mech`（真源 = `_lib/mgate-gates/gate-count.mjs`
+  //   对 `gate:` 标签的去重计数，与 ⑥b 同源）。
+  //   边界（如实）：只判**现行断言行**——含 `历史`/`此前`/`旧口径`/`旧版`/`→`（沿革箭头）的行整行放行，
+  //   否则会把「24→25」这类正确记述误判成漂移；代价是漂移句若恰好含上述词就漏判（宁可漏、不可误伤）。
+  {
+    const MECH = Number(GATE_DERIVED && GATE_DERIVED.mech)
+    if (!Number.isFinite(MECH) || MECH <= 0) {
+      errors.push('[P0 派生源失效] GATE_DERIVED.mech 不可用——派生退化会让规则 ㊶ 恒真（与 ㊳/㊵ 的同族失效模式）')
+    } else {
+      const PHRASES = [
+        [/全量\s*\*{0,2}\s*(\d+)\s*项/g, '全量 N 项'],
+        [/其余\s*\*{0,2}\s*(\d+)\s*项机械门/g, '其余 N 项机械门'],
+        [/(\d+)\s*项逐字清单/g, 'N 项逐字清单'],
+        [/机械\s*\*{0,2}\s*(\d+)\s*项/g, '机械 N 项'],
+      ]
+      for (const f of active) {
+        const rel = relative(ROOT, f).replaceAll('\\', '/')
+        readFileSync(f, 'utf8').split('\n').forEach((l, i) => {
+          if (/历史|此前|旧口径|旧版|→/.test(l)) return
+          for (const [re, name] of PHRASES) {
+            re.lastIndex = 0
+            let m
+            while ((m = re.exec(l)) !== null) {
+              if (Number(m[1]) !== MECH) {
+                errors.push(`[P1 M 门项数漂移] ${rel}:${i + 1} 写「${name}」= ${m[1]}，真源 = ${MECH}（gate-count.mjs 派生）——两套口径并存时，主控与审计各按各的做，门就白跑了`)
+              }
+            }
+          }
+        })
+      }
+    }
+  }
+
   // ㊵ 四门事实单一登记表（v19.6.0 · 架构与机制反哺批 §3.2 · 主人授权「依次全部修订」）
   //   为什么立它（病灶实测，不是假想）：「四门」这一事实此前有 **5 份实现 / 3 套命名**——
   //     `handoff-check` 三元组 / `pending-cli` 纯 id 数组 / `flow-metrics` 的 `{id,label}`（**label 已漂**：

@@ -42,6 +42,7 @@ import { loadSessions, pairAskUserQuestion, collectTouched } from './_lib/sessio
 import { parseLedger, ROUND_CAPS, LEDGER_REL } from './_lib/round-ledger.mjs'   // v18.81.0（批 2.1）：轮次额度真源
 import { BLIND_FORBIDDEN } from './_lib/blind-forbidden.mjs'   // v18.80.4（QLT-6 脚手架批）：盲评禁忌面**单一真源**
 import { maskFences } from './_lib/sections.mjs'   // v19.6.1（审计 P1-4）：盲评「首节」判据的围栏感知（本仓唯一实现）
+import { parseTargetChars } from './_lib/target-chars.mjs'   // v19.19.3（A14a）：目标篇幅解析唯一实现（直写档豁免判据）
 import { CONTRACTS } from './_lib/cc-rules/content-rules.mjs'
 // v19.6.0（架构与机制反哺批 §3.2）：**四门 / §6 五字段的唯一登记表**——禁止在本文件再写第二份。
 import { PHASE_DOCS, GATE_FIELDS as REGISTRY_GATE_FIELDS, confirmFileOf } from './_lib/cc-rules/phase-registry.mjs'
@@ -1385,6 +1386,84 @@ if (opt.requireGates) {
       }
     }
   }
+
+  // ── A14 修订载体 + 成本账本（**仅在 `--require-gates` 时判**；v19.19.3 · 反哺 2026-10-19 M2/M4a）──
+  // 两个子判据**合并为 1 个分母单位**（口径与 A7「四门合成一条」一致：补救动作都是「补一份载体」）。
+  //
+  // A14a「修订轮可应用载体」——段级 diff 早已是**硬规则**（`pipeline-readme.md:313`「一律」、
+  //   `05-写作-writer.md:326`「不直接覆写同路径」），但机械层**零消费点**：
+  //   实测 34 篇有修订轮的项目里 **0/98** 份 `修订说明` 含 apply-diff 的四族条目头、
+  //   **0/14** 个清单文件名匹配 `A10` 的白名单正则（实践用了 `v2-段级diff清单.md` / `段级-diff清单-v2.md` /
+  //   `v2-diff-list.md` 等 6 种变体）。于是「有没有按段级 diff 走」只能靠自述 ——
+  //   本项把「载体在不在」变成判据（**只判载体、不判内容**：载体在≠写得好，载体不在=无从核）。
+  //
+  // A14b「成本账本」——`SKILL.md:90` 早要求 Phase 0 建 `model-routing.md` 并「每 spawn 一行」，
+  //   但实测 **2 个最贵项目**（135.5M / 136.3M）的该文件只有**分档配置表**、无会话 ID 行
+  //   ⇒ 406.0M token 不可归账（`token-cost --project` 只能从这些行取 id，取不到就 `matchedSessionCount: 0`）。
+  //
+  // 豁免与分段（与既有门同一条纪律）：① 无 `drafts/轮次账本.md` → A14a 不判（零轮/存量，A9 同款）；
+  //   ② 目标篇幅 <8000 字（直写档）→ A14a 不判（`pipeline-readme.md:315` 明确 T5 直写模式存在）；
+  //   ③ 无 `model-routing.md` → A14b 不判（存量形态；新项目由 Phase 0 建）；
+  //   ④ 免判项一律进 `notes[]`（可见，不动退出码）——**不追溯既有项目**（主人既定偏好）。
+  // 为什么必须 `--require-gates`：与 A7/A11 同一「交付前一次性验收」时点纪律——中期角色收报时账本/载体
+  //   本就还没产生，判它就是「时点没到」。
+  {
+    const ledger14 = parseLedger(project)
+    // ② 直写档豁免：目标字数真源 = `_lib/target-chars.mjs`（与 apply-compression-cycle 同一实现）
+    let directWrite14 = false
+    const brief14 = join(project, '01-任务简报.md')
+    if (existsSync(brief14)) {
+      try {
+        // ⚠️ `parseTargetChars` 返回的是**对象** `{value, raw, reason}`（不是数字）——
+        //   首版按数字判 `Number.isFinite(...)` 会恒假 ⇒ 直写档豁免**永不生效**（本批自证抓出，已改为取 `.value`）。
+        const t14 = parseTargetChars(readText(brief14))
+        if (t14 && Number.isFinite(t14.value) && t14.value > 0 && t14.value < 8000) directWrite14 = true
+      } catch { /* 解析失败 → 不豁免（fail-closed 方向，与 A12 的字数判定同款） */ }
+    }
+    if (!ledger14.exists) {
+      notes.push('A14a 修订轮载体：未发现 `drafts/轮次账本.md`（零轮 / 存量形态）→ 本项不判（与 A9 同口径）')
+    } else if (directWrite14) {
+      notes.push('A14a 修订轮载体：目标篇幅 <8000 字（直写档）→ 段级 diff 不适用，本项不判')
+    } else {
+      // 只认 apply-diff 的**四族条目头**（`[P2-n]` 刻意不收——脚本自己也拒收，见 apply-diff.mjs 头注）
+      const FOUR_HEAD = /^\s*\[(?:Diff\s*\d+|P0-\d+|P1-\d+|C-\d+)\]/m
+      const rounds14 = (ledger14.rows || []).filter((r) => ['A', 'B', 'G'].includes(r.track))
+      const missing14 = []
+      for (const r of rounds14) {
+        const v = (r.draft || '').match(/-v(\d+)\.md\s*$/)?.[1] || null
+        let ok = false
+        if (v) {
+          const noteP = join(project, 'drafts', `修订说明-v${v}.md`)
+          const diffP = join(project, 'drafts', `段级diff-v${v}.md`)
+          if (existsSync(diffP)) ok = true
+          else if (existsSync(noteP)) { try { ok = FOUR_HEAD.test(readText(noteP)) } catch { ok = false } }
+        }
+        if (!ok) missing14.push(`${r.track} 轨第 ${r.n} 轮（${r.draft || '账本未记正文'}）`)
+      }
+      if (missing14.length) {
+        addHard('A14', '修订轮段级 diff 载体', `以下修订轮**无可应用载体**：${missing14.join('；')}——`
+          + '每轮须有 ① `drafts/修订说明-vN.md` 内 apply-diff 可吃的四族条目头（`[Diff N]` / `[P0-n]` / `[P1-n]` / `[C-n]`，'
+          + '每条带 定位 / 现况串 / 修改后串 / 两侧汉字），或 ② `drafts/段级diff-vN.md` 在盘。'
+          + '实测 0/98 份修订说明含四族头、0/14 个清单名匹配白名单——缺载体时「没整稿重写」无从核验，只能算自述。'
+          + '**补一份清单即可闭合，不改正文、不动定稿。**', 21)
+      }
+    }
+    const mr14 = join(project, 'model-routing.md')
+    if (!existsSync(mr14)) {
+      notes.push('A14b 成本账本：未发现 `model-routing.md` → 本项不判（存量形态；新项目由 Phase 0 建表）')
+    } else {
+      let mrText14 = ''
+      try { mrText14 = readText(mr14) } catch { mrText14 = '' }
+      const uuid14 = new Set((mrText14.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) || [])
+        .map((s) => s.toLowerCase()))
+      if (uuid14.size < 3) {
+        addHard('A14', '成本账本 model-routing.md', `只解析到 ${uuid14.size} 个会话 ID 行（应 ≥3）——`
+          + '`SKILL.md:90` 要求 Phase 0 建该文件并「每 spawn 一个角色即追加一行」，而实测 2 个最贵项目的该文件'
+          + '**只有分档配置表、无会话 ID 行** ⇒ 406.0M token 不可归账（`token-cost --project` 只从这些行取 id）。'
+          + '补齐账本行即可闭合（不动正文）。', 21)
+      }
+    }
+  }
 }
 
 // ── 出口 ─────────────────────────────────────────────────────────────────
@@ -1400,9 +1479,15 @@ if (opt.requireGates) {
 //   漏改这里会让「挂了 `--require-gates` 的 run」的 `pass`/`total` 口径失准（分母少 1、分子不少）。
 // v19.5.0（§一.4）：T8 交付物最小清单同为「交付前一次性验收」项，故在 `--require-gates` / `--level strict`
 //   下再占 1 个分母单位（五个文件**合成一条**判据——与 A 组按「产物数」入分母的口径一致）。
+// v19.19.3（反哺 2026-10-19 M2/M4a）：`--require-gates` 下的门从 **2 项**（A7 / A11）变为 **3 项**
+//   （+ A14 修订载体 + 成本账本）。A14 的两个子判据（载体 / 账本）**合成 1 个分母单位**——补救动作
+//   都是「补一份载体」，且可能同时红；按「组」入分母与 A7「四门合成一条」同口径。
+//   ⚠️ 漏改这里会让挂了旗标的 run 的 `pass`/`total` 失准（分母少 1、分子不少）——这是 v19.4.0 的教训，
+//   同时也是 `tests/handoff-check.test.mjs:44` 那条 `total === artifacts + 4` 断言**不挂 requireGates** 的原因：
+//   A14 是**条件项**，无条件新增会让那条断言必红（本批刻意把它做成条件项）。
 const B_CHECK_ITEMS = 4   // B1 六要素段 / B2 AI 使用披露 / B3 回报行数 / B4 回报路径
 const T8_DELIVERABLE_CHECK = (role === 'T8' && (opt.requireGates || strict) && t8BodyStarted) ? 1 : 0
-const total = required.length + (reportText != null ? B_CHECK_ITEMS : 0) + (strict && role === 'T7' ? 1 : 0) + (opt.requireGates ? 2 : 0) + T8_DELIVERABLE_CHECK
+const total = required.length + (reportText != null ? B_CHECK_ITEMS : 0) + (strict && role === 'T7' ? 1 : 0) + (opt.requireGates ? 3 : 0) + T8_DELIVERABLE_CHECK
 const pass = total - hard.length - soft.length
 let exit = 0
 if (hard.some((h) => h.exitClass === 20)) exit = 20
@@ -1419,7 +1504,7 @@ const out = {
   // v18.57.x：原始条数（不受分母口径影响）与分母口径说明——供机器消费，免去猜 `pass` 的含义。
   hardCount: hard.length,
   softCount: soft.length,
-  countingNote: 'total = A 组产物数 + B 组检查项数(4) + [strict&T7] + [--require-gates ×2：A7 四门 / A11 授权串]'
+  countingNote: 'total = A 组产物数 + B 组检查项数(4) + [strict&T7] + [--require-gates ×3：A7 四门 / A11 授权串 / A14 修订载体+成本账本]'
     + ' + [T8 交付物最小清单 ×1：仅 `--role T8` 且 `--require-gates`/`--level strict`]；'
     + 'pass = total − 失败条目数。同一份产物可能产出多条（A2+A3），此时 pass 偏低（保守方向）；'
     + '判定请以 exit 与 hard/soft 清单为准，pass 仅供速览。',

@@ -32,6 +32,7 @@ import { parseArgs } from './_lib/cli-args.mjs';
 import { countHan } from './_lib/han.mjs';
 import { parseTargetChars } from './_lib/target-chars.mjs';   // v18.12.3：目标字数解析唯一实现（3-5 位 / 千分位 / 万·千·k）
 import { firstEndnoteIndex, maskFences, bodyStartAfterAbstract, h2Headings, h3Headings } from './_lib/sections.mjs';   // v18.12.3 L-56 同族：正文区口径与 count-chars 同源
+import { writeReport } from './_lib/destructive-write.mjs';   // v19.19.3（M1）：候选清单落盘走同一条出口（同文件守卫 + 时间戳 .bak）
 
 installExitGuard();
 
@@ -415,6 +416,80 @@ if (!dryRun) {
   }
 }
 
+// ---- ⑤′ 候选压缩清单（v19.19.3 · 反哺报告-2026-10-19 M1）-------------------------------
+// 病根（实测）：压缩轮是**最贵的机械轮**（xingbie 单篇 压实/收口/引用闭环/收尾修复四类 = 34.3M，
+//   占该篇 23.1%），而轮次账本**按设计把这类轮排除在额度与计量之外**（无上限）。它之所以必须 spawn T5，
+//   是因为本脚本 ③ 只产「残留风险清单」（哪些词/哪节可能超），**不产 apply-diff 可吃的四族条目** ⇒
+//   清单只能由模型出，于是 T5 被 spawn 去「出清单 + 顺带重写」。
+// 现规则：超阻塞线（compress 方向）时，本脚本直接产出**可机械应用**的候选清单 `drafts/段级diff-vN.md`：
+//   · 只收**整句级**的「元话语/过渡句」（`本节/本章/下面/值得注意的?是/综上…` 开头）；
+//   · **四不收**：带文内引用（`[n]`/`[Lxx]`）、带图位（`[图N`）、含判据词（`若/则/判据/标准/口径/前提/限定`）、
+//     **含任何数字**（数值守恒）——这四类正是压缩轮不变量（④′）守的东西，**从生产端就不产出它们**；
+//   · 全文**唯一出现**才收（apply-diff 按 `expect` 命中次数断言，重复句会让「删哪一处」有歧义）；
+//   · 每条给 `[P1-n] / 定位 / 现况串 / 修改后串 / 两侧汉字`——apply-diff 直接可吃。
+// 边界（如实，三条）：① **脚本只给「可机械删」的那一档**；论证删减、改写、补写**不进本清单**（须 T5）；
+//   ② 默认**只写文件、不应用**——主控须逐条批准后自己跑 `apply-diff --in-place`；
+//   ③ `--dry-run` 只打印不落盘（与全脚本 `dry-run 只影响写盘、不影响判定` 同一约定）。
+const META_SENTENCE_RE = /^(?:本节|本章|本文|下面|接下来|首先|其次|再次|最后|综上|总的来说|总体来看|值得注意的?是|值得指出的?是|需要指出的是|必须指出的是|应当看到|不难发现|换言之|也就是说)[，,、：:]?/;
+const buildCompressionCandidates = (bodyText) => {
+  const found = [];
+  bodyText.split('\n').forEach((line, idx) => {
+    const trimmed = line.trim();
+    // 只处理**普通正文段落行**：跳过标题/表格/引用块/列表/围栏
+    if (!trimmed || /^[#|>\-```!]/.test(trimmed)) return;
+    for (const raw of trimmed.split(/(?<=[。！？])/)) {
+      const t = raw.trim();
+      if (t.length < 8 || t.length > 120) continue;          // 太短删了没意义；太长多半承载信息
+      if (!META_SENTENCE_RE.test(t)) continue;
+      if (/\[\d+\]|\[(?:L|D|C|先)/.test(t)) continue;        // 引用标记 → 不删（不变量 ①）
+      if (/\[图\s*\d+/.test(t)) continue;                     // 图位 → 不删（不变量 ②）
+      if (CRITERION_RE.test(t)) continue;                     // 判据句 → 不删（不变量 ③）
+      if (/\d/.test(t)) continue;                             // 数值 → 不删（守恒）
+      if (bodyText.split(t).length - 1 !== 1) continue;       // 必须在全文唯一出现
+      found.push({ line: idx + 1, old: t });
+    }
+  });
+  return found;
+};
+const candidates = gapDirection === 'compress' ? buildCompressionCandidates(body) : [];
+// 下一版号（清单与下一版正文对齐）：① `drafts/初稿-vN.md` 最大版 +1（正常形态）；
+//   ② 无草稿（夹具/首轮直写）→ 取目标正文名里的数字 +1；③ 都没有 → 2（第一轮修订的默认号）。
+const nextVer = (() => {
+  let maxDraft = 0;
+  try {
+    for (const n of readdirSync(join(projRoot, 'drafts'))) {
+      const mm = /^初稿-v(\d+)\.md$/.exec(n);
+      if (mm) maxDraft = Math.max(maxDraft, Number(mm[1]));
+    }
+  } catch { /* 无 drafts/ 目录：走 ② ③ */ }
+  if (maxDraft > 0) return maxDraft + 1;
+  const tgt = Number(basename(targetPath).match(/\d+/)?.[0] || 0);
+  return tgt > 0 ? tgt + 1 : 2;
+})();
+const listPath = join(projRoot, 'drafts', `段级diff-v${nextVer}.md`);
+const renderCandidateList = () => [
+  `# 段级 diff 候选清单（压缩轮 · 自动生成 · v${nextVer}）`,
+  '',
+  '> **来源**：`apply-compression-cycle.mjs` ⑤′（v19.19.3）。只收「元话语/过渡句」的**整句删除**，',
+  '> 且**不含引用 / 图位 / 判据词 / 数字**、全文唯一出现——四类不变量从生产端就不产出。',
+  '> **用法**：主控**逐条批准**后 `node scripts/apply-diff.mjs <被压正文> <本文件> --in-place`，',
+  '> 再复跑 `apply-compression-cycle.mjs` 核四类不变量。不批准就删掉该条目（本文件不会自动应用）。',
+  '> **边界**：论证删减/改写**不在本清单**（须 spawn T5）；本清单只是把「出清单」这一步机械化。',
+  '> **格式契约**：只写 定位 / 现况 / 修改 三种行——`apply-diff` 把其余非空行记进 `dropped_lines` 并 exit 1',
+  '> （v19.6.7 起按条目点名），故「估算字数」这类元注记**刻意不进本清单**（汉字数由应用器实测）。',
+  '',
+  ...candidates.map((c, k) => [
+    `### [P1-${k + 1}]`,
+    `- **定位**：第 ${c.line} 行（元话语整句，删 ${countHan(c.old)} 汉字）`,
+    `- **现况**：${c.old}`,
+    '- **修改**：',
+    '',
+  ].join('\n')),
+].join('\n');
+if (!dryRun && candidates.length) {
+  writeReport(listPath, renderCandidateList(), { label: '--emit-candidates' });
+}
+
 // ---- ⑥ 输出压缩决策 JSON ----
 const result = {
   project: positionals[0],
@@ -436,6 +511,15 @@ const result = {
 //   `targetConflict` / `reconcileFailed` 为机器字段。
   note,
   targetConflict: conflicts.length > 0,
+  // v19.19.3（M1）：可机械应用的压缩候选清单（只在 compress 方向产出；dry-run 只打印不落盘）
+  compressionCandidates: {
+    count: candidates.length,
+    file: candidates.length && !dryRun ? listPath : null,
+    dryRun,
+    note: candidates.length
+      ? '已按 apply-diff 四族格式生成候选清单（仅「元话语整句」一档）；主控逐条批准后跑 apply-diff --in-place'
+      : (gapDirection === 'compress' ? '未发现可机械删除的候选（论证删减类须 spawn T5，本清单刻意不收）' : '非压缩方向 → 不生成候选清单'),
+  },
   outlineReconcile,
   invariants,
   reconcileFailed,

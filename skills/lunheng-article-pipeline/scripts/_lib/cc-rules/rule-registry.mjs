@@ -61,6 +61,7 @@ export const RULE_REGISTRY = Object.freeze([
   { id: '㊳', module: 'content-rules.mjs', what: 'G14 类数口径（真源 = 14-中文AI痕迹-gate.md 的 G14-[A-H] 类表；**v18.95.0 新立**）' },
   { id: '㊴', module: 'docs-version-rules.mjs', what: '执行面允许面三方对账（`!!js` 允许面真源 = 规则 ⑭ 的 `FORBIDDEN` 补集；文档侧「无真源指针的排他断言」与「被禁项进允许列表」皆报；**v18.99.0 新立**）' },
   { id: '㊵', module: 'content-rules.mjs', what: '四门事实单一登记表（真源 = `_lib/cc-rules/phase-registry.mjs`：三口径各自唯一 + 代码面无第二份数组字面量；**v19.6.0 新立**）' },
+  { id: '㊶', module: 'content-rules.mjs', what: 'M 门项数表述口径（真源 = `GATE_DERIVED.mech` ← `_lib/mgate-gates/gate-count.mjs`；判「全量 N 项 / 其余 N 项机械门 / N 项逐字清单 / 机械 N 项」四句式；**v19.19.3 新立**）' },
 ])
 
 /** 全部主规则 id（登记表顺序）。 */

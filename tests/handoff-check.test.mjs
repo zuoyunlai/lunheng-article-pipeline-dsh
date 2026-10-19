@@ -610,3 +610,75 @@ test('A13：跳过项缺字段 → 硬 21；三字段齐 / 写「无」→ 放�
     } finally { rmSync(ok, { recursive: true, force: true }) }
   }
 })
+
+// ══════════════════════════════════════════════════════════════════════════════
+// v19.19.3（反哺报告-2026-10-19 M2 / M4a）：**A14 修订载体 + 成本账本**
+//   病根实测：段级 diff 是硬规则（pipeline-readme:313「一律」）却**机械层零消费点**——
+//     34 篇有修订轮的项目里 0/98 份修订说明含 apply-diff 四族头、0/14 个清单名匹配白名单；
+//     且 2 个最贵项目（135.5M / 136.3M）的 model-routing.md **只有分档配置表、无会话 ID 行**
+//     ⇒ 406.0M token 不可归账。A14 只判「载体/账本在不在」，**不判内容**，且只在 --require-gates 判。
+//   四条用例分别锁：① 缺载体 → 硬 21 且分母 +1（条件项）；② 有四族头 → 不判；③ 缺账本行 → 硬 21；
+//   ④ 直写档（<8000 字）→ 载体项豁免（否则轻量项目会被迫造清单）。
+// ══════════════════════════════════════════════════════════════════════════════
+const LEDGER_OK = (draft) => '# 轮次账本\n\n| 轨 | 轮次 | 正文版本 | 触发来源 | 复核报告 | 时间 |\n|---|---|---|---|---|---|\n'
+  + `| A | 1/2 | ${draft} | T7 审计打回 | audits/复核报告-v1.md | 2026-10-19 |\n`
+const MR_OK = '| 角色 | agent id | 启动时间 |\n|---|---|---|\n'
+  + '| T1 | 11111111-1111-4111-8111-111111111111 | 2026-10-19 |\n'
+  + '| T2 | 22222222-2222-4222-8222-222222222222 | 2026-10-19 |\n'
+  + '| T3 | 33333333-3333-4333-8333-333333333333 | 2026-10-19 |\n'
+const NOTE_HUMAN = '# 修订说明\n\n| # | 位置 | 原句 | 压缩后 | 省字 |\n|---|---|---|---|---|\n| 1 | §1 | 长句 | 短句 | -3 |\n'
+
+test('v19.19.3 A14a：--require-gates 下修订轮无可应用载体 → 硬 21，且 A14 只占 1 个分母单位', () => {
+  const d = makeProject({
+    'drafts/轮次账本.md': LEDGER_OK('drafts/初稿-v2.md'),
+    'drafts/修订说明-v2.md': NOTE_HUMAN,   // 人读表，**没有** [P0-n]/[P1-n]/[Diff N]/[C-n] 条目头
+    'model-routing.md': MR_OK,
+  })
+  try {
+    const j = parseJson(run([SCRIPT, '--project', d, '--role', 'T1', '--require-gates']))
+    const a14 = j.hard.filter((x) => x.check === 'A14')
+    assert.ok(a14.some((x) => /A 轨第 1 轮/.test(x.detail)), '须点名缺载体的轮次：' + JSON.stringify(a14))
+    assert.equal(j.total, j.artifacts.length + 3,
+      `--require-gates 下分母 = artifacts + 3（A7 / A11 / A14 各 1 单位；A14 两子判据合成 1）：total=${j.total} artifacts=${j.artifacts.length}`)
+    assert.match(j.countingNote, /A14/, 'countingNote 必须写清 A14 占分母')
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
+test('v19.19.3 A14a：修订说明含 apply-diff 四族条目头 → 不判 A14a（只判载体在不在）', () => {
+  const d = makeProject({
+    'drafts/轮次账本.md': LEDGER_OK('drafts/初稿-v2.md'),
+    'drafts/修订说明-v2.md': '# 修订说明\n\n[P1-1] 定位 §2 第 3 段\n- 现况串：甲甲甲\n- 修改后串：乙乙乙\n- 汉字：12 → 12\n',
+    'model-routing.md': MR_OK,
+  })
+  try {
+    const j = parseJson(run([SCRIPT, '--project', d, '--role', 'T1', '--require-gates']))
+    const a14 = j.hard.filter((x) => x.check === 'A14' && /载体/.test(x.subject))
+    assert.deepEqual(a14, [], '有四族头的修订说明必须放行：' + JSON.stringify(a14))
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
+test('v19.19.3 A14b：model-routing.md 只有分档配置表、无会话 ID 行 → 硬 21（成本不可归账）', () => {
+  const d = makeProject({
+    'model-routing.md': '# 模型路由表\n\n| 档位 | 角色 | 主选 |\n|---|---|---|\n| 检索 | T1/T2/T3 | `x` |\n',
+  })
+  try {
+    const j = parseJson(run([SCRIPT, '--project', d, '--role', 'T1', '--require-gates']))
+    const a14b = j.hard.filter((x) => x.check === 'A14' && /账本/.test(x.subject))
+    assert.equal(a14b.length, 1, '缺会话 ID 行必须判 A14b：' + JSON.stringify(j.hard))
+    assert.match(a14b[0].detail, /只解析到 0 个会话 ID/, '须给出实读数：' + a14b[0].detail)
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
+test('v19.19.3 A14a 豁免：目标篇幅 <8000 字（直写档）→ 载体项不判（不逼轻量项目造清单）', () => {
+  const d = makeProject({
+    '01-任务简报.md': '# 任务简报\n\n- **篇幅**：**6000 字**\n',
+    'drafts/轮次账本.md': LEDGER_OK('drafts/初稿-v2.md'),
+    'drafts/修订说明-v2.md': NOTE_HUMAN,
+    'model-routing.md': MR_OK,
+  })
+  try {
+    const j = parseJson(run([SCRIPT, '--project', d, '--role', 'T1', '--require-gates']))
+    const a14a = j.hard.filter((x) => x.check === 'A14' && /载体/.test(x.subject))
+    assert.deepEqual(a14a, [], '直写档（6000 字）必须豁免 A14a：' + JSON.stringify(a14a))
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})

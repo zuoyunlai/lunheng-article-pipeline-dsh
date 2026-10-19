@@ -328,10 +328,41 @@ const out = {
   rows
 };
 
+// ── v19.19.3（反哺报告-2026-10-19 M4b 配套）：**部分命中预警** ──
+// 为什么必须有（实测 2026-10-19，本机 4 个项目）：live 回流**不是全有或全无**——
+//   `run/中国古典学的学科划界` 3 个会话只命中 **2 个**，总量 2.1M，而其交付快照是 **10.9M**；
+//   若默默输出，读者会拿到一个**低 5 倍**的「实测值」。这正是本包最反感的
+//   「静默把缺失当数值」的第三种形态（前两种：查不到当 0 = v18.2.6；查得到的历史当没有 = 本条回落）。
+// 判据：命中数 < 请求数 且 > 0 → 打 `coverageWarning`（不改 exit、不改总量口径——**不猜补值**）。
+if (matchedSessions > 0 && matchedSessions < opt.ids.length) {
+  out.coverageWarning = `仅 ${matchedSessions}/${opt.ids.length} 个会话命中用量记录：缺失的 ${opt.ids.length - matchedSessions} 个未计入总量，**本读数偏低**，不得直接当实测成本。`
+    + '补法：① 核对 id 是否写错；② 若 `--project`，比对 `<项目>/final/token-cost.json` 快照（更完整时以快照为准并标 source）；③ 重跑时把 session id 记全。';
+}
+
+// ── v19.19.3（M4b 第三形态）：**live ↔ 交付快照对账** ──
+// 实测病灶（2026-10-19）：`run/中国古典学的学科划界` live 只命中 2 个会话 = **2.1M**，
+//   而交付快照是 **10.9M**——id 抽取面本身就少了（`model-routing.md` 后补的行不在旧日志里）。
+//   若不报，读者会把「低 5 倍」的 live 读数当实测值。故当两者都存在时一律对账：
+//   偏差 >20% 时并入 `coverageWarning`（口径：快照更完整 **或** 项目后期有修订，**两者都可能**，不预设结论）。
+if (opt.project && matchedSessions > 0) {
+  const snap = readDeliverySnapshot(opt.project);
+  const snapTotal = snap ? Number(snap.snap.tokens.total) : 0;
+  if (snapTotal > 0) {
+    const delta = (snapTotal - totalTokens) / snapTotal;
+    out.snapshotComparison = { snapshotTotal: snapTotal, liveTotal: totalTokens, deltaPct: Number((delta * 100).toFixed(1)), snapshotPath: snap.snapPath };
+    if (Math.abs(delta) > 0.2) {
+      out.coverageWarning = (out.coverageWarning ? out.coverageWarning + ' ' : '')
+        + `live 读数与交付快照差 ${(delta * 100).toFixed(0)}%（快照 ${(snapTotal / 1e6).toFixed(1)}M vs live ${(totalTokens / 1e6).toFixed(1)}M，见 snapshotComparison）——引用成本前必须说明取哪一个，不得两个数混用。`;
+    }
+  }
+}
+
 // --top N（v2.5.2-dsh.15 实现）：按 cacheRead 降序的 Top N 会话 —— 回答「哪一步最贵 / 优化有没有用」。
 // 这是后续一切 token 优化的量尺：没有排名，优化只能凭感觉（旧版该参数只有注释、无实现）。
-if (opt.top > 0) {
-  const scored = rows
+// v19.19.3（M4c）：抽成函数——**回落交付快照时也要能排名**（否则历史项目的离群轮永远看不见，
+//   而离群轮正是成本的主导项）。`rowList` 与 `totals` 各自来自 live 计算或快照，口径同构。
+function attachTop(outObj, rowList, grandCacheRead) {
+  const scored = rowList
     .filter((r) => r.tokens)
     .map((r) => ({
       session: r.session,
@@ -341,17 +372,28 @@ if (opt.top > 0) {
       output: r.tokens.outputTokens || 0,
       total: (r.tokens.uncachedInputTokens || 0) + (r.tokens.cacheReadTokens || 0) + (r.tokens.cacheWriteTokens || 0) + (r.tokens.outputTokens || 0),
       costEstimateUsd: Number(sessionCost(r.tokens).toFixed(4)),
-      cacheReadShareOfTotalPct: totals.cacheReadTokens > 0
-        ? Number((((r.tokens.cacheReadTokens || 0) / totals.cacheReadTokens) * 100).toFixed(1))
+      cacheReadShareOfTotalPct: grandCacheRead > 0
+        ? Number((((r.tokens.cacheReadTokens || 0) / grandCacheRead) * 100).toFixed(1))
         : 0,
     }))
     .sort((a, b) => b.cacheRead - a.cacheRead || b.costEstimateUsd - a.costEstimateUsd);
-  out.topByCacheRead = scored.slice(0, opt.top);
-  out.topNote = `按 cacheRead 降序 Top ${Math.min(opt.top, scored.length)}（共 ${scored.length} 个有用量记录的会话；share 为占总量 cacheRead 的百分比）。优化动作应优先针对排名靠前者。`;
-  if (scored.length === 0) out.topNote = '没有任何会话带 tokenUsage 记录（先确认会话 id 是否正确）。';
+  outObj.topByCacheRead = scored.slice(0, opt.top);
+  outObj.topNote = `按 cacheRead 降序 Top ${Math.min(opt.top, scored.length)}（共 ${scored.length} 个有用量记录的会话；share 为占总量 cacheRead 的百分比）。优化动作应优先针对排名靠前者。`;
+  if (scored.length === 0) outObj.topNote = '没有任何会话带 tokenUsage 记录（先确认会话 id 是否正确）。';
+  // ── v19.19.3（反哺报告-2026-10-19 M4c）：**单会话尾部预警** ──
+  // 实测依据（11 篇 / 158 会话）：单会话占全篇 58%–80% 的三例（台海 56.5M / 生成式AI 78.7M /
+  //   中国古典学 8.8M）全部不是常规单轮——两例角色未登记、一例是「43 条一轮」的深化轮。
+  //   即：**一篇的成本被一两个离群轮定义**，而中位数只有 66.7M。故在 Top 排名上打一行预警（不改 exit）。
+  // 边界（如实）：阈值 20M 取自实测分布的空档（常规 spawn 3–8M，离群 56–86M），不是统计分位数。
+  const BURST_LIMIT = 20_000_000;
+  const bursts = scored.filter((s) => s.total > BURST_LIMIT);
+  if (bursts.length) {
+    outObj.topWarnings = bursts.map((s) => `单会话 ${(s.total / 1e6).toFixed(1)}M token（>${BURST_LIMIT / 1e6}M 阈值）session=${s.session} label=${s.label}——离群轮通常意味着「单轮承载过多条目」或「上下文反复重读同一批材料」，请对其触发原因单独复核，不要按角色均值理解成本`);
+    outObj.topNote += ` ⚠️ 其中 ${bursts.length} 个会话单轮 >${BURST_LIMIT / 1e6}M（见 topWarnings）。`;
+  }
+  return scored;
 }
-
-console.log(JSON.stringify(out, null, 2));
+if (opt.top > 0) attachTop(out, rows, totals.cacheReadTokens);
 
 // === v18.2.6 审计修复（第三方审计 P1-5）：全部会话未命中用量记录 → 非 0 退出 ===
 // 旧行为（实测）：`--sessions <假 UUID>` → `sessionCount:1 / tokens 全 0 / costEstimateUsd:0` 且 **exit 0**，
@@ -360,7 +402,44 @@ console.log(JSON.stringify(out, null, 2));
 //   「静默把缺失当数值」。现规则：**一个会话都没命中 → exit 10（参数或路径错）** + 明确报错文案。
 //   注意判据是 `matchedSessions === 0` 而非 `totalTokens === 0`：后者在「会话存在但确实没用 token」时
 //   也会为 0，那是合法的真实数据，不得误判为错误（故这里必须用命中数，不能看总量）。
+//
+// ── v19.19.3（反哺报告-2026-10-19 M4b）在 exit 10 之前插入**交付快照回落** ──
+// 病灶（2026-10-19 实测，4 个项目）：`session_projcache` 与活存储**都会轮转**——xingbie 的 21 个
+//   id 现在一个都不在盘（`matchedSessionCount: 0`），台海 / 生成式AI / 不能评估的忠诚 同为 0。
+//   于是「交付时落盘的 `final/token-cost.json`」成了**唯一残留证据**，而官方工具自己读不到它：
+//   要么报 exit 10，要么（更糟）让人拿一个 0 去填交付说明。这正是 v18.2.6 那道门的**另一半**——
+//   它防「把查不到当 0」，本条防「把查得到的历史当没有」。
+// 判据：`matchedSessions === 0` + 给了 `--project` + `<项目>/final/token-cost.json` 在盘且总量 > 0
+//   → 读该快照、**原样输出**并显式标 `source: 'delivery-snapshot'`，exit 0。
+// 边界（如实，三条）：① 只回落**项目默认路径**（`--sessions`/`--tree`/显式 `--out` 不猜）；
+//   ② 回落模式**不写盘**（快照就是它自己：覆盖无意义，且会撞同文件守卫）；
+//   ③ 快照里的 `costEstimateUsd` 是**当时**单价算的，回落时照原样给，不重算、不修正。
+function readDeliverySnapshot(projectDir) {
+  const snapPath = join(projectDir, 'final', 'token-cost.json');
+  if (!existsSync(snapPath)) return null;
+  let snap = null;
+  try { snap = JSON.parse(readFileSync(snapPath, 'utf8')); } catch { return null; }
+  if (!snap || !snap.tokens || !(Number(snap.tokens.total) > 0)) return null;
+  return { snapPath, snap };
+}
 if (matchedSessions === 0) {
+  const fb = opt.project ? readDeliverySnapshot(opt.project) : null;
+  if (fb) {
+    const merged = {
+      ...fb.snap,
+      source: 'delivery-snapshot',
+      snapshotPath: fb.snapPath,
+      liveMatchedSessionCount: 0,
+      liveRequestedSessionCount: opt.ids.length,
+      note: (fb.snap.note ? fb.snap.note + ' ' : '')
+        + '【v19.19.3 回落】本次 live 会话投影与活存储均未命中（已轮转/已清理），'
+        + '数据取自**交付时落盘**的快照；它是当时的读数，**不是复算值**，金额按当时的单价估算。',
+    };
+    if (opt.top > 0) attachTop(merged, Array.isArray(merged.rows) ? merged.rows : [], Number(merged?.tokens?.cacheRead) || 0);
+    console.log(JSON.stringify(merged, null, 2));
+    console.error(`· live 未命中 ${opt.ids.length} 个 id → 已回落读交付快照 ${fb.snapPath}（source=delivery-snapshot；未复算、未写盘）`);
+    process.exit(0);
+  }
   console.error(
     `✗ 给出的会话 id 未在 ${cacheDesc} 找到任何用量记录，请核对 id 或 --sessions 参数。\n` +
       `  共查 ${opt.ids.length} 个 id，全部未命中（仅前 5 个：${opt.ids.slice(0, 5).join(', ')}${opt.ids.length > 5 ? ' …' : ''}）。\n` +
@@ -370,6 +449,8 @@ if (matchedSessions === 0) {
   );
   process.exit(10);
 }
+
+console.log(JSON.stringify(out, null, 2));
 
 // === v19.1.9：落盘（闭合契约缺口）===
 // 病灶：`SKILL.md` §主控亲跑路径 与 `pipeline-readme.md` 一直宣称本脚本「产 final/token-cost.json」，
@@ -382,9 +463,32 @@ if (matchedSessions === 0) {
 //   落一个 0 值文件，那正是 v18.2.6 立那道门要防的「静默把缺失当数值」。
 const outPath = (opt.write ? (opt.out || (opt.project ? join(opt.project, 'final', 'token-cost.json') : null)) : null);
 if (outPath) {
-  // 写盘走 `_lib/destructive-write.mjs`（同文件守卫 + 时间戳 .bak），与其余报告脚本同一条出口
-  writeReport(outPath, JSON.stringify(out, null, 2), { label: '--out' });
-  console.error(`· 已落盘：${outPath}（运行面板「Token 消耗」卡读的就是它）`);
+  // ── v19.19.3（反哺报告-2026-10-19 M4b 的**破坏面**修复）：**历史快照不得被部分读数覆盖** ──
+  // 病灶实测（本批自查，20:00 发生并已恢复）：对一个**已交付**项目跑 `--project` 时，live 只命中了
+  //   2/3 个会话 → 脚本按 v19.1.9 的默认路径把 `final/token-cost.json` **覆盖成 2.14M**，
+  //   而原快照是 10.90M（差距 5 倍）。即：一条只读的"看看成本"命令，同时**销毁了唯一的历史证据**
+  //   （`session_projcache` 轮转后，快照就是唯一真源）。这正是「静默把缺失当数值」的第四种形态。
+  // 现规则：① **命中不全**（matched < 请求数）或 ② 与已有快照**偏差 >20%** → **拒绝覆盖**，
+  //   改写到 `<path>.new`（同目录旁路，供人比对），并在 stderr 点名原因；
+  //   ③ 完整命中且偏差 ≤20% → 照旧覆盖（正常交付路径不变，仍走 destructive-write 的 .bak 守卫）。
+  // 边界（如实）：判据只在**目标已存在**时生效——首次交付写盘不受影响；`.new` 是普通文件，
+  //   不进证据包、不被面板读，专门用来"别丢东西"。
+  const prevSnap = existsSync(outPath) ? (() => { try { return JSON.parse(readFileSync(outPath, 'utf8')) } catch { return null } })() : null;
+  const complete = matchedSessions === opt.ids.length;
+  const prevTotal = prevSnap && prevSnap.tokens ? Number(prevSnap.tokens.total) || 0 : 0;
+  const delta = prevTotal > 0 ? Math.abs(prevTotal - totalTokens) / prevTotal : 0;
+  if (prevTotal > 0 && (!complete || delta > 0.2)) {
+    const alt = outPath + '.new';
+    writeReport(alt, JSON.stringify(out, null, 2), { label: '--out' });
+    console.error(
+      `· **已拒绝覆盖** ${outPath}：本次 live 读数${complete ? `与历史快照差 ${(delta * 100).toFixed(0)}%` : `命中不全（${matchedSessions}/${opt.ids.length}）`}——`
+      + `历史快照不得被部分读数覆盖（反哺 M4b）。本次结果写入旁路 ${alt}，请人工比对后再决定是否替换。`,
+    );
+  } else {
+    // 写盘走 `_lib/destructive-write.mjs`（同文件守卫 + 时间戳 .bak），与其余报告脚本同一条出口
+    writeReport(outPath, JSON.stringify(out, null, 2), { label: '--out' });
+    console.error(`· 已落盘：${outPath}（运行面板「Token 消耗」卡读的就是它）`);
+  }
 } else if (opt.write && !opt.out && !opt.project) {
   console.error('· 仅打印（未给 --project / --out：该模式没有可推断的落盘位置）');
 }
