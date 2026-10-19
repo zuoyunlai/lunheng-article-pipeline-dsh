@@ -2,6 +2,21 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 19.19.2 — 2026-10-19
+
+<!-- 行为变更 1 条 | 锚点 = CHANGELOG.md § 19.19.2（A-3 接线补完） -->
+
+> **主题**：19.19.1 的 A-3 只接了**一半**——`scopeSource` 进了 `output.schema`、也进了 `render`，但 `execute` 是**逐字段组装**返回对象的，没取它，于是「起点：」永远不出现（实测：脚本 JSON 有 `"scopeSource": "first-h2"`，工具输出只剩 `scope`）。本版把值接上，并新增一条**接线钉**把「schema 有字段」与「值真到了 render」分开验。
+> **来源**：主人 19.19.1 装包重启后的实测（`lunheng_char_count` 输出无「起点」）+ 脚本侧 JSON 对照；属发布后验收复现，不新增需求。
+> **版本判据 = patch**：不新增参数 / 字段 / 门 / 退出码，只补一条执行器取值与一条回归钉。
+
+- **① `lunheng_char_count` 的 `scopeSource` 真正到达渲染面**：`execute` 现从脚本 JSON 取 `j.scopeSource`（缺省不注入），渲染首行形如「18 个纯汉字（body(...)）｜起点：first-h2」。新增 `tests/tool-output-wiring.test.mjs`——**同时**断言「schema 声明该字段」与「execute 真的取值」，缺任一半即红。同族历史：19.19.0 的 `advisories` / `unchecked` / `hardRedLineHits` 是同一个坑。
+
+**验证**：`node --test` **1327/1327 全绿**（1327 例，1 例按环境跳过；`pass 1326 / fail 0`）。
+**门绿**：`consistency` 0 漂移、`repo-hygiene` 全通过、`plugin-surface(STRICT_WARN=1)` 通过、`pack-smoke` 通过、`node --test` 全绿；`check:release-sync` 装包后 exit 0。
+**回滚点**：批前 `v19.19.1`（`d8991472`）。
+**教训（值得记）**：**schema 有字段 ≠ 值到了 render**——工具输出面是三段（schema 声明 / execute 组装 / render 呈现），只测首尾两段会漏中间那段；回归钉必须同时钉声明与取值。
+
 ## 19.19.1 — 2026-10-19
 
 <!-- 行为变更 8 条 | 锚点 = CHANGELOG.md § 19.19.1（架构审计 R1–R4 落地批 + 验收复现批） -->
