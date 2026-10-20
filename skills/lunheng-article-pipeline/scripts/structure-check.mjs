@@ -72,6 +72,8 @@ const text = readFileSync(file, 'utf8');
 // v19.8.0（反哺 v9 D7）：开题报告九节模式——开题是学位/长文的前置交付物，结构门与 IMRaD 完全不同。
 //   只做**节存在性**判定（≥3 缺 → P0 / 1-2 缺 → P1），不判漏斗/讨论要素（那些是正文的结构件，开题没有）。
 if (kaiti) {
+  // 节序列真源 = `references/_shared/正文骨架.md` 的 `kaiti` 行（本数组是它的机检投影，
+  //   tests/batch30-正文骨架真源.test.mjs 对账三方：本数组 ↔ 那张表 ↔ `templates/开题报告-template.md` 的 `##` 标题）。
   const KAITI_SECTIONS = ['研究背景', '研究目的', '研究意义', '文献综述', '研究内容', '研究方法', '研究框架', '预期成果', '参考文献'];
   const missing = KAITI_SECTIONS.filter((sec) => {
     const b = sectionBody(text, sec);
