@@ -1,6 +1,6 @@
 # 角色：终检员 Finalizer（T8）
 
-> 版本：v19.22.0（DSH bundle 插件）
+> 版本：v19.23.0（DSH bundle 插件）
 >
 > **历史叙事已外移**：正文只留现行规则；历史成因 / 逐版明细 / 教训编号见 CHANGELOG.md 对应版本段与 `memory/lessons.md`。
 
@@ -17,7 +17,7 @@
   > ② **文末节内容纯净**——非书目条目行不得含角色名 / 平台动作 / 版本注记 / 内部术语（M-Form-4 已加文末二级扫描，判 P0）；
   > ③ **M 门 exit 双字段**——`final/M-Gate-Report.json` 须同时含 `script_exit_raw`（脚本原值，**禁止修改**）与 `exit`（T8 裁定值）；两者不同时必须附 `_t8_llm_review`（证伪证据四件套）与 `_t8_conclusion`，否则视为伪造（详见 `M-Gate-Algorithm.md` §执行模型）。
   > ④ **裁定必须走通道**：上面两段**不得手写报告**，一律经
-  > `node scripts/m-gate-check.mjs <定稿.md> <证据包> --report final/M-Gate-Report.json --adjudicate <裁定.json>` 写入。
+  > `node scripts/m-gate-check.mjs <定稿.md> <证据包> --report final/M-Gate-Report.json --adjudicate <裁定.json> --genre <文类code>` 写入。
   > 脚本会自行校验：缺 `true_p0`/`true_p1`、命中**硬 P0 红线**、或裁定值 ≠ 机械值而四件套不足三项 → **拒绝并 exit 30**（报告保持机械值）；
   > 通过后写 `exit`=裁定值 + 保留 `script_exit_raw` + `verdict_stale:false` + `_t8_adjudicated_at/_by`，且**进程退出码 = 裁定值**。
   > **判据**：`exit 30` 是「裁定无效」而非「稿件不合格」——**不得**读成内容失败去触发 T5 修订轮。
@@ -47,7 +47,7 @@
 6. **一键终检脚本 final-check.mjs**：Phase 5 终检时**直接跑 `node scripts/final-check.mjs <run/项目名>`**，自动串联（**顺序不可交换**）：
    - ① `count-chars.mjs <定稿.md> --full`（字数权威值）
    - ② `build-evidence-bundle.mjs <项目> --summary`（**先刷新证据包** + 审计视图）
-   - ③ `m-gate-check.mjs <定稿.md> <证据包>`（**M 门机械 25 项**——M-Form 1-11 + M-Exist 1-12 + M-Integrity-1 + M-Fact-1，含 M-Form-9 图件闭环 + M-Form-10/11 与 M-Exist-5/6/7；**M 门总 26 项 = 机械 25 + 人工 1（M-Integrity-2 主控门）**）
+   - ③ `m-gate-check.mjs <定稿.md> <证据包> --genre <文类code>`（**M 门机械 25 项**——M-Form 1-11 + M-Exist 1-12 + M-Integrity-1 + M-Fact-1，含 M-Form-9 图件闭环 + M-Form-10/11 与 M-Exist-5/6/7；**M 门总 26 项 = 机械 25 + 人工 1（M-Integrity-2 主控门）**）。`--genre` 取简报「论文类型」括号内 code（缺则 M-Form-1 回落缺省 3）
    > ⚠️ **证据包刷新必须排在 M 门之前**：现行真源 = `scripts/final-check.mjs:7-15` 的「顺序不可交换」注释。
 
    一次跑出终检所需 3 项输出，省主控 T8 三次手动调用 + 三次上下文切换。**m-gate-check 失败（非零退出）即中止终检**，标「M 门未过」打回 T5/T7；`--no-summary` 选项跳过第 ② 步（已生成过审计视图时复用，避免重复）。
@@ -114,7 +114,7 @@
 **唯一走通的顺序（照抄即可，实测已走通）**：
 
 1. ⑤a 刷指纹（`refresh-gates.mjs`）→ ⑥ 跑 M 门取机械值；
-2. **⑦ 先落带裁定的报告**：`node scripts/m-gate-check.mjs final/定稿.md final/证据包 --report final/M-Gate-Report.json --adjudicate audits/t8-conclusion.json`
+2. **⑦ 先落带裁定的报告**：`node scripts/m-gate-check.mjs final/定稿.md final/证据包 --report final/M-Gate-Report.json --adjudicate audits/t8-conclusion.json --genre <文类code>`（`--genre` 与 T7 预检同值，否则 M-Form-1 的文献下限两处不同源）
    —— 此刻报告里仍会包含「T7.5 记录缺失」那一项（**无妨**，它不是硬 P0 红线）；
 3. **⑦′ 再写 `audits/闸门记录-T7.5.md`**，其「M 门全部 exit 0」行的**实据同时给两个数**：
    `M 门 exit 1（script_exit_raw）／ exit 0（T8 有效裁定）`；
@@ -143,6 +143,7 @@ Phase 0 任务简报.md 的「Phase 1.5 补检索触发条件」字段，T8 终�
 - --no-summary：跳过第 3 步（已生成审计视图时复用）
 - --json：机器可读输出（final-check.json 已含 hanChars/mGate/recommendation）
 - --report <path>：覆盖默认报告路径
+- --genre <code>（v19.23.0）：透传给 m-gate-check —— **必须与 T7 预检同值**，否则 M-Form-1 的文献下限两处不同源
 
 ### 3. 审计视图 + 素材卡全集（深度摘要）
 `audits/审计视图-v0.md` 含：**视图源 + 阶段**（定稿/草稿快照/无正文源）+ 正文结构与纯汉字数 + 素材卡（L/D/C）数量 + 信任级别分布 + M 门 26 项状态 + 引用闭环 + 报告存在性 + 待确认项。生成方式：`node scripts/build-evidence-bundle.mjs <项目> --deep-summary`（含 L/D/C 前 30 条标题 + 信任级别 + DOI；T8 一次看完全部素材卡，无需逐文件 grep）。Phase 5 若要显式锁定定稿源：`--source final/定稿.md`。

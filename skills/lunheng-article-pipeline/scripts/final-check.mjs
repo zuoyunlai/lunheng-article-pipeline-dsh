@@ -35,12 +35,14 @@ installExitGuard();   // fs 类异常 → 10；其余内部错误 → 70（不�
 // v18.2.9（第三方审计 A7）：参数解析迁移到 `_lib/cli-args.mjs` 唯一实现
 //   （旧手写 find/indexOf：未知旗标静默忽略、多余位置参数静默取第一个——详见 cli-args 头注释）。
 const args = process.argv.slice(2);
-const FC_USAGE = '用法: node scripts/final-check.mjs <run/项目名> [--no-summary] [--json] [--report <path>] [--overwrite-adjudicated]';
-let wantJson, noSummary, reportPath, overwriteAdjudicated, project;
+const FC_USAGE = '用法: node scripts/final-check.mjs <run/项目名> [--genre <code>] [--no-summary] [--json] [--report <path>] [--overwrite-adjudicated]';
+let wantJson, noSummary, reportPath, overwriteAdjudicated, genre, project;
 try {
   const parsed = parseCliArgs(args, {
     flags: ['--json', '--no-summary', '--overwrite-adjudicated'],
-    values: { '--report': 'final/final-check-report.json' },
+    // v19.23.0（文献下限接线批）：`--genre` 透传给 m-gate-check —— 缺它则 M-Form-1 回落缺省 3，
+    //   文类档案登记的文献下限（hum/lit 15、kaiti 10）**永远不生效**（实测：接线前 T7/T8 两条命令行都没有该旗标）。
+    values: { '--report': 'final/final-check-report.json', '--genre': 'academic-hum' },
     minPositionals: 1,
     maxPositionals: 1,
     positionalHint: '<run/项目名>',
@@ -49,6 +51,7 @@ try {
   noSummary = parsed.flags.has('--no-summary');
   overwriteAdjudicated = parsed.flags.has('--overwrite-adjudicated');
   reportPath = parsed.opts['--report'];
+  genre = parsed.opts['--genre'];
   project = parsed.positionals[0];
 } catch (e) {
   if (e && e.code === CLI_USAGE_CODE) { console.error(e.message); console.error(FC_USAGE); process.exit(10); }
@@ -75,7 +78,7 @@ const steps = [
   //   视图与报告不同步。现改为四步：字数 → 证据卡刷新 → M 门 → 审计视图（读本次报告）。
 ];
 if (!noSummary) steps.push({ name: 'build-evidence-bundle.mjs（刷新证据卡）', cmd: 'node', args: [join(scriptDir, 'build-evidence-bundle.mjs'), project], opt: true, parse: null });
-steps.push({ name: 'm-gate-check.mjs', cmd: 'node', args: [join(scriptDir, 'm-gate-check.mjs'), final, evDir, '--report', join(project, 'final', 'M-Gate-Report.json'), ...(overwriteAdjudicated ? ['--overwrite-adjudicated'] : [])], opt: false, parse: 'm-gate' });
+steps.push({ name: 'm-gate-check.mjs', cmd: 'node', args: [join(scriptDir, 'm-gate-check.mjs'), final, evDir, '--report', join(project, 'final', 'M-Gate-Report.json'), ...(overwriteAdjudicated ? ['--overwrite-adjudicated'] : []), ...(genre ? ['--genre', genre] : [])], opt: false, parse: 'm-gate' });
 // v18.64.0（反哺报告-v5 §v5.0-1）：`--overwrite-adjudicated` **必须能从这个唯一串联方透传**——
 //   否则 T8 的正当「换稿重裁」会在 final-check 这一层被硬挡（m-gate-check 拒绝覆盖并 exit 3，
 //   而 final-check 的 args 是写死的）→ 那会造出「唯一的正常入口反而进不去」的死结。

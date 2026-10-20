@@ -1,4 +1,4 @@
-> 版本：v19.22.0（DSH bundle 插件）
+> 版本：v19.23.0（DSH bundle 插件）
 >
 > **历史叙事已外移**：正文只留现行规则；历史成因 / 逐版明细 / 教训编号见 CHANGELOG.md 对应版本段与 `memory/lessons.md`。
 
@@ -48,7 +48,7 @@
 - **产出硬约束**：完成后**必须产出文件**——`audits/审计报告-vN.md` + `audits/反哺报告-vN.md`，**禁止仅 ACK/计划**（如只回「审计已完成」但无产物文件）。主控收到完成报告后**首检产物存在性**（`ls -la audits/审计报告-vN.md audits/反哺报告-vN.md` 两文件存在 + 非空），无产物 = 判定未完成，按兑底协议处理。
   > **报告按 [`templates/审计报告-template.md`](../templates/审计报告-template.md) 产出**——模板自带 `被审正文:` 头部（A4c 锚点）与 **G0-G14 十五行骨架**（M-Exist-9 锚点），**照模板填即天然满足两处机检**；**不要手抄 G 清单**（派发话术此前只列到 G13，手抄会直接产出漏项报告 → M-Exist-9 判 P1）。
 - **`-vN` 的 N = 审计轮次**：`audits/审计报告-vN.md` 的 N 是 **T7 审计轮次**（首审 1 / 打回后重审 2 …），**不再要求等于 `初稿-vN` 的正文轮次**；同时产出的 `audits/复核报告-vN.md` 必须**同号**（同一轮审计的两半）。**「审的是哪一版正文」改为显式声明**：报告**头部**须写一行 `被审正文:` 后接被审正文档名（如 `` `drafts/初稿-vN.md` ``）——N 与正文解耦后，这一行是该信息的唯一人工载体（机读载体 = M 门报告的 `verdict_scope.draft_name` + `draft_sha256`）。语义真源 = [`deliverables.md` §产物 `-vN` 的 N 跟谁走](../deliverables.md)；机械校验 = `handoff-check --level strict --role T7` 的 A4b（同轮配对，硬）+ A4c（审定对象指纹，硬/软两档）。
-- **M 门预检**：T7 **必跑全量 25 项**（`node scripts/m-gate-check.mjs <被审正文> <final/证据包> --report <tmp.json>`），结论逐项纳入审计报告，P0/P1 写入修订任务书；**另补一项机器扫不净的人工门——M-Form-4 文末二级区**（见下条）。T8 终检仅复核 + 兜底，不当唯一闸门。各门阈值不在此重复维护，见 `_shared/M-Gate-Algorithm-appendix.md`。
+- **M 门预检**：T7 **必跑全量 25 项**（`node scripts/m-gate-check.mjs <被审正文> <final/证据包> --report <tmp.json> --genre <文类code>`），结论逐项纳入审计报告，P0/P1 写入修订任务书；**`--genre` 取任务简报「论文类型」括号内 code**（v19.23.0 接线：不传则 M-Form-1 文献下限回落缺省 3，文类登记的 hum/lit-review 15、kaiti 10 不生效）；**另补一项机器扫不净的人工门——M-Form-4 文末二级区**（见下条）。T8 终检仅复核 + 兜底，不当唯一闸门。各门阈值不在此重复维护，见 `_shared/M-Gate-Algorithm-appendix.md`。
 
 - **🔍 M-Form-4 **人工补扫****：脚本已加「文末节二级扫描」，但**仍须 T7 逐行人工扫文末五节**。人工扫的词表见 05 卡「文末五节纯净自查」。**原则：白名单 5 节只豁免书目条目行，不是免责区。**
 

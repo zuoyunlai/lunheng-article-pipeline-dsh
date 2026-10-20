@@ -1,4 +1,4 @@
-> 版本：v19.22.0（DSH bundle 插件）
+> 版本：v19.23.0（DSH bundle 插件）
 
 
 <a id="concepts"></a>

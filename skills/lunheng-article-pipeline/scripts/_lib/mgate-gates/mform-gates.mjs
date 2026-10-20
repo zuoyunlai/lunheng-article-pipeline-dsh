@@ -90,8 +90,8 @@ results.push({
 //   为什么放这里而非 `THRESHOLDS`：`m-gate-check.mjs` 的 `--dump-thresholds` 只认数值形态，加对象会被
 //   自解析正则静默少生成一行、牵动 `repo-surface-rules.mjs` 与跨文档一致性门 ㉓ 三条自动链（方案 P4）。
 export const GENRE_MIN_L = Object.freeze({
-  'academic-cn': 3, 'academic-hum': 3, 'academic-case': 3,
-  'course': 3, 'lit-review': 3,
+  'academic-cn': 3, 'academic-hum': 15, 'academic-case': 3,
+  'course': 3, 'lit-review': 15,
   'book-review': 2, 'policy': 2, 'industry': 2,
   'report-3rd': 1, 'biz-review': 1, 'wechat': 1,
   'kaiti': 10,   // v19.8.0 反哺 v9 D7：开题报告的文献综述节须充分（文献下限高），结构门 = 开题九节
