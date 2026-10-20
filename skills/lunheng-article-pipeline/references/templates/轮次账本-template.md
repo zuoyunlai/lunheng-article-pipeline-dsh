@@ -1,4 +1,4 @@
-> 版本：v19.23.0（DSH bundle 插件）
+> 版本：v19.24.0（DSH bundle 插件）
 
 # 轮次账本模板（`drafts/轮次账本.md`）
 

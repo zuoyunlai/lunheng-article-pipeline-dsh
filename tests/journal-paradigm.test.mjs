@@ -14,7 +14,7 @@ import { SCRIPTS, run, parseJson, ROOT } from './_fixtures.mjs'
 
 // === 一、数据库列结构 ====================================================
 
-test('P-1 数据库：中文 28 行 + 英文 12 行，每行均带 7 列（含「范式标签」）', () => {
+test('P-1 数据库：中文 42 行 + 英文 12 行，每行均带 7 列（含「范式标签」）', () => {
   const text = readFileSync(ROOT + '/skills/lunheng-article-pipeline/references/_shared/期刊数据库.md', 'utf8')
   let sec = null
   const counts = {}
@@ -24,11 +24,11 @@ test('P-1 数据库：中文 28 行 + 英文 12 行，每行均带 7 列（含�
     if (!sec) continue
     if (/^\|/.test(l) && !/^\|[\s:|-]+\|$/.test(l)) counts[sec]++
   }
-  // 中文 28 + 英文 12：扣掉表头 = 27 / 11（？不对，是扣 1）
-  // 原 deriveJournalCounts：counts[k] - 1。中文 section 头行 1 条 + 数据 28 条 = 29。counts[k]=29, k-1=28
+  // 中文 42 + 英文 12：扣掉表头 = 41 / 11
+  // 原 deriveJournalCounts：counts[k] - 1。中文 section 头行 1 条 + 数据 42 条 = 43。counts[k]=43, k-1=42
   const zh = (Object.keys(counts).find((x) => x.includes('中文')) && counts[Object.keys(counts).find((x) => x.includes('中文'))] - 1)
   const en = (Object.keys(counts).find((x) => x.includes('英文')) && counts[Object.keys(counts).find((x) => x.includes('英文'))] - 1)
-  assert.equal(zh, 28, `中文应 28 行，实得 ${zh}`)
+  assert.equal(zh, 42, `中文应 42 行，实得 ${zh}（v19.24.0 扩 14 行人文向；若再扩库同批改本断言）`)
   assert.equal(en, 12, `英文应 12 行，实得 ${en}`)
 })
 
@@ -59,7 +59,7 @@ test('P-2 数据库：每行第 7 列（非表头/分隔行）必须非空且在
     assert.ok(VOCAB.includes(paradigm), `范式标签「${paradigm}」不在受控词表：${l}`)
     dataRows++
   }
-  assert.equal(dataRows, 40, `40 行期刊应全有范式标签，实得 ${dataRows}`)
+  assert.equal(dataRows, 54, `54 行期刊（中文 42 + 英文 12）应全有范式标签，实得 ${dataRows}（v19.24.0 扩库后口径）`)
 })
 
 // === 二、journal-fit.mjs 解析与 J-Paradigm 检查 ====================================
