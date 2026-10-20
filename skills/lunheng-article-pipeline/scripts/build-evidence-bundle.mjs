@@ -549,13 +549,21 @@ if (wantSummary) {
   // 目标上限 × 1.2 显著标记（§5 改法末条）：目标取自任务简报，解析器 = `_lib/target-chars.mjs`
   //   （**唯一真源**：`apply-revision-cycle` / `g-audit-check` 也用它，避免在此重写一份正则）。
   //   取**上限**（候选最大值）：简报常同时写「档位下限」与「目标」，上限才是「超限」的判据。
+  //   v19.21.0（反哺 2026-10-20 插件级 §7）：**超限标记优先用点目标，不用档位下限**。
+  //     病灶（A12 实测）：简报「篇幅：≥5000 字（全量档）」只有档位下限，旧逻辑取候选最大值 5000
+  //     → 7,900 字被判「> 5000×1.2 = 6000」并打显著标记（合规稿被判超限 31%）。
+  //     判据：有非档位数字（目标 / 区间端点）时取它们；只有档位下限时**不打超限标记**并写明原因。
   let targetUpper = null;
   let targetWhy = '无 `01-任务简报.md`（项目未到 Phase 0？）';
   const briefPath = join(project, '01-任务简报.md');
   if (existsSync(briefPath)) {
     const cand = parseTargetCandidates(readText(briefPath, project));
-    if (cand.candidates.length) targetUpper = Math.max(...cand.candidates);
-    else targetWhy = cand.reason || '简报里没有可解析的目标字数';
+    const pointPool = (cand.pointValues && cand.pointValues.length) ? cand.pointValues : [];
+    if (pointPool.length) targetUpper = Math.max(...pointPool);
+    else if (cand.candidates.length) {
+      targetWhy = '简报只给了档位下限（≥ / 以上写法），没有点目标——不做 ×1.2 超限显著标记'
+        + '（请在简报同时写「目标字数：N」；解析原文：' + String(cand.raw || '').slice(0, 40) + '）';
+    } else targetWhy = cand.reason || '简报里没有可解析的目标字数';
   }
   const overshootLimit = targetUpper === null ? null : Math.round(targetUpper * 1.2);
   const overshoot = src !== null && overshootLimit !== null && typeof hanProbe?.body === 'number' && hanProbe.body > overshootLimit;

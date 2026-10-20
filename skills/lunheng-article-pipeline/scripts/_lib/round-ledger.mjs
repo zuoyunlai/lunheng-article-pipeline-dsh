@@ -131,16 +131,67 @@ export function parseLedger(projectDir) {
   out.caps = { ...ROUND_CAPS, ...auth.caps }
   out.capsAuthorized = auth.caps
   out.malformed.push(...auth.bad)
+  // ── v19.21.0（反哺 2026-10-20 插件级 §9）：**按表头列名解析，不再写死列序** ─────────────
+  //   病灶（本项目实测两处）：本模块头注的格式是「轨 | 轮次 | 正文版本 | 触发来源 | 复核报告 | 时间」，
+  //   而实战账本写成了「轨 | 轮次 | 来源 | 正文版本 | 被审正文 sha256 | 复核报告 | 关闭状态」——
+  //   列数相同但**含义错位**：`cells[2]` 被读成 draft（实为来源）、`cells[4]` 被读成 review（实为 sha），
+  //   于是 A9 报「复核报告不在盘：<sha>」，而人看到的账本明明写着正确路径。
+  //   旧实现「列序靠猜」，且**没有轮次账本模板**可抄（references/templates/ 无此件）。
+  //   判据：**表头即契约**——先认表头（首列「轨」+ 含「轮次」），再按列名取；无表头时退回旧列序（存量兼容）。
+  const COL_OF = {
+    track: (c) => /^轨/.test(c),
+    round: (c) => /轮次/.test(c),
+    draft: (c) => /正文版本|草稿版本|^正文$/.test(c),
+    source: (c) => /触发来源|来源/.test(c),
+    review: (c) => /复核报告|复核/.test(c),
+    at: (c) => /时间|日期/.test(c),
+    sha: (c) => /sha256|指纹/i.test(c),
+    state: (c) => /关闭状态|状态/.test(c),
+  }
+  const mapFromHeader = (cells) => {
+    const idx = {}
+    for (const [k, test] of Object.entries(COL_OF)) idx[k] = cells.findIndex((c) => test(c))
+    return idx
+  }
+  let colMap = null
+  let headerLabel = null
+  for (const line of text.split(/\r?\n/)) {
+    const t = line.trim()
+    if (!t.startsWith('|')) continue
+    const cells = t.replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim())
+    if (cells.length >= 4 && cells.some((c) => /轮次/.test(c)) && !TRACKS.includes(cells[0])) {
+      // 任何「含轮次」的表行都可能是表头或数据行；首列是合法轨名的一定是数据行（`A | 1/2 | …`）。
+      if (COL_OF.track(cells[0])) { colMap = mapFromHeader(cells); headerLabel = cells.join(' | ') }
+      else if (!colMap && cells.some((c) => /复核|正文|来源/.test(c))) {
+        out.malformed.push(`账本表头首列不是「轨」（现为「${cells[0]}」）——列序应为 \`轨 | 轮次 | 来源 | 正文版本 | 被审正文 sha256 | 复核报告 | 关闭状态\``)
+      }
+    }
+    if (colMap) break
+  }
+  const LEGACY = { track: 0, round: 1, draft: 2, source: 3, review: 4, at: 5, sha: -1, state: -1 }
+  const idx = colMap || LEGACY
+  const cellAt = (cells, k) => {
+    if (idx[k] < 0) return ''
+    // v19.21.0（§1/§9）：**单元格先剥排版装饰**（反引号 / 加粗）——账本用 `` `audits/复核报告-v1.md` ``
+    //   包路径是合法 markdown，但 A9 的 `resolve(project, r.review)` 不认反引号 → 报「复核报告不在盘」，
+    //   而文件明明在盘（本项目实测）。装饰只影响排版、不改变值：剥掉后交给消费者。
+    return String(cells[idx[k]] || '').trim().replace(/`/g, '').replace(/\*\*/g, '').trim()
+  }
   for (const line of text.split(/\r?\n/)) {
     const t = line.trim()
     if (!t.startsWith('|')) continue
     const cells = t.replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim())
     if (cells.length < 4) continue
-    if (/^-+$/.test(cells[0]) || cells[0] === '轨') continue          // 分隔行 / 表头
-    const track = cells[0]
-    if (!TRACKS.includes(track)) { out.malformed.push(`未知轨名「${track}」（合法：${TRACKS.join('/')}）`); continue }
-    const m = /^(\d+)\s*\/\s*(\d+)$/.exec(cells[1] || '')
-    if (!m) { out.malformed.push(`轨 ${track} 的「轮次」不是 \`n/m\` 形态：「${cells[1]}」`); continue }
+    if (/^-+$/.test(cells[0]) || COL_OF.track(cells[0])) continue          // 分隔行 / 表头
+    const track = cellAt(cells, 'track')
+    if (!TRACKS.includes(track)) {
+      out.malformed.push(`未知轨名「${track}」（合法：${TRACKS.join('/')}）`
+        + `——本表列序按${colMap ? '表头' : '旧列序'}解析：${headerLabel || '轨 | 轮次 | 正文版本 | 触发来源 | 复核报告 | 时间'}；`
+        + '「轮次」列必须写成 `n/m`（如 `1/2`）')
+      continue
+    }
+    const m = /^(\d+)\s*\/\s*(\d+)$/.exec(cellAt(cells, 'round'))
+    if (!m) { out.malformed.push(`轨 ${track} 的「轮次」不是 \`n/m\` 形态：「${cellAt(cells, 'round')}」`); continue }
     const n = Number(m[1]); let declared = Number(m[2])
     const cap = out.caps[track]
     // v19.5.0（§二.8）：分母校验失败**先推断、不牵连整表**——
@@ -155,7 +206,13 @@ export function parseLedger(projectDir) {
       declared = guess
       capInferred = true
     }
-    const row = { track, n, declared, draft: cells[2] || '', source: cells[3] || '', review: cells[4] || '', at: cells[5] || '' }
+    const row = {
+      track, n, declared,
+      draft: cellAt(cells, 'draft'), source: cellAt(cells, 'source'),
+      review: cellAt(cells, 'review'), at: cellAt(cells, 'at'),
+    }
+    if (idx.sha >= 0 && cellAt(cells, 'sha')) row.sha256 = cellAt(cells, 'sha')
+    if (idx.state >= 0 && cellAt(cells, 'state')) row.state = cellAt(cells, 'state')
     // v19.5.0（§一.3）：复核报告列的**显式豁免**（`—（同轮无独立复核：<理由>）`）→ 记 reviewExempt
     const why = reviewExemption(row.review)
     if (why) { row.reviewExempt = true; row.reviewExemptWhy = why }
@@ -174,18 +231,57 @@ export function parseLedger(projectDir) {
 
 /**
  * 追加一行（主控或脚本调用；**不覆盖既有行**）。
- * @param {{track:string, n:number, cap?:number, draft?:string, source?:string, review?:string, at?:string}} row
+ * @param {{track:string, n:number, cap?:number, draft?:string, source?:string, review?:string, at?:string, sha256?:string, state?:string}} row
  */
 export function appendLedgerRow(projectDir, row) {
   const p = ledgerPath(projectDir)
+  let existing = null
+  if (existsSync(p)) {
+    try { existing = readFileSync(p, 'utf8') } catch { existing = null }
+  }
   // v18.80.4（P1-9）：分母取「生效额度」（默认 ∪ 账本授权行）——授权后追加的行直接写新分母。
   let effCaps = ROUND_CAPS
-  if (existsSync(p)) {
-    try { effCaps = { ...ROUND_CAPS, ...authorizedCaps(readFileSync(p, 'utf8')).caps } } catch { /* 读不到保持默认 */ }
+  if (existing != null) {
+    try { effCaps = { ...ROUND_CAPS, ...authorizedCaps(existing).caps } } catch { /* 读不到保持默认 */ }
   }
   const cap = row.cap ?? effCaps[row.track]
   const roundCell = cap == null ? `${row.n}` : `${row.n}/${cap}`
-  const line = `| ${row.track} | ${roundCell} | ${row.draft || ''} | ${row.source || ''} | ${row.review || ''} | ${row.at || new Date().toISOString().slice(0, 10)} |\n`
+  // v19.21.0（§9）：追加行**跟随既有表头**。旧实现写死 6 列，而实战账本有 7 列
+  //   （多「被审正文 sha256 / 关闭状态」）→ 追加行与表头错位，A9 把 sha 当复核报告读。
+  //   判据：有表头就按列名填；无表头/无文件 → 用 LEDGER_HEADER 的 6 列规范序。
+  let line
+  if (existing != null) {
+    const header = existing.split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => l.startsWith('|'))
+      .map((l) => l.replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim()))
+      .find((cells) => cells.length >= 4 && /^轨/.test(cells[0]) && cells.some((c) => /轮次/.test(c)))
+    if (header) {
+      const val = {
+        track: row.track,
+        round: roundCell,
+        draft: row.draft || '',
+        source: row.source || '',
+        review: row.review || '',
+        at: row.at || new Date().toISOString().slice(0, 10),
+        sha256: row.sha256 || '',
+        state: row.state || '',
+      }
+      const cells = header.map((h) => {
+        if (/^轨/.test(h)) return val.track
+        if (/轮次/.test(h)) return val.round
+        if (/sha256|指纹/i.test(h)) return val.sha256
+        if (/正文版本|草稿版本|^正文$/.test(h)) return val.draft
+        if (/复核报告|复核/.test(h)) return val.review
+        if (/关闭状态|状态/.test(h)) return val.state
+        if (/时间|日期/.test(h)) return val.at
+        if (/触发来源|来源/.test(h)) return val.source
+        return ''
+      })
+      line = `| ${cells.join(' | ')} |\n`
+    }
+  }
+  if (!line) line = `| ${row.track} | ${roundCell} | ${row.draft || ''} | ${row.source || ''} | ${row.review || ''} | ${row.at || new Date().toISOString().slice(0, 10)} |\n`
   // v19.6.1（审计 2026-10-15 全量批 **P1-3**）：账本写盘改走 `writeWithSafety`（temp→rename 原子写 +
   //   时间戳 `.bak` 回滚点）。旧版两处都是裸 `writeFileSync`——账本承载的是**轮次额度**这类「判据输入」
   //   （`parseLedger` 的 `over` 直接喂给交接门与修订环），写坏即无回滚点。

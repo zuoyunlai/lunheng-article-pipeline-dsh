@@ -11,6 +11,22 @@ import { basename, join, dirname, relative } from 'node:path'
 import { createHash } from 'node:crypto'   // v18.12.0（L-15）：M-Exist-2 复算证据包清单的 sha256
 import { refsOf, dataCardIds, expandRefRanges } from '../refs.mjs'
 import { latestReport, reportByNumber, tableCells, isSeparatorRow, walkMd, sectionRange } from '../mgate-helpers.mjs'
+import { stripMcDecor } from '../sections.mjs'   // v19.21.0（反哺 2026-10-20 插件级 §1）：锚点文本归一化唯一实现
+
+/** 标题行 → `{ level, text }`（text 已剥装饰/编号/§ 前缀；非标题 → null）。 */
+const headingInfo = (line) => {
+  const m = /^(#{1,6})\s*(.+?)\s*$/.exec(String(line ?? ''))
+  return m ? { level: m[1].length, text: stripMcDecor(m[2]) } : null
+}
+
+/** 锚点标题判定：`## 修订任务书` / `## 6. 修订任务书` / `### **修订任务书**` 一视同仁。 */
+const isAnchorHeading = (line, marker) => {
+  const h = headingInfo(line)
+  return !!h && (h.text === marker || h.text.startsWith(marker))
+}
+
+/** 机检正则的宽松面：剥掉 `**` / 反引号后再匹配——**只用于判「有没有」，不改原文的值**。 */
+const mcPlain = (s) => String(s ?? '').replace(/[`*]/g, '')
 
 // ── v18.78.2（全量审计-v18.78.1 A5）：**N/A ≠ 通过** ────────────────────────────────────────
 //   病灶（审计实测 + 本次复核）：M-Exist-4/5/6/7/8/9 的「N/A 未检」分支记 `pass: true, severity: '通过'`，
@@ -284,7 +300,9 @@ try {
     //     ① 有「结论节」（`## 五、结论` / `## 结论` / `## 总判定` …）时，**判定面收到该节内**；
     //     ② `hasPass` 只认**结论位**的「通过」（`结论/判定/verdict` + 冒号 + 可选加粗/✅ + 通过）
     //        或固定的「复核通过」，**不再接受**「任意位置的 `通过 + 右括号`」。
-    const conclHeadRe = /^#{2,4}\s*(?:[一二三四五六七八九十\d]+\s*[、.．]\s*)?(?:总体)?(?:结论|总判定|裁定|verdict)/i;
+    // v19.21.0（反哺 2026-10-20 插件级 §1）：结论位标题同样容忍 `§` 前缀与「数字+空格」序号形态
+    //   （`## §5 结论` / `## 5 结论` 与 `## 五、结论` 一视同仁；`## 结论` 仍首位命中）。
+    const conclHeadRe = /^#{2,4}\s*(?:§\s*)?(?:[一二三四五六七八九十\d]+\s*[、.．]?\s*)?(?:总体)?(?:结论|总判定|裁定|verdict)/i;
     const conclHeadIdx = lines.findIndex((l) => conclHeadRe.test(l));
     const scope4 = (() => {
       if (conclHeadIdx !== -1) {
@@ -300,13 +318,22 @@ try {
     })();
     const hasPass = scope4.some((l) => /复核通过|(?:结论|判定|verdict)\s*\**\s*[：:=]\s*\**\s*(?:✅\s*)?\**\s*通过/.test(l));
     const isReject = !hasPass && scope4.some((l) => /打回|必须修改清单|未通过/.test(l));
-    const hIdx = lines.findIndex((l) => /^#{2,4}\s*修订任务书/.test(l));
+    const hIdx = lines.findIndex((l) => isAnchorHeading(l, '修订任务书'));
     const rows = [];
     let header = null;
     if (hIdx !== -1) {
+      // v19.21.0（反哺 2026-10-20 插件级 §1）：**段内更深子标题不终止扫描**。
+      //   病灶（A19 实测）：`## 6. 修订任务书` 段里先写一行 `### 表头：…` 再放表，旧实现「遇任意
+      //   `#{2,4}` 标题即 break」→ 表格永远扫不到 → 判「缺任务书段」。判据：只有**同级或更高级**
+      //   标题才意味着本节结束；`###` / `####` 是本节内的排版子标题，跳过该行后继续找表。
+      const hLevel = (headingInfo(lines[hIdx]) || { level: 2 }).level;
       for (let i = hIdx + 1; i < lines.length; i++) {
         const l = lines[i];
-        if (/^#{2,4}\s/.test(l)) break;
+        if (/^#{1,6}\s/.test(l)) {
+          const h = headingInfo(l);
+          if (h && h.level <= hLevel) break;
+          continue;
+        }
         if (!/^\s*\|/.test(l)) continue;
         // 单元格切列：`protect: true` 保护**转义竖线 `\|`** 与**行内代码块内的竖线**（验收标准可能写正则 `a|b|c`）
         const cells = tableCells(l, { protect: true });
@@ -348,7 +375,12 @@ try {
           if (!r[iId] || AGG_ROW_RE.test(String(r[iId]).replace(/[`*\s]/g, ''))) continue;
           const id = r[iId].replace(/[`*]/g, '').trim();
           ids.push(id);
-          if (!/^P[012][-\u2011]?[0-9A-Da-d]+/.test(id)) soft.push(`编号「${id}」不符合 P0-n / P1-n 约定`);
+          // v19.21.0（反哺 2026-10-20 插件级 §4）：编号正则**允许多段连字符**。
+          //   病灶（A21 实测）：旧式 `P[012][-\u2011]?[0-9A-Da-d]+` **只允许一个连字符**——
+          //   匹配 `P1-D-1` 时在第二个 `-` 处截断为 `P1-D`，而任务书侧取整串 → 两侧永不相交，
+          //   复核报告逐条判「已关闭」仍报「未覆盖 3 个审计编号」。同族 `G4-2` 亦属两段式编号。
+          //   修法：`(?:-[0-9A-Za-z]+)+` 逐段吞掉，直到不再是连字符段；`P0-1` / `P1-D-1` 同时成立。
+          if (!/^P[012](?:[-\u20111][0-9A-Za-z]+)+/.test(id)) soft.push(`编号「${id}」不符合 P0-n / P1-n / P1-D-n 约定`);
           for (const [idx, label] of [[iLoc, '改哪里'], [iAct, '怎么改'], [iAcc, '验收标准']]) {
             if ((r[idx] || '').replace(/[\s.。…-]/g, '').length < 4) findings.push(`${id} 的「${label}」列空缺或过于笼统`);
           }
@@ -367,7 +399,7 @@ try {
           semanticRedeem = null;
           semanticSoft = false;
           for (const c of reviewCands) {
-            const rid = new Set([...readFileSync(c.path, 'utf8').matchAll(/P[012][-\u2011]?[0-9A-Da-d]+/g)].map((m) => m[0].replace(/\u2011/g, '-')));
+            const rid = new Set([...readFileSync(c.path, 'utf8').matchAll(/P[012](?:[-\u20111][0-9A-Za-z]+)+/g)].map((m) => m[0].replace(/\u2011/g, '-')));
             const miss = want.filter((x) => !rid.has(x));
             if (!miss.length) { coveredBy = c; break; }
             if (!missBest) missBest = { c, miss };
@@ -392,7 +424,7 @@ try {
             // ⚠️ **「复核报告里一个 P 号都没有」也算「体系不相交」**——否则 `[].every(...) === true`
             //   的反面（空集合在 `some` 上恒为 false）会把最常见的形态（复核报告用 R/自由文本）
             //   挡在语义对账之外，降级永远不可达（首批自测当场抓出）。
-            const reviewCodes = [...candTxt.matchAll(/P[012][-\u2011]?[0-9A-Da-d]+/g)].map((m) => m[0]);
+            const reviewCodes = [...candTxt.matchAll(/P[012](?:[-\u20111][0-9A-Za-z]+)+/g)].map((m) => m[0]);
             const disjointPrefixes = want.length > 0
               && (reviewCodes.length === 0 || reviewCodes.every((rc) => !want.some((x) => pref(x) === pref(rc))));
             if (disjointPrefixes) {
@@ -675,9 +707,14 @@ try {
         //        不认 32 位 hex，也不认 `Get-FileHash` 这类与 `sha256sum` 等价的取哈希命令。
         //   两者都可机械复核，判成「自述」= **假 P1**（本项目 M-Exist-5 的唯一 P1 即由①②共同造成）。
         //   现补：32/64 位 hex（含大写，故加 i）、数量比较符、Get-FileHash / Test-Path / Get-Item / certutil 等验证命令。
+        //   v19.21.0（反哺 2026-10-20 插件级 §1）：**先剥 `**`/反引号再匹配**。
+        //     病灶（A22 实测）：实据里写 `exit **21**` / `script_exit_raw` = **1** → 旧正则要求裸
+        //     `exit N` 字面，加粗把数字与关键字分开 → 被判「未给出 exit」「不是机械证据」。
+        //     判据：**装饰只影响排版，不改变值**；剥标记后再判，原文仍原样进 detail。
+        const evPlain = mcPlain(ev);
         const evLooksReal =
-          /[\\/]|exit\s*[=:：]?\s*\d|node\s+\S+\.mjs|m-gate|sha256|\b[a-f0-9]{32}\b|\b[a-f0-9]{64}\b|Get-FileHash|Test-Path|Get-Item|certutil|\.json|\.md|\.svg|\d+\s*[≥>]\s*\d|\d+\s*(?:条|个|处|项|篇|例|%|倍|字|轮|步|节|章|页|行|次|份|组|种|点)/i.test(ev) &&
-          !/^(已|未)?(检查|核对|确认|自查)(完)?(毕|过)?$/.test(ev.replace(/\s/g, ''));
+          /[\\/]|exit\s*[=:：]?\s*\d|node\s+\S+\.mjs|m-gate|sha256|\b[a-f0-9]{32}\b|\b[a-f0-9]{64}\b|Get-FileHash|Test-Path|Get-Item|certutil|\.json|\.md|\.svg|\d+\s*[≥>]\s*\d|\d+\s*(?:条|个|处|项|篇|例|%|倍|字|轮|步|节|章|页|行|次|份|组|种|点)/i.test(evPlain) &&
+          !/^(已|未)?(检查|核对|确认|自查)(完)?(毕|过)?$/.test(evPlain.replace(/\s/g, ''));
         if (ev.replace(/[\s.。…-]/g, '').length < 3 || !evLooksReal) {
           findings5.push(`${gateId}「${item}」的实据列不是机械证据（须写路径 / exit code / 命令，而非「已检查」自述）：现为「${ev.slice(0, 24)}」`);
         }
@@ -733,7 +770,7 @@ try {
         const res = (r[iRes] || '').trim();
         if (!item || !/^(✓|✅|通过)$/.test(res)) continue;      // 只核「结论 ✓」的行（✗ 行另有「必写原因」检查）
         if (/handoff|交接门/i.test(item) || /handoff-check/i.test(ev)) {
-          if (!/exit\s*[=:：]?\s*(0|20|21|22)\b/i.test(ev)) {
+          if (!/exit\s*[=:：]?\s*(0|20|21|22)\b/i.test(mcPlain(ev))) {
             findings5.push(`${gateId}「${item}」涉及交接门 handoff-check，但实据未给出 exit（须为 0/20/21/22 之一，模板 v18.6.0 规定必写）`);
           }
           // v18.46.0：此处原为 `else handoffSeen5 = true`（供 noteBits 的「两份都没提」判定用）；
@@ -746,7 +783,7 @@ try {
           //   于是写 `exit 0` 会被判 P0「实据与产物不符」，写手只能退回写机械值——**两个都是权威值，却只认一个**。
           //   现规则：**取实据中出现的全部 `exit N`**，**只要有一个**等于机械值或有效裁定值即通过；
           //   全部不等才判 P0，且 detail 把两个可接受值都点出来（不再让写手靠猜）。
-          const exits5 = [...ev.matchAll(/exit\s*[=:：]?\s*(\d+)/gi)].map((m) => Number(m[1]));
+          const exits5 = [...mcPlain(ev).matchAll(/exit\s*[=:：]?\s*(\d+)/gi)].map((m) => Number(m[1]));
           if (!repPath5) {
             findings5.push(`${gateId}「${item}」判 ✓，但未找到 final/M-Gate-Report.json——结论无产物可核（实据绑定失败）`);
           } else if (rj5) {
@@ -788,7 +825,7 @@ try {
         //   所以「跑出 exit=0 → 再改稿 → 不再重跑」会留下「指纹自洽 + script_exit_raw=0」的报告。
         //   把指纹**同时钉在闸门记录**（脚本改不到的人工产物）里，伪造就得改两处且互相锁定。
         //   仅在两侧都有值时判（不强制要求写指纹，避免对既有形态过度收紧）。
-        const mSha = ev.match(/sha256[^\da-f]{0,6}([0-9a-f]{12,64})/i);
+        const mSha = mcPlain(ev).match(/sha256[^\da-f]{0,6}([0-9a-f]{12,64})/i);
         const recSha = rj5?.verdict_scope?.draft_sha256;
         if (mSha && typeof recSha === 'string' && recSha.length >= 12) {
           if (recSha.slice(0, 12).toLowerCase() !== mSha[1].slice(0, 12).toLowerCase()) {
@@ -1278,7 +1315,11 @@ try {
     //   （实测现场 = `run/AB-共锁-A`）→ 读者无法判断该门到底认不认这个字段。
     //   判据（可迁移）：**改判据时，必须把该判据的**所有**出口一起改**（硬问题 + 摘要标记 + 软提示 …），
     //   否则会出现「结论说 ✗、摘要说 ✓」的自相矛盾文案——比判据本身错更难查。
-    const FP_REAL_RE = /sha256\s*[:：]?\s*[0-9a-f]{16,}/i;
+    //   v19.21.0（反哺 2026-10-20 插件级 §1）：正则**容忍字段名的加粗/反引号**。
+    //     病灶：`**sha256**：<hex>`（字段名加粗、冒号后直接跟实值）被旧正则的「sha256 后必须有冒号或空格」
+    //     挡住——中间的 `**` 不属 `\s`，判「缺 sha256 实值」；而模板自己就写成 `- **sha256**：sha256 <hex>`，
+    //     两种合法写法必须同一判据。判据：装饰字符（`*` / 反引号）在关键字与冒号之间允许出现。
+    const FP_REAL_RE = /sha256[\s*_`]*[:：]?[\s*_`]*[0-9a-f]{16,}/i;
     if (!FP_REAL_RE.test(dt)) {
       findings7.push('缺「证据包指纹」段或 sha256 **实值**（须含 `sha256: <hex 16+>`，权威 = `final/证据包/manifest.json`）；占位符已废止，主人不参与回填（M-Integrity-2 步骤 4 的输入）');
     }

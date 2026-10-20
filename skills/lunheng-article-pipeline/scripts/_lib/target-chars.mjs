@@ -19,6 +19,15 @@
 export const MIN_TARGET = 300;
 export const MAX_TARGET = 200000;
 
+/** 数字 + 数量级 → 字数（`1.2 万` → 12000；与下方两条解析路径共用同一口径）。 */
+const magValue = (n, mag) => {
+  const base = Number(n);
+  if (!Number.isFinite(base)) return NaN;
+  if (mag === '万') return Math.round(base * 10000);
+  if (mag === '千' || /[kK]/.test(mag || '')) return Math.round(base * 1000);
+  return Math.round(base);
+};
+
 /** 匹配「目标篇幅 / 篇幅」行，并把数字（含千分位与数量级单位）抽出。
  *  **v18.23.0 EFF-1 修复（粗体形态静默漏解析）**：旧式 `(?:目标篇幅|篇幅)\s*[:：]` 要求字段名**紧跟**冒号，
  *    而任务简报的**实际写法是粗体**——`- **篇幅**：**16000 字**`（`**` 夹在字段名与冒号之间）→ 不匹配 →
@@ -41,14 +50,50 @@ export function parseTargetChars(briefText) {
   if (!m) return { value: null, raw: null, reason: '未找到「目标篇幅：」或「篇幅：」行' };
 
   const raw = m[1].trim();
+  // ── v19.21.0（反哺 2026-10-20 插件级 §7）：**档位下限 ≠ 点目标** ────────────────────────
+  //   病灶（A12 实测）：简报「篇幅：≥5000 字（全量档）」被解析成 point target 5000，
+  //   审计视图据此把 7,900 字判「> 5000×1.2 = 6000」并打显著超限标记——**合规稿被判超限 31%**，
+  //   若无人工判断会误触发一轮精简。根因：SKILL 的四档本身就用「≥5000」这种**下限写法**，
+  //   而本函数把所有数字都当点目标。
+  //   判据（**逐数字判性质，不按「首个数字」一刀切**）：① 窗口里出现「目标 N」→ 以 N 为准；
+  //         ② 否则取**第一个非档位数字**（点目标 / 区间端点）；③ 若**所有**数字都是档位下限
+  //            （`≥` / `>` / `至少` / `不少于` / 后缀「以上」）→ **返回 null 并说明**，由调用方
+  //            响亮提示「G8 跳过」——**宁可未核，不可用错误目标去判**。
+  //   反例驱动：`- **篇幅**：**16000 字**（≥5000 全量流水线档）` 里 16000 是点目标、5000 是档位；
+  //   只取「首个带 ≥ 的数字」会把它误判成纯档位（v18.23.0 的既有用例当场抓出）。
+  const goal = raw.match(/目标[^\d]{0,8}(\d+(?:\.\d+)?)\s*(万|千|[wWkK])?/)
+  if (goal) {
+    const v = magValue(goal[1], goal[2])
+    if (v < MIN_TARGET) return { value: null, raw, reason: `「${raw}」的「目标 ${goal[1]}」低于下限 ${MIN_TARGET}——不像长文目标` }
+    if (v > MAX_TARGET) return { value: null, raw, reason: `「${raw}」的「目标 ${goal[1]}」高于上限 ${MAX_TARGET}` }
+    return { value: v, raw, reason: '' }
+  }
+  const cleanRaw = raw.replace(/,/g, '');
+  const tokens = [];
+  for (const x of cleanRaw.matchAll(CAND_NUM_RE)) {
+    const v = magValue(x[1], x[2]);
+    if (!Number.isFinite(v)) continue;
+    if (v < MIN_TARGET || v > MAX_TARGET) continue;   // 页码/百分比等噪声不进「目标」候选
+    const before = cleanRaw.slice(0, x.index);
+    const after = cleanRaw.slice(x.index + x[0].length);
+    const isBand = /(?:≥|>|至少|不少于)\s*$/.test(before) || /^\s*(?:字|汉字)?\s*(?:以上|起)/.test(after);
+    tokens.push({ v, isBand });
+  }
+  if (tokens.length > 0) {
+    const point = tokens.find((t) => !t.isBand);
+    if (!point) {
+      return { value: null, raw, reason: `「${raw}」是**档位下限**（≥/以上写法），不是点目标——G8 需要一个「目标字数：N」；请在简报同时写「档位」与「目标字数」（模板已拆两字段）` }
+    }
+    const value = point.v;
+    if (value < MIN_TARGET) return { value: null, raw, reason: `解析得 ${value}，低于下限 ${MIN_TARGET}——不像「长文目标」（是写错单位，还是把页码/条数写进了这行？）` };
+    if (value > MAX_TARGET) return { value: null, raw, reason: `解析得 ${value}，高于上限 ${MAX_TARGET}——不像本包场景的目标字数` };
+    return { value, raw, reason: '' };
+  }
   // 先判「万 / 千 / k」数量级，再剥千分位逗号（顺序不能反：`1.2 万` 里没有逗号，但 `12,000` 有）
   //   ⚠️ 不用 `\b?`：`\b` 是零宽断言，加量词是语法错误（本模块初版即踩，加载期直接 SyntaxError）
-  //   v18.23.0 EFF-1 复核记录：下方三条**子正则本身非锚定**，故 `：**16000 字**` 这类尾部强调
-  //     不影响数字抽取（实测 wan/qian/plain 三支都取到正确值）——本次只修 `LINE_RE` 的**字段名↔冒号**
-  //     间隔，未改数字抽取逻辑（避免无实测支撑的改动）。
   const wan = raw.match(/(\d+(?:\.\d+)?)\s*(?:万|[wW])/)
   const qian = raw.match(/(\d+(?:\.\d+)?)\s*(?:千|[kK])/)
-  const plain = raw.replace(/,/g, '').match(/\d+(?:\.\d+)?/)
+  const plain = cleanRaw.match(/\d+(?:\.\d+)?/)
 
   let value = null;
   if (wan) value = Math.round(Number(wan[1]) * 10000);
@@ -93,8 +138,11 @@ const CAND_NUM_RE = /(\d+(?:\.\d+)?)\s*(万|千|[wWkK])?/g;
 
 /**
  * 解析简报里的**篇幅候选值**。
- * @returns {{ line: string|null, raw: string|null, candidates: number[], reason: string }}
- *   `candidates` 为去重升序的候选字数（已展开万/千/k，并过滤到 [MIN_TARGET, MAX_TARGET]）。
+ * @returns {{ line: string|null, raw: string|null, candidates: number[], pointValues: number[], bandValues: number[], reason: string }}
+ *   `candidates` 为去重升序的全部候选（已展开万/千/k，并过滤到 [MIN_TARGET, MAX_TARGET]）；
+ *   `pointValues` / `bandValues` 是 v19.21.0（反哺 2026-10-20 插件级 §7）新增的**性质拆分**：
+ *   前者 = 非「≥ / > / 以上 / 至少」写法的数字（点目标或区间端点），后者 = 档位下限。
+ *   存量消费者只读 `candidates`（行为不变）；「超限 ×1.2 显著标记」这类**需要点目标**的消费者应优先 `pointValues`。
  */
 export function parseTargetCandidates(briefText) {
   const text = String(briefText || '');
@@ -110,25 +158,37 @@ export function parseTargetCandidates(briefText) {
     // F-1（policy 真试跑反哺）：千分位逗号必须**先剥再匹配**——`6,000` 会被 `\d+` 拆成 `6`+`000`（都过滤掉）、
     //   `5,880` 拆出 `880`（恰好落在 [MIN_TARGET,MAX_TARGET]）→ 候选只剩 880 的「假超限」；剥逗号后 6000/5880/6120 正确入候选。
     //   同源：`parseTargetChars` 的 plain 分支早已 `raw.replace(/,/g,'')`，本函数漏了这一步 → 两函数对同一输入不一致。
+    const clean = raw.replace(/,/g, '');
     const nums = [];
-    for (const x of raw.replace(/,/g, '').matchAll(CAND_NUM_RE)) {
-      const base = Number(x[1]);
-      if (!Number.isFinite(base)) continue;
-      const mag = x[2];
-      const v = mag === '万' ? Math.round(base * 10000)
-        : (mag === '千' || /[kK]/.test(mag || '')) ? Math.round(base * 1000)
-          : Math.round(base);
-      if (v >= MIN_TARGET && v <= MAX_TARGET) nums.push(v);
+    const pointNums = [];
+    const bandNums = [];
+    for (const x of clean.matchAll(CAND_NUM_RE)) {
+      const v = magValue(x[1], x[2]);
+      if (!Number.isFinite(v)) continue;
+      if (v < MIN_TARGET || v > MAX_TARGET) continue;
+      nums.push(v);
+      // 档位判据与 parseTargetChars 同源：前缀 `≥`/`>`/`至少`/`不少于`，或后缀「以上/起」。
+      const before = clean.slice(0, x.index);
+      const after = clean.slice(x.index + x[0].length);
+      const isBand = /(?:≥|>|至少|不少于)\s*$/.test(before) || /^\s*(?:字|汉字)?\s*(?:以上|起)/.test(after);
+      if (isBand) bandNums.push(v); else pointNums.push(v);
     }
     const candidates = [...new Set(nums)].sort((a, b) => a - b);
-    if (candidates.length > 0) hits.push({ field, line: m[0], raw, candidates });
+    if (candidates.length > 0) {
+      hits.push({
+        field, line: m[0], raw, candidates,
+        pointValues: [...new Set(pointNums)].sort((a, b) => a - b),
+        bandValues: [...new Set(bandNums)].sort((a, b) => a - b),
+      });
+    }
   }
   // v18.73.0（F-13 真因）：**先用「目标*」族字段的命中**，只有它一个都没有时才退回首处有候选的命中。
   //   为什么：裸「篇幅 / 总字数」行常同时含**档位下限**与**主人硬下限**（都不是目标），
   //   而真正的目标往往写在**下一行的「目标正文」**里（旧实现因「首处有候选即返回」永远看不到它）。
+  const pick = (h) => ({ line: h.line, raw: h.raw, candidates: h.candidates, pointValues: h.pointValues, bandValues: h.bandValues, reason: '' });
   const preferred = hits.find((h) => TARGET_FIELD_RE.test(h.field));
-  if (preferred) return { line: preferred.line, raw: preferred.raw, candidates: preferred.candidates, reason: '' };
-  if (hits.length > 0) return { line: hits[0].line, raw: hits[0].raw, candidates: hits[0].candidates, reason: '' };
-  if (attempts.length === 0) return { line: null, raw: null, candidates: [], reason: '未找到「篇幅 / 目标篇幅 / 目标字数 / 目标正文 / 总字数」字段行' };
-  return { line: null, raw: attempts[0], candidates: [], reason: `命中了 ${attempts.length} 处「篇幅」类字样但都没有落在 ${MIN_TARGET}–${MAX_TARGET} 区间内的数字（首处：「${attempts[0]}」）` };
+  if (preferred) return pick(preferred);
+  if (hits.length > 0) return pick(hits[0]);
+  if (attempts.length === 0) return { line: null, raw: null, candidates: [], pointValues: [], bandValues: [], reason: '未找到「篇幅 / 目标篇幅 / 目标字数 / 目标正文 / 总字数」字段行' };
+  return { line: null, raw: attempts[0], candidates: [], pointValues: [], bandValues: [], reason: `命中了 ${attempts.length} 处「篇幅」类字样但都没有落在 ${MIN_TARGET}–${MAX_TARGET} 区间内的数字（首处：「${attempts[0]}」）` };
 }

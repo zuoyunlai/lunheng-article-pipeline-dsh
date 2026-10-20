@@ -141,11 +141,35 @@ export const bodyStartOfHeading = (text, headingIndex) => nextLineAfter(text, he
  */
 export const titleMatches = (title, marker) => {
   if (title === marker || title.startsWith(marker)) return true
-  const stripped = String(title).replace(
-    /^\s*(?:第\s*)?(?:[0-9]+(?:\.[0-9]+)*|[一二三四五六七八九十]+)\s*(?:[、.．:：)）]|\s)\s*/,
+  const stripped = stripMcDecor(title)
+  return stripped === marker || stripped.startsWith(marker)
+}
+
+/**
+ * 机检锚点**文本归一化**（v19.21.0 · 反哺 2026-10-20 插件级 §1 统一层）。
+ *
+ * 为什么要有这一层：本次实战 7 次失败同源于「**合法 markdown 装饰 / 排版前缀破坏机检正则**」，
+ *   而每条门各自定义了一套「合法文本形态」——没有一处负责归一化：
+ *     · `## §5 引言` → `titleMatches` 只剥数字/中文序号、不剥 `§` → IMRaD 五节全判缺失；
+ *     · `## 6. 修订任务书` / `**修订任务书**` → M-Exist-4 的 `^#{2,4}\s*修订任务书` 不认序号与加粗；
+ *     · `**sha256**：<hex>` → M-Exist-7 的 `sha256\s*[:：]?\s*hex` 被中间的 `**` 截断；
+ *     · `exit **21**` → M-Exist-5 的 `exit\s*[=:：]?\s*\d` 不认加粗。
+ *   判据（可迁移）：**「锚点比对」与「排版装饰」必须解耦**——机器只看语义文本，装饰在入参处剥掉。
+ *
+ * 只做**锚点级**归一化，不改语义：剥行内代码/加粗标记、行首 `#`、`§` 前缀、编号前缀、尾随冒号。
+ *   **不得用于「实据」「数值」的原文改写**——那里只允许在正则里容忍装饰，不允许改值。
+ */
+export const stripMcDecor = (title) => {
+  let t = String(title ?? '').trim()
+  t = t.replace(/^#{1,6}\s*/, '')                    // 误传整行时的标题标记
+  t = t.replace(/`/g, '').replace(/\*\*/g, '')       // 行内代码 / 加粗（成对标记）
+  t = t.replace(/^§+\s*/, '')                        // §5 / § 5
+  t = t.replace(
+    /^(?:第\s*)?(?:[0-9]+(?:\.[0-9]+)*|[一二三四五六七八九十]+)\s*(?:[、.．:：)）]|章|节|部分|\s)\s*/,
     '',
   )
-  return stripped === marker || stripped.startsWith(marker)
+  t = t.replace(/[：:]\s*$/, '')                     // 尾随冒号（`修订任务书：`）
+  return t.trim()
 }
 
 /** 标题行末的下一行起点（用于「取标题之后的段体」）。 */

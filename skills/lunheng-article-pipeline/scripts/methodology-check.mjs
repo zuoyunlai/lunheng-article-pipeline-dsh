@@ -4,7 +4,8 @@
 //   --report <p>   = JSON 结果写入 <p>（默认 stdout）
 //   --genre <code> = 体裁 code。两族取值并存（见「体裁豁免」段的批 24 注）：
 //                    · `_shared/文类档案.md` 的 code（如 `academic-hum`）—— v18.73.0 起的既有口径；
-//                    · **方法面口径** `empirical-stat` / `text-qualitative` / `mixed` —— 批 24 新增。
+//                    · **方法面口径** `empirical-stat` / `text-qualitative` / `mixed` / **`measure-calc`**
+//                      （v19.21.0 新增；口径构造/确定性测算类 → 两项抽样统计向判据记 N/A，M-Exist-12 照判）—— 批 24 新增。
 //                    **不传 = 与旧版逐字节同行为**（可空）。
 //
 // 退出码（与 M 门语义同源）：
@@ -193,24 +194,39 @@ const mExist11Severity = statMissing.length === 0 ? 'PASS' : 'P1';
 //   「本文类适用本门，但本文的方法面是质性/文本向，两项判据不适用，须人工核」。合成会让 T7 读不出区别。
 // 为什么仍须显式传：与 `academic-hum` 同理 —— 自动判会把「实证论文漏写方法节」静默变成「不适用」。
 const THEORY_GENRES = new Set(['academic-hum']);   // 结构门 = IMRaD-Alternate 的体裁
-const METHOD_FACE_GENRES = new Set(['empirical-stat', 'text-qualitative', 'mixed']);   // 批 24 方法面口径
+const METHOD_FACE_GENRES = new Set(['empirical-stat', 'text-qualitative', 'mixed', 'measure-calc']);   // 方法面口径
 const isTheoryGenre = genreArg !== null && THEORY_GENRES.has(genreArg);
 // `text-qualitative` = 本文**不产生**统计推断（正文明写「不作统计推断」）→ 两项定量向判据记 SKIP。
 // `mixed` 刻意**不豁免**：混合方法稿里若有任何定量侧，两项判据仍然适用（宁可让人核，不给免费通过）。
 const isTextQualitative = genreArg === 'text-qualitative';
+// ── v19.21.0（反哺 2026-10-20 插件级 §8）：新增方法面口径 **`measure-calc`**（口径构造 / 确定性测算）──
+//   病灶（A23 实测）：本文是「全量公开数据 + 确定性算术」的口径构造测算——方法学上**没有**样本量、
+//   抽样方式、统计模型、随机种子、效应量、置信区间。旧档位只有 `empirical-stat` / `text-qualitative` /
+//   `mixed`：质性档语义不符（本文不是文本分析），`mixed` 刻意不豁免 → 恒 exit 2（P0），
+//   作者被迫在 §3.10 写一段「我不适用」的免责声明来**通过关键词扫描**——机制噪声转嫁到稿件。
+//   与 `text-qualitative` 的差别：那是「未检（SKIP，exit 3）」，本档是「判据对本方法面**不适用**」
+//   （N/A、pass=true、exit 0，与 `academic-hum` 同级）。**M-Exist-12（结果↔方法闭环）照判**——
+//   测算类有方法节（口径构造步骤），结果仍须能回链到它。
+//   仍须显式传入：自动判会把「实证论文漏写方法节」变成假通过。
+const isMeasureCalc = genreArg === 'measure-calc';
 const SKIP_GENRE_NOTE = 'SKIP（N/A）：`--genre text-qualitative` —— 本文方法面为质性/文本向，'
   + 'M-Form-12 / M-Exist-11 是**定量向**判据，本文不适用。**不得读作「已通过」**：'
   + '本项记 SKIP（`pass=false`）并把整门落到退出口 3（需人工复核）。'
   + '边界（如实）：本档**只**免这两项 —— M-Exist-12（结果-方法闭环）照判。'
-  + '若本文其实**有**统计推断侧，请改用 `--genre mixed` 或 `empirical-stat`（后者照报缺参项）。';
+  + '若本文其实**有**统计推断侧，请改用 `--genre mixed` 或 `empirical-stat`（后者照报缺参项）；'
+  + '若本文是**确定性测算/口径构造**（无抽样、无统计推断），改用 `--genre measure-calc`（N/A 档，v19.21.0）。';
 const naNote = isTheoryGenre
   ? `N/A：体裁 \`${genreArg}\`（结构门 IMRaD-Alternate）无方法节 —— 本项为**定量向**判据，体裁不适用。`
     + '**不得读作「已通过」**（`_shared/文类档案.md` §结构门；T7 已在审计报告中独立定性，见反哺报告-v7 F-10）。'
-  : '';
-const effMForm12Pass = isTheoryGenre ? true : (isTextQualitative ? false : mForm12Pass);
-const effMForm12Severity = isTheoryGenre ? 'N/A' : (isTextQualitative ? 'SKIP' : mForm12Severity);
-const effMExist11Pass = isTheoryGenre ? true : (isTextQualitative ? false : mExist11Pass);
-const effMExist11Severity = isTheoryGenre ? 'N/A' : (isTextQualitative ? 'SKIP' : mExist11Severity);
+  : (isMeasureCalc
+    ? 'N/A：方法面口径 `measure-calc`（全量公开数据 + 确定性算术的口径构造测算，非抽样统计）'
+      + '——样本量 / 抽样方式 / 随机种子 / 检验类型 / 效应量 / 置信区间在方法学上不存在，本项不适用。'
+      + '**不得读作「已通过」**：这是「判据不适用」，须由 T7 在审计报告独立定性；M-Exist-12（结果-方法闭环）照判。'
+    : '');
+const effMForm12Pass = (isTheoryGenre || isMeasureCalc) ? true : (isTextQualitative ? false : mForm12Pass);
+const effMForm12Severity = (isTheoryGenre || isMeasureCalc) ? 'N/A' : (isTextQualitative ? 'SKIP' : mForm12Severity);
+const effMExist11Pass = (isTheoryGenre || isMeasureCalc) ? true : (isTextQualitative ? false : mExist11Pass);
+const effMExist11Severity = (isTheoryGenre || isMeasureCalc) ? 'N/A' : (isTextQualitative ? 'SKIP' : mExist11Severity);
 
 // === M-Exist-12 结果-方法闭环 ===
 // 每个结果叙述（以 ### / ## 开头或含 [Dxx] 引用）能否在方法节找到对应方法步骤

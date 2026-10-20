@@ -505,6 +505,12 @@ for (const artifact of required) {
   //   为什么要在 strict 之外再做一份：A3 的正文结构检查整段在 `if (!strict) continue` 之后，而**快轨走 basic**，
   //   恰恰是最需要它的场景（本次快轨稿的图位就是从段落里捞出来的）。只多读一个正文文件、只判行形态，代价可忽略；
   //   命中只记 soft、不阻塞交付。strict 侧另有同一判据（避免两处口径漂移：两边都只判「整行就是一个 [图…]」）。
+  // v19.21.0（反哺 2026-10-20 插件级 §6）：**只把「声明」当图位，不把「引用」当图位**。
+  //   病灶（v1 实测）：正文写「与 [图3] 表」，A3 报「图位未独占一行 2 处」——而 `md2html` 的图位正则
+  //   `FIG_BLOCK = /^\[图(\d+)[:：][^\]]*\]\s*$/` **要求全角/半角冒号**；`[图3]`（无冒号）是正文交叉引用，
+  //   不是图位声明，md2html 根本不会替换它。旧判据「行内含 `[图`」把两者混为一谈 → 迫使作者改掉合法引用。
+  //   判据与 md2html 同源：**含 `[图N：…]`（带冒号）的行**才参与「独占一行」检查。
+  const FIG_DECL_RE = /\[图\s*\d+\s*[:：]/;
   if (!strict) {
     try {
       const ft = readText(art.path);
@@ -513,7 +519,7 @@ for (const artifact of required) {
         const inner = s.slice(1, -1);
         return inner.length > 2 && inner.indexOf('[') === -1 && inner.indexOf(']') === -1;
       };
-      const looseFig = ft.split('\n').map(function (s) { return s.trimEnd(); }).filter(function (s) { return s.indexOf('[图') !== -1 && !figOnly(s); });
+      const looseFig = ft.split('\n').map(function (s) { return s.trimEnd(); }).filter(function (s) { return FIG_DECL_RE.test(s) && !figOnly(s); });
       if (looseFig.length) addSoft('A3', artifact, '图位未独占一行 ' + looseFig.length + ' 处——md2html --fig-dir 会替换失败，图位将以纯文本留在正文');
     } catch (e) { /* 不可读已由 A2 报，此处不重复 */ }
   }
@@ -549,7 +555,7 @@ for (const artifact of required) {
       const inner = s.slice(1, -1);
       return inner.length > 2 && inner.indexOf('[') === -1 && inner.indexOf(']') === -1;
     };
-    const figLines = text.split('\n').map(function (s, i) { return { s: s.trimEnd(), i: i }; }).filter(function (x) { return x.s.indexOf('[图') !== -1; });
+    const figLines = text.split('\n').map(function (s, i) { return { s: s.trimEnd(), i: i }; }).filter(function (x) { return FIG_DECL_RE.test(x.s); });
     const figLoose = figLines.filter(function (x) { return !isFigOnly(x.s); });
     if (figLoose.length) {
       addSoft('A3', artifact, '图位未独占一行 ' + figLoose.length + ' 处（行 ' + figLoose.map(function (x) { return x.i + 1; }).join('/') + '）——md2html --fig-dir 会替换失败，图位将以纯文本留在正文');
@@ -981,10 +987,20 @@ if (opt.requireGates) {
       if (typeof o.gate !== 'string' || !o.gate) problems.push('缺 gate')
       if (typeof o.answeredAt !== 'string' || !o.answeredAt) problems.push('缺 answeredAt')
       if (typeof o.rawAnswer !== 'string' || !o.rawAnswer) problems.push('缺 rawAnswer')
-      if (o.tool !== 'ask_user_question') problems.push('tool 必须逐字为 "ask_user_question"')
-      if (!Array.isArray(o.options) || o.options.length === 0) problems.push('options 必须是非空数组')
-      else if (!Number.isInteger(o.chosenIndex) || o.chosenIndex < 0 || o.chosenIndex >= o.options.length) problems.push('chosenIndex 越界或非整数')
-      else if (o.chosenLabel !== o.options[o.chosenIndex]) problems.push('chosenLabel ≠ options[chosenIndex]（账本自身不自洽）')
+      // v19.21.0（反哺 2026-10-20 插件级 §3·B 案）：`tool` 新增 **`self-determine`** 通道——
+      //   通知单 / 全自动门不产生 `ask_user_question` 往返，旧判据「tool 必须逐字 ask_user_question」
+      //   把这类门的事实记录判成「账本损坏」。**放宽的只是允许的通道名**：自决回执仍须有
+      //   gate/answeredAt/rawAnswer，且 §6 侧须声明「通知单/全自动」（见下方逐门核对）。
+      const TOOL_CHANNELS = ['ask_user_question', 'self-determine']
+      if (!TOOL_CHANNELS.includes(o.tool)) problems.push(`tool 必须为 ${TOOL_CHANNELS.map((x) => `"${x}"`).join(' 或 ')}`)
+      else if (o.tool === 'ask_user_question') {
+        if (!Array.isArray(o.options) || o.options.length === 0) problems.push('options 必须是非空数组')
+        else if (!Number.isInteger(o.chosenIndex) || o.chosenIndex < 0 || o.chosenIndex >= o.options.length) problems.push('chosenIndex 越界或非整数')
+        else if (o.chosenLabel !== o.options[o.chosenIndex]) problems.push('chosenLabel ≠ options[chosenIndex]（账本自身不自洽）')
+      } else if (o.callIdSource != null && o.callIdSource !== 'not-captured') {
+        // 自决通道没有宿主日志可对：只接受显式的 not-captured 声明，禁止写一个假 callId 冒充可核。
+        problems.push('self-determine 的 callIdSource 只允许 "not-captured"（该通道无宿主问答可核）')
+      }
       if (problems.length) { badLines.push(`第 ${i + 1} 行：${problems.join(' / ')}`); return }
       receipts.push({ ...o, _line: i + 1, _key: o.id || `${o.gate}#${o.round ?? 1}` })
     })
@@ -1083,6 +1099,26 @@ if (opt.requireGates) {
     }
     if (!existsSync(receiptsPath)) continue
     const idRaw = fieldVal(sec, '回执 id')
+    // ── v19.21.0（反哺 2026-10-20 插件级 §3）：**通知单门不产生 ask_user_question 往返** ──────────
+    //   病灶（本项目 T8 实测 3 条硬失败）：SKILL v19.8.0 把 P2.5/P3.5 定为「通知单·主控自决、不阻塞」，
+    //   而 A7 要求账本每条回执 `tool` 逐字 `ask_user_question`，`:1125` 又在 `--session-log` 下要求
+    //   `callId` 必填——**通知单两样都没有**。两条规则各自成立、合起来不可满足：
+    //   照 SKILL 写的合规项目在交付前机械验收**永远 exit 21**（报告由此停在「无论如何都到不了 0」）。
+    //   判据（**只解除这一种形态的互斥**，门-A / 门-B 一律不放宽）：
+    //     ① 门次限 `Phase2.5` / `Phase3.5`（SKILL 明定这两门可降通知单）；
+    //     ② §6「提问方式」或「回执 id」显式声明「通知单」；
+    //     ③ 「回执 id」为**未产生**形态（`无` / `—` / `N/A` / 空）——若写了真实 id，仍走下面的严格核对；
+    //     ④ §6 五字段与轮次额度的硬要求**全部照旧**（上方已判）。
+    //   这不是「免留痕」：§6 五字段 + 「通知单」声明就是该门的留痕；另记一条 note 说明不核回执的理由。
+    const notifyDeclared = (gateId === 'Phase2.5' || gateId === 'Phase3.5')
+      && /通知单/.test(`${askMode} ${idRaw || ''}`)
+    const idAbsent = !idRaw || /^\s*(?:无|—+|-+|N\/A|不适用)/i.test(idRaw)
+    if (notifyDeclared && idAbsent) {
+      notes.push(`人门口回执：${gateId} 为**通知单**（主控自决、不阻塞；SKILL v19.8.0）——`
+        + '该形态不产生 `ask_user_question` 往返，A7 只核 §6 五字段与轮次额度，不核回执账本'
+        + '（v19.21.0 §3：通知单与回执账本的结构性互斥已解除；**门-A/门-B 不放宽**）。')
+      continue
+    }
     if (!idRaw) {
       addHard('A7', f, `§6 缺「**回执 id**」字段（${label}）——回执账本在盘却未被引用：`
         + '主人的决策将只剩主控自述这一个来源（模板 §6 已列该字段为必填；预授权门填 Phase 0 确认门的回执，如 `Phase0#1`）', 21)
@@ -1104,9 +1140,20 @@ if (opt.requireGates) {
       addHard('A7', f, `「回执 id」指向的 gate 与本文档不一致（期望 ${gateId}，实得 ${wrongGate.map((r) => r.gate).join(' / ')}）`, 21)
       continue
     }
+    // v19.21.0（§3·A 案）：`self-determine` 回执**只允许**出现在通知单 / 全自动门——
+    //   否则任何门都能用「我自己决定的」绕过业主回复。判据只看 §6「提问方式」的显式声明。
+    if (hit.some((r) => r.tool === 'self-determine') && !/通知单|全自动|主人显式授权/.test(askMode)) {
+      addHard('A7', f, `回执为 \`tool:"self-determine"\`，但 §6「提问方式」未声明「通知单 / 全自动 / 主人显式授权」`
+        + '——自决通道只对这两类门开放（其余门必须有主人真实回复的回执）', 21)
+      continue
+    }
     const answerVal = fieldVal(sec, '主人原话') || ''
     const whenVal = fieldVal(sec, '回复时间') || ''
-    const textMiss = hit.filter((r) => !answerVal.includes(r.rawAnswer))
+    const conclusionVal = fieldVal(sec, '主控落盘结论') || ''
+    // 自决回执没有「主人原话」可比：改核「主控落盘结论」是否含该自决文本（模板 §6 的落盘栏）。
+    const textMiss = hit.filter((r) => (r.tool === 'self-determine'
+      ? !conclusionVal.includes(r.rawAnswer)
+      : !answerVal.includes(r.rawAnswer)))
     if (textMiss.length) {
       addHard('A7', f, `§6「主人原话」与回执**不相容**：回执 ${textMiss.map((r) => r._key).join(' / ')} 的 \`rawAnswer\` `
         + '未逐字出现在原话栏——该栏必须记录主人的实际回复（模板 §6「不得改写」），不得替换为主控的选项标签', 21)
@@ -1123,8 +1170,17 @@ if (opt.requireGates) {
     if (sessionIndex) {
       for (const r of hit) {
         if (!r.callId) {
+          // v19.21.0（§3·B 案）：`callIdSource: "not-captured"` = 该通道**结构上没有**宿主问答可核
+          //   （通知单 / 全自动 / 书面回执）。降 **soft** 而非硬 21——**不是「已核」**：
+          //   detail 明写「退回自述面，须人工确认」；伪造声明仍要人负责，机检到此为止。
+          if (r.callIdSource === 'not-captured') {
+            addSoft('A7', f, `回执 ${r._key} 声明 \`callIdSource:"not-captured"\`——该通道无宿主问答可核，`
+              + '账本在此条上**退回自述面**（soft，不是通过）：请人工确认主人的答复确有其事')
+            continue
+          }
           addHard('A7', f, `回执 ${r._key} 缺 \`callId\`——**开启 --session-log 后该字段必填**：`
-            + '没有它就无法把账本条目绑到日志里那一次真实提问（账本将退回「仅自述」）', 21)
+            + '没有它就无法把账本条目绑到日志里那一次真实提问（账本将退回「仅自述」；'
+            + '通知单/全自动门请显式写 `callIdSource:"not-captured"`，v19.21.0 §3·B）', 21)
           continue
         }
         const pair = sessionIndex.pairs.find((p) => p.callId === r.callId)
