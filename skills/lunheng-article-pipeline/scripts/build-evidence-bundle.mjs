@@ -217,6 +217,7 @@ if (explicitSource) {
 // 而修订轮（v2/v3）报告文件名随之变化 → 那些轮次的报告**不进证据包**，审计视图还会误显示「审计✗/批判✗」。
 const RULES = [
   ['literature/文献卡.md', '文献卡.md'],
+  ['literature/史料卡.md', '史料卡.md'],   // v19.26.0：一手史料（[Sxx]）随证据包给 T4-T9 可见
   ['literature/先行者清单.md', '先行者清单.md'],
   ['data/数据卡.md', '数据卡.md'],
   ['cases/案例卡.md', '案例卡.md'],
@@ -871,6 +872,7 @@ ${src && src.kind === 'final' ? `- [ ] 引用闭环：素材卡条数 vs 引用�
       return cards;
     };
     const Ls = parseCard(join(project, 'literature', '文献卡.md'), refRegexFirst('L'));
+    const Ss = parseCard(join(project, 'literature', '史料卡.md'), refRegexFirst('S'));
     const Ds = parseCard(join(project, 'data', '数据卡.md'), refRegexFirst('D'));
     const Cs = parseCard(join(project, 'cases', '案例卡.md'), refRegexFirst('C'));
 
@@ -881,6 +883,11 @@ ${src && src.kind === 'final' ? `- [ ] 引用闭环：素材卡条数 vs 引用�
       deepSection += `### 文献卡 [L] 共 ${Ls.length} 条\n`;
       for (const c of Ls.slice(0, 30)) deepSection += `- ${c.id}  ${c.title}${c.trust ? ` ｜ ${c.trust}` : ''}${c.source ? ` ｜ DOI:${c.source}` : ''}\n`;
       if (Ls.length > 30) deepSection += `- ... 另 ${Ls.length - 30} 条省略\n`;
+    }
+    if (Ss.length) {
+      deepSection += `\n### 史料卡 [S] 共 ${Ss.length} 条\n`;
+      for (const c of Ss.slice(0, 30)) deepSection += `- ${c.id}  ${c.title}${c.trust ? ` ｜ ${c.trust}` : ''}\n`;
+      if (Ss.length > 30) deepSection += `- ... 另 ${Ss.length - 30} 条省略\n`;
     }
     if (Ds.length) {
       deepSection += `\n### 数据卡 [D] 共 ${Ds.length} 条\n`;

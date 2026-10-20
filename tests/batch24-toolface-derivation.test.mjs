@@ -366,7 +366,8 @@ test('B24-§7-1 三卡模板 + 机检硬格式：缺口编号单列一节、不�
 test('B24-§7-2 素材加载清单模板：来源 / 缺口 / 卡片索引三类区分必须在场（缺口不进加载率分母）', () => {
   const t = readFileSync(join(REF, 'templates', '素材加载清单-template.md'), 'utf8')
   assert.match(t, /三类编号区分/, '须有「三类编号区分」段')
-  assert.match(t, /\| ① 来源条目 \| `\[Lxx\]` \/ `\[Dxx\]` \/ `\[Cxx\]` \| \*\*计入\*\*/, '① 来源条目须计入')
+  assert.match(t, /\| ① 来源条目 \|[^\n]*\*\*计入\*\*/, '① 来源条目须计入')
+  assert.match(t, /\[Sxx\]/, '① 来源条目须含史料 [Sxx]（v19.26.0 史料卡批）')
   assert.match(t, /② 缺口条目/, '② 缺口条目须单列')
   assert.match(t, /③ 卡片索引/, '③ 卡片索引须单列')
   assert.match(t, /分母 = 各卡索引段编号数/, '须写明分母口径')

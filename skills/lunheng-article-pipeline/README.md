@@ -1,8 +1,8 @@
-> 版本：v19.25.0（DSH bundle 插件）
+> 版本：v19.26.0（DSH bundle 插件）
 
 # 论衡（lunheng-article-pipeline）— 多 Agent 深度长文流水线
 
-> **DSH 原生插件（v19.25.0）**：本仓库为 DSH bundle 技能包（`package.json` 的 `main` → `lib/index.js` 注册本技能 + `dsh.bundle.patch` → `cordis.patch.yml` 叠加三档 subagent 工具）；结构性差异见 `SKILL.md` 的「🔧 DSH 环境说明」章节。
+> **DSH 原生插件（v19.26.0）**：本仓库为 DSH bundle 技能包（`package.json` 的 `main` → `lib/index.js` 注册本技能 + `dsh.bundle.patch` → `cordis.patch.yml` 叠加三档 subagent 工具）；结构性差异见 `SKILL.md` 的「🔧 DSH 环境说明」章节。
 
 把一篇深度文章 / 论文的生产拆成 **9 个独立角色 T1-T9 + 6 个阶段**（v2.5.2-dsh.8 语义定案：T1-T9 互不可替代；Phase 1 为 T1 文献 ∥ T2 数据 ∥ T3 案例 三检索员三方真并行互不干涉，T3 任何量级必 spawn 含 0 条空卡协议；T6 批判伙伴 + T7 审计 + **T8 终检独立角色由主控 T0 亲执行** + T9 同行评审T9 启用按 `_shared/文类档案.md`，v2.3.0 角色编号重构 + v2.4.0 加 T9），用 DSH 的 `subagent` 子代理编排，产出有**证据底座、反方论证、独立审计、人工核验节点**的交付物。
 
@@ -232,6 +232,7 @@ DSH 的模型路由由 `settings.yaml` 配置决定，`subagent` 默认继承会
 
 - **一手材料链**：`lunheng_ethics_sanitize` 脱敏（人名/地名/证件/联系方式，basic/strict 两档）+ `ETHICS=off|basic|strict` 伦理声明 + 主人投喂清单（A 轨 `evidence-pool` / B 轨 `run/<项目>/materials`）——田野、口述史、访谈、档案类研究的刚需。
 - **先行者清单（[先NN]）**：T1 独立产出的第四类证据族，「与既有研究对话」是独立证据流（M-Form-8 与 M-Exist-1 均白名单）。
+- **史料卡（[Sxx]，v19.26.0）**：一手史料/原始文本/档案/译本的**第五类证据族**——类型、成文年+版本年、**出处**（馆藏/卷次/页/版次/URL）、可信度、信任级别；条目住 `## 数据来源` 内 `### 史料` 子节（不新开节）；「研究对象本身 → S，他人研究 → L」不得双列。模板 = `templates/史料卡-template-lite.md`。
 - **体例弹性**：`academic-hum`（人文/理论）结构门走 IMRaD-Alternate，「结论」节接受「结语 / 余论」同义（v19.22.0）；G14-C 套话检测有 `CONCEPT-TERMS:` 构念术语声明通道——「范式 / 建构」等学科标准词汇声明后不计 AI 套话（实测依据见 `audits/验证记录-2026-10-20-批0` §0b）。
 
 ---

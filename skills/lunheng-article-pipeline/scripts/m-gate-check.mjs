@@ -403,8 +403,8 @@ const layoutAnomaly = evidenceLayout.anomaly;
 //   `count-chars.mjs` / `m-gate-check.mjs` 各写一份，口径发散过一次（正文区终点失配，见该模块头注释）。
 const WHITELIST = ENDNOTE_SECTIONS;
 
-// 引用编号正则：支持 [Lxx]/[Dxx]/[Cxx]/[C-主xx]/[先xx]，可带版本后缀
-const refRe = /\[(L|D|C-主|C|先)\d+(?:(?:-v| v)\d+)?\]/g;
+// 引用编号正则：支持 [Lxx]/[Dxx]/[Cxx]/[C-主xx]/[先xx]/[Sxx 史料，v19.26.0]，可带版本后缀
+const refRe = /\[(L|D|C-主|C|先|S)\d+(?:(?:-v| v)\d+)?\]/g;
 const norm = (r) => r.replace(/(?:-v| v)\d+\]/, ']');
 
 // 解析所有 ## 标题及其位置

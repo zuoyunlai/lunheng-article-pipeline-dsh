@@ -10,7 +10,7 @@
 //   - 只做一次性 `String.match` / `matchAll` → 也可用工厂，语义等价。
 
 /** 素材卡编号（种类字母 + 任意位数），带捕获组：m[1]=种类，m[2]=序号。 */
-export const refCardPairRegex = () => /\[([LCFD])(\d+)\]/g
+export const refCardPairRegex = () => /\[([LCFDS])(\d+)\]/g
 
 // ── v18.62.4（全量审计-v18.62.3 §8.3 #44）：**编号形态的单一真源** ──────────────────────
 //   病灶：同一事实有**三套方言**，各自只认一部分编号 ——
@@ -25,7 +25,7 @@ export const refCardPairRegex = () => /\[([LCFD])(\d+)\]/g
 //   ⚠️ **边界（如实）**：本常量只统一**编号形态**；各门**怎么用**（哪些门纳入哪些形态）仍各自决定，
 //   故本项目**不改变任何门的行为**，只让「形态」这一事实不再有第二份手抄。
 /** 编号形态（正则片段，供各消费点拼装；**不含**外层方括号）。 */
-export const REF_ID_TOKEN = '[LDC]\\d+|C-主\\d+|先\\d+|D-基-[A-Z]-\\d+'
+export const REF_ID_TOKEN = '[LDCS]\\d+|C-主\\d+|先\\d+|D-基-[A-Z]-\\d+'
 
 /** 单一类型编号（全局），用于统计引用条数。 */
 export const refRegex = (kind) => new RegExp(`\\[${kind}\\d+\\]`, 'g')

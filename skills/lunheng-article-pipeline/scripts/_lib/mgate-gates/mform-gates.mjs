@@ -145,7 +145,7 @@ const TEMP_MARKERS = [
   //      与 v18.0.0 的 ②③ 同类复发。新增合法 `[前缀-xxx]` 编号时须同步加 (?!前缀) 断言；
   //      根治方向是改白名单匹配（只认 `_TBD`/`-新\d`/`_占位`/`_待`），见反哺报告-v1 §B1，暂控改动面未做）
   // v18.0.0 修复（P0-1，实战：本项目 12 处命中全为 ②③，真占位符 = 0 → 假 P0 使 M 门永不可能 exit 0）
-  [/\[[LDC](?:_|-)(?!主\d)(?!基-)(?!空\])(?!CASE)[A-Za-z\u4e00-\u9fff][^\]]*\]/g, '临时编号（如 [L_TBD-1]）'],
+  [/\[[LDCS](?:_|-)(?!主\d)(?!基-)(?!空\])(?!CASE)[A-Za-z\u4e00-\u9fff][^\]]*\]/g, '临时编号（如 [L_TBD-1]）'],
   [/【(?:待补|待定|待查|待核|临时)】/g, '中文方头括号占位'],
   [/（(?:待补|待定|待查|待核|临时)）/g, '圆括号占位'],
   [/[？?]{2,}/g, '连续问号占位'],
@@ -577,8 +577,16 @@ try {
     const hasX = /\[先\d+\]/.test(secProse);
     const hasD = /\[D\d+\]/.test(secProse);
     const hasC = /\[C\d+\]/.test(secProse);
-    const cov = (hasL ? 1 : 0) + (hasD ? 1 : 0) + (hasC ? 1 : 0) + (hasX ? 1 : 0);
-    const litFamily = hasL || hasX;   // 文献族 = [Lxx] ∪ [先NN]
+    // v19.26.0（史料卡批 · 审计 E6/B5）：**[SNN]（史料/文本/档案）是第五类证据族**。
+    //   为什么必须单列：一手史料既不是「与既有研究的对话」（litFamily），也不是数据/案例；
+    //   不纳入字母表 → 史料分析段恒吃「零证据 P0 / 仅 1 类 P1」，而那正是史学论文最正当的写法。
+    //   ⚠️ 已知代价（如实登记，**不豁免**）：S **不计入 litFamily**（文献族仍 = L ∪ 先）。
+    //     故「只用 [Sxx] 承重、无任何文献」的段仍判「仅 1 类且缺 [Lxx]」→ P1。
+    //     这是有意的口径选择：一手证据 ≠ 与既有研究对话；若确有纯史料节，补一条文献或走
+    //     `ACCEPTED-GAPS:` 声明（既有通道），不为此放宽「每节须与文献对话」这条判据。
+    const hasS = /\[S\d+\]/.test(secProse);
+    const cov = (hasL ? 1 : 0) + (hasD ? 1 : 0) + (hasC ? 1 : 0) + (hasX ? 1 : 0) + (hasS ? 1 : 0);
+    const litFamily = hasL || hasX;   // 文献族 = [Lxx] ∪ [先NN]（[Sxx] 为一手证据，单列）
     // ── v18.62.7（反哺-主控实测 A3）：本段是否命中「已接受缺口」机读声明（见上方 ACCEPTED-GAPS 段） ──
     const secKey7 = normKey7(secTitle);
     const gap = acceptedGaps.find((g) => secKey7.includes(g.frag) || g.frag.includes(secKey7));
@@ -718,8 +726,8 @@ try {
           }
         }
         const blk = ol.slice(idx, e);
-        const loose = blk.filter((l) => /\[[LDC]\d+\]/.test(l) && /论点/.test(l));
-        const strict = blk.filter((l) => /\[[LDC]\d+\]/.test(l) && /论点\s*[0-9一二三四五六七八九十]/.test(l));
+        const loose = blk.filter((l) => /\[[LDCS]\d+\]/.test(l) && /论点/.test(l));
+        const strict = blk.filter((l) => /\[[LDCS]\d+\]/.test(l) && /论点\s*[0-9一二三四五六七八九十]/.test(l));
         return { block: blk, rows: Math.max(loose.length, strict.length), strict, loose };
       };
       const orderedCandidates = [...headCandidates, ...textCandidates];
@@ -744,7 +752,7 @@ try {
         const structRows = resolved.loose.length >= resolved.strict.length ? resolved.loose : resolved.strict;
         wall8.rows = resolved.rows;
         const freq = new Map();
-        for (const l of structRows) for (const m of l.matchAll(/\[([LDC])(\d+)\]/g)) {
+        for (const l of structRows) for (const m of l.matchAll(/\[([LDCS])(\d+)\]/g)) {
           const id = `[${m[1]}${m[2]}]`;
           freq.set(id, (freq.get(id) || 0) + 1);
         }
@@ -1032,6 +1040,7 @@ export function mForm10(ctx) {
 try {
   const CARDS = [
     ['文献卡.md', 'literature/文献卡.md'],
+    ['史料卡.md', 'literature/史料卡.md'],
     ['数据卡.md', 'data/数据卡.md'],
     ['案例卡.md', 'cases/案例卡.md'],
   ];
@@ -1053,7 +1062,7 @@ try {
     //   （tests:「m-gate-check M-Form-10：索引段缺条必须报」+「v18.3.1 B9 防 P0 降 P1」两条用例变红）。
     //   正解：索引段条目须按规定格式写方括号（`| [L01] | 作者 | …`，见 `_shared/机检硬格式.md` 条 3）；
     //   表格写成 `| L01 |`（无方括号）**本就是不合规**，脚本报缺条是**正确行为**，不得为迁就单篇放宽。
-    const idxIds = new Set([...indexBlock.matchAll(/\[([LDC])(\d+)\]/g)].map((m) => m[1] + m[2]));
+    const idxIds = new Set([...indexBlock.matchAll(/\[([LDCS])(\d+)\]/g)].map((m) => m[1] + m[2]));
     // ── v18.62.7（反哺-主控实测 A4）：**索引段独有的特殊编号不进「正文条目」对账** ──────────────
     //   病灶（实测 aigc-yixiangxing-meixue）：`literature/文献卡.md` 索引段顶部按
     //   《机检硬格式》§二 增了 `[L00] 方法论原始文献` 与 `[L99] 对立证据` 两行——该格式**明文规定**
@@ -1094,7 +1103,7 @@ try {
         if (/^\s*$/.test(l)) continue;
         if (/^\s*#/.test(l)) break;                     // 标题 → 索引段结束、条目区开始
         if (/^\s*\|/.test(l)) continue;                 // 表格行 / 表分隔行（索引的另一种形态）
-        if (/^\[[LDC]\d+\]/.test(l.trim())) {
+        if (/^\[[LDCS]\d+\]/.test(l.trim())) {
           // 行首 `[Dxx]`：**是索引行还是条目行？**取「其后 4 行内是否出现『信任级别』」为判据 ——
           //   条目块必带信任级别行（模板要求），索引行必不带（一行一编号）。
           //   这条判据同时覆盖两种真形态：模板索引（表格/｜）之后的**行首式条目**（条目 → 结束索引段），
@@ -1110,7 +1119,7 @@ try {
     }
     const entryLines = lines.slice(idxEnd);
     const bodyIds = new Set([...entryIds(cardText)].map((id) => id.slice(1, -1)));   // 标题式 `### [Dxx]`
-    for (const m of entryLines.join('\n').matchAll(/^\[([LDC])(\d+)\]/gm)) bodyIds.add(m[1] + m[2]);   // 行首式（模板形态）
+    for (const m of entryLines.join('\n').matchAll(/^\[([LDCS])(\d+)\]/gm)) bodyIds.add(m[1] + m[2]);   // 行首式（模板形态）
     const missing = [...bodyIds].filter((x) => !idxIds.has(x));       // 索引缺条 → 下游漏卡（硬）
     const extra = [...idxIds].filter((x) => !bodyIds.has(x) && !SPECIAL_INDEX_ONLY.has(x));  // 索引悬空（软；特殊编号豁免）
     // v18.12.0（全量审计 L-45）：判据由**字数阈值**改为**结构判据**。
@@ -1121,7 +1130,7 @@ try {
     //   → 审计实测「合规稿必然拿不到 exit 0」，与 T8 的「22 项全 exit 0」口径构造上不可兼得。
     //   现改判「三列/三段是否齐备」——与 `_shared/机检硬格式.md` 的模板形态同源，不再用字符数。
     const thin = indexBlock.split('\n').filter((l) => {
-      if (!/\[([LDC])\d+\]/.test(l)) return false;
+      if (!/\[([LDCS])\d+\]/.test(l)) return false;
       // 只判**索引行**：表格行（`| … |`）或模板围栏形态（`[D01] 甲 ｜ 主题 ｜ 论点1`）。
       //   v18.12.0：`indexSection` 返回的是「索引段标题 → 下一个标题」的**整段**，而条目行
       //   `[L01] 作者. 题名[J]. 刊, 2024.` 也在其中（行首式条目不是标题、不会结束该段）——
@@ -1293,7 +1302,7 @@ try {
     const expandRanges = (seg) => {
       const extra = new Set();
       const bad = [];
-      for (const m of seg.matchAll(/\[([LDC])(\d+)\]\s*[-–—~至]\s*\[([LDC])(\d+)\]/g)) {
+      for (const m of seg.matchAll(/\[([LDCS])(\d+)\]\s*[-–—~至]\s*\[([LDCS])(\d+)\]/g)) {
         const [, a, n1, b, n2] = m
         if (a !== b) { bad.push(m[0]); continue }
         const lo = Number(n1), hi = Number(n2)
