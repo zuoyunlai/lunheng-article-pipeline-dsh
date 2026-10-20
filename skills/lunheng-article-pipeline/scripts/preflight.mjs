@@ -128,7 +128,7 @@ if (charCount === null) charCount = { unavailable: true, reason: `count-chars æœ
 cleanup()
 
 const result = {
-  preflight: 'v19.26.0',
+  preflight: 'v19.27.0',
   draft: { path: draftPath, name: basename(draftPath), sha256_8: sha8, bytes: Buffer.byteLength(text) },
   gateContract,
   bundle,
