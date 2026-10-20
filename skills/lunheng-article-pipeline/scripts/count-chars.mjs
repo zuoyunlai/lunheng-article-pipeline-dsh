@@ -57,6 +57,7 @@ if (rawTokens.includes('--help')) {
 }
 let reportPath = null;
 let wordMetric = false;
+let withNotes = false;   // v19.25.0：`--with-notes` 双读数（正文 + 注释；仅报告）
 let genre = null;   // v19.14.0（反哺 R-11 方案 A）：文类 code；非学术文类改走「首个二级标题」起点   // v19.8.0 反哺 v9 D4：加 Word 口径字数列（估算，不作门判据）
 const argvTokens = [];
 for (let i = 0; i < rawTokens.length; i++) {
@@ -72,6 +73,13 @@ for (let i = 0; i < rawTokens.length; i++) {
   }
   if (rawTokens[i] === '--word-metric') {
     wordMetric = true;
+    continue;
+  }
+  // v19.25.0（页下注/著者-年份交付档批 · 审计 E4/B4）：`--with-notes` 双读数。
+  //   口径 = 正文读数 +「## 注释」节 +「数据来源」节内 `### 脚注` 子节；**仅报告、不参与判级**
+  //   （判级仍用正文读数——与 deliverable「预算按正文」一致）。人文档需要「含注」读数时用它。
+  if (rawTokens[i] === '--with-notes') {
+    withNotes = true;
     continue;
   }
   // v19.14.0（反哺 R-11 方案 A）：`--genre <code>` / `--genre=<code>` 可选；从 token 流摘出，其余原样喂既有逻辑。
@@ -228,6 +236,30 @@ const bodyEndOf = (from) => {
   return i === -1 ? text.length : i;
 };
 
+/** v19.25.0（页下注/著者-年份交付档批 · 审计 E4/B4）：注释文字区间。
+ *  取「数据来源」节内 `### 注释` / `### 脚注` 两个子节（与 M-Exist-1 的扩展编号闭环同一宿主），
+ *  外加（前向兼容）若存在 `## 注释` 节也计入。
+ *  ⚠️ **为什么不做成独立 `## 注释` 节**：M-Form-7 的文末节白名单只有九节（五必需 + 四声明），
+ *  第十个 H2 会被判「文末节白名单违规」P0——故人文档的注释必须挂在 `## 数据来源` 之下（子节）。
+ *  只服务 `--with-notes` 的**展示读数**，不参与任何判级。 */
+const notesText = () => {
+  const parts = [];
+  const noteBody = sectionBody(text, '注释');
+  if (noteBody !== null) parts.push(noteBody);
+  const src = sectionBody(text, '数据来源');
+  if (src) {
+    for (const name of ['注释', '脚注']) {
+      const re = new RegExp(`^###[ \\t]*${name}[ \\t]*$`, 'm');
+      const m = re.exec(src);
+      if (!m) continue;
+      const rest = src.slice(m.index + m[0].length);
+      const nextH3 = rest.search(/^#{3}\s+/m);
+      parts.push(nextH3 === -1 ? rest : rest.slice(0, nextH3));
+    }
+  }
+  return parts.join('\n');
+};
+
 /**
  * v19.11.2（反哺 2026-10-17 §P0-1）：`--report` 落盘**两个模式共用同一出口**。
  *
@@ -323,6 +355,20 @@ const out = {
 };
 // v19.8.0（反哺 v9 D4）：`--word-metric` 时附加 Word 口径估算（纯展示换算，不做门判据）。
 if (wordMetric) out.wordChars = countWordMetric(target);
+// v19.25.0（页下注/著者-年份交付档批）：`--with-notes` 时附加**双读数**（正文 + 注释）。
+//   只对 body 口径有意义（--full 已含注释，再加会重复计数）→ full 下不输出该段并说明。
+if (withNotes) {
+  if (flag === '--full') {
+    out.notes = { skipped: true, reason: '--full 已含注释文字，双读数仅对正文口径有意义' };
+  } else {
+    const notesHan = countHan(notesText());
+    out.notes = {
+      hanChars: notesHan,
+      scope: '「数据来源」内 ### 注释 / ### 脚注 子节（+ 前向兼容的 ## 注释 节）；仅报告，不参与判级',
+    };
+    out.bodyWithNotes = { hanChars: count + notesHan };
+  }
+}
 // v18.16.0（S-2 反哺）：仅当 `--warn-threshold <N>` 被传入且字数超阈值时附加警告字段。
 //   不影响退出码（仍 0），不参与 M 门判定；供主控与审计视图按需消费。
 if (warnThreshold !== null) {
