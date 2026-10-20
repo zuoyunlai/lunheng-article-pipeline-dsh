@@ -138,8 +138,7 @@ test('run-report：缺输入 —— 空项目仍出报告，但 exit 3（须人�
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
 
-test('run-report F-3：G 项机检 JSON 带连字符（G-Audit-Report.json）也能被读', () => {
-  const d = tmp()
+test('run-report F-3：G 项机检 JSON 带连字符（G-Audit-Report.json）也能被读', () => {  const d = tmp()
   try {
     const proj = fixtureProject(d)
     // 带连字符的文件名 = g-audit-check 默认落盘名「G-Audit-Report.json」的形态；旧 /gaudit/i 只认无连字符 → 漏读标 N/A
@@ -176,5 +175,38 @@ test('run-report：参数与路径错一律 exit 10（未知参数 / 越出 run 
       assert.equal(run([SCRIPT, 'run/proj-x', '--out'], { cwd: d }).code, 10, '带值旗标缺值 → 10')
       assert.equal(run([SCRIPT], { cwd: d }).code, 10, '缺位置参数 → 10')
     } finally { rmSync(outside, { recursive: true, force: true }) }
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
+// v19.27.1（反哺第25条 · 数据图表空态批）：边车**缺省产出**——面板的数字层只读
+//   `<项目>/final/运行报告.json`，「记得加 --json」已在 v19.5.1 与本次两度落空（实测项目只产 html →
+//   合规分 / QLT-6 / 字数演进 / M 门汇总 / 跨项目对比 五类图全空）。同时钉住两条边界：
+//   `--no-json` 可跳过；显式写到项目外**不 fail 但必须 warn**（否则面板永远空且无任何提示）。
+test('run-report v19.27.1：边车缺省落 <项目>/final（--no-json 跳过；项目外 warn）', () => {
+  const d = tmp()
+  try {
+    const proj = fixtureProject(d, 'proj-side')
+    const side = join(proj, 'final', '运行报告.json')
+
+    // ① 缺省：无任何旗标即应产出边车（面板读面）
+    const r1 = run([SCRIPT, 'run/proj-side', '--no-score'], { cwd: d })
+    assert.equal(r1.code, 0, r1.out.slice(0, 300))
+    assert.ok(existsSync(side), '缺省应写 <项目>/final/运行报告.json（不传 --json 也要有）')
+    const j = parseJson({ stdout: readFileSync(side, 'utf8') })
+    assert.equal(j.schema, 'lunheng.run-report/1')
+    assert.ok(Array.isArray(j.words.series) && j.words.series.length >= 1, '边车应带字数序列（面板字数演进的数据面）')
+
+    // ② --no-json：显式跳过（无子进程环境 / 只要 HTML 时用）
+    rmSync(side, { force: true })
+    const r2 = run([SCRIPT, 'run/proj-side', '--no-json', '--no-score'], { cwd: d })
+    assert.equal(r2.code, 0, r2.out.slice(0, 300))
+    assert.ok(!existsSync(side), '--no-json 时不得写边车')
+
+    // ③ 显式写到项目外：合法（比对 / 快照），但**必须当场告警**——面板只读项目内那个路径
+    const elsewhere = join(d, 'snapshot.json')
+    const r3 = run([SCRIPT, 'run/proj-side', '--json', elsewhere, '--no-score'], { cwd: d })
+    assert.equal(r3.code, 0, '写到项目外不是错误（不得改退出码）')
+    assert.ok(existsSync(elsewhere), '显式路径应照写')
+    assert.match(r3.stdout, /不会被面板显示/, '项目外落盘必须 warn 并说明面板读不到')
   } finally { rmSync(d, { recursive: true, force: true }) }
 })

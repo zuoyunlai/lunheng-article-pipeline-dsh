@@ -1896,3 +1896,79 @@ test('进度条（v19.1.3）：**在开工表单之外**——不展开也能看
   assert.match(text, /定题 1\/1/, '展开不影响进度条（它独立于表单）')
 })
 
+
+// ── v19.27.1（反哺第25条 · 数据图表空态批）────────────────────────────────────────────────
+// 两条都是「主人看到图空/读数错」的直接病灶，且都属**解析形状与机制契约不一致**这一族：
+//   ① T9 雷达只认一张**全库没有任何模板规定要产**的表，而机制规定的「叙述式」三视角分数不解析
+//      （v19.5.3 第24条修的是文件名，这一条修的是内容形状）；
+//   ② QLT-6 把 `quality-score.mjs` 写下的读数口径（`notes`）整块丢掉 → 「未测量」被画成实测 0%。
+test('面板 v19.27.1：T9 雷达认机制规定的「叙述式」三视角；空态按原因分流', () => {
+  const d = tmp()
+  try {
+    const dir = join(d, 'run', 'proj-t9')
+    mkdirSync(join(dir, 'audits'), { recursive: true })
+    mkdirSync(join(dir, 'final'), { recursive: true })
+    writeFileSync(join(dir, 'status.md'), '# Status\n')
+    // ① 机制规定的唯一形态：`pipeline-readme` §整合报告机检契约② 的「✅ 正确写法」三行 bullet
+    writeFileSync(join(dir, 'audits', '审稿报告-v1.md'), [
+      '# 审稿报告 v1（T9 同行评审 · 三视角）', '',
+      '### 三视角评分（叙述式，不参与机检取分）',
+      '- T9-d 领域专家：原创性 4 分 / 方法论 4 分 / 证据强度 4 分 / 论证结构 4 分 / 写作质量 4 分 / 引文规范 5 分 = 25 分 → minor',
+      '- T9-m 方法学家：原创性 4 分 / 方法论 4 分 / 证据强度 3 分 / 论证结构 4 分 / 写作质量 4 分 / 引文规范 4 分 = 23 分 → minor',
+      '- T9-s 统计学家：原创性 4 分 / 方法论 3 分 / 证据强度 3 分 / 论证结构 4 分 / 写作质量 4 分 / 引文规范 4 分 = 22 分 → minor',
+      '',
+    ].join('\n'))
+    const s1 = lightSnapshot(d, 'proj-t9')
+    const rv = s1.insights.review
+    assert.ok(rv, '叙述式三行必须被解析（旧版只认表格 → 恒空）')
+    assert.equal(rv.views.length, 3, '三视角各一行')
+    assert.equal(rv.views[0].view, 'T9-d 领域专家')
+    assert.equal(rv.views[0].dims.length, 6, '六维逐轴')
+    assert.deepEqual(rv.views[0].dims.map((x) => x.score), [4, 4, 4, 4, 4, 5], '逐维分数不得错位')
+    assert.equal(rv.views[0].total, 25, '总分取「= 25 分」')
+    assert.equal(rv.views[0].max, 30, '六维满分 = 5 × 维数（不是硬编码 25）')
+    assert.match(rv.views[0].verdict, /minor/)
+
+    // ② 文件在盘但只有整合 6 维（无分视角评分）→ 必须说「无分视角段」，不得说「需要该文件」
+    writeFileSync(join(dir, 'audits', '审稿报告-v2.md'), '# 审稿报告 v2\n\n### 1. 原创性（3/5）\n- **评语**：…\n')
+    const s2 = lightSnapshot(d, 'proj-t9')
+    assert.equal(s2.insights.review, undefined, '只有整合 6 维时不得伪造三视角刻度')
+    assert.deepEqual(s2.insights.reviewDiag, { file: '审稿报告-v2.md', reason: 'no-view-scores' }, '空态原因必须点明「文件在盘、缺分视角段」')
+
+    // ③ 连文件都没有 → no-report（旧版正是这一种，故旧文案对它是准的）
+    rmSync(join(dir, 'audits'), { recursive: true, force: true })
+    const s3 = lightSnapshot(d, 'proj-t9')
+    assert.deepEqual(s3.insights.reviewDiag, { file: null, reason: 'no-report' })
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
+test('面板 v19.27.1：QLT-6 的读数口径（qlt6.notes）必须穿透到面板', () => {
+  const d = tmp()
+  try {
+    const dir = join(d, 'run', 'proj-q')
+    mkdirSync(join(dir, 'final'), { recursive: true })
+    writeFileSync(join(dir, 'status.md'), '# Status\n')
+    writeFileSync(join(dir, 'final', '运行报告.json'), JSON.stringify({
+      generatedAt: '2026-10-20T15:34:00.000Z',
+      words: { series: [{ label: 'v1', han: 10174 }, { label: '定稿', han: 10102 }] },
+      scoring: {
+        score: 81.3, coverage: 0.8667,
+        qlt6: {
+          score: 17.9, coverage: 1, na: [],
+          components: [
+            { id: 'panel', name: '审稿判断', weight: 50, ratio: 0.3571, applicable: true },
+            { id: 'closure', name: '论证缺陷闭合率', weight: 50, ratio: 0, applicable: true },
+          ],
+          notes: ['② 无绑定当前正文指纹的复核报告（已在 2 份里找过）→ **保守计 0**（未关闭）——读数属于**低估方向**'],
+        },
+      },
+    }))
+    const s = lightSnapshot(d, 'proj-q')
+    const q = s.report && s.report.qlt6
+    assert.ok(q, 'QLT-6 应随边车带出')
+    assert.equal(q.score, 17.9)
+    assert.ok(Array.isArray(q.notes) && q.notes.length === 1, 'qlt6.notes 必须穿透（旧版整块丢弃）')
+    assert.match(q.notes[0], /保守计 0/, '「未测量 → 保守计 0」的口径原话必须到达客户端')
+    assert.equal(q.components.find((c) => c.id === 'closure').ratio, 0)
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})

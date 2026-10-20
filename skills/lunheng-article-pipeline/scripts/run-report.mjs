@@ -8,10 +8,13 @@
 //   `scripts/flow-metrics.mjs` 同判据），也不参与任何门判定（它是**观测**，不是闸门）。
 //
 // 用法：
-//   node scripts/run-report.mjs <项目目录> [--out <html>] [--json <文件>] [--no-score] [--quiet]
+//   node scripts/run-report.mjs <项目目录> [--out <html>] [--json <文件> | --no-json] [--no-score] [--quiet]
 //     · <项目目录> 须落在 `<cwd>/run` 之内（三层围栏，与 `lunheng-stats.mjs` 同口径）
 //     · --out  缺省 `<项目>/final/运行报告.html`（自包含：内联 SVG + CSS，零外部引用、零 CDN、零 JS 依赖）
-//     · --json 可选边车（同一份采集结果，机器可读；GUI 面板/后续比对可直接消费）
+//     · --json 边车（同一份采集结果，机器可读；GUI 面板/后续比对可直接消费）。**v19.27.1 起缺省产出**
+//       到 `<项目>/final/运行报告.json`——因为面板的数字层只读那一个路径，而「记得加 --json」已经
+//       两次落空（v19.5.1 反哺第20条 / v19.27.1 反哺第25条）。`--no-json` 跳过；显式 `--json` 按 cwd 解析，
+//       指到项目外时会 warn（面板读不到）。
 //     · --no-score 跳过 spawn `quality-score.mjs`（无子进程环境 / 只要快照时用；分析面板如实标 N/A）
 //
 // 退出码（与 M 门的 1/2/3 刻意分离，同 `self-check.mjs` 一族）：
@@ -62,16 +65,17 @@ installExitGuard();
 
 const SCRIPT_DIR = import.meta.dirname;
 const SCRIPT_NAME = 'run-report.mjs';
-const USAGE = `用法: node scripts/${SCRIPT_NAME} <项目目录> [--out <html>] [--json <文件>] [--no-score] [--quiet]
+const USAGE = `用法: node scripts/${SCRIPT_NAME} <项目目录> [--out <html>] [--json <文件> | --no-json] [--no-score] [--quiet]
 
-  项目目录须落在 <cwd>/run 之内；缺省输出 <项目>/final/运行报告.html（自包含，零外部引用）。
+  项目目录须落在 <cwd>/run 之内；缺省输出 <项目>/final/运行报告.html（自包含，零外部引用）
+  + <项目>/final/运行报告.json（运行面板的数字层；--no-json 跳过，显式 --json 的取值按 cwd 解析）。
   退出码: 0 已产出 / 3 缺 status.md（关键输入缺失，仍出报告）/ 10 参数或路径错 / 70 内部错误`;
 
 // ── 参数（唯一实现 = _lib/cli-args.mjs，fail-closed）───────────────────────
 let flags, opts, positionals;
 try {
   ({ flags, opts, positionals } = parseArgs(process.argv.slice(2), {
-    flags: ['--no-score', '--quiet', '-h', '--help'],
+    flags: ['--no-score', '--quiet', '--no-json', '-h', '--help'],
     values: { '--out': 'final/运行报告.html', '--json': 'final/运行报告.json' },
     minPositionals: 1,
     maxPositionals: 1,
@@ -87,7 +91,15 @@ const WITH_SCORE = !flags.has('--no-score');
 const projectDir = resolve(positionals[0]);
 const projectName = basename(projectDir);
 const outHtml = resolve(opts['--out'] || join(projectDir, 'final', '运行报告.html'));
-const outJson = opts['--json'] ? resolve(opts['--json']) : null;
+// v19.27.1（反哺第25条 · 数据图表空态批）：边车**缺省产出**，不再靠「记得加 --json」。
+//   病灶实测：`run/行政国家理念跨国流动` 的 Phase 5 只产出 html（边车从未生成）⇒ 面板「合规分 /
+//   QLT-6 / 字数演进 / M 门汇总 / 跨项目对比」五类图**全空**，而主人看到的只是「有些图表没显示」。
+//   机制其实早已把该文件列为 Phase 5 必产（`SKILL.md` 主控亲跑路径），但**它只写在文档里、没有生产者默认值、
+//   也没有门核** ⇒ 同一缺陷在 v19.5.1 / 现在两度复现。故改默认：`--no-json` 才跳过；
+//   显式 `--json` 仍按 cwd 解析（面板给出的可复制命令 `--json run/<项目>/final/运行报告.json` 因此照旧可用）。
+const outJson = flags.has('--no-json')
+  ? null
+  : (opts['--json'] ? resolve(opts['--json']) : join(projectDir, 'final', '运行报告.json'));
 
 // ── 三层围栏：项目目录必须落在 <cwd>/run 之内（与 lunheng-stats.mjs 逐字同口径）────
 // 为什么内联而不 import lib/run-path-fence.mjs：本脚本须在**镜像部署**（只复制 skills/ 目录、
@@ -146,6 +158,13 @@ function cut(s, n) { const t = String(s ?? '').replace(/\s+/g, ' ').trim(); retu
 function mdPlain(s) { return String(s ?? '').replace(/\*\*/g, '').replace(/`/g, '').replace(/^\s*[-*•]\s*/, '').replace(/\s+/g, ' ').trim(); }
 function miss(what, detail) { notes.push({ level: 'miss', what, detail }); }
 function warn(what, detail) { notes.push({ level: 'warn', what, detail }); }
+
+// v19.27.1（反哺第25条）：面板**只读** `<项目>/final/运行报告.json`——显式 `--json` 指到项目外时，
+//   边车等于白写（面板永远空），而旧版对此静默。不 fail（落别处是合法用法：比对 / 留快照），
+//   但必须当场说清，并跟着 dataSourceNotes 进报告。
+if (outJson && !(outJson === projectDir || outJson.startsWith(projectDir + sep))) {
+  warn('--json', `边车写到项目外（${outJson}）：运行面板只读 <项目>/final/运行报告.json，该文件不会被面板显示`);
+}
 
 // ── 采集 ①：status.md ───────────────────────────────────────────────────
 const statusText = readText(join(projectDir, 'status.md'));
