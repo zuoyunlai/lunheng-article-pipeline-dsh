@@ -246,6 +246,20 @@ export const sectionBody = (text, marker) => {
   return to > from ? text.slice(from, to) : ''
 }
 
+/** v19.22.0（人文结构门纠错批 · 审计 E1/B1）：带同义标题组的节段体。
+ *  为什么需要：`titleMatches` 是全等/前缀匹配，「结语」「余论」不命中「结论」——中文人文长文的
+ *  常规体例（章节式论证 + 结语）因此被判「结论缺」+「讨论缺」双 P0（实测 5 份中 3 份 exit 2，
+ *  `audits/定位错配审计-2026-10-20` E1）。同义组由调用方给出（词表真源 = 各调用方自己的数组）。
+ *  语义：任一同义词命中即取**首个命中**的节体；全不命中 → null（与 sectionBody 的
+ *  「无此节」语义一致，调用方据此区分「无节」与「空节」）。 */
+export const sectionBodyAny = (text, markers) => {
+  for (const m of markers) {
+    const body = sectionBody(text, m)
+    if (body !== null) return body
+  }
+  return null
+}
+
 /** 正文区范围 `{ from, to, abstractFound, endnoteFound }`——`to` 为第一个文末节起点（无则文末）。
  *  两个脚本的**起点**语义不同（count-chars 从 `## 摘要` 之后起算；m-gate-check 的 `body` 从文件头起算
  *  以便扫题名/摘要），故此处只提供共用的**边界解析**，切片由各自组装。 */

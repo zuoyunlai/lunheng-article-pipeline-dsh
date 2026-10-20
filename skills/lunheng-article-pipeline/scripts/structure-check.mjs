@@ -8,7 +8,7 @@
 //   0  = 三项检查全过
 //   1  = P1 问题（IMRaD 节缺 1-2 / 漏斗结构缺 1-2 / 讨论要素缺 2-3）
 //   2  = P0 问题（IMRaD 节缺 ≥3 / 漏斗结构 3 项全缺 / 讨论要素 4 项全缺）
-//   3  = 仅 P2 软提示（如讨论要素缺 1 项）
+//   3  = 仅 P2 软提示（如讨论要素缺 1 项；v19.22.0 起「无讨论节」也归此档，转 T7 人工）
 //   10 = 参数或路径错误（与 M 门 10 同语义）
 //   70 = 内部错误
 //
@@ -17,10 +17,19 @@
 //                    （--humanities 改检 IMRaD-Alternate：Introduction / Discussion / Conclusion 三节）
 //   S-Intro-Funnel = 引言是否含「领域重要性」+「知识缺口」+「本文贡献」三要素（关键词扫描）
 //   S-Discussion-4 = Discussion 是否含「主要发现重述」+「与既有研究比较」+「机制解释」+「局限性与未来方向」四要素
+//
+// v19.22.0（人文结构门纠错批 · 审计 2026-10-20 E1/E2 + B1/B2，主人授权）：
+//   ① 「结论」节接受同义组 结语 / 余论（中文人文长文常规体例 = 章节式论证 + 结语，实测 5 份中 3 份
+//      因字面不认被判双缺；刻意不收「小结」——章节小结若为 H2 会抢先命中、截断真结论节，误伤更重）。
+//   ② 「无讨论节」从「四要素全缺 P0」降为 **P2 + T7 人工必核**（Alternate 族的讨论常由结语/各章过渡
+//      承担，机器字面缺席 ≠ 结构缺失；与「N/A ≠ 跳过」同族——降档不等于放行，四要素转人工）。
+//   ③ 漏斗词表补人文**缺口侧**词面（问题的提出/学界长期/争论/聚讼/莫衷一是/既有研究/重估/再检讨/历来；
+//      贡献侧「本文/尝试」已覆盖人文写法，不加冗余词），依 v18.73.0 F-9 既有判据：
+//      「关键词表是语义的近似，近似不足时应补词面，不应让作者迁就词表」。
 
 import { readFileSync, existsSync } from 'node:fs';
 import { installExitGuard, requireExistingFile } from './_lib/exit-guard.mjs';
-import { sectionBody } from './_lib/sections.mjs';
+import { sectionBody, sectionBodyAny } from './_lib/sections.mjs';
 import { writeReport } from './_lib/destructive-write.mjs';   // 报告写盘守卫（v18.12.0，全量审计 L-50）
 import { packageVersionTag } from './_lib/pkg-version.mjs';   // §8.3 #39：产物 version 单一真源
 installExitGuard();
@@ -102,11 +111,16 @@ if (kaiti) {
 // IMRaD 5 节（自然科学/实证论文）；人文学科用 IMRaD-Alternate 3 节
 const IMRAD_SECTIONS = ['引言', '方法', '结果', '讨论', '结论'];
 const IMRAD_ALT_SECTIONS = ['引言', '讨论', '结论'];
+// v19.22.0：结论同义组（人文结构门纠错批 ①）。「结语/余论」是章节式人文长文的常规收束名，
+//   titleMatches 只认全等/前缀 ⇒ 字面不命中 ⇒ 判「结论缺」。「讨论与局限」已被前缀匹配覆盖，无需加。
+//   刻意不收「小结」：章节小结若为 H2，findIndex 首个命中会截断真结论节（误伤 > 漏判）。
+const CONCLUSION_ALIASES = ['结论', '结语', '余论'];
+const markerFor = (sec) => (sec === '结论' ? CONCLUSION_ALIASES : [sec]);
 const imradList = humanities ? IMRAD_ALT_SECTIONS : IMRAD_SECTIONS;
 const imradFound = [];
 const imradMissing = [];
 for (const sec of imradList) {
-  const body = sectionBody(text, sec);
+  const body = sectionBodyAny(text, markerFor(sec));
   if (body !== null && body.trim().length > 0) imradFound.push(sec);
   else imradMissing.push(sec);
 }
@@ -127,9 +141,11 @@ const sImradSeverity = imradMissing.length >= 3 ? 'P0' : imradMissing.length > 0
 //   判据：**关键词表是语义的近似，近似不足时应补词面，不应让作者迁就词表。**
 const introBody = sectionBody(text, '引言');
 const introText = introBody || '';
-const FIELD_IMPORTANCE_KEYWORDS = ['重要性', '意义', '背景', '现状', '领域', '关注', '已成为', '已形成', '已经构成', '已构成', '近年来', '在全球', '在我国'];
-const KNOWLEDGE_GAP_KEYWORDS = ['不足', '缺乏', '尚未', '尚无', '未有', '未充分', '鲜有', '缺少', '有待', '仍未', '还不清楚', '有待进一步', '尚未形成'];
+const FIELD_IMPORTANCE_KEYWORDS = ['重要性', '意义', '背景', '现状', '领域', '关注', '已成为', '已形成', '已经构成', '已构成', '近年来', '在全球', '在我国', '历来'];
+const KNOWLEDGE_GAP_KEYWORDS = ['不足', '缺乏', '尚未', '尚无', '未有', '未充分', '鲜有', '缺少', '有待', '仍未', '还不清楚', '有待进一步', '尚未形成', '问题的提出', '学界长期', '争论', '聚讼', '莫衷一是', '既有研究', '重估', '再检讨'];
 const CONTRIBUTION_KEYWORDS = ['本文', '本研究', '本课题', '我们', '笔者', '尝试', '旨在', '提出', '拟', '目标', '目的', '主要贡献', '边际贡献', '创新点', '推进'];
+// v19.22.0 词面增补说明：本表未加「本文尝试/重审」等——「本文」「尝试」已在表内，任何「本文尝试…」
+//   形态都被覆盖，加了只是噪声（判据同上：补的是缺口侧词面，不是把已有覆盖再写一遍）。
 function hasKeyword(text, keywords) {
   return keywords.some((k) => text.includes(k));
 }
@@ -167,13 +183,24 @@ const discHasComparison = hasKeyword(discussionText, DISC_COMPARISON_KEYWORDS);
 const discHasMechanism = hasKeyword(discussionText, DISC_MECHANISM_KEYWORDS);
 const discHasLimitation = hasKeyword(discussionText, DISC_LIMITATION_KEYWORDS);
 const discMissing = [];
-if (!discHasFinding) discMissing.push('主要发现重述');
-if (!discHasComparison) discMissing.push('与既有研究比较');
-if (!discHasMechanism) discMissing.push('机制解释');
-if (!discHasLimitation) discMissing.push('局限性与未来方向');
+// v19.22.0（人文结构门纠错批 ②，主人授权）：「无讨论节」（discussionBody === null）不再走
+//   四要素全缺的 P0 档——Alternate 族的讨论常由结语/各章过渡承担，字面缺席 ≠ 结构缺失。
+//   降为 **P2 + T7 人工必核**（07-审计-auditor.md §学术结构合规段同批写明人工义务，防四要素空转）。
+//   「有讨论节但四项特征词全无」仍判 P0（那才是 v18.62.4 收紧后要抓的「写了个空壳讨论」）。
+const discAbsent = discussionBody === null;
+if (discAbsent) {
+  discMissing.push('无「讨论」节（人文/综述可由结语或各章过渡承担——四要素转 T7 人工必核，降档不等于放行）');
+} else {
+  if (!discHasFinding) discMissing.push('主要发现重述');
+  if (!discHasComparison) discMissing.push('与既有研究比较');
+  if (!discHasMechanism) discMissing.push('机制解释');
+  if (!discHasLimitation) discMissing.push('局限性与未来方向');
+}
 const sDiscussionPass = discMissing.length === 0;
 // v18.16.0（S-1 反哺 · 三档落地）：4 项全缺 → P0、2-3 缺 → P1、1 缺 → P2、0 缺 → PASS。
-const sDiscussionSeverity = discMissing.length === 4 ? 'P0'
+// v19.22.0：无讨论节单列 → P2（见上）；「有节而四项全缺」维持 P0。
+const sDiscussionSeverity = discAbsent ? 'P2'
+  : discMissing.length === 4 ? 'P0'
   : discMissing.length >= 2 ? 'P1'
   : discMissing.length === 1 ? 'P2'
   : 'PASS';

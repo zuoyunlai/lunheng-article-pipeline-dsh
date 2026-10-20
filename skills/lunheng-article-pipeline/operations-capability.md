@@ -1,6 +1,6 @@
 # 执行能力边界（SKILL.md §执行能力边界 的**详述外移面**）
 
-> 版本：v19.21.0
+> 版本：v19.22.0
 > **本次外移**：独立审计批 3（常驻面瘦身）——该节原占 `SKILL.md` 的 36.8%，而常驻集是**每会话固定开销**。
 > **定位**：本文件是 `SKILL.md` §⚠️ 执行能力边界 的**逐脚本详述与边界论证**。**按需读**——只有当你真的要调用某个脚本、
 > 或要判「某项实测该谁跑」时才读它；主控启动只需读 `SKILL.md` 的那一版**要点 + 指针**。
@@ -32,7 +32,7 @@
   > **`fix-gates.mjs`**：Phase 4.5 主控收尾助手——`node scripts/fix-gates.mjs <项目目录> [--json]` 扫描 4 类可机械修复项（M-Form-10 索引段锚点 / M-Form-11 `## 已加载` 段 / M-Form-4 文末节禁词 / **M-Exist-7 交付说明 12 字段：字段缺失 与 字段正文含 `<…>` 占位符** 两种形态），**输出可直接粘贴的修复内容**，**零写盘**。exit `0` 无可修项 / `1` 有建议 / `10` 参数错。**不是闸门**——闸门结论以 `m-gate-check.mjs` 为准，本工具只给修法。**⚠️ T8 的落位**：跑在**冻结定稿之前**（见 `agents/08-终检-finalizer.md` §终检顺序契约 的 **②′**）——它是修法生成器，冻结后再修就等于回到 ②。
   > **`segment-chars.mjs`**：分段字数实测（`--list` 列全部节 / `--section "3.6"` 取指定节），供主控在派发段级 diff **之前**实测目标段现况字数；口径与 `count-chars.mjs` 同源。用法详见 [`references/pipeline-readme.md`](references/pipeline-readme.md) §段级 diff 前置步。
   > **`apply-diff.mjs`**：段级 diff 清单机械应用器，用法与清单格式约定见 [`references/pipeline-readme.md`](references/pipeline-readme.md) §修订轮默认段级 diff。
-  > **`structure-check.mjs`**：学术结构合规门（IMRaD 节齐备 + 引言漏斗结构 + 讨论四要素），详见 [`references/agents/07-审计-auditor.md`](references/agents/07-审计-auditor.md) §学术结构合规段。
+  > **`structure-check.mjs`**：学术结构合规门（IMRaD 节齐备 + 引言漏斗结构 + 讨论四要素；v19.22.0：「结论」节接受**结语 / 余论**同义、**无讨论节 = P2 转人工**不再 P0、漏斗词表补人文缺口侧词面），详见 [`references/agents/07-审计-auditor.md`](references/agents/07-审计-auditor.md) §学术结构合规段。
   > **`methodology-check.mjs`**：方法论可复现性门（方法节参数完整性 + 统计-数据匹配 + 结果-方法闭环），详见 [`references/agents/07-审计-auditor.md`](references/agents/07-审计-auditor.md) §方法论可复现性段。
   > **`cite-coverage-check.mjs`**：引用实质相关性度量（强度分布 + 冗余检测 + 年代分布），详见 [`references/agents/07-审计-auditor.md`](references/agents/07-审计-auditor.md) §引用实质相关性段。
   > **`journal-fit.mjs`**：期刊反向工程（desk-reject 原因对位 + 审稿周期匹配 + 投稿格式合规），详见 [`references/_shared/期刊数据库.md`](references/_shared/期刊数据库.md) §三 扩展示例。
