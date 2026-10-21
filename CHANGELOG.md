@@ -6,13 +6,14 @@
 
 <!-- 行为变更 1 条 | 锚点 = CHANGELOG.md § 19.27.2（版本号重发，内容同 19.27.1） -->
 
-> **主题**：**版本号重发**。代码、文档与测试与 `19.27.1` **逐字相同**（`git diff` 只有版本串），本条存在的唯一原因是一个外部阻塞：`npm publish` 对 `19.27.1` 三次返回 `E409 Cannot publish over previously staged version "19.27.1"`（首次 PUT 报 "being processed"，其后该版本号在 registry 侧被预留，`npm stage list --include-staged=true` 查无条目、`/lunheng-article-pipeline/19.27.1?write=true` 返回 `version not found`，等待 10 分钟以上无变化）。npm 侧的预留无法由客户端清除，故版本号前移一格重发；`19.27.1` 的 git tag 保留（代码内容即该 tag），npm 上**不存在** 19.27.1。
+> **主题**：**版本号重发**。代码、文档与测试与 `19.27.1` **逐字相同**（`git diff` 只有版本串），本条存在的唯一原因是一个外部阻塞：`npm publish` 对 `19.27.1` 三次返回 `E409 Cannot publish over previously staged version "19.27.1"`（首次 PUT 报 "being processed"，其后该版本号在 registry 侧被预留，`npm stage list --include-staged=true` 查无条目、`/lunheng-article-pipeline/19.27.1?write=true` 返回 `version not found`，等待 10 分钟以上无变化）。npm 侧的预留无法由客户端清除，故版本号前移一格重发；`19.27.1` 的 git tag 保留（代码内容即该 tag）。**【更正 2026-10-21】**「npm 上不存在 19.27.1」已在发布当天过期：该号随后经 2FA 批准实际上架（2026-10-20T16:13Z），两版并存、内容一致，装哪个都不影响行为。
 
 - **① 重发登记（无代码差异）**：`19.27.1` 的实际改动面见 §19.27.1（边车缺省产出 / T9 雷达叙述式解析 / QLT-6 口径穿透 / 08 卡示例纠正）。安装时应装 `19.27.2`；看到 `19.27.1` 的 tag 或修订记录时按同一批内容理解。
 
-**验证**：内容与 v19.27.1 同一提交树（仅 `package.json` 与 94 处版本串不同）；四门与 `node --test` 结论沿用 §19.27.1（四门全绿 / 1379 例 0 失败）。
+**验证**：`node --test` 两个 glob **1379/1379 全绿**（与 §19.27.1 同一提交树，仅 `package.json` 与 94 处版本串不同，故结论沿用）；四门 + pack-smoke 全绿。**【更正 2026-10-21】**原写法「四门全绿 / 1379 例 0 失败」不含 `N/N 全绿` 形态，被 `tests/docs-facts.test.mjs` 的 v18.62.4 P2-4 断言判红 → gates 失败、发布链跳步（见下「发版通道」）。
 **回滚点**：`v19.27.0`（`034c1e20`）——若须回滚，19.27.1 与 19.27.2 是同一批，按 19.27.0 回退即可。
-**未做（如实）**：未联系 npm 支持清除 19.27.1 的预留；若日后 registry 侧突然放出 19.27.1，它的内容与 19.27.2 相同（同一 tarball shasum `a520ca5a…`），装哪个都不影响行为。
+**未做（如实）**：未联系 npm 支持清除 19.27.1 的预留（该号后经 2FA 批准上架，已不必清除）。**【更正 2026-10-21】**原写两版「同一 tarball shasum `a520ca5a…`」不准确：`19.27.1` = `a520ca5a…`、`19.27.2` = `e930a90c…`——版本串写进了 tarball，shasum 必然不同；差别只在版本串，行为一致。
+**发版通道（2026-10-21 补记，如实）**：GitHub Release 自 v19.27.0 后停更 —— `publish` 工作流在 `v19.27.1`（`npm publish` E409：版本号被前一次 staged 发布预留）与 `v19.27.2`（gates 红：即上述验证行形态）双双失败，而 `release` 作业 `needs: publish` ⇒ 自动建 Release 从未执行。两版 npm 包为**账号手工发布**（registry 元数据 `attestations=null`，无 provenance；对照 `19.27.0` 为 `_npmUser=GitHub Actions` + SLSA），两个 Release 亦为**手工补建**（资产 = 各 tag 的 `npm pack` 产物，shasum 与 registry 一致）。**下次发版前**须先确认 `docs-facts` 的验证行形态，且不要在本机对同一版本号先 `npm publish`（会预留该号并让 CI E409）。
 
 ## 19.27.1 — 2026-10-20
 
