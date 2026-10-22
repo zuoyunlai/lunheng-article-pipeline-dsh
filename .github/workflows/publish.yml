@@ -251,7 +251,7 @@ jobs:
           #   正确判据 = **「是否存在严格更新的版本」**：`@>$VER` 无匹配时 npm 报 E404（故 `|| true` 兜住 `bash -e`）。
           NEWER="$(npm view "$PKG@>$VER" version 2>/dev/null | tr -d '[:space:]' | tail -n1 || true)"
           if [ -n "$NEWER" ]; then
-            echo "::notice::registry 上存在更新版本（$NEWER）→ 本次 $VER 是补推的历史 tag，**不动** latest，避免把 dist-tag 拉回旧版。如需前移，对最新版所在的 tag 重跑本工作流。"
+            echo "::notice::registry 上存在更新版本（${NEWER}）→ 本次 $VER 是补推的历史 tag，**不动** latest，避免把 dist-tag 拉回旧版。如需前移，对最新版所在的 tag 重跑本工作流。"
             exit 0
           fi
           echo "本次版本=$VER 确认为 registry 最新版（无更新版本）"
@@ -259,10 +259,10 @@ jobs:
           npm install -g npm@11.21.0 --no-audit --no-fund >/dev/null 2>&1 || true
           echo "npm $(npm --version)（dist-tag OIDC 需 ≥11.21.0）"
           if npm dist-tag add "$PKG@$VER" latest; then
-            echo "✓ latest 已前移 → $VER（**OIDC trusted publishing**，无需任何长期凭据）"
+            echo "✓ latest 已前移 → ${VER}（**OIDC trusted publishing**，无需任何长期凭据）"
           elif [ -n "${NPM_TOKEN}" ]; then
             if npm dist-tag add "$PKG@$VER" latest --registry=https://registry.npmjs.org; then
-              echo "✓ latest 已前移 → $VER（NPM_TOKEN 兜底路径）"
+              echo "✓ latest 已前移 → ${VER}（NPM_TOKEN 兜底路径）"
             else
               echo "::error::NPM_TOKEN 存在但鉴权失败（E401 = 令牌已失效/被撤销/无 dist-tag:write 范围）——**发布本身已成功、无需重发**。请在 npm 侧换发细粒度 token 后 gh secret set NPM_TOKEN，或（推荐）改为在 npm 侧开启 OIDC dist-tag 权限后重跑本工作流；临时兜底：npm dist-tag add $PKG@$VER latest --registry=https://registry.npmjs.org"
               exit 1
@@ -297,7 +297,7 @@ jobs:
           #   （两条规则合起来不可满足；与 handoff A7「通知单 vs 回执账本」同型的结构互斥）。
           NEWER="$(npm view "$PKG@>$VER" version 2>/dev/null | tr -d '[:space:]' | tail -n1 || true)"
           if [ -n "$NEWER" ]; then
-            echo "::notice::registry 上存在更新版本（$NEWER）→ 本次 $VER 是补推的历史 tag，按防回退口径**不**断言 latest==$VER（当前 latest=$LATEST）"
+            echo "::notice::registry 上存在更新版本（${NEWER}）→ 本次 $VER 是补推的历史 tag，按防回退口径**不**断言 latest==${VER}（当前 latest=${LATEST}）"
             exit 0
           fi
           if [ "$LATEST" = "$VER" ]; then
@@ -343,7 +343,7 @@ jobs:
           DSH_TAG="$(npm view "$PKG" dist-tags.dsh 2>/dev/null | tr -d '[:space:]')"
           echo "dist-tags.dsh=$DSH_TAG"
           if [ "$DSH_TAG" != "$VER" ]; then
-            echo "::warning::dist-tags.dsh=$DSH_TAG ≠ $VER（若已配置 NPM_TOKEN 则不应发生；无 token 时属预期：publish --tag dsh 会自动指向本版本）"
+            echo "::warning::dist-tags.dsh=$DSH_TAG ≠ ${VER}（若已配置 NPM_TOKEN 则不应发生；无 token 时属预期：publish --tag dsh 会自动指向本版本）"
           fi
 
   # ── GitHub Release（2026-09-21 新增）────────────────────────────────────────────

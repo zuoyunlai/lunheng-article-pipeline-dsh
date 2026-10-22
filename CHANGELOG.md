@@ -24,7 +24,11 @@
 - **⑪ 安装测试显式 opt-in（P2-9）**：`tests/host-install-smoke` 只要 PATH 有 `dsh` 就**真跑 `dsh plugin add`**（可联网）——「跑一遍单元测试」在装了宿主 CLI 的机器上隐式包含安装。现改为 `LUNHENG_HOST_INSTALL_SMOKE=1` 才执行，其余**带理由 skip**；新增假宿主负向用例（先输出自注册行再 exit 1 → 不得判绿）。
 - **⑫ CI 重复全跑收敛（P3-1）**：每个 leg 把同一套全量测试跑两遍（包裹跑 + 裸跑），四 leg = 8 遍。裸跑改为 **`if: failure()`**：绿路径跑一次，红路径补跑取失败细节——**只省绿路径成本，不削减诊断面**。
 
-**验证**：`node --test` 两个 glob **1395/1395 全绿**（基线 1379；+16 例 = P1-1 围栏 / P1-2 四例 / P1-3 四例 / P2-2·P2-3 两例 / P2-4 两例 / P2-6 两例 / P2-9 一例；另 +1 skip = P2-9 的显式 opt-in，属登记而非能力回退）；四门 + pack-smoke 全绿。
+**验证**：`node --test` 两个 glob **1396/1396 全绿**（基线 1379；+17 例 = P1-1 围栏 / P1-2 五例 / P1-3 四例 / P2-2·P2-3 两例 / P2-4 两例 / P2-6 两例 / P2-9 一例；另 +1 skip = P2-9 的显式 opt-in，属登记而非能力回退）；四门 + pack-smoke 全绿。
+> **首次发版实测补记（2026-10-23，CI 抓到，本段即修复记录）**：macOS 的 `script-tests (22.19)` 红于 `P1-2 ③`——`bash: NEWER\xef: unbound variable`。
+> 根因不是测试问题，而是 **workflow 本身的可移植性缺陷**：`$NEWER（` 里变量**裸接全角括号**，macOS 自带 bash 3.2 会把多字节字符的**首字节**并进变量名，而 Linux bash 5 在非标识符字节处正常停止 ⇒ **本机与 Ubuntu 都测不出来**。
+> 已把本批新增/触碰的全部 `$VAR` + 非 ASCII 改为 `${VAR}`（5 处），并补回归 `P1-2 ⑤`（扫两个新 step，出现裸接即红）。
+> 同批 CI 另有 `pack-smoke (windows-latest)` 红 —— 属既有 runner 侧偶发（`tar: Archive entry has empty or unreadable filename`，2026-10-20 起记录在案，同 tarball 在 ubuntu/macOS 均通过），**不改包**，按既定判据重跑。
 **回滚点**：`v19.27.2`（`f78bc4d8`）；文件级备份 = 仓库外 `_lunheng-audit-20261022/bak-20261022-auditfix/`。
 **未做（如实）**：① 三条 E3 级建议（机器可读运行账本 / T8 独立复核 / 检索内容提示注入隔离）**未动代码**——无可复现红例，仍属议案；② T7 审计卡已贴死 `DOC_BUDGET`（56,184 / 56,320 B），两条证据纪律**未插入卡内**，其真源在 `_shared/M-Gate-Algorithm.md` §M-Fact-1 ⑥⑦（T7 判该门读的就是它）；③ 本轮未跑真实 `npm publish`（按纪律交给 CI）与真实宿主 `dsh plugin add`（需联网安装授权）。
 

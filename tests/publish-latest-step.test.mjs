@@ -115,3 +115,14 @@ test('P1-2 ④：该 step 的 shell 必须能被 bash 解析（语法级，防�
     assert.ok(existsSync(f))
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
+
+test('P1-2 ⑤：**变量不得裸接非 ASCII**（bash 3.2 会把多字节首字节并进变量名）', () => {
+  // 实测（v19.27.3 首次发版，macOS CI 红）：`$NEWER（` 在 macOS 自带 bash 3.2 下解析成
+  //   `NEWER\xef: unbound variable`，而 Linux bash 5 正常通过 —— 只在本机测等于测不到。
+  //   判据：凡 `$VAR` 紧跟非 ASCII 字符，必须写成 `${VAR}`。
+  for (const marker of ['latest 前移硬断言', '同 SHA CI 绿闸']) {
+    const s = extractStepShell(marker)
+    const bad = [...s.matchAll(/\$[A-Za-z_][A-Za-z0-9_]*[^\x00-\x7F]/g)].map((m) => m[0])
+    assert.deepEqual(bad, [], `${marker}：以下变量裸接非 ASCII，须改 \${VAR} 形态 → ${JSON.stringify(bad)}`)
+  }
+})
