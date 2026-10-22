@@ -1200,11 +1200,56 @@ if (opt.requireGates) {
       }
     }
   }
-  // 无账本 → 只进 notes（**不改退出码**，理由见上方三态注释：挂软项会反向惩罚合规项目）
+  // 无账本 → **按项目代际分流**（v19.27.3 · 反哺 2026-10-22 **P2-4** 修复）
+  //
+  // 病灶（已复现）：旧实现只看「文件在不在」。同一份项目，账本在盘且不相容 → exit 21 四条 A7 硬项；
+  //   把账本**删掉** → A7 全消、只留一条 notes（exit 22）。于是「删除证据」比「留下矛盾证据」
+  //   更容易过门 —— 而本门自己的口径写的是「**新项目必须**落回执账本」。缺证据不该提高可信度。
+  //
+  // 判据（**不用时间启发**，只用项目自己写下的、可核对的代际证据）：
+  //   `modernEvidence` = ① `status.md` / `01-任务简报.md` 声明了新交付协议（`交付协议：v2`）；
+  //                     ② 任一份 `阶段确认-*.md` 的 §6 里写了 `回执 id`（该字段 v18.81.0 才进模板 ——
+  //                        写了它，就等于声明「本项目按新模板走」）。
+  //   现代项目缺账本 → **硬 21**（动作 = 补账本，或显式声明 `交付协议：v1` 走存量口径）；
+  //   无上述证据的存量项目 → 只进 notes（保留三态容忍，避免对 v18.81.0 前的项目反向惩罚）。
+  //   边界（如实）：`交付协议：v1` 是**作者自陈**，机检无法证明它真属于旧项目；它换来的只是
+  //   「不判硬」，报告里必须如实标为 legacy / 未核验，**不得**读成「已核」。
   if (!existsSync(receiptsPath)) {
-    notes.push('人门口回执：未发现 `audits/gate-receipts.jsonl` —— 本项目的门留痕仅为 §6 **人工自述**'
-      + '（无法核对「主人真的这么答过」）。v18.81.0 前开工的项目属此形态；'
-      + '**新项目必须按 `references/templates/主人确认-template.md` §6 落回执账本**（一行一次往返）。')
+    let modernEvidence = ''
+    let legacyDeclared = ''
+    // 判据要容忍 Markdown 加粗：实际写法是 `- **交付协议**：v2`（`**` 夹在词与冒号之间），
+    //   旧式「词后紧跟冒号」的正则会静默漏检——本批实测踩到过一次。
+    const protoRe = /交付协议[\s*]*[:：][\s*]*`?v?2\b/
+    const legacyRe = /交付协议[\s*]*[:：][\s*]*`?v?1\b/
+    for (const f of ['status.md', '01-任务简报.md']) {
+      const t = (() => { try { return readFileSync(join(project, f), 'utf8') } catch { return '' } })()
+      if (!t) continue
+      if (legacyRe.test(t)) { legacyDeclared = `${f} 声明「交付协议：v1」`; break }
+      if (!modernEvidence && protoRe.test(t)) modernEvidence = `${f} 声明「交付协议：v2」`
+    }
+    // 显式 legacy 声明**优先**：v1 项目即便 §6 用了新模板字段，也按存量口径处理（作者自陈，
+    //   机检无法证伪——报告必须如实标 legacy / 未核验，不得读成已核）。
+    // ② 无协议声明时，退到「§6 是否使用了新模板字段」这一代际指纹
+    if (!legacyDeclared && !modernEvidence) {
+      const gateDocs = readdirSync(project).filter((f) => /^阶段确认-.*\.md$/.test(f))
+      for (const f of gateDocs) {
+        const t = (() => { try { return readFileSync(join(project, f), 'utf8') } catch { return '' } })()
+        if (t && /回执\s*id/.test(t)) { modernEvidence = `${f} 的 §6 使用了「回执 id」字段（v18.81.0 起的模板形态）`; break }
+      }
+    }
+    if (legacyDeclared) {
+      notes.push(`人门口回执：未发现 \`audits/gate-receipts.jsonl\`；项目以 ${legacyDeclared} 显式声明为**存量协议**——`
+        + '按 legacy / 未核验处理（只提示、不判硬）。**新项目不得用 v1 规避账本要求**。')
+    } else if (modernEvidence) {
+      addHard('A7', 'audits/gate-receipts.jsonl',
+        `本项目按新交付协议留痕（证据：${modernEvidence}），但**回执账本不存在**——`
+        + '缺证据不得优于「账本在盘但有矛盾」：请补 `audits/gate-receipts.jsonl`（一行一次人门往返）；'
+        + '若确属 v18.81.0 前的存量项目，请在 `status.md` 显式写 `交付协议：v1` 走存量口径（此时只提示、不判硬）', 21)
+    } else {
+      notes.push('人门口回执：未发现 `audits/gate-receipts.jsonl` —— 本项目的门留痕仅为 §6 **人工自述**'
+        + '（无法核对「主人真的这么答过」）。本项目未见新交付协议证据，按**存量（legacy / 未核验）**口径处理；'
+        + '**新项目必须按 `references/templates/主人确认-template.md` §6 落回执账本**（一行一次往返）。')
+    }
   } else if (receipts.length === 0 && badLines.length === 0) {
     notes.push('人门口回执：账本存在但 0 条有效回执——与「没记」同形，禁止（与 disproofs-check 对空账本的口径一致）。')
   }

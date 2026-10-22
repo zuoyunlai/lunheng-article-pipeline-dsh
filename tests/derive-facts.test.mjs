@@ -34,6 +34,23 @@ test('S1 冲突：SKILL 的总项写错 → 报出', () => {
   assert.match(issues[0], /总 27 项/)
 })
 
+test('v19.27.3（反哺 2026-10-22 P2-6）：**同文后续矛盾**也必须报——不得只看第一处', () => {
+  // 病灶（探针实测）：旧实现用 `.exec` 只取首个匹配 → 「机检 25 项；总 26 项」在前、
+  //   「机检 999 项；总 999 项」在后时 issues 仍为 []，即本门只证明了「第一处没漂」。
+  // 判据：穷举全部同类声明；任一处不一致即报，且点名是第几处。
+  const issues = checkDocs(FACTS, { ...CLEAN, skill: '机检 25 项；总 26 项。\n另处：机检 999 项，总 999 项。' })
+  assert.equal(issues.length, 2, '两处矛盾都要报：' + JSON.stringify(issues))
+  assert.ok(issues.some((x) => /999/.test(x) && /机检/.test(x)), '须点名后续「机检 999 项」')
+  assert.ok(issues.some((x) => /999/.test(x) && /总/.test(x)), '须点名后续「总 999 项」')
+  assert.ok(issues.some((x) => /第 2 处/.test(x)), '须给出命中序号，便于定位：' + JSON.stringify(issues))
+})
+
+test('v19.27.3（反哺 2026-10-22 P2-6）：**逆序**同样要报（错误在前、正确在后不得洗白）', () => {
+  const issues = checkDocs(FACTS, { ...CLEAN, skill: '机检 999 项；总 26 项。\n其后：机检 25 项。' })
+  assert.equal(issues.length, 1, '前段错误不得被后段正确值掩盖：' + JSON.stringify(issues))
+  assert.match(issues[0], /第 1 处|999/)
+})
+
 test('S1 冲突：常驻集上限被写死（旧版 54 KB 的形态）→ 报出', () => {
   const issues = checkDocs(FACTS, { ...CLEAN, ops: '合计上限 **54.0 KB**（真源 = ALWAYS_LIMIT）' })
   assert.equal(issues.length, 1)

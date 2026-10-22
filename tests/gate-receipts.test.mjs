@@ -162,6 +162,31 @@ test('R8：账本文件**不存在时**不得凭空要求「回执 id」（防�
     assert.ok(existsSync(join(d, 'audits')), '夹具应有 audits/ 目录（账本只是没写文件）')
     const j = runH(d)
     assert.equal(a7(j).length, 0, '账本不在盘时 §6 无「回执 id」不得判硬：' + JSON.stringify(j.hard))
+    assert.match(notesOf(j), /legacy|存量/, '必须如实标为存量 / 未核验（v19.27.3 P2-4）')
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
+test('R9（v19.27.3 · 反哺 2026-10-22 P2-4）：**现代项目删掉账本不得变宽松**——缺证据不得优于有矛盾', () => {
+  // 病灶（已复现）：账本在盘且不相容 → exit 21；把账本删掉 → A7 全消、只留 notes。
+  //   于是「删除证据」比「留下矛盾证据」更容易过门，与本门「新项目必须落账本」的口径相反。
+  // 判据：项目自己写下了新交付协议的证据（§6 有「回执 id」/ status 声明 v2）时，缺账本判硬 21。
+  const d = mkProj({ receiptIds: (g) => `${g}#1` })   // 有「回执 id」、无账本文件
+  try {
+    assert.ok(!existsSync(join(d, 'audits', 'gate-receipts.jsonl')), '夹具前提：账本不在盘')
+    const j = runH(d)
+    assert.equal(j.exit, 21, '现代项目缺账本必须硬 21（不得只提示）：' + JSON.stringify(j.hard))
+    assert.ok(a7(j).some((x) => /gate-receipts\.jsonl/.test(x.subject)), '须点名缺失的账本路径')
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
+test('R10（v19.27.3 · P2-4）：显式声明 `交付协议：v1` 的存量项目仍走宽容口径（不得反向惩罚）', () => {
+  const d = mkProj({ receiptIds: (g) => `${g}#1` })
+  try {
+    writeFileSync(join(d, 'status.md'), '# 状态\n\n- **交付协议**：v1（v18.81.0 前开工的存量项目）\n')
+    const j = runH(d)
+    assert.equal(j.exit, 22, '声明 v1 的存量项目不得因缺账本判硬：' + JSON.stringify(j.hard))
+    assert.equal(a7(j).length, 0)
+    assert.match(notesOf(j), /legacy|存量/)
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
 

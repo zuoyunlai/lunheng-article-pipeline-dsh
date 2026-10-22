@@ -164,7 +164,7 @@ test('矩阵 ⑦ 组合：合法项目内的输出路径既「在围栏内」又
 //   真实触发面：macOS 的 `os.tmpdir()` 是 `/var/folders/…`（软链到 `/private/var/…`）、Windows 的 TEMP
 //   可能是 junction / 8.3 短名；共享被链接前缀的一切调用都会中招（CI：macOS 与 windows 作业红，本机绿）。
 // 本用例**在任意平台可复现**：造一个「被链接的前缀」，再问一个**不存在**的子路径是否在围栏内。
-test('矩阵 ⑧ 被链接前缀 + **候选不存在** → 仍必须判「在围栏内」（同空间规范化，不因不存在而退回字面）', { skip: (canDirJunction || canFileSymlink) ? false : '本机无法创建目录 junction/软链——环境不支持，带理由跳过' }, () => {
+test('矩阵 ⑧ 被链接前缀 + **候选不存在** → 仍必须判「在围栏内」（同空间规范化，不因不存在而退回字面）', { skip: (canDirJunction || canFileSymlink) ? false : '本机无法创建目录 junction/软链——环境不支持，带理由跳过' }, (t) => {
   const d = mk('lh-fs-canon')
   try {
     const realRun = join(d, 'real', 'run')
@@ -173,7 +173,13 @@ test('矩阵 ⑧ 被链接前缀 + **候选不存在** → 仍必须判「在围
     const linkParent = join(d, 'link')
     try {
       symlinkSync(join(d, 'real'), linkParent, process.platform === 'win32' ? 'junction' : 'dir')
-    } catch { return }   // 环境不允许（已在 skip 判据里探过，这里是兜底）
+    } catch (e) {
+      // v19.27.3（反哺 2026-10-22 **P2-7** 修复）：旧写法 `catch { return }` 把「链接建不出来」
+      //   当成**用例通过**（用例状态仍是 pass）。而本用例的立身之处正是那条链接——
+      //   没建出来 = 断言根本没执行。现改为**显式跳过并说明原因**：环境不支持 ≠ 行为正确。
+      t.skip(`本机此刻无法创建目录链接（${e?.code || e?.message}）——断言未执行，带理由跳过（不得读成通过）`)
+      return
+    }
     // ① 经链接看到的「合法未创建文件」必须判在围栏内（旧实现在 macOS/Windows 上此处失败）
     assert.equal(fence.isPathInsideRunDir(join(linkParent, 'run'), join(linkParent, 'run', 'proj', '新稿.html')), true,
       '经被链接前缀的**未创建**输出路径必须判「在 run 内」（规范化应上溯到存在的最近祖先）')

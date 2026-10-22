@@ -129,7 +129,14 @@ export function mFact1(ctx) {
   };
 
   // ---- 数字跨节一致性 ----
-  const groups = new Map();   // key -> [{value, unit, idx, section}]
+  // v19.27.3（反哺 2026-10-22 **P2-3** 修复）：分组键从「标签」改为「标签 + 单位」。
+  //   病灶（已复现）：旧实现先按 key 聚合，再在**整组**上判 `units.size > 1 → continue` ——
+  //   于是「样本覆盖率 60%」（摘要）/「样本覆盖率 80%」（结果）本来同单位、本该报冲突，
+  //   只要文中另有一处「样本覆盖率 3 万人」，整组就被跳过（pass: true）。
+  //   即：**添加一条无关观察会抹掉既有发现**，违反「错误集合单调」这条基本判据。
+  //   修法：单位进分组键 —— 只跳过**不可比的那一对**，同单位冲突照报（不做无依据的单位换算）。
+  const groupKey = (key, unit) => `${key}\u0000${unit || ''}`;
+  const groups = new Map();   // groupKey -> [{key, value, unit, idx, section}]
   for (const m of text.matchAll(NUM_RE)) {
     const key = keyBefore(m.index);
     if ([...key].length < minKey) continue;          // 键太短 → 不是「具体表述」
@@ -137,25 +144,60 @@ export function mFact1(ctx) {
     if (CLAUSE_MARK.test(key) || CLAUSE_TAIL.test(key)) continue;   // 从句片段 → 不成组（实测假阳性来源）
     const value = Number(m[1].replace(/,/g, ''));
     if (!Number.isFinite(value)) continue;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push({ value, unit: m[2], idx: m.index, section: sectionOf(m.index), raw: m[0].trim() });
+    const gk = groupKey(key, m[2]);
+    if (!groups.has(gk)) groups.set(gk, []);
+    groups.get(gk).push({ key, value, unit: m[2], idx: m.index, section: sectionOf(m.index), raw: m[0].trim() });
   }
+  /**
+   * 命中处的**限定语签名** = 同句内出现的四位年份集合。
+   *
+   * v19.27.3（反哺 2026-10-22 **P2-2** 修复）：旧实现只用「数字前 12 字」当事实标签，
+   *   把**时间/主体/口径**全部丢掉 —— 于是「2020 年覆盖率 60%」与「2025 年覆盖率 80%」
+   *   被当成同一事实的两次矛盾陈述（实测判 P0）。那不是矛盾，是**不同观察期**。
+   *   本函数不假装理解语义，只取一个廉价、可解释的信号：命中句里有没有年份、是不是同一年份。
+   *   签名不同或缺失 ⇒ **未证明是同一事实** ⇒ 只出候选，判级交 T7/T8。
+   */
+  const sentenceOf = (idx) => {
+    const bounds = ['\n', '。', '；', '！', '？'];
+    const from = Math.max(...bounds.map((p) => text.lastIndexOf(p, idx - 1))) + 1;
+    const tos = bounds.map((p) => text.indexOf(p, idx)).filter((x) => x >= 0);
+    const to = tos.length ? Math.min(...tos) : text.length;
+    return text.slice(from, to);
+  };
+  const ctxSig = (idx) => {
+    const s = sentenceOf(idx);
+    return [...new Set([...s.matchAll(/(?<!\d)((?:19|20)\d{2})(?!\d)/g)].map((x) => x[1]))].sort().join(',');
+  };
   const conflicts = [];
-  for (const [key, hits] of groups) {
+  for (const [, hits] of groups) {
     const sections = new Set(hits.map((h) => h.section));
     if (sections.size < 2) continue;                 // 「跨节」才判——同节内重复表述不查
     const vals = hits.map((h) => h.value);
     const max = Math.max(...vals), min = Math.min(...vals);
     if (max === 0) continue;
     if ((max - min) / max <= tol) continue;          // 容差内视为一致（约 68% vs 68.1%）
+    const key = hits[0].key;
     const units = new Set(hits.map((h) => h.unit));
-    if (units.size > 1) continue;                    // 单位不同（万 vs 亿）→ 数值天然不同，不判（避免换算假阳性）
+    if (units.size > 1) continue;                    // 防御性保留（分组键已含单位，正常不会命中）
     const core = hits.some((h) => /摘要|结论|结语/.test(h.section));
+    const sigs = hits.map((h) => ctxSig(h.idx));
+    // 判据（**窄**，刻意不做「无年份就降级」）：只有当限定语**确实不同**时，才证明
+    //   「这是不同观察期的陈述」→ 降候选。全部一致（含**全部缺失**）时仍按原文口径判硬：
+    //   没有区分性上下文的两处不同数值，就是需要作者解释的矛盾，不能靠「缺少信息」自动变绿
+    //   （否则本文门会退化成「只要不写年份就永不报错」——把假阳性换成系统性漏检）。
+    const sameContext = sigs.every((s) => s === sigs[0]);
     conflicts.push({
       key, values: vals, units: [...units][0],
       sections: [...sections],
-      hits: hits.map((h) => ({ section: h.section, raw: h.raw, value: h.value })),
-      severity: core ? 'P0' : 'P1',
+      hits: hits.map((h, i) => ({ section: h.section, raw: h.raw, value: h.value, ctx: sigs[i] })),
+      severity: sameContext ? (core ? 'P0' : 'P1') : 'P2',
+      ...(sameContext
+        ? {}
+        : {
+          reason: 'context-mismatch',
+          note: '命中处的限定语（同句四位年份）**不一致或缺失** ⇒ 未证明是同一事实的两次陈述，'
+            + '按候选处理（P2）：请 T7/T8 语义复核定性，不得据本项直接打回重写',
+        }),
     });
   }
 
@@ -257,9 +299,15 @@ export function mFact1(ctx) {
   //      P0/P1/P2/通过 判定。这样：detail 早已写明「未执行，不是「通过」」（人读可见），
   //      而 `report.unchecked[]` 让**退出码侧/机器侧也看得见**（新增字段，不改既有语义）。
   const materialUnchecked = materialChecked.files.length === 0 && !!materialChecked.skipped;
-  const worst = conflicts.some((c) => c.severity === 'P0') || materialP0 ? 'P0'
-    : (conflicts.length > 0 || materialChecked.conflicts.length > 0 ? 'P1'
-      : (aliasPairs.length > 0 ? 'P2' : '通过'));
+  // v19.27.3（反哺 2026-10-22 P2-2 的第二半）：**门级严重度必须尊重逐条判定**。
+  //   病灶：上面的 `conflicts[]` 已按限定语区分了 P0/P1/P2，但这里旧写法把
+  //   「conflicts.length > 0」**一律**升成 P1 —— 逐条降级被这一行整体抵消，
+  //   于是候选（P2）照样让整门 `pass:false`、照样进 hard 桶、照样卡交付。
+  //   现在：P0 有 P0、有 P1 才 P1、只剩候选则 P2（P2 依既有 v18.62.4 规则不改 pass）。
+  const conflictWorst = conflicts.some((c) => c.severity === 'P0') || materialP0 ? 'P0'
+    : (conflicts.some((c) => c.severity === 'P1') || materialChecked.conflicts.length > 0 ? 'P1'
+      : (conflicts.length > 0 ? 'P2' : null));
+  const worst = conflictWorst ?? (aliasPairs.length > 0 ? 'P2' : '通过');
   const parts = [];
   if (conflicts.length) parts.push(`数字跨节不一致 ${conflicts.length} 组：` + conflicts.slice(0, 3).map((c) => `「${c.key}」=${c.values.join(' / ')}`).join('；'));
   if (materialChecked.conflicts.length) {

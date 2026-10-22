@@ -32,6 +32,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      # v19.27.3（反哺 2026-10-22 **P1-3**）：同 SHA 的 CI 结论是发布前置条件 → 需读 check/run 元数据。
+      #   只读；本作业仍**没有** id-token 与 NPM_TOKEN（把读权限与发布身份分开是 v18.2.6 的既有边界）。
+      actions: read
     steps:
       # Actions 固定到 commit SHA（v2.5.2-dsh.13）：可移动的大版本 tag 一旦被上游改动即可被利用来发布恶意版本
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -81,6 +84,63 @@ jobs:
             exit 1
           fi
 
+      # ── v19.27.3（反哺 2026-10-22 **P1-3**）：**同 SHA 的 CI 必须是绿的**（不是「同形命令」）──
+      # 病灶（反哺报告 P1-3，配置事实、未触发真实发布）：`ci.yml` 对 `v*` tag **不触发**，而本作业的门是
+      #   另一份**手抄**清单（四门 + 安装 + 回归），于是 ci 独有门（`derive-facts --check`、
+      #   `bump-version --sync --check`、lockfile 冻结安装、`host-contract-probe --require-host`）
+      #   **不在发布前置条件里**；上一「发布来源闸」只证明祖先关系，不证明 CI 已绿。
+      #   推分支与推 tag 并行、或 CI 尚未跑完时，publish 仍可能先完成——而 npm 版本不可撤回。
+      # 判据：查**同一 commit SHA** 的 `ci.yml` 运行记录（不是名字相似的本地命令），要求
+      #   ① 至少有一次 ci 运行；② 没有 in-progress（有则等，最多 15 分钟）；③ 全部 conclusion=success。
+      # 边界（如实）：本步证明「ci.yml 对该 SHA 全绿」，不证明其它仓库外部服务；也不覆盖
+      #   `workflow_dispatch` 手动补 dist-tag 的路（那条路不发布新版本，故不设此闸）。
+      - name: 同 SHA CI 绿闸（ci.yml 必须已在该提交上成功）
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          REPO="$GITHUB_REPOSITORY"
+          SHA="$GITHUB_SHA"
+          RUNS="$(mktemp)"
+          VERDICT="$(mktemp)"
+          deadline=$(( $(date +%s) + 900 ))
+          # v19.27.3：**不依赖 jq**（原写法无 jq 时 127 崩溃，与「ci 红了」不可区分），改用 node 解析；
+          #   判据不变：同 SHA 的 ci.yml 有失败即红；查不到/仍在跑 → 30s 轮询，15 分钟超时 fail-closed。
+          while :; do
+            gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$SHA&per_page=100" > "$RUNS" 2>/dev/null || echo '{}' > "$RUNS"
+            node -e '
+              const fs = require("fs");
+              let j = {};
+              try { j = JSON.parse(fs.readFileSync(process.argv[1], "utf8") || "{}"); } catch { j = {}; }
+              const runs = Array.isArray(j.workflow_runs) ? j.workflow_runs : [];
+              const running = runs.filter((r) => r.status !== "completed").length;
+              const bad = runs.filter((r) => r.status === "completed" && r.conclusion !== "success");
+              const good = runs.filter((r) => r.status === "completed" && r.conclusion === "success").length;
+              if (!runs.length) { console.log("wait 尚未查到同 SHA 的 ci.yml 运行记录"); process.exit(0); }
+              if (bad.length) { console.log("fail 同 SHA 的 ci.yml 有 " + bad.length + " 次运行未成功——禁止发布（ci 独有门不在本作业门集合里）"); for (const b of bad) console.log("  · " + (b.name || "ci") + " #" + (b.run_number || "?") + " → " + b.conclusion + " " + (b.html_url || "")); process.exit(0); }
+              if (running === 0 && good > 0) { console.log("ok 同 SHA 的 ci.yml 已成功 " + good + " 次（无进行中、无失败）"); process.exit(0); }
+              console.log("wait 等待同 SHA 的 ci.yml 完成（进行中 " + running + " 次，已成功 " + good + " 次）");
+            ' "$RUNS" > "$VERDICT" 2>&1
+            verdict="$(head -n 1 "$VERDICT")"
+            case "$verdict" in
+              ok\ *)
+                echo "✓ ${verdict#ok }"
+                exit 0 ;;
+              fail\ *)
+                sed -n '2,$p' "$VERDICT"
+                echo "::error::${verdict#fail }"
+                exit 1 ;;
+              *)
+                echo "… ${verdict#wait }" ;;
+            esac
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::等待 15 分钟后仍没有「同 SHA 的 ci.yml 全部成功」的证据——**fail-closed**：发布是 npm 不可撤回动作，不接受未验证状态"
+              echo "（处置：确认该提交已推送到默认分支并让 ci 跑完，或重跑本 tag 的 workflow）"
+              exit 1
+            fi
+            sleep 30
+          done
       # ── v19.11.2（反哺 §P0-5）：**真实安装证据**（原 gates 缺这一层）────────────────
       # 此前 gates 只有「四门 + 回归」，没有一次真实 `dsh plugin add`；而 ci 侧有 install-smoke。
       # 现补上最高已验证宿主（0.2.1-rc.2）的安装烟测——发布物的**可装载性**不再是只在 push 侧验过。
@@ -223,7 +283,23 @@ jobs:
         if: vars.LUNHENG_REQUIRE_LATEST == 'true'
         run: |
           set -euo pipefail
-          LATEST="$(npm view "$PKG" dist-tags.latest 2>/dev/null | tr -d '[:space:]')"
+          # v19.27.3（反哺 2026-10-22 **P1-2** 修复）：**本 step 自己求值 VER**。
+          #   病灶（已用离线 shell + npm stub 复现，stderr = `bash: line 4: VER: unbound variable`）：
+          #   旧版直接引用上一步的 `VER`——而 GitHub Actions 每个 step 是**独立 shell**，局部变量不跨 step
+          #   （也没写进 GITHUB_ENV / outputs）。开关一按本步**必然**失败，且发生在**不可逆 npm publish 之后**：
+          #   包已发出、作业却红，而 `release` 作业 `needs: publish` → GitHub Release 静默缺失。
+          # 判据：跨 step 只能通过 outputs / env / artifact 交接，不能靠 shell 局部变量。
+          VER="$(node -p "require('./package.json').version")"
+          echo "本次版本=$VER"
+          LATEST="$(npm view "$PKG" dist-tags.latest 2>/dev/null | tr -d '[:space:]' || true)"
+          # P1-2 第二半（旧版**即使定义了 VER** 也仍会误红的场景）：补推历史 tag 时不得硬断言
+          #   latest==VER——那与上一步「存在更新版本 → 不动 latest」的防回退口径**直接互斥**
+          #   （两条规则合起来不可满足；与 handoff A7「通知单 vs 回执账本」同型的结构互斥）。
+          NEWER="$(npm view "$PKG@>$VER" version 2>/dev/null | tr -d '[:space:]' | tail -n1 || true)"
+          if [ -n "$NEWER" ]; then
+            echo "::notice::registry 上存在更新版本（$NEWER）→ 本次 $VER 是补推的历史 tag，按防回退口径**不**断言 latest==$VER（当前 latest=$LATEST）"
+            exit 0
+          fi
           if [ "$LATEST" = "$VER" ]; then
             echo "✓ latest == $VER"
           else

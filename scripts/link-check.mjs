@@ -39,8 +39,11 @@
  *   node scripts/link-check.mjs --json   # 附带 JSON 汇总（供 CI/脚本消费）
  *
  * 边界（如实）：
- *   · 只扫**技能目录**（`skills/lunheng-article-pipeline/**` 的 `.md`）；仓库根 README / docs / CONTRIBUTING
- *     不在本脚本范围（它们的引用以包级路径为主，由 `repo-hygiene-check` 与 `consistency-check` 各自覆盖）。
+ *   · 扫描面 = **技能目录 + 包级面**（`skills/lunheng-article-pipeline/**` 与本包根 README* 等）——
+ *     v19.27.3 更正：旧注释写「只扫技能目录、仓库根 README/docs/CONTRIBUTING 不在范围」，
+ *     而实现早已扩到包级面（见下方 SCOPE 推导）。**注释落后于实现会造成反向误判**
+ *     （维护者据此以为根 README 的链接没人管）。当前真源 = 本脚本的 `SCOPE`/`collect()`，
+ *     实测扫描面约 123 个 Markdown 文件；不在扫描面的目录会在 `--json` 汇总里如实列出。
  *   · 不做**锚点**校验（`file.md#小节` 只核文件是否在盘，不核锚点是否存在）——锚点校验需要 markdown 解析器
  *     与本仓「零依赖」相冲突，且本包锚点是中文标题派生的，误报率高。
  *   · 不解析代码块里的路径（```text 布局树里的示意路径是**举例**，不是引用）。

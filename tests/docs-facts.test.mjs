@@ -180,7 +180,20 @@ test('技能目录断链穷举：无未归类断链（link-check 的纯函数入
 //   时本门**无感**）。派生口径 = 随包 `.md` ∩ 对外声明面（`docs/**` + 顶层 `README*` + `SECURITY.md`）。
 const SURFACES = (() => {
   let packed = []
-  try { packed = readPackManifest(ROOT).files } catch { /* 受限会话 / npm 不可用 → 走下方静态回退 */ }
+  try {
+    packed = readPackManifest(ROOT).files
+  } catch (e) {
+    // v19.27.3（反哺 2026-10-22 **P2-7** 修复）：旧写法 `catch { /* 受限会话 → 静态回退 */ }`
+    //   **吞掉一切异常**——程序错误、输出形状变化、npm 语义变更都会被当成「环境限制」静默降级，
+    //   而旁注说的「留痕」实际没有任何输出（等于既降级又无痕）。
+    //   现按错误种类分流：只有**已知的环境级不可用**（起不来的 npm / 受限沙箱）才回退；
+    //   其余（解析失败、形状不符）**照抛**——那才是真缺陷，不该被降级成绿灯。
+    const code = e?.code || ''
+    const envLevel = ['ENOENT', 'EPERM', 'EACCES', 'ETIMEDOUT', 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER'].includes(code)
+    if (!envLevel) throw e
+    // 留痕：降级必须可观察（与 lib/guard.js 的「降级必须可观察」同口径），不再静默。
+    console.error(`⚠ docs-facts：pack 清单不可得（${code || e?.message}）→ 本进程退回静态声明面；这是**环境降级**，不是门通过`)
+  }
   const derived = packed
     .filter((f) => f.endsWith('.md'))
     .filter((f) => f.startsWith('docs/') || /^README[^/]*\.md$/.test(f) || f === 'SECURITY.md')

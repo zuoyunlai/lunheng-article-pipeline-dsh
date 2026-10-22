@@ -89,13 +89,24 @@ export function checkDocs(facts, docs) {
   const issues = []
   const push = (where, msg) => issues.push(`${where}: ${msg}`)
 
-  const mech = /机检\s*(\d+)\s*项/.exec(docs.skill)
-  if (mech && Number(mech[1]) !== facts.m_gate_mech) {
-    push('SKILL.md', `「机检 ${mech[1]} 项」与派生值 ${facts.m_gate_mech} 不一致（真源 = gate-count.mjs）`)
+  // v19.27.3（反哺 2026-10-22 **P2-6** 修复）：**穷举全部同类声明**，不再只看第一处。
+  //   病灶（已用纯函数探针复现）：旧实现用 `.exec` 只取**首个**匹配 —— 一份文档里写
+  //   「机检 25 项；总 26 项」是绿的，随后又写「机检 999 项，总 999 项」时 `issues` 仍为 `[]`。
+  //   即：本门证明的只是「第一处没漂」，而它想证明的是「全文没有与派生值冲突的手抄数字」。
+  //   判据：同一份文档内每个同类声明都要核；任一处不一致即报（并点名第几处，便于定位）。
+  let mechSeen = 0
+  for (const m of docs.skill.matchAll(/机检\s*(\d+)\s*项/g)) {
+    mechSeen += 1
+    if (Number(m[1]) !== facts.m_gate_mech) {
+      push('SKILL.md', `第 ${mechSeen} 处「机检 ${m[1]} 项」与派生值 ${facts.m_gate_mech} 不一致（真源 = gate-count.mjs；本门穷举全部同类声明）`)
+    }
   }
-  const total = /总\s*(\d+)\s*项/.exec(docs.skill)
-  if (total && Number(total[1]) !== facts.m_gate_total) {
-    push('SKILL.md', `「总 ${total[1]} 项」与派生值 ${facts.m_gate_total} 不一致（= 机检 + 1 人工项）`)
+  let totalSeen = 0
+  for (const m of docs.skill.matchAll(/总\s*(\d+)\s*项/g)) {
+    totalSeen += 1
+    if (Number(m[1]) !== facts.m_gate_total) {
+      push('SKILL.md', `第 ${totalSeen} 处「总 ${m[1]} 项」与派生值 ${facts.m_gate_total} 不一致（= 机检 + 1 人工项；本门穷举全部同类声明）`)
+    }
   }
 
   // ② 只许指针：常驻集上限不得写死（形如「合计上限 54.0 KB」「上限 **61 KB**」）

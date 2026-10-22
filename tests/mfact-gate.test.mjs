@@ -74,6 +74,40 @@ test('M-Fact-1：**从句碎片不得成组**（实测假阳性「可能的反�
   rmSync(c2.d, { recursive: true, force: true })
 })
 
+test('v19.27.3（反哺 2026-10-22 P2-2）：**不同观察期**的正常变化不得判 P0（降 P2 候选，交 T7/T8 定性）', () => {
+  // 病灶（已复现）：事实标签只取「数字前 12 字」，时间/主体/口径全丢 ——
+  //   「2020 年覆盖率 60%」与「2025 年覆盖率 80%」被当成同一事实的两次矛盾，实测判 P0。
+  // 判据（窄）：只有限定语**确实不同**才降候选；全部缺失时仍按原文口径判硬（防系统性漏检）。
+  const c = mkCase('2020 年，样本覆盖率为 60%。', '2025 年，样本覆盖率为 80%。')
+  const { item } = factOf(c)
+  assert.equal(item.pass, true, '不同年份的变化不是矛盾：' + item.detail)
+  assert.equal(item.severity, 'P2', '必须降为 P2 候选（不是 P0/P1）')
+  assert.equal(item.conflicts[0].reason, 'context-mismatch')
+  assert.match(item.conflicts[0].note, /语义复核/, '须写明判级归 T7/T8')
+  rmSync(c.d, { recursive: true, force: true })
+
+  // 同一年份、数值不同 → 仍是硬矛盾（降级不得把真冲突一并洗白）
+  const c2 = mkCase('2020 年，样本覆盖率为 60%。', '2020 年，样本覆盖率为 80%。')
+  const r2 = factOf(c2)
+  assert.equal(r2.item.pass, false, '同年份不同数值必须仍判硬：' + r2.item.detail)
+  assert.equal(r2.item.severity, 'P0')
+  rmSync(c2.d, { recursive: true, force: true })
+})
+
+test('v19.27.3（反哺 2026-10-22 P2-3）：**异单位命中不得抹掉同单位冲突**（错误集合单调）', () => {
+  // 病灶（已复现）：旧实现按 key 聚合后，只要整组 units.size>1 就整组 continue ——
+  //   「覆盖率 60% / 80%」的真实冲突，被一条「覆盖率 3 万人」无关观察抹掉（pass: true）。
+  const c = mkCase(
+    '样本覆盖率为 60%。',
+    '样本覆盖率为 80%。\n\n## 附录\n\n样本覆盖率为 3 万人。',
+  )
+  const { item } = factOf(c)
+  assert.equal(item.pass, false, '加入异单位观察不得消除既有同单位冲突：' + item.detail)
+  assert.equal(item.severity, 'P0', '摘要节参与 → P0')
+  assert.deepEqual(item.conflicts[0].values, [60, 80], '冲突本身必须仍被报出（只有 % 桶参与比较）')
+  rmSync(c.d, { recursive: true, force: true })
+})
+
 test('M-Fact-1：通用词不成组 + 单位不同不判（防「增长/占比」与万-vs-亿 假阳性）', () => {
   let c = mkCase('增长约为 12%，超出预期。', '增长约为 30%，不及预期。')
   assert.equal(factOf(c).item.pass, true, '通用词开头（增长）不得成组')

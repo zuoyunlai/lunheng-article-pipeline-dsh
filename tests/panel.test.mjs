@@ -16,7 +16,7 @@
 //      锁行为而不是源码字符串。覆盖：实时帧 / 未启用提示 / 空态 / SSE 断流兜底 / 座位如实汇报。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, symlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { pathToFileURL } from 'node:url'
@@ -463,7 +463,12 @@ test('面板（v18.91.0）：快照带 insights —— 阶段链 / 题名文类�
     assert.equal(ins.phases.current, 3)
     assert.deepEqual(ins.phases.closed, [1, 2, 2.5])
     assert.equal(ins.failures, 1, '失败记录计数')
-    assert.equal(ins.handoffs.ok, 1, '收报放行（exit 22）计数')
+    // v19.27.3（反哺 2026-10-22 P2-1）：22 是**软提示（待复核）**，不是「放行」。
+    //   旧断言把 exit 22 记成 ok —— 等于替 22 的语义做了反向宣传（与 SKILL.md §执行能力边界冲突：
+    //   「22 ≠ 已验收」）。本条是该缺陷的正面回归：22 只能进 soft，ok 只认 exit 0。
+    assert.equal(ins.handoffs.soft, 1, 'exit 22 必须计进 soft（待复核），不得计进 ok')
+    assert.equal(ins.handoffs.ok, 0, 'ok 只认 exit 0；本夹具没有 exit 0')
+    assert.equal(ins.handoffs.retry, 0)
     const names = ins.dirs.map((x) => x.name)
     for (const n of ['literature', 'data', 'cases', 'analysis', 'drafts', 'audits', 'final', 'final/图件', 'final/证据包']) {
       assert.ok(names.includes(n), '九宫格必须每一项都在，缺 ' + n)
@@ -851,6 +856,39 @@ test('v18.93.0：/file 只读下载——项目内 200 + 四类越界 403 + 缺�
     writeFileSync(join(d, 'run', 'proj-file', 'final', 'big.bin'), Buffer.alloc(9 * 1024 * 1024))
     assert.equal(call(ctx, base + encodeURIComponent('final/big.bin')).code, 413)
   } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
+test('v19.27.3（反哺 2026-10-22 P1-1）：**固定文件读取**也必须过围栏——项目内链接不得把界外内容读进快照', () => {
+  // 病灶（反哺报告 P1-1，HTTP 级实测）：`safeEntry` 只守目录遍历，而 `status.md` / `agents-log.md` /
+  //   `final/运行报告.json` / `final/token-cost.json` 走的是**固定路径** `readText()` →
+  //   项目里一个指向工作区外的 `final` 链接，就能让 `/snapshot` 把界外文件的**解析结果**写进响应体
+  //   （实测 HTTP 200 + 界外哨兵字段）。
+  // 本用例是该缺陷的**正面回归**：先造真实越界，再断言「侧车与 token 都读不到、响应体不含哨兵」。
+  const d = tmp()
+  const outside = tmp()
+  try {
+    mkProject(d, 'proj-fence')
+    const proj = join(d, 'run', 'proj-fence')
+    // 界外目录：一个能被面板解析的结构化文件（token-cost）+ 一个哨兵
+    writeFileSync(join(outside, 'token-cost.json'), JSON.stringify({ tokens: { total: 777 }, note: 'OUTSIDE-SENTINEL-P1-1' }))
+    writeFileSync(join(outside, '运行报告.json'), JSON.stringify({ scoring: { score: 99 }, marker: 'OUTSIDE-SENTINEL-RUNREPORT' }))
+    // 把项目内 final 换成指向界外的目录链接（Windows junction / POSIX symlink 都走这一条）
+    const fin = join(proj, 'final')
+    rmSync(fin, { recursive: true, force: true })
+    try { symlinkSync(outside, fin, 'junction') } catch { symlinkSync(outside, fin, 'dir') }
+    const ctx = mkCtx(d, {})
+    const snap = lightSnapshot(d, 'proj-fence')
+    assert.equal(snap.tokens, null, '界外 token-cost.json 必须读不到（围栏：链接不跟 + realpath 越界）')
+    const report = snap.insights?.report ?? null
+    assert.ok(!report || report.score !== 99, '界外运行报告不得被解析成报告读数')
+    const resp = call(ctx, PANEL_ROUTE + '/snapshot?root=' + encodeURIComponent(d) + '&project=proj-fence')
+    assert.equal(resp.code, 200, '快照本身仍可返回（降级为空态，而不是 500）')
+    const body = resp.chunks.join('')
+    for (const sentinel of ['OUTSIDE-SENTINEL-P1-1', 'OUTSIDE-SENTINEL-RUNREPORT']) {
+      assert.ok(!body.includes(sentinel), '响应体不得含界外哨兵：' + sentinel)
+    }
+    assert.ok(!/"total":777/.test(body), '响应体不得含界外 token 数字')
+  } finally { rmSync(d, { recursive: true, force: true }); rmSync(outside, { recursive: true, force: true }) }
 })
 
 test('v18.93.0：交付件与导出命令派生（只读工作区内的既有产物）', () => {

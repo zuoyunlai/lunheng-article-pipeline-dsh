@@ -93,17 +93,31 @@ try {
   // ③ profile 合成（只合成、不启停）
   const dump = runDsh(['--profile', profile, '--dump-config'], { env, timeout: 120000 })
   const dumpOut = `${dump.stdout || ''}${dump.stderr || ''}`
+  // v19.27.3（反哺 2026-10-22 **P2-5** 修复）：**先判进程状态，再判文本**。
+  //   病灶（反哺报告已确认为控制流缺陷）：旧实现**只**在 dumpOut 里正则找自注册行，从不看
+  //   `dump.status` / `dump.error`。于是「先打出含自注册行的片段、再因另一处配置错误非零退出」
+  //   这种形态会被判为通过——一次假绿，而且这是**发布 gates 与 ci 共用**的装载证据。
+  //   判据：被围栏进程的非零退出 / 信号 / 超时优先级高于任何输出内容；内容断言只在进程健康时才有意义。
+  //   `spawnSync` 的可用读数 = `status`（退出码，被杀时为 null）、`signal`（超时被杀时是 'SIGTERM'）、
+  //   `error`（起不来，如 ENOENT/EINVAL）——三者任一即判负。
+  const dumpBad = dump.status !== 0 || dump.signal || dump.error
+  if (dumpBad) {
+    failed++
+    say(`✗ profile 合成命令**未正常结束**（exit ${dump.status ?? 'null'}${dump.signal ? `，signal=${dump.signal}` : ''}${errOf(dump)}）`
+      + '——输出即便含自注册行也不构成通过证据（fail-closed）')
+    say(`  dump 输出尾部：${dumpOut.trim().split('\n').slice(-6).join(' | ').slice(0, 500)}`)
+  }
   // 断言面 = **自注册行**（loader 靠它 import 入口；缺它 → 技能永不注册 = v18.0.0 缺陷形态）
   const hasSelfRow = new RegExp(`^\\s*-\\s*id:\\s*${PKG_NAME}\\s*$`, 'm').test(dumpOut)
-  if (hasSelfRow) {
+  if (!dumpBad && hasSelfRow) {
     say(`✓ profile 合成含本包自注册层（- id: ${PKG_NAME}）——loader 入口锚在场`)
-  } else {
+  } else if (!dumpBad) {
     failed++
     say(`✗ profile 合成**未见**本包自注册层（- id: ${PKG_NAME}）——技能将永不注册（v18.0.0 缺陷形态）`)
     say(`  dump 输出尾部：${dumpOut.trim().split('\n').slice(-6).join(' | ').slice(0, 500)}`)
   }
   // 反向钉：合成里**不得**出现「本包 patch 被解析但登记项为空」的形态
-  if (!/lunheng-article-pipeline/.test(dumpOut)) {
+  if (!dumpBad && !/lunheng-article-pipeline/.test(dumpOut)) {
     failed++
     say('✗ profile 合成里完全没有本包痕迹——patch 层可能根本未被应用')
   }
