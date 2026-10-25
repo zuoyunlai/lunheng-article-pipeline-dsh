@@ -130,7 +130,12 @@ export function scanPending(runDir) {
     const pendingGates = gateStates.filter((g) => g.state !== 'ok');
     if (!pendingGates.length && !todos.length) continue;
     scanned++;
-    const delivered = existsSync(join(dir, 'final', '定稿.md'));
+    // delivered 的判据（v19.27.5 收紧 · 审计 P1-2）：**定稿在盘 且 Phase 5 确认单 §6 已回填**。
+    //   旧判据只看 `final/定稿.md` 是否存在，而 **Phase 5 门-B 本身就发生在定稿落盘之后**——
+    //   于是「定稿写完、终检确认单没回填」这个**最该让主人点一下**的状态被静默归进历史留痕，
+    //   结构性隐藏（实测本机 50 个项目：3 个进收件箱 / 35 个「已交付不阻塞」）。
+    const phase5 = gateStates.find((g) => g.gate === 'Phase5');
+    const delivered = existsSync(join(dir, 'final', '定稿.md')) && !!phase5 && phase5.state === 'ok';
     const row = {
       project: e.name,
       mtime: statSync(dir).mtime.toISOString().slice(0, 16).replace('T', ' '),
@@ -140,8 +145,9 @@ export function scanPending(runDir) {
     };
     // 已交付项目一律归**历史留痕**（不阻塞主人）——v19.19.0（反哺 U-05）收紧：
     //   旧判据是「已交付 **且** 无 todos」，于是已交付项目只要还有一条自由文本列表就进收件箱
-    //   （实测「读 final/定稿.md」这类条目把 20 项里的多数塞满）。已交付 = 交付物在盘，
-    //   剩下的缺口只可能是留痕问题 → 只报计数，不进「待我决策」。
+    //   （实测「读 final/定稿.md」这类条目把 20 项里的多数塞满）。已交付 = **定稿在盘且 Phase 5 §6 已回填**，
+    //   剩下的缺口只可能是留痕问题 → 只报计数，不进「待我决策」。（v19.27.5：`delivered` 由「定稿存在」
+    //   收紧为上面这条合取——理由见其定义处的注释。）
     if (delivered) historical.push(row);
     else actionable.push(row);
   }

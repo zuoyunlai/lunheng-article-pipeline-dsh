@@ -42,7 +42,9 @@
 | 0 定题 | ⬜ Inbox | | |
 | 1 检索 T1∥T2∥T3 | ⬜ Inbox | | |
 | 2 分析 T4 | ⬜ Inbox | | |
+| 2.5 大纲确认 | ⬜ Inbox | | |
 | 3 写作 T5 | ⬜ Inbox | | |
+| 3.5 洞察确认 | ⬜ Inbox | | |
 | 4 审计 T7 | ⬜ Inbox | | |
 | 5 终检 T8 | ⬜ Inbox | | |
 

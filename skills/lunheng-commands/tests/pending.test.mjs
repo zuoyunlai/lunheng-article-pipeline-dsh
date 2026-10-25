@@ -73,19 +73,27 @@ test('scanPending：项目判据 + 可决策/历史分流', () => {
     // ① 真项目、未交付、四门全缺 → actionable
     mkdirSync(join(root, 'proj-open'), { recursive: true });
     writeFileSync(join(root, 'proj-open', '01-任务简报.md'), '# 简报\n', 'utf8');
-    // ② 真项目、已交付、无主人待办、门缺口 → historical（不进收件箱）
+    // ② 真项目、**真已交付**（定稿在盘 **且** Phase 5 确认单 §6 已回填）、无主人待办 → historical
+    //    v19.27.5（审计 P1-2）：`delivered` 判据收紧为「定稿在盘 ∧ Phase5 门 ok」——
+    //    旧判据只看定稿是否存在，而 Phase 5 门-B 本身就发生在定稿落盘之后。
     mkdirSync(join(root, 'proj-done', 'final'), { recursive: true });
     writeFileSync(join(root, 'proj-done', '01-任务简报.md'), '# 简报\n', 'utf8');
     writeFileSync(join(root, 'proj-done', 'final', '定稿.md'), '# 定稿\n', 'utf8');
+    writeFileSync(join(root, 'proj-done', '阶段确认-Phase5.md'), S6_OK, 'utf8');
+    // ②b **定稿在盘但 Phase 5 §6 没回填** → 必须留在收件箱（这正是最该让主人点一下的状态）
+    mkdirSync(join(root, 'proj-final-no-s6', 'final'), { recursive: true });
+    writeFileSync(join(root, 'proj-final-no-s6', '01-任务简报.md'), '# 简报\n', 'utf8');
+    writeFileSync(join(root, 'proj-final-no-s6', 'final', '定稿.md'), '# 定稿\n', 'utf8');
     // ③ 非项目目录（无 01-任务简报.md）→ nonProject，跳过
     mkdirSync(join(root, '_baseline'), { recursive: true });
     writeFileSync(join(root, '_baseline', 'x.json'), '{}', 'utf8');
 
     const r = scanPending(root);
-    assert.deepEqual(r.actionable.map((p) => p.project), ['proj-open']);
+    assert.deepEqual(r.actionable.map((p) => p.project).sort(), ['proj-final-no-s6', 'proj-open'].sort(),
+      '定稿在盘但 §6 未回填的项目不得被静默归为「已交付不阻塞」');
     assert.deepEqual(r.historical.map((p) => p.project), ['proj-done']);
     assert.deepEqual(r.nonProject, ['_baseline']);
-    assert.equal(r.actionable[0].pendingGates.length, GATES.length, '四门全缺应逐门报出');
+    assert.equal(r.actionable.find((p) => p.project === 'proj-open').pendingGates.length, GATES.length, '四门全缺应逐门报出');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

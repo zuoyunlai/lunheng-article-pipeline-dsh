@@ -190,6 +190,32 @@ test('R10（v19.27.3 · P2-4）：显式声明 `交付协议：v1` 的存量项�
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
 
+// ── v19.27.6（审计 P1-3「账本默认化」）：**开工版本优先于代际自陈** ──────────────────────
+// 病灶：P1-3 实测 25 个交付项目只有 6 个有回执账本、17 个零 ⇒ 机制在盘、没人建。
+// 修法（文档侧）= Phase 0 建项目即落空账本；修法（机械侧）= 本组：`status.md` 版本头 ≥ v19.27.6
+//   的项目与「v18.81.0 前存量协议」互斥，故 `交付协议：v1` 不能豁免缺账本。
+// 判据只**前进不回溯**：版本头更旧的存量项目判定与 v19.27.5 完全一致（R10 就是那条的守卫）。
+test('R11（v19.27.6 · P1-3）：版本头 ≥ v19.27.6 的项目**不能用 `交付协议：v1` 豁免缺账本**', () => {
+  const d = mkProj({ receiptIds: (g) => `${g}#1` })
+  try {
+    writeFileSync(join(d, 'status.md'), '> 版本：v19.27.6（DSH bundle 插件）\n\n# 状态\n\n- **交付协议**：v1\n')
+    const j = runH(d)
+    assert.equal(j.exit, 21, '新版项目缺账本必须硬 21（自陈 v1 不覆盖版本头）：' + JSON.stringify(j.hard))
+    assert.ok(a7(j).some((x) => /版本头 v19\.27\.6/.test(x.detail)), '报错须点名版本头判据：' + JSON.stringify(a7(j)))
+    assert.match(a7(j).map((x) => x.detail).join('\n'), /touch audits\/gate-receipts\.jsonl/, '动作须可执行（给出建账命令）')
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
+test('R12（v19.27.6 · P1-3）：版本头更旧的存量项目**不受影响**（只提示、exit 仍 22）', () => {
+  const d = mkProj({ receiptIds: (g) => `${g}#1` })
+  try {
+    writeFileSync(join(d, 'status.md'), '> 版本：v19.27.5（DSH bundle 插件）\n\n# 状态\n\n- **交付协议**：v1\n')
+    const j = runH(d)
+    assert.equal(a7(j).length, 0, 'v19.27.5 及更旧项目不得因本项被判红（不回翻存量）：' + JSON.stringify(j.hard))
+    assert.equal(j.exit, 22)
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
 // ── 批 1.4：**会话日志独立核对**（`--session-log`）────────────────────────────────
 // 夹具形态**逐字对齐实测的 v4 会话日志**（不是自造一个方便的形状）：
 //   call   : { type:'tool/call',   data:{ callId, name:'ask_user_question', arguments:'{"questions":[…]' } }

@@ -73,8 +73,10 @@ test('㉕ 命令枚举缺项：package.json description 删掉 -stats → 必须
   const pkg = join(repo, 'skills', 'lunheng-commands', 'package.json')
 
   const src = readFileSync(pkg, 'utf8')
-  assert.ok(src.includes('-status/-stats/-help'), '夹具 package.json description 应含 -stats（本次修复点）')
-  writeFileSync(pkg, src.replace('-status/-stats/-help', '-status/-help'))
+  // v19.27.8（P2-2）：命令面 +2（-gate/-abort），description 枚举随之变成 `-status/-stats/-gate/-abort/-help`。
+  //   夹具改为**按单个标记删除**而不是整段字面量：否则每次加命令都要同步改夹具，测试会变成「跟改实现」。
+  assert.ok(src.includes('-stats'), '夹具 package.json description 应含 -stats（本次修复点）')
+  writeFileSync(pkg, src.replace('-stats/', ''))
 
   const after = run([ccPath(repo)], { cwd: d })
   {

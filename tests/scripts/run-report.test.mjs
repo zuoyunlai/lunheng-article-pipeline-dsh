@@ -113,7 +113,9 @@ test('run-report：正例 —— 自包含 HTML + JSON 边车，口径/围栏逐
     // 正文区 = `## 摘要` 之后 → `## 参考文献` 之前（含摘要正文、关键词段与正文节标题汉字）：
     //   本文研究甲与乙 7 + 关键词甲乙 5 + 节标题「一、正文」3 + 正文句 12 = 27（题名 2 与参考文献节不计入）
     assert.equal(fin.han, 27, `正文区汉字口径：期望 27，实际 ${fin.han}`)
-    assert.equal(fin.degraded, false, '夹具两侧边界齐备，不应 degraded')
+    // v19.27.5（口径批 · 同名字段两义）：字段更名 `degraded` → `boundsDegraded`——它与 `count-chars.mjs --json` 的
+    //   `degraded`（= 连正文二级标题都没有）**不是同一判据**，同名会让人按错口径解释图表。
+    assert.equal(fin.boundsDegraded, false, '夹具两侧边界齐备，不应标边界退化')
     assert.equal(j.mGate.summary.p2, 1)
     assert.equal(j.mGate.results.length, 2)
     assert.equal(j.artifacts.evidenceEntries, 1, '证据包条目数应来自 manifest.entries')

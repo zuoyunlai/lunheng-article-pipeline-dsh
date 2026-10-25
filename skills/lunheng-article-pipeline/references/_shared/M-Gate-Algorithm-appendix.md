@@ -1,4 +1,4 @@
-> 版本：v19.27.3（DSH bundle 插件）
+> 版本：v19.27.11（DSH bundle 插件）
 
 ## 一、M-Gate-Report 输出格式（JSON schema，v18.2.6 审计修复：按实现重建）
 
@@ -36,7 +36,7 @@
 | 字段 | 取值 | 说明 |
 |---|---|---|
 | `results[].gate` | 固定标签 | **逐字**见 §1.2；标签是机械门的对外契约，文档/模板引用时必须与之一致 |
-| `results[].pass` | `true` / `false` / `"SKIP"` | **三态**。`"SKIP"` 目前只有 M-Exist-1（文末缺失、M-Form-2 已失败时让位）；`SKIP` 计入 `skips` → 判 `exit 3`，**不得当通过** |
+| `results[].pass` | `true` / `false` / `"SKIP"` | **三态**。`"SKIP"` 由 M-Exist 族多门产出（真源 `_lib/mgate-gates/mexist-gates.mjs`：M-Exist-1/6/7/8/10/11 + 两条 `severity:'LLM 兜底'`）；`SKIP` 计入 `skips` → 判 `exit 3`，**不得当通过** |
 | `results[].severity` | `"P0"`/`"P1"`/`"P2"`/`"通过"`/`"LLM 兜底"`/`"SKIP"` | 硬失败 = severity ∈ {P0,P1,P2} 且 `pass:false`；`LLM 兜底` 单独进 `soft` 桶 |
 | `results[].detail` | 文本 | 人读；**`[报告后激活]`** 前缀见 §1.4 |
 | `total` | 整数 | 恒 25（机械项）。**M 门总项数 26 = 机械 25 + 人工 1（M-Integrity-2）** |
@@ -67,8 +67,9 @@
 | `10` | **参数或路径错误**（含异常路径：v18.0.5 起随包脚本装 `_lib/exit-guard.mjs`，fs 类异常统一映射为 10，不再让未捕获异常退化成 1）。路径错**不得与 P1 混用** |
 | `70` | **内部错误（EX_SOFTWARE，脚本缺陷）**——与任何内容判定无关。**门内解析/读取失败（`severity: 'ERROR'`）也走此码**（v18.62.4 P1-3），不得读成「P1 残留」 |
 
-判定式（脚本原样）：`exit = errors > 0 ? 70 : (p0 > 0 ? 2 : (p1 > 0 ? 1 : (anyFail || skips > 0 ? 3 : 0)))`
+判定式（脚本原样）：`exit = errors > 0 ? 70 : (p0 > 0 ? 2 : (p1 > 0 ? 1 : (anyFail || softOnlyCount > 0 || skips > 0 ? 3 : 0)))`
 > **v18.80.1（全量审查修订批 · A7）**：本表与判定式此前两处失真——① 表体缺 `30`（而表头自称与 `SKILL.md` §执行能力边界**逐字一致**，`SKILL.md` 有 30、脚本 `process.exit(30)` 有三处）；② 判定式抄「脚本原样」却**漏 `errors > 0 → 70` 分支**。两处均已按脚本实测补齐。
+> **v19.27.5**：判定式第二次失真——仍漏 `softOnlyCount > 0`（`m-gate-check.mjs:636` 实装该分支；仅 `soft_only` 的报告按旧式复算得 0、脚本实给 3）。已按脚本**逐字**重抄。
 另：`model-routing.mjs` 用自有码 **`4`**＝需人工决定（旧版 `3` 与 M 门 `3` 撞码；v18.12.0 起其**用法/配置错**由 `1` 改 **`10`**）；非闸门工具（`token-budget` / `md2html` / `pdfcheck` / `token-cost`）不共用本语义——其中 `token-budget` 与 `token-cost` 的用法/参数错亦在 v18.12.0 收口到 **`10`**（不再借用 M 门的「P1 内容失败」）。
 
 ### 1.4 `[报告后激活]` 标记（四项）

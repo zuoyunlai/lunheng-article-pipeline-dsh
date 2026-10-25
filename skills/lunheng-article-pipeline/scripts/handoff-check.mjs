@@ -12,7 +12,7 @@
 //   node scripts/handoff-check.mjs --project run/<项目> --role T7 --summary --level strict
 //
 // 退出码（与 M 门 1/2/3 **刻意分离**，防「exit 10 被读成 P1」类撞码——见 exit-guard 头注释）：
-//   0  = 交接合格 / 20 = 产物缺失或 0 字节 / 21 = 结构·版本·成对·回报段不合 / 22 = 仅软提示
+//   0  = 交接合格 / 20 = 产物缺失或 0 字节 / 21 = 结构·版本·成对·回报段不合 / 22 = 仅软提示（**≠ 已验收**：须人工复核并显式判，不得当通过）
 //   10 = 参数或路径错误 / 70 = 内部错误（EX_SOFTWARE）
 //   ⚠️ **档位不对称（v18.78.2 · 全量审计-v18.78.1 P3 补注，实测照抄不美化）**：
 //     `ROLE_TO_ARTIFACTS['T8']` **为空**（T8 是主控亲执行的角色，本就无收报）→ 对 T8 跑本门
@@ -58,8 +58,8 @@ const HELP = [
   '  --report-file 回报文件路径（与 --report 二选一，--report 优先）',
   '  --summary   只回聚合 + 硬失败项（省 token；hard/soft 永不省略）',
   '  --level     basic（默认：A0/A1/A2）/ strict（另加 A3/A4/A4b/A4c/A5/A6/A8/A9；其中 A4b/A4c/A5/A8/A9 仅 T7）',
-  '              ⚠️ **回报侧 B1–B4 不随 level 变**（v18.43.0 更正：旧文案写「strict = 全量 A1-A6 + B1-B5」，',
-  '                 而**本脚本没有 B5**，且 A7 也不由 level 触发——两处均为陈旧断言，已按代码实测改正）。',
+  '              ⚠️ **回报侧 B1–B5 不随 level 变**（v18.43.0 更正 A7 不由 level 触发；v19.27.10 新增 B5',
+  '                 「决策诉求未落段」软提示——旧文案曾断言「本脚本没有 B5」，现已作废）。',
   '  --require-gates  加验**人在环四门**（阶段确认-Phase0/2.5/3.5/5.md 四份齐备 + §6 主人回复段五项字段已回填）——**A7 只在此旗标下判**。',
   '                   主人在 2026-09-25 定案「四门必须」→ 主控在 **Phase 5 交付前**调用本旗标做机械校验；',
   '                   不加此旗标则不判四门（向后兼容 T1-T4/T6/T9 等中期角色的收报，那时后几门本就还没开）。',
@@ -79,7 +79,7 @@ const HELP = [
   '报告编号命名契约（v18.62.7 A7 —— 别再靠读源码猜）：',
   '  · 审计族（审计报告 / 复核报告 / 反哺报告）的 N = **审计轮次**；复核必须与它复核的那轮审计同号。',
   '  · 审稿报告 / G14-检测报告 的 N = **正文轮次**（= drafts/初稿-vN.md 的 N）。',
-  '退出码：0 合格 / 20 产物缺失或 0 字节 / 21 结构·版本·成对·回报段不合 / 22 仅软提示 / 10 参数路径错 / 70 内部错误',
+  '退出码：0 合格 / 20 产物缺失或 0 字节 / 21 结构·版本·成对·回报段不合 / 22 仅软提示（**≠ 已验收**） / 10 参数路径错 / 70 内部错误',
 ].join('\n')
 
 // ── 真源派生：角色 → 必需产物（从 CONTRACTS 反查） ─────────────────────────────
@@ -772,6 +772,24 @@ if (strict && role === 'T7') {
   }
 }
 
+// A15 进展页时效（v19.27.10 · 交互补充批 G-13）
+//   主人读的是 `进展-主人版.md`（pipeline-readme 表：主控每次派发后 + 闸门后覆盖刷新）。
+//   它若早于 status.md，主人看到的就是上一版进展——「面板说在写作、进展页还说在检索」。
+//   为什么只 soft：刷新时点是**流程纪律**，硬判 21 会把「刚改完 status 还没刷进展页」的合规作业判红。
+{
+  const progPath = join(project, '进展-主人版.md')
+  const statusPath2 = join(project, 'status.md')
+  if (existsSync(progPath) && existsSync(statusPath2)) {
+    try {
+      const dm = statSync(progPath).mtimeMs
+      const sm = statSync(statusPath2).mtimeMs
+      if (dm < sm - 60000) {
+        addSoft('A15', '进展页时效', `\`进展-主人版.md\` 早于 status.md ${Math.round((sm - dm) / 60000)} 分钟——主人看到的是旧进展；派发 / 闸门后须覆盖刷新`)
+      }
+    } catch { /* stat 不可用则跳过，不制造假红 */ }
+  }
+}
+
 // A5 成对产物（strict）：T7 审计报告 + 反哺报告 缺一不可
 if (strict && role === 'T7') {
   const audit = artifacts.find((a) => a.name === '审计报告')
@@ -893,6 +911,19 @@ if (reportText != null) {
     if (SEG_RE(s).test(norm)) sectionsFound.push(s)
     else sectionsMissing.push(s)
   }
+
+  // v19.27.10（交互补充批 G-12）：交接报告新增**可选第 7 段「需要主人决定」**。
+  //   病灶：子代理确有「必须主人拍板」的事，但此前没有固定位置，只能混在「下一步」里——
+  //   主控扫报告时容易漏传（实测：正文问了三个问题，主控只转述一个）。
+  //   判据刻意**不升硬**：六要素契约不变，缺该段不报；只有「写了决策字样却没落到该段」才记 soft——
+  //   硬判会迫使存量报告重写，而这条的本意只是「让决策诉求有个可扫的位置」。
+  {
+    const decisionSection = /(?:^|\n)\s*(?:#{2,6}\s*(?:\d+\.\s*)?|\|\s*|[-*]\s+)?\*{0,2}需要主人决定\*{0,2}/.test(norm)
+    const decisionKeyword = /需要主人决定|待主人决定|需主人裁定|请主人拍板|等主人确认/.test(norm)
+    if (decisionKeyword && !decisionSection) {
+      addSoft('B5', role, '报告提到需要主人决定的事项，但没有落到固定段「## 需要主人决定」——主控扫报告时容易漏传；请按模板补该段（无则写「无」）')
+    }
+  }
   // v18.80.1（全量审查修订批 · F5）：与 B1 **同源的段判据**，不再用裸子串。
   //   旧式 `/AI 使用|披露/` 只要求「这个词出现过」——把「无（数据来源披露见数据卡）。」写进「已知问题」行，
   //   即可满足 T5/T8 的**硬**披露要求（B2），而报告里没有任何 AI 使用披露内容。
@@ -991,12 +1022,22 @@ if (opt.requireGates) {
       //   通知单 / 全自动门不产生 `ask_user_question` 往返，旧判据「tool 必须逐字 ask_user_question」
       //   把这类门的事实记录判成「账本损坏」。**放宽的只是允许的通道名**：自决回执仍须有
       //   gate/answeredAt/rawAnswer，且 §6 侧须声明「通知单/全自动」（见下方逐门核对）。
-      const TOOL_CHANNELS = ['ask_user_question', 'self-determine']
+      // v19.27.8（审计 P2-2）：第三个通道 **`owner-cli`** —— 主人在命令行用 `-gate --approve|--reject`
+      //   直接给裁定，`rawAnswer` 就是主人打的字（不是主控转录）。**为什么必须承认它**：旧判据只认
+      //   `ask_user_question` / `self-determine`，主人用 CLI 评过的门会被判「账本损坏」——即「主人真
+      //   亲手写了、机械面反而不认」，比不提供入口更坏。
+      //   收紧的两条（防止「主人 CLI」被拿来冒充）：`callIdSource` 只接受 `not-captured`（命令行没有
+      //   宿主问答可核），且必须带 `decision: approve|reject`。**§6「主人原话」仍须逐字含 `rawAnswer`**
+      //   （下方 A7 相容性判据一行没放宽）——那正是这个通道存在的意义：转录环节不再由主控提供。
+      const TOOL_CHANNELS = ['ask_user_question', 'self-determine', 'owner-cli']
       if (!TOOL_CHANNELS.includes(o.tool)) problems.push(`tool 必须为 ${TOOL_CHANNELS.map((x) => `"${x}"`).join(' 或 ')}`)
       else if (o.tool === 'ask_user_question') {
         if (!Array.isArray(o.options) || o.options.length === 0) problems.push('options 必须是非空数组')
         else if (!Number.isInteger(o.chosenIndex) || o.chosenIndex < 0 || o.chosenIndex >= o.options.length) problems.push('chosenIndex 越界或非整数')
         else if (o.chosenLabel !== o.options[o.chosenIndex]) problems.push('chosenLabel ≠ options[chosenIndex]（账本自身不自洽）')
+      } else if (o.tool === 'owner-cli') {
+        if (o.callIdSource !== 'not-captured') problems.push('owner-cli 的 callIdSource 必须逐字为 "not-captured"（命令行无宿主问答可核）')
+        if (!['approve', 'reject'].includes(o.decision)) problems.push('owner-cli 回执必须带 `decision: "approve" | "reject"`')
       } else if (o.callIdSource != null && o.callIdSource !== 'not-captured') {
         // 自决通道没有宿主日志可对：只接受显式的 not-captured 声明，禁止写一个假 callId 冒充可核。
         problems.push('self-determine 的 callIdSource 只允许 "not-captured"（该通道无宿主问答可核）')
@@ -1237,7 +1278,26 @@ if (opt.requireGates) {
         if (t && /回执\s*id/.test(t)) { modernEvidence = `${f} 的 §6 使用了「回执 id」字段（v18.81.0 起的模板形态）`; break }
       }
     }
-    if (legacyDeclared) {
+    // ── v19.27.6（审计 P1-3「账本默认化」）：**开工版本优先于代际自陈** ─────────────────────
+    //   事实：v19.27.6 起 Phase 0 交付物清单**默认含**空账本 `audits/gate-receipts.jsonl`（`00-主控-扩展职责.md`
+    //   §二十一 Phase 0 行 + `status-template.md` 建项目清单）。故「本项目由 v19.27.6 及之后开工」
+    //   与「本项目属 v18.81.0 前存量协议」在机械上**互斥**。
+    //   判据 = `status.md` 首行的版本头（模板 `> 版本：vX.Y.Z`，随 bump-version 抬升 ⇒ 主控复制模板
+    //   建项目时它就是**开工当版**；这是项目自己写下、可核对的事实，不是时间启发）。
+    //   ⚠️ 只前进不回溯：存量项目的版本头更旧 ⇒ 判定路径与 v19.27.5 完全一致，**不把任何人回翻成红**。
+    //   边界（如实）：版本头同样由主控写入，可被改成旧值以规避；本项只是把「自陈」的门槛从
+    //   「写一句 v1」提高到「连开工版本一起改」，**不是防伪**，报告不得读成「账本已核」。
+    const statusText = (() => { try { return readFileSync(join(project, 'status.md'), 'utf8') } catch { return '' } })()
+    const svM = /版本[\s*]*[:：][\s*]*v?(\d+)\.(\d+)\.(\d+)/.exec(statusText)
+    const sv = svM ? [Number(svM[1]), Number(svM[2]), Number(svM[3])] : null
+    const ge = (p) => p[0] > 19 || (p[0] === 19 && (p[1] > 27 || (p[1] === 27 && p[2] >= 6)))
+    const newEra = sv && ge(sv) ? `status.md 版本头 v${sv.join('.')}` : ''
+    if (newEra) {
+      addHard('A7', 'audits/gate-receipts.jsonl',
+        `本项目由 ${newEra} 开建（v19.27.6 起 **Phase 0 默认落空账本**），但**回执账本不存在**——`
+        + '「交付协议：v1」不能覆盖开工版本（两者互斥）。动作：`mkdir -p audits && touch audits/gate-receipts.jsonl`，'
+        + '再把本项目**已发生的**每轮人门往返逐行补进去（一行一次，字段形态见 `references/templates/主人确认-template.md` §6）', 21)
+    } else if (legacyDeclared) {
       notes.push(`人门口回执：未发现 \`audits/gate-receipts.jsonl\`；项目以 ${legacyDeclared} 显式声明为**存量协议**——`
         + '按 legacy / 未核验处理（只提示、不判硬）。**新项目不得用 v1 规避账本要求**。')
     } else if (modernEvidence) {

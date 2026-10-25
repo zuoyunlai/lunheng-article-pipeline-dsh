@@ -292,7 +292,10 @@ function hanOf(p) {
   const start = bodyStartAfterAbstract(t);
   const { to, bodyStartFound, endnoteFound } = bodyBounds(t);
   // v19.17.0（F-03）：判「有没有可用正文起点」，而不是「有没有摘要」。
-  return { bytes: sizeOf(p), han: countHan(t.slice(start.index, to)), degraded: !bodyStartFound || !endnoteFound };
+  // v19.27.5（口径批 · 同名字段两义）：本字段原名 `degraded`，与 `count-chars.mjs` 的 `degraded`
+  //   是**两个不同判据**（那边 = 连正文二级标题都没有；这边 = 正文起点或文末节边界缺一）——
+  //   同名会让读者按错口径解释图表。故更名 `boundsDegraded`（边界退化），文案同步说清。
+  return { bytes: sizeOf(p), han: countHan(t.slice(start.index, to)), boundsDegraded: !bodyStartFound || !endnoteFound };
 }
 const draftsDir = join(projectDir, 'drafts');
 const versions = [];
@@ -306,11 +309,11 @@ for (const f of listDir(join(draftsDir, 'archive'))) {
 }
 const prog = versions.sort((a, b) => a.n - b.n).map((v) => {
   const h = hanOf(v.path);
-  return { label: `v${v.n}`, han: h ? h.han : null, archived: v.archived, degraded: h ? h.degraded : null, name: v.name };
+  return { label: `v${v.n}`, han: h ? h.han : null, archived: v.archived, boundsDegraded: h ? h.boundsDegraded : null, name: v.name };
 });
 {
   const h = hanOf(join(projectDir, 'final', '定稿.md'));
-  if (h) prog.push({ label: '定稿', han: h.han, archived: false, degraded: h.degraded, name: 'final/定稿.md' });
+  if (h) prog.push({ label: '定稿', han: h.han, archived: false, boundsDegraded: h.boundsDegraded, name: 'final/定稿.md' });
   else warn('final/定稿.md', '定稿缺 —— 字数演进图少了终点（其余版本仍照实呈现）');
 }
 const target = st.target ? Number((/(\d[\d\s,]*)/.exec(st.target) || [])[1]?.replace(/[\s,]/g, '')) : null;
@@ -674,7 +677,7 @@ function render() {
   <section id="kpi"><h2>概览</h2>
     <div class="cards">${kpi.map((c) => `<div class="card"><div class="k">${esc(c.k)}</div><div class="v">${esc(c.v)}</div><div class="s">${esc(c.s)}</div></div>`).join('')}</div>
     <div class="panel"><h3>字数演进（正文区纯汉字，口径 = 摘要后 → 首个文末节前，与 count-chars 同源）</h3>${svgLine(prog, band) || '<p class="small">无可统计的稿件版本</p>'}
-      ${prog.some((p) => p.degraded) ? '<p class="small n-warn">⚠ 有版本缺 <code>## 摘要</code> 或文末节，正文区边界退化（degraded）——该点字数与 M 门口径不可比，已如实标出。</p>' : ''}</div>
+      ${prog.some((p) => p.boundsDegraded) ? '<p class="small n-warn">⚠ 有版本缺正文起点或文末节，**正文区边界退化**（`boundsDegraded`）——该点字数与 M 门口径不可比，已如实标出。注意它与 `count-chars.mjs --json` 的 `degraded` **不是同一判据**（那个指「连正文二级标题都没有」）。</p>' : ''}</div>
     <div class="panel"><h3>修订回环（轮次账本；A ≤2 / B ≤1 / G ≤2，相位轮不占额度但必须可见）</h3>
       ${roundTable ? `<table><thead><tr><th>轨</th><th>轮次</th><th>正文版本</th><th>触发来源</th><th>复核报告</th><th>时间</th></tr></thead><tbody>${roundTable}</tbody></table>` : '<p class="small">无轮次账本</p>'}
       ${st.loopBullets.length ? `<h3>status.md §修订回环记录</h3><ul class="notes">${st.loopBullets.map((b) => `<li>${esc(cut(mdPlain(b), 190))}</li>`).join('')}</ul>` : ''}</div>

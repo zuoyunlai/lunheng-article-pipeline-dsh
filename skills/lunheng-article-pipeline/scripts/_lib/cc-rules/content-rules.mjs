@@ -9,6 +9,7 @@ import { join, relative, dirname } from 'node:path'
 import { anchorSlugsOf } from '../anchor-slug.mjs'
 // v18.78.2（全量审计 A6）：派生型规则的「真源缺失 ⇒ 整条失效」处置——缺失即 P0，不静默跳过
 import { requireTruthSource } from './truth-source.mjs'
+import { PHASES } from './phase-registry.mjs'
 
 // ⑲ 交接契约表真源（v18.6.0 上提为模块级常量并 export）：原内联在 runContentRules 函数体内，
 //    handoff-check.mjs 需 import 派生「角色 → 必需产物」；数组是纯静态清单、不依赖 ctx，上提后行为不变。
@@ -642,22 +643,27 @@ const HISTORY_TOKEN_RE = /此前|曾经|旧版|已删|已移除|已作废|历史
     if (!Number.isFinite(MECH) || MECH <= 0) {
       errors.push('[P0 派生源失效] GATE_DERIVED.mech 不可用——派生退化会让规则 ㊶ 恒真（与 ㊳/㊵ 的同族失效模式）')
     } else {
+      //   ⚠️ **v19.27.5 修：「其余 N 项机械门」的 N 必须 == MECH − 1，不是 MECH**。
+      //   该句式语义是「除被省略的那一道之外」（`SKILL.md:147` 场景：省略 T4 → M-Exist-10 记 N/A，
+      //   T7.5 只核剩下的 24 道）。旧实装一律拿 MECH 比，于是**正确写法 24 反被判漂移、
+      //   而真错的 25 反倒放行**（v19.27.4 审计实测：这就是「门反过来锁住正确修订」的形态）。
       const PHRASES = [
-        [/全量\s*\*{0,2}\s*(\d+)\s*项/g, '全量 N 项'],
-        [/其余\s*\*{0,2}\s*(\d+)\s*项机械门/g, '其余 N 项机械门'],
-        [/(\d+)\s*项逐字清单/g, 'N 项逐字清单'],
-        [/机械\s*\*{0,2}\s*(\d+)\s*项/g, '机械 N 项'],
+        [/全量\s*\*{0,2}\s*(\d+)\s*项/g, '全量 N 项', 0],
+        [/其余\s*\*{0,2}\s*(\d+)\s*项机械门/g, '其余 N 项机械门', -1],
+        [/(\d+)\s*项逐字清单/g, 'N 项逐字清单', 0],
+        [/机械\s*\*{0,2}\s*(\d+)\s*项/g, '机械 N 项', 0],
       ]
       for (const f of active) {
         const rel = relative(ROOT, f).replaceAll('\\', '/')
         readFileSync(f, 'utf8').split('\n').forEach((l, i) => {
           if (/历史|此前|旧口径|旧版|→/.test(l)) return
-          for (const [re, name] of PHRASES) {
+          for (const [re, name, off] of PHRASES) {
             re.lastIndex = 0
             let m
             while ((m = re.exec(l)) !== null) {
-              if (Number(m[1]) !== MECH) {
-                errors.push(`[P1 M 门项数漂移] ${rel}:${i + 1} 写「${name}」= ${m[1]}，真源 = ${MECH}（gate-count.mjs 派生）——两套口径并存时，主控与审计各按各的做，门就白跑了`)
+              const want = MECH + off
+              if (Number(m[1]) !== want) {
+                errors.push(`[P1 M 门项数漂移] ${rel}:${i + 1} 写「${name}」= ${m[1]}，真源 = ${want}${off ? `（本句式 = 机械 ${MECH} ${off}，「其余」不含被省略的那一道）` : `（gate-count.mjs 派生）`}——两套口径并存时，主控与审计各按各的做，门就白跑了`)
               }
             }
           }
@@ -733,6 +739,64 @@ const HISTORY_TOKEN_RE = /此前|曾经|旧版|已删|已移除|已作废|历史
               + `四门只有一处真源（${REGISTRY_REL}），此处须改为从登记表派生（与 CONTRACTS / RULE_REGISTRY 同判据）`)
           }
         }
+      }
+    }
+  }
+
+  // ㊷ 四门现行散文反向一致性（v19.27.4 · 全量审计 P0-1/P0-2）
+  //   规则 ㊵ 只约束登记表与代码消费者，抓不到散文把 `Phase` 缩掉，亦抓不到把默认通知门写成四门全阻塞。
+  //   本规则只扫三份**现行语义面**，不扫 CHANGELOG/审计归档；文件名与默认交互均从 PHASES 派生。
+  {
+    const proseRels = [
+      'SKILL.md',
+      'references/pipeline-readme.md',
+      'references/agents/00-主控-扩展职责.md',
+    ]
+    const missing = proseRels.filter((rel) => !existsSync(join(ROOT, rel)))
+    if (missing.length) {
+      errors.push(`[P0 派生源失效] ㊷ 四门现行散文缺失：${missing.join(' / ')}`)
+    } else {
+      for (const rel of proseRels) {
+        const text = readFileSync(join(ROOT, rel), 'utf8')
+        for (const phase of PHASES) {
+          const shortFile = phase.confirmFile.replace('Phase', 'P')
+          if (shortFile !== phase.confirmFile && text.includes(shortFile)) {
+            errors.push(`[P0 四门文件名漂移] ${rel} 出现 \`${shortFile}\`；登记表真名为 \`${phase.confirmFile}\``)
+          }
+        }
+      }
+      const modes = Object.fromEntries(PHASES.map((p) => [p.id, p.defaultMode]))
+      const expected = { Phase0: 'blocking', 'Phase2.5': 'notify', 'Phase3.5': 'notify', Phase5: 'blocking' }
+      for (const [id, mode] of Object.entries(expected)) {
+        if (modes[id] !== mode) {
+          errors.push(`[P0 四门默认语义漂移] phase-registry.mjs 的 ${id}.defaultMode=${String(modes[id])}，应为 ${mode}`)
+        }
+      }
+      const coordinator = readFileSync(join(ROOT, 'references/agents/00-主控-扩展职责.md'), 'utf8')
+      const requiredPhrases = ['默认仅 Phase 0 / Phase 5 阻塞', 'Phase 2.5 / Phase 3.5 通知不阻塞', '全过目', '四份单照落']
+      const absent = requiredPhrases.filter((phrase) => !coordinator.includes(phrase))
+      if (absent.length) {
+        errors.push(`[P0 四门默认语义漂移] 00-主控-扩展职责.md 缺现行口径锚点：${absent.join(' / ')}`)
+      }
+      if (/4 个节点都要主人\*\*亲自过目\*\*|Phase 2\.5[^\n|]*\|\s*✅\s*必到|Phase 3\.5[^\n|]*\|\s*✅\s*必到/.test(coordinator)) {
+        errors.push('[P0 四门默认语义漂移] 00-主控-扩展职责.md 仍把默认通知门写成主人同步阻塞')
+      }
+      // v19.27.9：**模板面**同样承载「四门怎么问」——主人手上拿的是确认单与轻量档状态机。
+      //   这两份此前在任何扫描面之外（㊷ 只扫三份语义面），故「四门全部必需 / 每门仍等主人 / 共 4 次」
+      //   在模板里又存活了三个版本，直到人机交互审计的补充批才被手工发现。
+      const tplRel = 'references/templates/主人确认-template.md'
+      const confirmTpl = existsSync(join(ROOT, tplRel)) ? readFileSync(join(ROOT, tplRel), 'utf8') : ''
+      if (/四门\*\*全部必需\*\*|每门仍等主人|共 \*\*4 次\*\*/.test(confirmTpl)) {
+        errors.push(`[P0 四门默认语义漂移] ${tplRel} 仍写「四门全部必需 / 每门仍等主人 / 共 4 次」，与默认 2 阻塞 + 2 通知互斥`)
+      }
+      const liteRel = 'references/templates/status-template-lite.md'
+      const liteTpl = existsSync(join(ROOT, liteRel)) ? readFileSync(join(ROOT, liteRel), 'utf8') : ''
+      const liteMissing = PHASES
+        .filter((ph) => ph.defaultMode === 'notify')
+        .filter((ph) => !new RegExp(`^\\|\\s*${ph.id.replace('Phase', '').replace(/\./g, '\\.')}\\s`, 'm').test(liteTpl))
+      if (liteMissing.length) {
+        errors.push(`[P0 轻量档状态机缺行] ${liteRel} 缺 ${liteMissing.map((ph) => ph.id).join(' / ')} 行`
+          + '——轻量档与完整档的 Phase 集必须同集，缺行会让该门在状态机里不可见（panel / make_plan 读不到闭合）')
       }
     }
   }

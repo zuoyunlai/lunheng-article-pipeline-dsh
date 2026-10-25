@@ -83,17 +83,15 @@ test('valid command -history', () => {
   assert.equal(result.action, 'history');
 });
 
-// -rollback 二次确认
-test('-rollback without --confirm fails', () => {
-  const result = routeCommand(['node', '-lunheng', '-rollback', 'phase-25-outline']);
-  assert.equal(result.ok, undefined);
-  assert.ok(result.error.includes('--confirm'));
-});
-
-test('-rollback with --confirm succeeds', () => {
-  const result = routeCommand(['node', '-lunheng', '-rollback', 'phase-25-outline', '--confirm']);
-  assert.equal(result.ok, true);
-  assert.equal(result.action, 'rollback');
+// -rollback（v19.27.5 · 审计 P1-4：**声明存在但无实现** → 路由层必须显式拒绝，不得返回假绿）
+test('-rollback 无论带不带 --confirm 都显式报「未实现」，并给替代路径', () => {
+  for (const extra of [[], ['--confirm']]) {
+    const result = routeCommand(['node', '-lunheng', '-rollback', 'phase-25-outline', ...extra]);
+    assert.equal(result.ok, undefined, '-rollback 不得返回 ok（本仓无 checkpoint 机制）');
+    assert.match(result.error, /没有实现/);
+    assert.match(result.error, /drafts\/初稿-vN\.md/, '必须给出正文回退的真实路径');
+    assert.match(result.error, /git checkout/, '必须给出文件级回退的真实路径');
+  }
 });
 
 // -status
@@ -155,13 +153,43 @@ test('missing command fails', () => {
 });
 
 // listCommands 函数
-test('listCommands returns 11 commands (filtered out -h alias)', () => {
+test('listCommands returns 13 commands (filtered out -h alias)', () => {
   const cmds = listCommands();
-  assert.equal(cmds.length, 11);
+  // v19.27.8（审计 P2-2）：11 → 13，新增主人侧入口 `-gate` / `-abort`（机械实现 = owner-cli.mjs）
+  assert.equal(cmds.length, 13);
   assert.ok(cmds.find(c => c.cmd === '-draft'));
   assert.ok(cmds.find(c => c.cmd === '-cite'));
   assert.ok(cmds.find(c => c.cmd === '-rollback'));
   assert.ok(cmds.find(c => c.cmd === '-stats'));
+  assert.ok(cmds.find(c => c.cmd === '-gate'));
+  assert.ok(cmds.find(c => c.cmd === '-abort'));
+});
+
+// v19.27.8（审计 P2-2）：主人侧两个入口的**参数形状**判据。
+//   `--approve` 与 `--reject` 同时给 / 都不给必须被路由层拒绝——这是最容易手滑的两种写法，
+//   放过去了 `owner-cli` 也只能二选一猜，等于替主人做决定。
+test('-gate：缺 --approve/--reject 或两者同时给 → 用法错（不返回 ok）', () => {
+  const bare = routeCommand(['node', '-lunheng', '-gate', '某项目', 'Phase0']);
+  assert.ok(bare.error, '两个都没给必须报错');
+  const both = routeCommand(['node', '-lunheng', '-gate', '某项目', 'Phase0', '--approve', '--reject']);
+  assert.ok(both.error, '两个都给必须报错');
+});
+
+test('-gate：合法形态转交 owner-cli，并带 decision', () => {
+  const ok = routeCommand(['node', '-lunheng', '-gate', '某项目', 'Phase2.5', '--approve', '--note', '可以']);
+  assert.equal(ok.ok, true);
+  assert.equal(ok.action, 'gate');
+  assert.equal(ok.agent, 'owner-cli');
+  assert.equal(ok.decision, 'approve');
+  assert.deepEqual(ok.args, ['某项目', 'Phase2.5', '--approve', '--note', '可以']);
+});
+
+test('-abort：转交 owner-cli（args 原样透传）', () => {
+  const r = routeCommand(['node', '-lunheng', '-abort', '某项目', '--reason', '换题']);
+  assert.equal(r.ok, true);
+  assert.equal(r.action, 'abort');
+  assert.equal(r.agent, 'owner-cli');
+  assert.deepEqual(r.args, ['某项目', '--reason', '换题']);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -219,13 +247,12 @@ test('CLI E2E：未知命令 → exit 1 且回「未知命令」并列出可用�
   assert.match(r.stderr, /-draft/);
 });
 
-test('CLI E2E：`-rollback` 缺 `--confirm` → exit 1；带则 exit 0', () => {
-  const bad = cli('-rollback', 'phase-25-outline');
-  assert.equal(bad.code, 1);
-  assert.match(bad.stderr, /--confirm/);
-  const ok = cli('-rollback', 'phase-25-outline', '--confirm');
-  assert.equal(ok.code, 0, ok.stderr);
-  assert.equal(JSON.parse(ok.stdout).action, 'rollback');
+test('CLI E2E：`-rollback` → exit 1 且 stderr 明确「没有实现」（不返回 ok 假绿）', () => {
+  for (const extra of [[], ['--confirm']]) {
+    const r = cli('-rollback', 'phase-25-outline', ...extra);
+    assert.equal(r.code, 1, '无实现的命令必须以失败退出，不能被当成成功交给主控');
+    assert.match(r.stderr, /没有实现/);
+  }
 });
 
 test('CLI E2E：**源码级回归钉**——入口必须剥掉 argv 前两位（防再次把 process.argv 直接交给 routeCommand）', () => {

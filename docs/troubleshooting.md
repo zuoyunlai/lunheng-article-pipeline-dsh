@@ -1,10 +1,10 @@
 # 故障排查（troubleshooting）
 
-> 版本：v19.27.3（DSH 原生插件；发布日期见 CHANGELOG 对应版本段——**此处刻意不写死日期**。v18.62.4 更正：旧文写「发布于 2026-09-25」而该版本段实际为 2026-10-01，且日期点位无任何机检覆盖）
+> 版本：v19.27.11（DSH 原生插件；发布日期见 CHANGELOG 对应版本段——**此处刻意不写死日期**。v18.62.4 更正：旧文写「发布于 2026-09-25」而该版本段实际为 2026-10-01，且日期点位无任何机检覆盖）
 
 安装/验证失败时按「症状 → 原因 → 处置」对照。
 
-**先分清你是哪种安装形态**（这决定了你能跑哪些检查）：
+**先分清安装形态**（决定你能跑哪些检查）：
 
 | 你的形态 | 自检手段 |
 |---|---|
@@ -12,7 +12,7 @@
 | **克隆源码仓库**（维护者 / 想改机制的人） | 跑下面四道门（它们只在仓库里存在）： |
 
 ```sh
-node skills/lunheng-article-pipeline/scripts/consistency-check.mjs   # 文档一致性（这个随包，两种形态都有）
+node skills/lunheng-article-pipeline/scripts/consistency-check.mjs   # 文档一致性（随包，两形态都有）
 node scripts/plugin-surface-check.mjs                                # 打包面契约（仅仓库）
 node scripts/repo-hygiene-check.mjs                                  # 语法/行尾/UTF-8/发布包（仅仓库）
 node scripts/pack-smoke.mjs                                          # 打包产物冒烟：npm pack → 解包 → 入口 apply（仅仓库）
@@ -92,14 +92,14 @@ node --test "tests/**/*.test.mjs"                                    # 随包脚
 | 40 | **`md2html.mjs`（v18.12.0）**：导出被拒 / `--strict` 校验失败（SVG 结构不合格、缺图、外部引用等）—— 对策：按告警补图件或改 SVG；**不是** M 门的「2 = P0」，不要改正文 |
 | 20 | **交接门 `handoff-check.mjs`（v18.6.0）**：产物缺失或 0 字节 —— 对策：重派（或按快照续作） |
 | 21 | **交接门 `handoff-check.mjs`（v18.6.0）**：结构 / 版本 / 成对 / 回报段不合 —— 对策：续接补交 |
-| 22 | **交接门 `handoff-check.mjs`（v18.6.0）**：仅软提示 —— 对策：人工复核后放行 |
+| 22 | **交接门 `handoff-check.mjs`（v18.6.0）**：仅软提示 —— 对策：人工复核后登记为**已验收**（`22` ≠ 已验收，不得直接当通过） |
 
 > ⚠️ **v18.0.2 修掉的两处撞码**（都会误导主控）：
 > 1. `m-gate-check.mjs` 旧版把「定稿不存在 / 证据包目录不存在」判 `exit 1`，而 `1` = 「P1 内容失败」→ 主控据此触发 T5 修订，实际只是路径传错。现统一 `10`。
 > 2. `model-routing.mjs` 旧版用 `3` 表示「有档位无候选 / 需人工决定」，与 M 门 `3`（仅 P2，**可放行**）撞码。现改用独立码 **`4`**。
 >
 > ⚠️ **v18.0.5 修掉的三类「异常路径」误导**（第三方审计 P1-1，均已在 `tests` 里钉住）：
-> 3. **未捕获异常退化成 1**：`count-chars <目录>`、`m-gate-check <目录> <目录>`、`build-evidence-bundle --source <目录>`、`final-check <文件当项目>` 等在旧版都会 `EISDIR/ENOTDIR` 崩溃 → Node 默认 `exit 1` → 被读成「P1 内容残留」。现：入口 `statSync().isFile()/.isDirectory()` 前置校验 + 顶层 `uncaughtException` 兜底，一律 `10`。
+> 3. **未捕获异常退化成 1**：`count-chars <目录>`、`m-gate-check <目录> <目录>`、`build-evidence-bundle --source <目录>` 等在旧版都会 `EISDIR/ENOTDIR` 崩溃 → Node 默认 `exit 1` → 被读成「P1 内容残留」。现：入口 `statSync().isFile()/.isDirectory()` 前置校验 + 顶层 `uncaughtException` 兜底，一律 `10`。
 > 4. **子步骤没跑起来被记成 1**：`PATH` 为空等 spawn 失败在旧版记 `exit: null → 1`，`final-check` 还会打印「⚠️ 存在 P1 残留，可触发 T5 修订一轮」（把环境问题说成内容问题）。现记 **`70`** 并给独立推荐语。
 > 5. **未知参数被静默忽略**：`--ful`（拼错）、`--nope` 等旧版直接当无事发生（`exit 0`，走默认口径）。现 `count-chars` / `model-routing` / `consistency-check` 显式拒绝并给用法。
 >

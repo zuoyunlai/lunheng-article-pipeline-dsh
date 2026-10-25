@@ -6,9 +6,9 @@
 
 论衡本身是"一次性黑盒触发"——`@lunheng-article-pipeline` 启动完整流水线后，用户写完想改引用 / 换期刊 / 加 PPT 时只能重新走完整流水线。
 
-`lunheng-commands` 提供 11 个 `/lunheng -X` 斜杠命令供**中途干预**使用——主控仍按论衡原机制运行；本包仅做"用户意图 → 论衡阶段调用"的翻译层（薄壳 wrapper）。
+`lunheng-commands` 提供 13 个 `/lunheng -X` 斜杠命令供**中途干预**使用——主控仍按论衡原机制运行；本包仅做"用户意图 → 论衡阶段调用"的翻译层（薄壳 wrapper）。
 
-## 11 个命令
+## 13 个命令
 
 ```
 /lunheng -draft [task]      # 启动完整流水线
@@ -23,6 +23,8 @@
 /lunheng -rollback <id> --confirm  # 回滚到 checkpoint
 /lunheng -status [id]        # 显示当前进度
 /lunheng -stats              # run/ 项目汇总看板
+/lunheng -gate <项目> <Phase> --approve|--reject   # 主人侧裁定（原文进回执账本）
+/lunheng -abort <项目> [--reason]                  # 主人侧中止（落 audits/abort.json）
 /lunheng -help              # 列可用命令
 ```
 

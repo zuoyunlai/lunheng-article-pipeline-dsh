@@ -171,6 +171,22 @@ test('⑱ lightSnapshot：status.md 在等主人 → owner.waiting + 行号 + la
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
 
+test('⑱ lightSnapshot：模板原样的 status.md 不得点亮（审计 P1-1 反面回归：旧判据在模板上命中 32 行）', () => {
+  // v19.27.5（审计 P1-1）：`Inbox` / 裸 `待` / 裸 `人在环` 只描述**阶段类型**，模板每行初始态都带 →
+  //   旧判据在新项目第一分钟就常亮（实测 32 行命中），主人学会忽略指示灯。
+  //   现判据：只有「显式等待字面」或「活动门那一行的 Inbox + 主人字样」才算。
+  const tpl = read(join('skills', 'lunheng-article-pipeline', 'references', 'templates', 'status-template.md'))
+  const root = tmp('batch26-tpl')
+  try {
+    const dir = join(root, 'run', 'p-tpl')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'status.md'), tpl, 'utf8')
+    const s = lightSnapshot(root, 'p-tpl')
+    assert.equal(s.status.owner.waiting, false, '模板原样 status.md 不得判「在等主人」（否则指示灯常亮＝无信息）')
+    assert.equal(s.status.owner.hits, 0)
+  } finally { rmSync(root, { recursive: true, force: true }) }
+})
+
 test('⑱ lightSnapshot：无待主人项时不得误报（✅/Done/已确认/Skipped 行一律不算）', () => {
   const root = tmp('batch26-nowait')
   try {

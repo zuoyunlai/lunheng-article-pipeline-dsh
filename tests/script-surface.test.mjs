@@ -10,10 +10,14 @@ import { readFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { deriveScriptSurface, parseSecuritySurface, reconcileSurface } from '../scripts/_lib/script-surface.mjs'
+import { deriveScriptSurface, deriveScriptSurfaces, parseSecuritySurface, reconcileSurface } from '../scripts/_lib/script-surface.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const SCRIPTS = join(ROOT, 'skills', 'lunheng-article-pipeline', 'scripts')
+// v19.27.11：⑧c 的声明面扩为**两个**脚本目录——子技能 `skills/lunheng-commands/scripts/`
+//   也随包执行（`stats-cli` 派 node 子进程、`owner-cli` 写 audits/*.jsonl），只扫主技能目录时
+//   SECURITY.md 会**低报**这两个真实能力。
+const SUB_SCRIPTS = join(ROOT, 'skills', 'lunheng-commands', 'scripts')
 const SECURITY = readFileSync(join(ROOT, 'SECURITY.md'), 'utf8')
 
 /** 用临时目录造最小 scripts 树，验证派生口径（而非只测真源）。 */
@@ -165,7 +169,7 @@ test('已知边界：换名字的 import 绕过本扫描（写成用例，免得
 
 test('真实树：源码派生面与 SECURITY.md 声明双向一致（本门的存在意义）', () => {
   const { spawn, writeContent, mkdirOnly, onlyDoc } = (() => {
-    const s = deriveScriptSurface(SCRIPTS)
+    const s = deriveScriptSurfaces([SCRIPTS, SUB_SCRIPTS])
     const p = parseSecuritySurface(SECURITY)
     const d = reconcileSurface(s, p)
     return { spawn: d.spawn, writeContent: d.writeContent, mkdirOnly: d.mkdirOnly, onlyDoc: null }
@@ -174,4 +178,42 @@ test('真实树：源码派生面与 SECURITY.md 声明双向一致（本门的�
     assert.deepEqual(v.onlyDerived, [], `${label}：源码里新出现的脚本未写进 SECURITY.md → ${v.onlyDerived.join(', ')}`)
     assert.deepEqual(v.onlyDoc, [], `${label}：SECURITY.md 列了但源码已无该能力 → ${v.onlyDoc.join(', ')}`)
   }
+})
+
+// ===== v19.27.11（审计遗留项：⑧c 声明面漏掉子技能脚本）=====
+test('多目录合并：三档清单取并集，且子技能脚本确实带来新能力', () => {
+  const merged = deriveScriptSurfaces([SCRIPTS, SUB_SCRIPTS])
+  const mainOnly = deriveScriptSurface(SCRIPTS)
+  assert.equal(merged.all.length, 42, '主技能 37 + 子技能 5 = 42（数量真源 = 磁盘实测）')
+  assert.equal(mainOnly.all.length, 37, '单目录 API 不动：仍是主技能 37 个')
+  assert.ok(merged.all.includes('owner-cli.mjs') && merged.all.includes('stats-cli.mjs'), '子技能脚本必须并入清单')
+  // 子技能带来的**新能力**：stats-cli 派子进程、owner-cli 写回执账本
+  assert.ok(merged.spawn.includes('stats-cli.mjs'), 'stats-cli 派生 node 子进程 → 必须在子进程面')
+  assert.ok(!mainOnly.spawn.includes('stats-cli.mjs'), '单目录口径下它不存在——这正是扩面前的低报')
+  assert.ok(merged.writeContent.includes('owner-cli.mjs'), 'owner-cli 写 gate-receipts.jsonl / abort.json → 必须在写内容面')
+  assert.equal(merged.spawn.length, 8, '子进程面 8 个（原 7 + stats-cli）')
+  assert.equal(merged.writeContent.length, 28, '写内容面 28 个（原 27 + owner-cli）')
+  assert.equal(merged.readOnly.length, 13, '只读 13 个（原有 10 + route-command/pending-cli/history-cli）')
+})
+
+test('多目录合并：重名必须响亮失败（合并按文件名对账，重名会让三档清单错位）', () => {
+  const dirs = ['a', 'b'].map((tag) => {
+    const dir = mkdtempSync(join(tmpdir(), `surface-${tag}-`))
+    writeFileSync(join(dir, 'same.mjs'), 'export const x = 1\n')
+    return dir
+  })
+  try {
+    assert.throws(() => deriveScriptSurfaces(dirs), /随包脚本名冲突：same\.mjs/, '重名不得静默合并')
+  } finally {
+    for (const d of dirs) rmSync(d, { recursive: true, force: true })
+  }
+})
+
+test('反向：SECURITY.md 漏掉子技能脚本时，双向对账必须报出来（门的存在意义）', () => {
+  // 造「声明面漏登记」：把两个子技能脚本名在文档里改名（不是删标记——名字在本行还会出现于说明句，
+  //   只删登记标记会残留提及，使本用例变成假绿）。
+  const stripped = SECURITY.replaceAll('`stats-cli.mjs`', '`x-stats.mjs`').replaceAll('`owner-cli.mjs`', '`x-owner.mjs`')
+  const d = reconcileSurface(deriveScriptSurfaces([SCRIPTS, SUB_SCRIPTS]), parseSecuritySurface(stripped))
+  assert.ok(d.spawn.onlyDerived.includes('stats-cli.mjs'), '子进程面漏登记必须报')
+  assert.ok(d.writeContent.onlyDerived.includes('owner-cli.mjs'), '写内容面漏登记必须报')
 })

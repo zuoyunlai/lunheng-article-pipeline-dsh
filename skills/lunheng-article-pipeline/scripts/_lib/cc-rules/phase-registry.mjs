@@ -27,6 +27,7 @@
 //   · `label`       长标签（`Phase 0 定题`）：`handoff-check` 的人类可读文案沿用。
 //   · `shortLabel`  短标签（`P0 定题`）：`flow-metrics.mjs` 的**输出列**沿用（存量报告形态）。
 //   · `confirmFile` 落盘文件名（`阶段确认-Phase0.md`，真源 = `templates/主人确认-template.md` 的「命名真源」段）。
+//   · `defaultMode` 默认交互：`blocking` 等主人回复；`notify` 留单并由主控按推荐项自决。
 //
 // **边界（如实声明）**：
 //   · 本模块是**纯常量**：无 fs / 无网络 / 无子进程 / 无副作用，可被任何脚本与测试直接 import。
@@ -36,10 +37,10 @@
 
 /** 四门（人在环）——**唯一登记表**。顺序 = 门序（`run-report` / `pending-cli` 依赖此顺序）。 */
 export const PHASES = Object.freeze([
-  Object.freeze({ id: 'Phase0', label: 'Phase 0 定题', shortLabel: 'P0 定题', confirmFile: '阶段确认-Phase0.md' }),
-  Object.freeze({ id: 'Phase2.5', label: 'Phase 2.5 大纲确认', shortLabel: 'P2.5 大纲', confirmFile: '阶段确认-Phase2.5.md' }),
-  Object.freeze({ id: 'Phase3.5', label: 'Phase 3.5 洞察补充', shortLabel: 'P3.5 洞察', confirmFile: '阶段确认-Phase3.5.md' }),
-  Object.freeze({ id: 'Phase5', label: 'Phase 5 终稿交付', shortLabel: 'P5 终稿', confirmFile: '阶段确认-Phase5.md' }),
+  Object.freeze({ id: 'Phase0', label: 'Phase 0 定题', shortLabel: 'P0 定题', confirmFile: '阶段确认-Phase0.md', defaultMode: 'blocking' }),
+  Object.freeze({ id: 'Phase2.5', label: 'Phase 2.5 大纲确认', shortLabel: 'P2.5 大纲', confirmFile: '阶段确认-Phase2.5.md', defaultMode: 'notify' }),
+  Object.freeze({ id: 'Phase3.5', label: 'Phase 3.5 洞察补充', shortLabel: 'P3.5 洞察', confirmFile: '阶段确认-Phase3.5.md', defaultMode: 'notify' }),
+  Object.freeze({ id: 'Phase5', label: 'Phase 5 终稿交付', shortLabel: 'P5 终稿', confirmFile: '阶段确认-Phase5.md', defaultMode: 'blocking' }),
 ])
 
 /** 四门 id（顺序同 `PHASES`）。 */

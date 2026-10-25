@@ -2,7 +2,7 @@
 
 # /lunheng 命令路由表（单一真源）
 
-> 本文档是 11 个命令如何路由到论衡阶段的**唯一真源**（`-cite` 含 3 种模式：默认 / `-auto` / `-manual`；`-h` 是 `-help` 的别名——命令数真源 = `scripts/route-command.mjs` 的 COMMANDS 表，v18.7.3 定案口径「11 个命令」）。
+> 本文档是 13 个命令如何路由到论衡阶段的**唯一真源**（`-cite` 含 3 种模式：默认 / `-auto` / `-manual`；`-h` 是 `-help` 的别名——命令数真源 = `scripts/route-command.mjs` 的 COMMANDS 表，v18.7.3 定案口径「11 个命令」**v19.27.8 增补为 13 个**：新增主人侧 `-gate` / `-abort`）。
 > 修改命令行为只改本文档 + `route-command.mjs`；
 > `SKILL.md` 只列命令清单与文档锚点。
 
@@ -133,6 +133,41 @@
 **退出码**：`0` 已列出（含「无待办」）/ `10` 参数或路径错 / `70` 内部错。**不做内容判定，故不存在 `1/2/3`**（按本仓判据，非判定类脚本的 `1` 一律是撞码）。
 
 **论衡阶段**：任意阶段可查。
+
+<a id="gate"></a>
+
+## `-gate <项目> <Phase> --approve|--reject [--note "…"]`
+
+**行为**（v19.27.8 · 审计 P2-2）：把主人的裁定**写成回执**，而不是让主控转录。
+机械实现 = `scripts/owner-cli.mjs gate`。
+
+- 追加一行到 `run/<项目>/audits/gate-receipts.jsonl`：
+  `{gate, round, answeredAt, rawAnswer, tool:"owner-cli", callIdSource:"not-captured", decision:"approve"|"reject", ...}`
+- **`rawAnswer` 就是主人打的字**（`--note` 的原文；不给则 `主人 CLI 裁定：<Phase> 通过|驳回`）。A7 会要求
+  `阶段确认-<Phase>.md` §6「主人原话」**逐字**含它——差额就是转录篡改的证据。
+- `--approve` 与 `--reject` 必须且只能给一个（路由层 `route-command.mjs` 与 `owner-cli` 两处同判据）。
+- `round` = 该门已有回执数 + 1；回执 id 形如 `Phase2.5#2`，填进 §6「回执 id」。
+
+**它不代劳的部分**（刻意）：不写 §6、不改 `status.md`、不删除任何产物——那些是主控写面。
+主控须把同一句 `rawAnswer` 逐字回填 §6 并填「提问方式 = 主人 CLI（-gate）」。
+
+**退出码**：`0` 已写入 / `10` 用法或参数错 / `20` 项目不存在或路径越界（`lib/run-path-fence.mjs` 判）。
+
+**论衡阶段**：四门任一（Phase 0 / 2.5 / 3.5 / 5）。
+
+<a id="abort"></a>
+
+## `-abort <项目> [--reason "…"]`
+
+**行为**（v19.27.8 · 审计 P2-2）：主人中止项目。机械实现 = `scripts/owner-cli.mjs abort`。
+
+- 落 `run/<项目>/audits/abort.json`：`{abortedAt, reason?, by:"owner-cli", firstAbortedAt?}`（重复调用覆盖并保留首次时间）。
+- 主控**在下一个门边界立即停**：不派发新角色、不删任何已落盘产物（中止 ≠ 回滚；删产物会让账本与门记录对不上）。
+- 只写这一个文件，**不动** `status.md` / 交付件 / 证据包。
+
+**退出码**：`0` 已落标记 / `10` 用法错 / `20` 项目不存在或路径越界。
+
+**论衡阶段**：任意阶段。
 
 <a id="help"></a>
 

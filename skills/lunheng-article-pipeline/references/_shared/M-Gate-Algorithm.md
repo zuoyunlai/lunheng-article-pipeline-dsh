@@ -1,4 +1,4 @@
-> 版本：v19.27.3（DSH bundle 插件）
+> 版本：v19.27.11（DSH bundle 插件）
 
 > **v2.5.2-dsh.5 重大修订的 14 项变更摘要已外移**（逐版明细，按 CTX-1 归仓库级文档）：见 `audits/沿革外移-M-Gate-Algorithm-2026-10-08.md` §1（不随包）；各项修订的**现行判据**在各自的 M-Form / M-Exist 门段内。
 
@@ -210,7 +210,7 @@ references_unique = sorted(set(references))
 # === v2.5.2-dsh.5 修订：阈值提升（原 ≥1 即过 → 学术深度论文基线 L≥3）===
 # 防 L=0 通过（v2.3.7 §四 P4 实战反例：L=0 D=22 C=3 旧阈值过）
 L_count = len(re.findall(r'\[L\d+\]', draft_text))
-min_L = 3  # 学术深度论文基线（公众号/商业评论可降为 1，行业分析降为 2）
+min_L = GENRE_MIN_L[genre]  # 真源 = scripts/_lib/mgate-gates/mform-gates.mjs 的 GENRE_MIN_L（12 档，不在此复述）
 if len(references_unique) == 0:
     return {"通过": False, "失败原因": "正文无任何引用标注"}
 elif L_count < min_L:

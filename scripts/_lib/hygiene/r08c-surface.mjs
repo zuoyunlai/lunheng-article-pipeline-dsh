@@ -7,12 +7,18 @@
 //   现改为**从源码派生 + 双向对账**。三档口径（写内容 / 仅建目录 / 子进程）见 `_lib/script-surface.mjs`。
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { deriveScriptSurface, parseSecuritySurface, reconcileSurface } from '../script-surface.mjs' // C-7：随包脚本执行面/写盘面 ∈ SECURITY.md
+import { deriveScriptSurfaces, parseSecuritySurface, reconcileSurface } from '../script-surface.mjs' // C-7：随包脚本执行面/写盘面 ∈ SECURITY.md
 
 export function run(ctx) {
   const { fail, note, ROOT } = ctx
   try {
-    const surface = deriveScriptSurface(join(ROOT, 'skills', 'lunheng-article-pipeline', 'scripts'))
+    // v19.27.11：扫**两个**脚本目录——主技能 `scripts/`（37）+ 子技能 `skills/lunheng-commands/scripts/`（5）。
+    //   只扫前者时，`stats-cli.mjs`（spawn node）与 `owner-cli.mjs`（写 audits/*.jsonl）都不在声明面，
+    //   即 SECURITY.md 的安全声明**低报**了两个真实能力。
+    const surface = deriveScriptSurfaces([
+      join(ROOT, 'skills', 'lunheng-article-pipeline', 'scripts'),
+      join(ROOT, 'skills', 'lunheng-commands', 'scripts'),
+    ])
     const declared = parseSecuritySurface(readFileSync(join(ROOT, 'SECURITY.md'), 'utf8'))
     const diff = reconcileSurface(surface, declared)
     const label = { spawn: '子进程面', writeContent: '写内容面', mkdirOnly: '仅建目录' }

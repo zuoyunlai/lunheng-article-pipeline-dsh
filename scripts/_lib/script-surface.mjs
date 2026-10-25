@@ -94,6 +94,42 @@ export function deriveScriptSurface(scriptsDir) {
   return { all: top, spawn, writeContent, mkdirOnly, readOnly }
 }
 
+/**
+ * v19.27.11（审计「⑧c 声明面」遗留项）：**多目录**派生。
+ *
+ * 病灶：本模块与 ⑧c 门此前只扫 `skills/lunheng-article-pipeline/scripts/*.mjs`（37 个），
+ * 而**随包还带 5 个子技能脚本**（`skills/lunheng-commands/scripts/*.mjs`：`route-command` /
+ * `pending-cli` / `history-cli` / `stats-cli` / `owner-cli`）——它们同样会被宿主执行，
+ * 其中 `stats-cli.mjs` 派生 `node` 子进程、`owner-cli.mjs` 写 `run/<项目>/audits/*.jsonl|json`。
+ * 于是 `SECURITY.md` 的「随包脚本执行面」声明**少报了 5 个脚本、1 个子进程、1 个写面**——
+ * 正是本模块开头点名的那种失真（**低报执行面**）。
+ *
+ * 为什么现在才做：扩面会连带改变三档清单的**每一个计数**（37→42 / 7→8 / 27→28 / 只读 10→13），
+ * 必须与 `SECURITY.md`、`SKILL.md` 白名单、`operations-capability.md`、`docs/quick-facts.md`
+ * 四处派生面同批改，否则会造出一堆新的漂移。
+ *
+ * 合并口径：三档取**并集**（脚本名在不同目录间不重名，实测 0 处冲突）；
+ * 单目录 API `deriveScriptSurface` 保留不动——既有测试与调用方仍按单目录校验。
+ */
+export function deriveScriptSurfaces(scriptsDirs) {
+  const all = []
+  const spawn = []
+  const writeContent = []
+  const mkdirOnly = []
+  for (const dir of scriptsDirs) {
+    const r = deriveScriptSurface(dir)
+    for (const f of r.all) {
+      if (all.includes(f)) throw new Error(`随包脚本名冲突：${f} 同时出现在多个目录——对账按文件名进行，重名会让三档清单错位`)
+    }
+    all.push(...r.all)
+    spawn.push(...r.spawn)
+    writeContent.push(...r.writeContent)
+    mkdirOnly.push(...r.mkdirOnly)
+  }
+  const mutated = new Set([...spawn, ...writeContent, ...mkdirOnly])
+  return { all, spawn, writeContent, mkdirOnly, readOnly: all.filter((f) => !mutated.has(f)) }
+}
+
 /** 从 `SECURITY.md` 的「随包脚本」行解析出文档**声明**的三档清单。 */
 export function parseSecuritySurface(docText) {
   const row = docText.split('\n').find((l) => l.includes('随包脚本') && l.includes('子进程面'))

@@ -22,8 +22,11 @@ const COMMANDS = {
   '-journal':  { phase: 'journal',  desc: '改目标期刊 + 重跑 T9 + 期刊匹配' },
   '-ppt':      { phase: 'ppt',      desc: '把当前定稿 → PPT 大纲（Markdown 表格）' },
   '-history':  { phase: 'history',  desc: '列 run/* 历史 + --diff <id1> <id2>' },
-  '-rollback': { phase: 'rollback', desc: '回滚到 checkpoint（需 --confirm 二次确认）' },
+  // ⚠ 未实现（v19.27.5 起路由层直接拒绝，见下方 -rollback 分支）——保留条目只为「未知命令」不误报
+  '-rollback': { phase: 'rollback', desc: '⚠ 未实现：本仓无 checkpoint（路由层显式拒绝并给出三条替代路径）' },
   '-status':   { phase: 'status',   desc: '显示当前进度（≤15 行人类可读）；--pending = 跨项目「待我决策」聚合收件箱' },
+  '-gate':     { phase: 'gate',     desc: '主人侧：对某门裁定 --approve|--reject（原文直接进回执账本，不经主控转录）' },
+  '-abort':    { phase: 'abort',    desc: '主人侧：中止 run/<项目>（落 audits/abort.json，主控在下一个门边界停）' },
   '-stats':    { phase: 'stats',    desc: 'run/ 目录项目汇总看板（借鉴论衡 v18.5.0 lunheng-stats.mjs）' },
   '-help':     { phase: 'help',     desc: '列可用命令 + 简述' },
   '-h':        { phase: 'help',     desc: 'help 别名' },
@@ -53,9 +56,17 @@ export function routeCommand(argv) {
     return { error: `未知命令：${cmd}。可用命令：${Object.keys(COMMANDS).filter(k => k !== '-h').join(', ')}` };
   }
 
-  // 二次确认检查（-rollback 必填 --confirm）
-  if (cmd === '-rollback' && !args.includes('--confirm')) {
-    return { error: '⚠ -rollback 需要 --confirm 二次确认（防误操作）。示例：-lunheng -rollback phase-25-outline --confirm' };
+  // -rollback（v19.27.5 · 审计 P1-4「声明存在但无实现」）：本仓**没有** checkpoint 机制，也没有任何
+  //   自动回退脚本——旧版只校验 `--confirm` 就把 `{ok:true, action:'rollback'}` 交出去，主控拿不到任何
+  //   可执行动作，只能自己编一套；最坏情况下它会把「已回滚」当成事实写进 status.md。
+  //   故在**路由层直接拒绝**（宁可显式不可用，不返回假绿），并给三条真实可行的替代路径。
+  if (cmd === '-rollback') {
+    return {
+      error: '⚠ `-rollback` 在论衡里**没有实现**（本仓不建 checkpoint、无自动回退脚本）。它不会假装成功。三条真实可用的回退路径：\n'
+        + '· 正文回退 —— 把 `drafts/初稿-vN.md` 复制为新的 v(N+1)，写 `修订说明-v(N+1).md`；版本号**只增不降**（见 references/deliverables.md）\n'
+        + '· 文件级回退 —— 用 git（`git checkout -- <路径>`）或运行前自建的备份目录；论衡自己不保存历史副本\n'
+        + '· 阶段级回退 —— 重跑该阶段的角色（T5/T7 等），**不要删产物**：删了会让闸门记录与账本对不上（A7 硬 21）',
+    };
   }
 
   // -cite -auto / -cite -manual 子模式识别
@@ -67,9 +78,26 @@ export function routeCommand(argv) {
   }
 
   // -status --pending：跨项目「待我决策」聚合收件箱（v18.62.0 F4）
-  //   旗标不改变命令数（真源仍是 COMMANDS 表去 -h 的 11 个）——与 -cite 的三种模式同构。
+  //   旗标不改变命令数（真源仍是 COMMANDS 表去 -h 的 13 个）——与 -cite 的三种模式同构。
   if (cmd === '-status' && args.includes('--pending')) {
     return { ok: true, action: 'status-pending', args: args.filter((a) => a !== '--pending') };
+  }
+
+  // -gate / -abort（v19.27.8 · 审计 P2-2「主人只有一条腿」）：**主人侧入口**，机械实现 = 同目录
+  //   `owner-cli.mjs`（本路由只做参数形状校验与转交，不自己写文件）。
+  //   为什么放在路由层校验：`--approve` 与 `--reject` 同时给 / 都不给，是最常见的手滑；在这里拒绝
+  //   比让 `owner-cli` 写到一半再报错干净（那里也会拒，两处同判据）。
+  if (cmd === '-gate') {
+    const hasApprove = args.includes('--approve');
+    const hasReject = args.includes('--reject');
+    if (hasApprove === hasReject) {
+      return { error: '用法：-lunheng -gate <项目> <Phase0|Phase2.5|Phase3.5|Phase5> --approve|--reject [--note "…"]'
+        + '\n（`--approve` 与 `--reject` 必须且只能给一个；`--note` 的原文会逐字进回执账本的 rawAnswer）' };
+    }
+    return { ok: true, action: 'gate', agent: 'owner-cli', args, decision: hasApprove ? 'approve' : 'reject' };
+  }
+  if (cmd === '-abort') {
+    return { ok: true, action: 'abort', agent: 'owner-cli', args };
   }
 
   return { ok: true, action: COMMANDS[cmd].phase, args };

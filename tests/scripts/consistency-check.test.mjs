@@ -631,6 +631,63 @@ test('v18.99.0 ㊴：执行面允许面的「无指针排他断言 / 被禁项�
   rmSync(d, { recursive: true, force: true })
 })
 
+test('v19.27.4 ㊷：四门散文的文件名与默认阻塞语义必须反向对账', () => {
+  const { d, R } = mkRepo()
+  const cc = join(R, 'scripts', 'consistency-check.mjs')
+  const skill = join(R, 'SKILL.md')
+  const coordinator = join(R, 'references', 'agents', '00-主控-扩展职责.md')
+
+  const base = run([cc]).out
+  assert.doesNotMatch(base, /四门文件名漂移|四门默认语义漂移/, '㊷ 基线不应报漂移：' + base.slice(-500))
+
+  const skillSrc = readFileSync(skill, 'utf8')
+  assert.match(skillSrc, /阶段确认-Phase2\.5\.md/, '夹具须含登记表真名，负例才能注入')
+  writeFileSync(skill, skillSrc.replace('阶段确认-Phase2.5.md', '阶段确认-P2.5.md'))
+  const badName = run([cc]).out
+  assert.match(badName, /\[P0 四门文件名漂移\].*阶段确认-P2\.5\.md.*阶段确认-Phase2\.5\.md/,
+    '㊷ 必须抓到散文把 Phase 缩掉：' + badName.slice(-600))
+  writeFileSync(skill, skillSrc)
+
+  const coordSrc = readFileSync(coordinator, 'utf8')
+  const drifted = coordSrc.replace('四节点都留单，默认仅 Phase 0 / Phase 5 等主人回复；全过目模式才四门都等',
+    '4 个节点都要主人**亲自过目**（不得自动放行）')
+  assert.notEqual(drifted, coordSrc, '夹具须含现行默认交互锚点，负例才能注入')
+  writeFileSync(coordinator, drifted)
+  const badMode = run([cc]).out
+  assert.match(badMode, /\[P0 四门默认语义漂移\]/,
+    '㊷ 必须抓到默认通知门被改写为四门全阻塞：' + badMode.slice(-600))
+
+  rmSync(d, { recursive: true, force: true })
+})
+
+test('v19.27.9 ㊷：模板面也要对账——确认单口径与轻量档 Phase 行', () => {
+  const { d, R } = mkRepo()
+  const cc = join(R, 'scripts', 'consistency-check.mjs')
+  const confirm = join(R, 'references', 'templates', '主人确认-template.md')
+  const lite = join(R, 'references', 'templates', 'status-template-lite.md')
+
+  const base = run([cc]).out
+  assert.doesNotMatch(base, /四门默认语义漂移|轻量档状态机缺行/, '㊷ 模板面基线不应报：' + base.slice(-500))
+
+  const cSrc = readFileSync(confirm, 'utf8')
+  assert.doesNotMatch(cSrc, /四门\*\*全部必需\*\*/, '夹具须已收口，负例才能注入')
+  writeFileSync(confirm, cSrc + '\n> 四门**全部必需**（轻量档只减角色、不减门）\n')
+  const badTpl = run([cc]).out
+  assert.match(badTpl, /\[P0 四门默认语义漂移\].*主人确认-template\.md/,
+    '㊷ 必须抓到模板把四门写成全部阻塞：' + badTpl.slice(-600))
+  writeFileSync(confirm, cSrc)
+
+  const lSrc = readFileSync(lite, 'utf8')
+  const row = '| 2.5 大纲确认 | ⬜ Inbox | | |\n'
+  assert.ok(lSrc.includes(row), '夹具须含 2.5 行，负例才能注入')
+  writeFileSync(lite, lSrc.replace(row, ''))
+  const badLite = run([cc]).out
+  assert.match(badLite, /\[P0 轻量档状态机缺行\].*Phase2\.5/,
+    '㊷ 必须抓到轻量档漏掉通知门：' + badLite.slice(-600))
+
+  rmSync(d, { recursive: true, force: true })
+})
+
 test('consistency-check ⑬ docs/ 安装 pin + 当前版本声明（v18.85.0-feat）', () => {
   const { d, repo, R } = mkRepo({ full: true })
   const cc = join(repo, 'skills', 'lunheng-article-pipeline', 'scripts', 'consistency-check.mjs')
