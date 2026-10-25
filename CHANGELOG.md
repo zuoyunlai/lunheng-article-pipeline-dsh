@@ -2,6 +2,31 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 19.27.12 — 2026-10-25
+
+<!-- 行为变更 2 条 | 锚点 = CHANGELOG.md § 19.27.12（发版被跑者 tar 卡住：pack-smoke 加内置解包兜底） -->
+
+> **主题**：v19.27.11 的 tag 已推，但 `ci.yml` 的 `pack-smoke (windows-latest)` 与 `script-tests (windows-latest, 22.19)` 连跑 **3 次全红**，于是 `publish.yml` 的「同 SHA CI 绿闸」fail-closed，**npm 上仍是 19.27.3**。红的原因不是包、是**跑者的 tar**：`tar: Archive entry has empty or unreadable filename ... skipping`。
+> **来源**：2026-10-25 发版实测（主人 2026-10-24「按规则发版」；按既有纪律先试 rerun，两次重跑同样红后判定「靠 rerun 碰运气不可接受」，转做真修）。
+> **版本判据 = patch**：不改任何门判据、不改断言强度、不动 M 门 25 项与四门口径——只把「解包」这一步从「只能靠系统 tar」改成「tar 优先 + 内置解包器兜底」，然后**照旧跑完全部断言**。
+
+- **① 新增 `scripts/_lib/untar.mjs`（内置解包器），`pack-smoke` 在系统 tar 失败时自动兜底**：
+  - 证据（同一份 tgz 三面一致，证明不是包的问题）：ubuntu / macOS 的 `pack-smoke` 一直绿；本机 `node --test tests/scripts/pack-smoke.test.mjs` → 1/1 pass；GNU tar 1.35 `tar -tzf` 列出 213 条、`gzip -t` 通过；与上一发布 tag 的包逐条对照 **212 → 213，唯一新增 `package/skills/lunheng-commands/scripts/owner-cli.mjs`，零消失**。
+  - 实现：`untarGz(gzBuffer, destDir)` 支持 ustar（`name`+`prefix` 拼接）/ GNU 长名 `L` / PAX `x` `g`（取 `path=`）/ 目录 / 普通文件；**逐块校验和验证**（坏块直接抛错，不静默产出错文件）；安全上**拒绝绝对路径与含 `..` 的条目**、跳过符号链接与硬链接并计数；**解出 0 个文件即抛错**（不允许「成功但空」）。
+  - 接线：`scripts/pack-smoke.mjs` 的 `tar` 失败分支先 `rmSync(package/)` 清掉系统 tar 可能写了一半的目录，再走内置解包器重解**同一份 tgz**；**门强度一格不松**——后面的每条断言仍跑在「从 tgz 解出来的真实文件」上（关键文件齐备 / `lib/*.js` 与真源逐一对齐 / 发布面裁剪 / 入口 apply 真跑 / frontmatter 剥离）。
+- **② 兜底分支必须每次 CI 都被真跑一遍，而不是等某个跑者抽风才第一次执行**：新增开关 `LUNHENG_PACK_SMOKE_FORCE_BUILTIN_TAR=1`（强制跳过系统 tar），配套 **5 条回归**（`tests/scripts/untar.test.mjs`）：PAX 长名（>100 字节，头里是截断名，必须用 PAX 的 `path=`）/ 目录 / 普通文件内容逐字节一致；`../` 越界必须拒收；空条目名必须抛错（**正是跑者报的坏头形态**）；解出 0 文件必须抛错；**端到端**（真 `npm pack` + 强制开关 → exit 0，且输出必须含「内置解包器：N 个文件」，防「tar 没失败、压根没进兜底」被误当通过）。
+
+**验证**：门 1/4 `consistency-check` 93 个 `.md` + `cordis.patch.yml`/`examples`/`.dsh` 同步、**0 处漂移**；门 2/4 `STRICT_WARN=1 plugin-surface-check` **11 项通过 / 0 失败 / 0 提示**（skip 3 项均在白名单）；门 3/4 `repo-hygiene-check` 全项通过（含 ⑥ 发布面 213 个文件 / 随包脚本 37 个 / ⑧c 42 个脚本双向一致 / ⑬ CHANGELOG 首段 == package.json）；门 4/4 `pack-smoke` 解包 4397 KB / 213 个文件、入口与自注册行均可装载。全量回归 `node --test` 两个 glob：**1415/1415 全绿**（`node --test` 计 1417 例 = 1415 通过 + 2 既有登记 skip，0 fail；较 v19.27.11 增 5 例 = 内置解包器 4 段 + 端到端 1 段）。**反事实验证（本批的核心证据，不是复述结论）**：① 拿真实 `lunheng-article-pipeline-19.27.11.tgz` 跑内置解包器 → 213 个文件，与 python `tarfile` 的解包结果**逐文件 sha256 全等**（`onlyTar`/`onlyMine`/`hashDiff` 三空，输出 `IDENTICAL`）；② `LUNHENG_PACK_SMOKE_FORCE_BUILTIN_TAR=1 node scripts/pack-smoke.mjs` → 打印「内置解包器：213 个文件 / 0 个目录」且 exit 0，证明兜底真能跑完整套断言；③ 反向注意：本机系统 tar 正常时走不到兜底——**「门绿」并不等于「兜底被验证过」**，这正是 ②③ 两条测试必须常驻的原因。
+
+**回滚点**：`git revert` 本版提交即回到 v19.27.11（tag 已在）——本批不改数据形态、不迁移任何项目文件，回滚不影响既有 `run/` 产物；`pack-smoke` 回到「只信系统 tar」，即回到发版被跑者卡住的状态。
+
+**未做（如实）**：
+- **`v19.27.11` 的 tag 保留，但它不会出现在 npm 上**：那个 commit 的 CI 已红，按 publish.yml 的「同 SHA CI 绿闸」不可能发布，本版取代它。要不要删这个从未发布过的 tag 属于版本账目决定，需主人另定（`git push --delete origin v19.27.11`），本批**未动**。
+- **不改 `ci.yml` 的 windows 矩阵**：跑者 tar 抽风是上游问题，本版只让门不再被它卡住，OS 覆盖与矩阵不动——真修不该以缩窄 CI 面为代价。
+- **`scripts/_lib/untar.mjs` 不进 ⑧c 三档清单、不计入「仓库根 13 个退出码契约脚本」**：按既有口径 `scripts/_lib/` 是共享库（不随包、无自己的退出码），与 `pack-negative.mjs` 等同级处理。
+
+---
+
 ## 19.27.11 — 2026-10-24
 
 <!-- 行为变更 3 条 | 锚点 = CHANGELOG.md § 19.27.11（⑧c 声明面扩到子技能脚本：安全声明从「少报」改为「双向对账」） -->

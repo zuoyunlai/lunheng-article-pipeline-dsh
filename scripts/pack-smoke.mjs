@@ -24,6 +24,7 @@ import { join, dirname, resolve, relative } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { installExitGuard } from '../skills/lunheng-article-pipeline/scripts/_lib/exit-guard.mjs'
 import { scanShipped, describeViolations } from './_lib/pack-negative.mjs' // D-1②：与 repo-hygiene 共用同形负清单
+import { untarGz } from './_lib/untar.mjs' // v19.27.12：系统 tar 失败时的内置解包兜底（见该文件头注释）
 
 installExitGuard()
 
@@ -66,11 +67,32 @@ try {
   // ② 解包（tar 在 ubuntu/macos/windows10+ 均可用；v18.16.0 起改用 cwd 相对路径，
   //   规避 Windows + Git Bash 下 GNU tar 把绝对路径 C:\... 当成远端主机而报
   //   `Cannot connect to C: resolve failed` 的环境差异 —— 与原行为等价）
-  const untar = sh('tar', ['-xzf', tgz], { cwd: tmp })
+  // 强制走内置解包器（仅用于回归：见 tests/scripts/untar.test.mjs 的端到端用例）——
+  //   让「系统 tar 坏掉」这条分支在 CI 里被真的跑一遍，而不是等到某个跑者抽风才第一次执行。
+  const forceBuiltin = process.env.LUNHENG_PACK_SMOKE_FORCE_BUILTIN_TAR === '1'
+  const untar = forceBuiltin
+    ? { status: 3, stderr: '强制内置解包（LUNHENG_PACK_SMOKE_FORCE_BUILTIN_TAR=1）' }
+    : sh('tar', ['-xzf', tgz], { cwd: tmp })
   if (untar.status !== 0) {
-    console.error(`tar 解包失败（exit ${untar.status}）：${(untar.stderr || '').trim().slice(0, 300)}`)
-    console.error('→ 退出码 10（环境问题：tar 不可用）')
-    process.exit(10)
+    // v19.27.12（2026-10-25 发版实测）：`pack-smoke (windows-latest)` 自 2026-10-20 起偶发
+    //   `tar: Archive entry has empty or unreadable filename ... skipping` → exit 1 → ci.yml 红 →
+    //   publish.yml 的「同 SHA CI 绿闸」fail-closed，发版被卡。同一个 tgz 在 ubuntu/macOS/GNU tar 1.35
+    //   都能解开（`tar -tzf` 逐条一致、`gzip -t` 通过），即**包是好的、跑者的 tar 有毛病**；
+    //   连重跑 2 次（共 3 次）全红，靠 rerun 碰运气不可接受。故改为**内置解包器兜底**：
+    //   先把系统 tar 可能写了一半的 `package/` 清掉，再逐块校验着解——门本身一格不松
+    //   （后面所有断言仍跑在「从 tgz 解出来的真实文件」上）。
+    const reason = (untar.stderr || '').trim().split('\n')[0] || `exit ${untar.status}`
+    console.log(`  ! 系统 tar 解包失败（${reason.slice(0, 160)}）`)
+    console.log('  · 改用内置解包器（scripts/_lib/untar.mjs）重解同一份 tgz')
+    rmSync(join(tmp, 'package'), { recursive: true, force: true })
+    try {
+      const res = untarGz(readFileSync(join(tmp, tgz)), tmp)
+      console.log(`  · 内置解包器：${res.files} 个文件 / ${res.dirs} 个目录（跳过 ${res.skipped} 个非普通文件）`)
+    } catch (e) {
+      console.error(`内置解包器同样失败：${e.message}`)
+      console.error('→ 退出码 10（环境问题：系统 tar 不可用，内置解包器也解不开这份发布物）')
+      process.exit(10)
+    }
   }
   const pkg = canon(join(tmp, 'package'))
 
