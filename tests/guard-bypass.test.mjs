@@ -27,7 +27,7 @@ const CMD_ROUTE = join(PACKAGE_ROOT, 'skills', 'lunheng-commands', 'scripts', 'r
 const LIB_INDEX = join(PACKAGE_ROOT, 'lib', 'index.js')
 
 /** 真跑一次入口，回收 guard（与 guard-config.test.mjs 同形，故意重复以便本文件可独立运行）。 */
-async function runApply() {
+async function runApply(loggerOverride) {
   const mod = await import(pathToFileURL(ENTRY).href)
   const guards = []
   const ctx = {
@@ -36,7 +36,7 @@ async function runApply() {
       : undefined),
     effect: (fn) => fn(),
     skills: { register: () => () => {} },
-    logger: { info: () => {}, warn: () => {} },
+    logger: loggerOverride ?? { info: () => {}, warn: () => {} },
   }
   mod.apply(ctx)
   await settle()
@@ -49,7 +49,7 @@ test('B-1 受保护根含内嵌子技能：lunheng-commands 的 SKILL.md 与命�
   const guard = await runApply()
   assert.ok(guard, '入口必须装上写保护')
   for (const [label, p] of [
-    ['子技能 SKILL.md（定义 11 个 /lunheng 命令）', CMD_SKILL_MD],
+    ['子技能 SKILL.md（定义 13 个 /lunheng 命令）', CMD_SKILL_MD],
     ['子技能命令数真源脚本（consistency-check ㉕ 的唯一真源）', CMD_ROUTE],
   ]) {
     const reason = await guard(exec('write', { file_path: p }))
@@ -182,13 +182,72 @@ test('P3 数字键位参 + **相对**路径：与键名形态同等判定（修�
     '数字键 + 相对路径解析到包外/非机制路径（README.md 不在受保护根内）必须放行——不得退化成「有键就否决」')
 })
 
-test('P3 路径归一平台门：canonicalPath 的大小写归一**仅在 Windows** 生效（POSIX 不得无条件 lower）', {
-  skip: process.platform === 'win32' ? 'Windows 路径本就大小写不敏感（大小写归一是正确行为）；本用例只在 POSIX 上判定' : false,
+test('P3 路径归一平台门（v19.27.13 · 反哺 F-7 改判据：FS 敏感性探测）：大小写**敏感** FS 上 canonicalPath 不得无条件 lower', {
+  // v19.27.13（F-7）：skip 条件从「platform === win32」改为「FS 实测大小写不敏感」——
+  //   macOS 默认 APFS 是大小写不敏感的 POSIX，归一在该形态下是**正确**行为（同 Windows），
+  //   旧的「非 Windows 一律不归一」判据恰是 F-7 要收掉的绕过面。
+  skip: await (async () => {
+    if (process.platform === 'win32') return true
+    const { writeFileSync, existsSync, rmSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const p = join(tmpdir(), `lunheng-case-skip-probe-${process.pid}-AaB.tmp`)
+    try {
+      writeFileSync(p, '1', { flag: 'wx' })
+      return existsSync(p.replace(/AaB\.tmp$/, 'aAb.tmp'))   // 变体可 stat = 不敏感 FS → 跳过本用例
+    } catch { return false } finally { try { rmSync(p, { force: true }) } catch { /* */ } }
+  })(),
 }, async () => {
   const { canonicalPath } = await import(pathToFileURL(join(PACKAGE_ROOT, 'lib', 'guard.js')).href)
   // 用一个必然不存在的根，避免 realpath 把 /tmp 这类符号链接解析成别的路径
   const p = '/nonexistent-lunheng-probe/Lunheng/Guard.js'
   assert.equal(canonicalPath(p, '/'), p,
-    'POSIX 路径大小写敏感：无条件 toLowerCase 会把「与被保护根仅差大小写的真实路径」误判为命中（假否决）；' +
-    '对照实现 = lib/run-path-fence.mjs 的 norm()（process.platform === "win32" ? … : s）')
+    '大小写敏感 FS：无条件 toLowerCase 会把「与被保护根仅差大小写的真实路径」误判为命中（假否决）')
+})
+
+test('F-7 大小写不敏感 FS（win32 / macOS 默认 APFS）：canonicalPath 必须归一大小写变体（realpath 失败回退分支的兜底）', {
+  // 判据与上一用例互斥：不敏感 FS 上「仅差大小写」的路径必须归一到同一比较键——
+  // 否则 realpath 失败回退分支会放走对受保护根的变体写入（反哺 2026-10-26 F-7）。
+  skip: await (async () => {
+    if (process.platform === 'win32') return false
+    const { writeFileSync, existsSync, rmSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const p = join(tmpdir(), `lunheng-case-run-probe-${process.pid}-AaB.tmp`)
+    try {
+      writeFileSync(p, '1', { flag: 'wx' })
+      return !existsSync(p.replace(/AaB\.tmp$/, 'aAb.tmp'))   // 变体不可 stat = 敏感 FS → 跳过本用例
+    } catch { return true } finally { try { rmSync(p, { force: true }) } catch { /* */ } }
+  })(),
+}, async () => {
+  const { canonicalPath } = await import(pathToFileURL(join(PACKAGE_ROOT, 'lib', 'guard.js')).href)
+  const p = '/nonexistent-lunheng-probe/Lunheng/Guard.js'
+  // 判据 = **同一比较键**（平台无关）：变体路径与全小写形态必须归一到相同键——
+  //   否则 realpath 失败回退分支会放走对受保护根的变体写入（反哺 2026-10-26 F-7）。
+  assert.equal(canonicalPath(p, '/'), canonicalPath(p.toLowerCase(), '/'),
+    '大小写不敏感 FS：变体路径必须与全小写形态归一到同一比较键')
+})
+
+// ── v19.27.13（反哺 2026-10-26 F-11）：登记制写面的防御性加固 ────────────────────
+test('F-11 删除/改名类工具名已入登记集合：rename / move / delete / rm 指向受保护根必须被拦', async () => {
+  const guard = await runApply()
+  assert.ok(guard)
+  for (const tool of ['rename', 'move', 'delete', 'rm']) {
+    const reason = await guard(exec(tool, { path: SKILL_MD, destination: SKILL_MD + '.bak' }))
+    assert.ok(reason, `工具 \`${tool}\` 指向受保护根必须被拦（删除/改名与覆写同等致命）`)
+    assert.match(reason, /机制文件写保护/)
+  }
+})
+
+test('F-11 写样名告警：未登记的写样工具放行时必须留痕（不再静默早退）；非写样名不告警', async () => {
+  const warns = []
+  const guard = await runApply({ info: () => {}, warn: (m) => warns.push(m) })
+  assert.ok(guard)
+  // 写样名（含 delete 词元、不在集合）→ 放行 + warn 一行
+  assert.equal(await guard(exec('delete_notebook', { path: SKILL_MD })), undefined, '登记制边界：未登记工具不否决')
+  assert.ok(warns.some((m) => m.includes('delete_notebook') && m.includes('形似写/删/改名')), '放行必须留痕：' + JSON.stringify(warns))
+  // 非写样名 → 放行且零告警（不制造噪声）
+  const before = warns.length
+  assert.equal(await guard(exec('read', { path: SKILL_MD })), undefined)
+  assert.equal(warns.length, before, 'read 类工具不得触发写样告警')
 })

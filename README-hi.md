@@ -1,10 +1,10 @@
 # लुन्हेंग (lunheng-article-pipeline) — बहु-एजेंट दीर्घ-लेख पाइपलाइन
 
-> 版本：v19.27.12（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+> 版本：v19.27.13（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > 🌐 [English](README.md) ｜ [中文](README-zh.md) ｜ [Español](README-es.md) ｜ [Português](README-pt.md) ｜ **हिन्दी**（यह फ़ाइल）
 
-> एक DeepSeek Harness (DSH) बंडल जो **माँग पर दो एजेंट स्किल** पंजीकृत करता है: `lunheng-article-pipeline` (मुख्य 9-भूमिका पाइपलाइन) और `lunheng-commands` (पतला wrapper जो 11 `/lunheng-*` स्लैश आदेश देता है: draft / resume / cite / audit / journal / ppt / history / rollback / status / stats / help; **कोई नई भूमिका नहीं, कोई नया M-द्वार आइटम नहीं**; देखें `skills/lunheng-commands/SKILL.md`)। मुख्य स्किल दीर्घ लेखन — शोध-पत्र, उद्योग विश्लेषण, व्यावसायिक समीक्षा और लंबे लेख — को **मानव-सहभागिता वाली 9-भूमिका पाइपलाइन** में बदल देती है।
+> एक DeepSeek Harness (DSH) बंडल जो **माँग पर दो एजेंट स्किल** पंजीकृत करता है: `lunheng-article-pipeline` (मुख्य 9-भूमिका पाइपलाइन) और `lunheng-commands` (पतला wrapper जो 13 `/lunheng-*` स्लैश आदेश देता है: draft / resume / cite / audit / journal / ppt / history / rollback / status / stats / gate / abort / help; **कोई नई भूमिका नहीं, कोई नया M-द्वार आइटम नहीं**; देखें `skills/lunheng-commands/SKILL.md`)। मुख्य स्किल दीर्घ लेखन — शोध-पत्र, उद्योग विश्लेषण, व्यावसायिक समीक्षा और लंबे लेख — को **मानव-सहभागिता वाली 9-भूमिका पाइपलाइन** में बदल देती है।
 
 ## What this is
 
@@ -41,7 +41,7 @@
 | प्रारूप | क्रमिक संस्करण, AI-चिह्न सफ़ाई सहित, प्रत्येक स्वतंत्र लेखक से |
 | रिपोर्ट | समालोचना (C1–C7), लेखा-परीक्षा (G0–G14), सहकर्मी समीक्षा (6 आयाम + पत्रिकाएँ) |
 | अंतिम उपज | `final/定稿.md`, चित्र, प्रमाण-पुंज, वितरण टिप्पणियाँ, M-द्वार रिपोर्ट |
-| DSH एकीकरण (bundle स्थापना पर) | चार **केवल-पठन** उपकरण — `lunheng_m_gate` (M-द्वार यांत्रिक पूर्व-जाँच), `lunheng_char_count` (शुद्ध चीनी अक्षर गणना), `lunheng_handoff_check` (हैंडऑफ रिपोर्ट के आकार / संस्करण / युग्मों / agents-log की जाँच), और `lunheng_ethics_sanitize` (नैतिक अनामीकरण: साक्षात्कार प्रतिलेखों व क्षेत्र-टिप्पणियों में पहचान-पत्र / फ़ोन / ई-मेल / बैंक कार्ड / व्यक्ति-नाम / स्थान-नाम छिपाता है; छिपाया हुआ पाठ लौटाता है ताकि कॉलर तय करे कि कहाँ लिखना है; v18.60.1); सूची में न हों तो पहले की तरह `pwsh` से वही स्क्रिप्ट चलाएँ (एक ही स्रोत)। मानव आदेश `/lunheng-status` (`run/<परियोजना>/status.md` पढ़ता है) तथा `/lunheng-stats` (परियोजनाओं के बीच टेलीमेट्री पैनल; होस्ट-प्रक्रिया में `scripts/lunheng-stats.mjs` को केवल `--json` श्वेतसूची के साथ चलाता है); कोई भी मॉडल संदेश नहीं बनाता। **तंत्र-फ़ाइल लेखन सुरक्षा**: वैश्विक guard स्किल पैकेज को लक्षित `write`/`edit` प्रकार की उपकरण-कॉल अस्वीकार करता है, अतः सत्र चुपचाप पाइपलाइन के अपने नियम नहीं बदल सकता। **सीमा स्पष्ट रूप से**: guard केवल **उपकरण-कॉल** देखता है — `pwsh`/उप-प्रक्रियाएँ **इस द्वार से नहीं गुज़रतीं**; स्वामी की छूट `LUNHENG_ALLOW_MECH_EDIT=1` (या `config: { allowMechanismEdit: true }`) है। प्लगइन **Config** (परिनियोजन स्विच, आपकी profile में इस प्लगइन की पंक्ति पर) `quiet`, `allowMechanismEdit`, `scriptTimeoutMs`, `scriptMaxOutputBytes`, `handoffLevel`, `hookRewriteContent`, और `hookMaxBlockChars` तथा `hookMaxTotalChars`, `ethicsHook` (v18.80.0: नैतिक अनामीकरण H2 श्रोता का मुख्य स्विच, डिफ़ॉल्ट रूप से **सक्रिय**; शुद्ध कोड/दस्तावेज़ कार्यप्रवाह में इसे बंद करें, जहाँ व्यक्ति-नाम की सभी मिलानें मापनीय रूप से निम्न-विश्वास हैं और केवल शोर जोड़ती हैं), और `panel` (v18.90.0: वैकल्पिक रन पैनल — केवल-पठन HTTP सतह (अपना पथ-उपसर्ग); डिफ़ॉल्ट रूप से **बंद**, देखें `SECURITY.md`) — कुल **नौ** — कवर करता है; पहले दो LUNHENG_QUIET / LUNHENG_ALLOW_MECH_EDIT env के समान हैं, जबकि scriptTimeoutMs / scriptMaxOutputBytes / handoffLevel / hookRewriteContent / hookMaxBlockChars / ethicsHook **केवल Config (कोई env पथ नहीं)**, पर profile के साथ संस्करणित और समीक्षायोग्य; **अवैध config लोड के समय ज़ोरदार विफल होता है**, चुपचाप डिफ़ॉल्ट पर नहीं लौटता। |
+| DSH एकीकरण (bundle स्थापना पर) | चार **केवल-पठन** उपकरण — `lunheng_m_gate` (M-द्वार यांत्रिक पूर्व-जाँच), `lunheng_char_count` (शुद्ध चीनी अक्षर गणना), `lunheng_handoff_check` (हैंडऑफ रिपोर्ट के आकार / संस्करण / युग्मों / agents-log की जाँच), और `lunheng_ethics_sanitize` (नैतिक अनामीकरण: साक्षात्कार प्रतिलेखों व क्षेत्र-टिप्पणियों में पहचान-पत्र / फ़ोन / ई-मेल / बैंक कार्ड / व्यक्ति-नाम / स्थान-नाम छिपाता है; छिपाया हुआ पाठ लौटाता है ताकि कॉलर तय करे कि कहाँ लिखना है; v18.60.1); सूची में न हों तो पहले की तरह `pwsh` से वही स्क्रिप्ट चलाएँ (एक ही स्रोत)। मानव आदेश `/lunheng-status` (`run/<परियोजना>/status.md` पढ़ता है) तथा `/lunheng-stats` (परियोजनाओं के बीच टेलीमेट्री पैनल; होस्ट-प्रक्रिया में `scripts/lunheng-stats.mjs` को केवल `--json` श्वेतसूची के साथ चलाता है); कोई भी मॉडल संदेश नहीं बनाता। **तंत्र-फ़ाइल लेखन सुरक्षा**: वैश्विक guard स्किल पैकेज को लक्षित `write`/`edit` प्रकार की उपकरण-कॉल अस्वीकार करता है, अतः सत्र चुपचाप पाइपलाइन के अपने नियम नहीं बदल सकता। **सीमा स्पष्ट रूप से**: guard केवल **उपकरण-कॉल** देखता है — `pwsh`/उप-प्रक्रियाएँ **इस द्वार से नहीं गुज़रतीं**; स्वामी की छूट `LUNHENG_ALLOW_MECH_EDIT=1` (या `config: { allowMechanismEdit: true }`) है। प्लगइन **Config** (परिनियोजन स्विच, आपकी profile में इस प्लगइन की पंक्ति पर) `quiet`, `allowMechanismEdit`, `scriptTimeoutMs`, `scriptMaxOutputBytes`, `handoffLevel`, `hookRewriteContent`, और `hookMaxBlockChars` तथा `hookMaxTotalChars`, `ethicsHook` (v18.80.0: नैतिक अनामीकरण H2 श्रोता का मुख्य स्विच, डिफ़ॉल्ट रूप से **सक्रिय**; शुद्ध कोड/दस्तावेज़ कार्यप्रवाह में इसे बंद करें, जहाँ व्यक्ति-नाम की सभी मिलानें मापनीय रूप से निम्न-विश्वास हैं और केवल शोर जोड़ती हैं), और `panel` (v18.90.0; **v18.93.0 से डिफ़ॉल्ट रूप से चालू** — रन पैनल, केवल-पठन HTTP सतह (अपना पथ-उपसर्ग); बंद करने के लिए `LUNHENG_PANEL=0` या `panel: false`, देखें `SECURITY.md`) — कुल **दस** — कवर करता है; पहले दो और `panel` LUNHENG_QUIET / LUNHENG_ALLOW_MECH_EDIT / LUNHENG_PANEL env के समान हैं, जबकि scriptTimeoutMs / scriptMaxOutputBytes / handoffLevel / hookRewriteContent / hookMaxBlockChars / hookMaxTotalChars / ethicsHook **केवल Config (कोई env पथ नहीं)**, पर profile के साथ संस्करणित और समीक्षायोग्य; **अवैध config लोड के समय ज़ोरदार विफल होता है**, चुपचाप डिफ़ॉल्ट पर नहीं लौटता। |
 
 ## Pipeline overview
 
@@ -80,7 +80,7 @@ lunheng-article-pipeline/                 # पैकेज ही रिपॉ�
 │   ├── README.md             # स्किल-स्तरीय रीडमी (चीनी)
 │   ├── references/           # 9 भूमिका कार्ड, टेम्पलेट, द्वार-एल्गोरिद्म, पत्रिका-कोश
 │   └── scripts/              # निर्भरता-रहित .mjs सत्यापन स्क्रिप्ट (संख्या: स्किल की श्वेतसूची पंक्ति देखें)
-├── skills/lunheng-commands/   # सहयोगी स्किल: 11 /lunheng-* स्लैश आदेश (draft / resume / cite / audit / journal / ppt / history / rollback / status / stats / help)
+├── skills/lunheng-commands/   # सहयोगी स्किल: 13 /lunheng-* स्लैश आदेश (draft / resume / cite / audit / journal / ppt / history / rollback / status / stats / gate / abort / help)
 │   ├── SKILL.md              # आदेश प्रवेश (आदेश सूची, डिस्पैच मॉडल)
 │   ├── README.md             # आदेश-स्तरीय readme
 │   ├── scripts/              # आदेश हैंडलर (जैसे lunheng-stats.mjs)
@@ -117,7 +117,7 @@ patch परत दो काम करती है: **इस पैकेज �
 संस्करण **केवल tag से** प्रकाशित होते हैं; स्थानीय `npm publish` वर्जित है (यह CI द्वारों और OIDC provenance को दरकिनार करता है, और npm संस्करण कभी अधिलेखित नहीं हो सकता)।
 
 ```sh
-git tag v19.27.12 && git push origin v19.27.12   # एक बार में एक ही tag (GitHub: >3 tag एक push में कोई workflow नहीं चलाता)
+git tag v19.27.13 && git push origin v19.27.13   # एक बार में एक ही tag (GitHub: >3 tag एक push में कोई workflow नहीं चलाता)
 # publish.yml क्रम: द्वार 1 सुसंगति → द्वार 2 पैकेजिंग → द्वार 3 स्वच्छता → द्वार 4 पैकेज स्मोक → स्क्रिप्ट परीक्षण
 #   → tag/संस्करण समानता → idempotency गार्ड → OIDC publish --provenance --tag dsh → प्रकाशन-पश्चात लेखा-परीक्षा
 ```

@@ -108,23 +108,26 @@ try {
   })(pkg)
   const unpackedSize = shipped.reduce((s, rel) => s + statSync(join(pkg, rel)).size, 0)
 
-  // ② 关键文件齐备（v18.2.6：`lib/*.js` **从解包产物派生**，不再逐个硬列）
+  // ② 关键文件齐备（v18.2.6：`lib/*` **从解包产物派生**，不再逐个硬列）
   //   · 为什么派生：`lib/` 是包入口目录、正在演进（新增模块是常态），硬列清单会同时犯两个错——
   //     ①新增的入口模块**不进清单**（没人被要求同步它），②清单里删掉的文件仍被当成必备。
-  //     口径与 `repo-hygiene-check` 规则①一致：**入口目录里的每个 `.js` 都必须随包**，逐个断言存在。
+  //     口径与 `repo-hygiene-check` 规则①一致：**入口目录里的每个 `.js` / `.mjs` 都必须随包**，逐个断言存在。
   //   · 与具体文件名解耦（`lib/` 由另一条线改动）：只要求「路径存在」，不要求任何特定文件名。
+  //   · v19.27.13（反哺 2026-10-26 F-10）：过滤器从只认 `.js` 扩为 `.js` + `.mjs`——旧实现两侧同滤
+  //     `.mjs`（panel / run-path-fence），对账恒绿但 `.mjs` 缺失时用户机 ENOENT 而本门不报
+  //     （此前仅靠 `files: ["lib"]` 整目录兜底）。
   const libDir = join(pkg, 'lib')
   const libModules = existsSync(libDir)
-    ? readdirSync(libDir, { withFileTypes: true }).filter((e) => e.isFile() && e.name.endsWith('.js')).map((e) => e.name).sort()
+    ? readdirSync(libDir, { withFileTypes: true }).filter((e) => e.isFile() && /\.(js|mjs)$/.test(e.name)).map((e) => e.name).sort()
     : []
-  if (libModules.length === 0) bad('发布物 lib/ 下没有任何 .js（入口目录为空？`main` 会解析失败）')
+  if (libModules.length === 0) bad('发布物 lib/ 下没有任何 .js/.mjs（入口目录为空？`main` 会解析失败）')
   // v18.62.4（§8.2 #30）：**期望清单必须来自真源树，不能来自被断言的那个目录**——旧版用
   //   readdirSync(pkg/lib) 派生期望、再断言发布物里有它 = 同义反复，「发布物缺 lib 模块」永不报出。
   const srcLibDir = join(ROOT, 'lib')
   const srcLibModules = existsSync(srcLibDir)
-    ? readdirSync(srcLibDir, { withFileTypes: true }).filter((e) => e.isFile() && e.name.endsWith('.js')).map((e) => e.name).sort()
+    ? readdirSync(srcLibDir, { withFileTypes: true }).filter((e) => e.isFile() && /\.(js|mjs)$/.test(e.name)).map((e) => e.name).sort()
     : []
-  if (srcLibModules.length === 0) bad('真源 lib/ 下没有任何 .js（仓库布局异常，本条会退化为空集断言）')
+  if (srcLibModules.length === 0) bad('真源 lib/ 下没有任何 .js/.mjs（仓库布局异常，本条会退化为空集断言）')
   const libMissingInPkg = srcLibModules.filter((f) => !libModules.includes(f))
   const libExtraInPkg = libModules.filter((f) => !srcLibModules.includes(f))
   if (libMissingInPkg.length) bad(`发布物 lib/ 缺真源已有的模块：${libMissingInPkg.join(', ')}（入口会 ENOENT；检查 package.json files 白名单与打包过程）`)
@@ -140,6 +143,26 @@ try {
   for (const rel of mustExist) {
     if (existsSync(join(pkg, rel))) ok(`随包：${rel}`)
     else bad(`发布物缺 ${rel}`)
+  }
+
+  // v19.27.13（反哺 2026-10-26 F-10 + G-3/G-4）：发布物侧**语法冒烟**——`node --check` 只解析不执行，
+  //   足以钉住「files 白名单漏文件 / 打包截断」这两类**发布物才暴露**的缺陷：
+  //   · lib 全部模块（含 .mjs：panel / run-path-fence——旧过滤器只认 .js）；
+  //   · 三个跨层 CLI：owner-cli / history-cli / pending-cli 以 `../../../lib/run-path-fence.mjs`
+  //     相对导入**跨出技能目录**，白名单一旦逐文件化即 ERR_MODULE_NOT_FOUND，而所有门照绿；
+  //   · client.js：宿主 Web 客户端半边（`exports["./client"]`），此前发布物侧零执行零检查。
+  const syntaxTargets = [
+    ...libModules.map((f) => join('lib', f)),
+    join('skills', 'lunheng-commands', 'scripts', 'owner-cli.mjs'),
+    join('skills', 'lunheng-commands', 'scripts', 'history-cli.mjs'),
+    join('skills', 'lunheng-commands', 'scripts', 'pending-cli.mjs'),
+  ]
+  for (const rel of syntaxTargets) {
+    const abs = join(pkg, rel)
+    if (!existsSync(abs)) { bad(`语法冒烟目标缺失：${rel}（files 白名单漏项？——反哺 F-10）`); continue }
+    const r = spawnSync(process.execPath, ['--check', abs], { encoding: 'utf8' })
+    if (r.status === 0) ok(`语法冒烟：${rel}`)
+    else bad(`语法冒烟失败：${rel}——${String(r.stderr || '').split('\n')[0]}`)
   }
   const scriptsDir = join(pkg, 'skills', PKG_NAME, 'scripts')
   const topScripts = existsSync(scriptsDir) ? readdirSync(scriptsDir).filter((f) => f.endsWith('.mjs')) : []

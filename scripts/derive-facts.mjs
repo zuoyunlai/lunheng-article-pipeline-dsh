@@ -62,6 +62,40 @@ export function collectFacts(root = PKG_ROOT) {
   const tplDir = join(SKILL, 'references', 'templates')
   const templateCount = existsSync(tplDir) ? readdirSync(tplDir).filter((f) => f.endsWith('.md')).length : 0
 
+  // ── v19.27.13（反哺 2026-10-26 G-1）：README 复述层的派生真源 ──────────────────
+  //   病灶：F-1/F-4/F-5 三簇漂移的共同根因 = 既有门只守「真源↔真源」（规则 ㉕/㉖），
+  //   不守「真源↔复述层」（五语言 README + installation + SECURITY）。以下全部从代码反射，
+  //   新增面（新键 / 新命令 / 新镜像 / 默认值翻转）自动进对账，不再依赖人肉同步：
+  //     · Config 键清单与 panel 默认值 ← lib/index.js 的 CONFIG_SPEC
+  //     · 命令清单与计数 ← route-command.mjs 的 COMMANDS 表（'-h' 为 help 别名不计）
+  //     · env 镜像名 ← lib/** 中 `process.env.LUNHENG_*` 的**实际读取点**
+  //       （刻意用 process.env. 前缀：裸 `LUNHENG_*` 会把 `LUNHENG_SCRIPTS_DIR` 这类
+  //        局部常量与注释误当镜像——实测 lib 内裸形态有 5 种、env 实读恰 3 个）
+  const libDir = join(root, 'lib')
+  const libIndex = readFileSync(join(libDir, 'index.js'), 'utf8')
+  const specAt = libIndex.indexOf('const CONFIG_SPEC = Object.freeze({')
+  if (specAt === -1) throw new Error('lib/index.js 里找不到 CONFIG_SPEC——G-1 的读法已与实现脱节，请同步')
+  const specEnd = libIndex.indexOf('\n})', specAt)
+  const specBlock = libIndex.slice(specAt, specEnd === -1 ? undefined : specEnd)
+  const configKeys = [...specBlock.matchAll(/^  ([a-zA-Z]+): \{ kind: /gm)].map((m) => m[1]).sort()
+  if (configKeys.length === 0) throw new Error('CONFIG_SPEC 键解析为空——G-1 的读法已与实现脱节，请同步')
+  const panelDefault = /panel:\s*\{\s*kind:\s*'boolean',\s*def:\s*(true|false)/.exec(specBlock)?.[1] === 'true'
+
+  const rcPath = join(root, 'skills', 'lunheng-commands', 'scripts', 'route-command.mjs')
+  const rc = readFileSync(rcPath, 'utf8')
+  const cmdAt = rc.indexOf('const COMMANDS = {')
+  if (cmdAt === -1) throw new Error('route-command.mjs 里找不到 COMMANDS 表——G-1 的读法已与实现脱节，请同步')
+  const cmdEnd = rc.indexOf('\n};', cmdAt)
+  const cmdBlock = rc.slice(cmdAt, cmdEnd === -1 ? undefined : cmdEnd)
+  const commandNames = [...cmdBlock.matchAll(/'(-[a-z-]+)':\s*\{/g)].map((m) => m[1])
+  const commands = commandNames.filter((n) => n !== '-h')   // '-h' 是 '-help' 的别名（表内自述），与 quick-facts ㉕ 同口径
+
+  const envMirrors = new Set()
+  for (const f of readdirSync(libDir)) {
+    if (!/\.(js|mjs)$/.test(f)) continue
+    for (const m of readFileSync(join(libDir, f), 'utf8').matchAll(/process\.env\.(LUNHENG_[A-Z_]+)/g)) envMirrors.add(m[1])
+  }
+
   return {
     schema: 1,
     m_gate_mech: counts.mech,
@@ -71,6 +105,13 @@ export function collectFacts(root = PKG_ROOT) {
     t8_min_artifacts: t8,
     script_count: scriptCount,
     template_count: templateCount,
+    // G-1（v19.27.13）新增派生面
+    config_keys: configKeys,
+    config_key_count: configKeys.length,
+    panel_default: panelDefault,
+    command_names: commands,
+    command_count: commands.length,
+    config_env_mirrors: [...envMirrors].sort(),
   }
 }
 
@@ -122,16 +163,92 @@ export function checkDocs(facts, docs) {
   if (pieces) {
     push('08-终检-finalizer.md', `交付物清单写死了件数（「${pieces[0]}」）——只许指针（真源 = handoff-check.mjs 的 T8_MIN_ARTIFACTS，当前 ${facts.t8_min_artifacts} 条）`)
   }
+
+  // ── v19.27.13（反哺 2026-10-26 G-1）：README 复述层对账 ──────────────────────
+  //   覆盖 F-1（panel 默认值）/ F-4（命令数）/ F-5（Config 键计数）三簇漂移。
+  //   判据全部用**语言无关锚点**（代码标识符 / 阿拉伯数字 / `v18.93.0` 版本串），
+  //   不做英文字面量 grep（maintainers.md §6.1 纪律 C：五语同一语义写法各异）。
+  //   新字段缺失（旧调用方只传三段文档）时整组跳过——不破坏既有契约。
+  const g1Docs = [
+    ['README.md', docs.readmeEn], ['README-zh.md', docs.readmeZh], ['README-es.md', docs.readmeEs],
+    ['README-pt.md', docs.readmePt], ['README-hi.md', docs.readmeHi],
+    ['docs/installation.md', docs.installation], ['SECURITY.md', docs.security],
+  ].filter(([, text]) => typeof text === 'string' && text.length > 0)
+  if (g1Docs.length) {
+    if (facts.panel_default !== true) {
+      // 本门当前只钉「默认开」形态；默认值翻转（主人裁定）时必须**显式同步本门**，不得静默漂过。
+      for (const [name] of g1Docs) push(name, 'panel 默认值已非 true（代码侧翻转）——本门判据与七份文档需同批显式更新，不得静默漂过')
+    }
+    for (const [name, text] of g1Docs) {
+      const lines = text.split('\n')
+      // (a) 命令计数行：含命令枚举（draft / resume）的行，其「数字␣(个␣)`/lunheng」邻接数字必须等于派生计数，
+      //     且 v19.27.8 新增的 gate / abort 必须在场（防「数字对了清单还是旧的」）。
+      if (facts.command_count !== undefined) {
+        lines.forEach((line, i) => {
+          if (!/draft \/ resume/.test(line) || !/\/lunheng/.test(line)) return
+          for (const m of line.matchAll(/(\d+)[^\d\n]{0,6}\/lunheng/g)) {
+            if (Number(m[1]) !== facts.command_count) {
+              push(name, `第 ${i + 1} 行命令计数 ${m[1]} ≠ 派生值 ${facts.command_count}（真源 = route-command.mjs COMMANDS 表）`)
+            }
+          }
+          if (!/gate/.test(line) || !/abort/.test(line)) {
+            push(name, `第 ${i + 1} 行命令枚举缺 gate / abort（v19.27.8 主人侧入口）——清单与 COMMANDS 表脱节`)
+          }
+        })
+      }
+      // (b) panel 默认值声明行：凡「panel 与默认语**邻近**（±60 字符）」的行必须带 v18.93.0
+      //     （默认开的翻转版本号，五语锚点）。漂移形态（off by default / 默认 false / desactivado
+      //     por defecto …）天然不含此串。邻近度约束排除「同一行里别处恰好有 panel 和默认」的
+      //     非声明行（实测：SECURITY.md 的可调参数行在键描述里多次出现「默认」，若不限距离必误报）。
+      lines.forEach((line, i) => {
+        if (!/panel[\s\S]{0,60}(?:by default|por defecto|por padrão|默认|डिफ़ॉल्ट)|(?:by default|por defecto|por padrão|默认|डिफ़ॉल्ट)[\s\S]{0,60}panel/.test(line)) return
+        if (!/v18\.93\.0/.test(line)) {
+          push(name, `第 ${i + 1} 行是 panel 默认值声明但不带 v18.93.0（v18.93.0 起默认开启的翻转锚点）——疑似仍在声明「默认关」`)
+        }
+      })
+      // (c) Config 键完整性：各文档的 Config **枚举行**（同时含 allowMechanismEdit 与
+      //     scriptTimeoutMs——后者把「顺带提到 allowMechanismEdit 的守卫/边界行」排除在外）
+      //     必须逐键含全部 CONFIG_SPEC 键（背键集合 == 派生键集合）。
+      if (Array.isArray(facts.config_keys) && facts.config_keys.length) {
+        lines.forEach((line, i) => {
+          if (!/allowMechanismEdit/.test(line) || !/scriptTimeoutMs/.test(line)) return
+          const miss = facts.config_keys.filter((k) => !line.includes(k))
+          if (miss.length) push(name, `第 ${i + 1} 行 Config 枚举缺键：${miss.join(' / ')}（真源 = lib/index.js CONFIG_SPEC，共 ${facts.config_keys.length} 键）`)
+        })
+      }
+      // (d) env 镜像：五语 README 的 Config 枚举行必须把全部 `process.env.LUNHENG_*` 实读镜像
+      //     名列全（installation/SECURITY 的行结构不同，不适用行级判据——它们的 env 面由
+      //     SECURITY ⑮ 族规则覆盖）。
+      if (name.startsWith('README') && Array.isArray(facts.config_env_mirrors) && facts.config_env_mirrors.length) {
+        lines.forEach((line, i) => {
+          if (!/allowMechanismEdit/.test(line) || !/scriptTimeoutMs/.test(line)) return
+          const miss = facts.config_env_mirrors.filter((k) => !line.includes(k))
+          if (miss.length) push(name, `第 ${i + 1} 行 env 镜像缺列：${miss.join(' / ')}（真源 = lib/** 的 process.env.LUNHENG_* 实读点）`)
+        })
+      }
+    }
+  }
   return issues
 }
 
-/** 读取三份受管文档（不存在即报错——不把「读不到」当成「没问题」）。 */
+/** 读取受管文档（不存在即报错——不把「读不到」当成「没问题」）。
+ *  v19.27.13（G-1）：新增七份 README 层文档（五语 README + installation + SECURITY）。
+ *  旧调用方只取前三段的解构用法不受影响（新增字段是追加）。 */
 export function readDocs(root = PKG_ROOT) {
   const skillDir = join(root, 'skills', 'lunheng-article-pipeline')
+  const read = (p) => readFileSync(join(root, p), 'utf8')
   return {
     skill: readFileSync(join(skillDir, 'SKILL.md'), 'utf8'),
     ops: readFileSync(join(skillDir, 'operations-capability.md'), 'utf8'),
     finalizer: readFileSync(join(skillDir, 'references', 'agents', '08-终检-finalizer.md'), 'utf8'),
+    // G-1（v19.27.13）复述层七文档
+    readmeEn: read('README.md'),
+    readmeZh: read('README-zh.md'),
+    readmeEs: read('README-es.md'),
+    readmePt: read('README-pt.md'),
+    readmeHi: read('README-hi.md'),
+    installation: read(join('docs', 'installation.md')),
+    security: read('SECURITY.md'),
   }
 }
 
@@ -157,6 +274,6 @@ if (isMain) {
       for (const s of issues) console.error(`  - ${s}`)
       process.exit(1)
     }
-    console.log(`✓ derive-facts --check：三个受管数字与文档一致（机检 ${facts.m_gate_mech} / 总 ${facts.m_gate_total} / 上限 ${facts.always_limit_bytes} B / T8 ${facts.t8_min_artifacts} 件）`)
+    console.log(`✓ derive-facts --check：受管数字与文档一致（机检 ${facts.m_gate_mech} / 总 ${facts.m_gate_total} / 上限 ${facts.always_limit_bytes} B / T8 ${facts.t8_min_artifacts} 件；G-1：命令 ${facts.command_count} 个 / Config ${facts.config_key_count} 键 / panel 默认 ${facts.panel_default ? '开' : '关'} / env 镜像 ${facts.config_env_mirrors.length} 个，七份复述层文档对账通过）`)
   }
 }

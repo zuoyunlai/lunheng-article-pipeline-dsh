@@ -92,8 +92,11 @@ test('第3批③：H2 标记的三个口径必须同时成立（byType 排除 pe
     + '把它印在「命中替换 N 处」里等于把候选数当替换数报（实测出现过「替换 8 处（person=129）」）')
 
   // (2) 低置信候选不得**单独**触发注入（否则每次中文读取都注入一行近零信息标记）
-  assert.match(src, /const actionableReviews = deduped\.filter\(\(r\) => String\(r\?\.kind \|\| ''\) !== 'person-low-confidence'\)/,
-    '注入条件必须把 `person-low-confidence` 类复核项排除——候选数仍留在 `ethicsSanitized.counts.personLow` 与工具面，不丢信息')
+  //   v19.27.13（反哺 F-2 扩钉）：`bankcard-luhn-fail`（16-19 位未过银行卡校验的候选）与人名低置信
+  //   同构——几乎恒见于订单号密集的技术文本，注入即回到本条当年消掉的噪声；候选数留 counts.bankcardLow。
+  assert.match(src, /const actionableReviews = deduped\.filter\(\(r\) => String\(r\?\.kind \|\| ''\) !== 'person-low-confidence' && String\(r\?\.kind \|\| ''\) !== 'bankcard-luhn-fail'\)/,
+    '注入条件必须把 `person-low-confidence` 与 `bankcard-luhn-fail` 两类**候选**复核项排除——'
+    + '候选数仍留在 `ethicsSanitized.counts`（personLow / bankcardLow）与工具面，不丢信息')
   assert.ok(!/const actionable = [^\n]*lowCandidates > 0/.test(src),
     '`actionable` 不得再含 `lowCandidates > 0`（姓氏正则对技术文本精度极低：实测 9.5 KB 技术表格 61 个候选、真名 0 个）')
 

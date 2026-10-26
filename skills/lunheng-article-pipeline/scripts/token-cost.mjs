@@ -20,10 +20,21 @@
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import os from 'node:os';
-import { zstdDecompressSync } from 'node:zlib';   // v18.48.0（F-AW）：活会话存储为**多帧 zstd**，须逐帧解
+// v19.27.13（反哺 2026-10-26 F-3）：**zstd 不做顶层静态导入，统一走 tree 分支内的动态导入**。
+//   病灶：本行原是顶层 `import { zstdDecompressSync } from 'node:zlib'`（v18.48.0 F-AW），而 tree
+//   分支里另写了「动态 import + 缺失则提示 Node ≥ 22.15 并 exit 10」的降级设计——静态命名导入是
+//   模块加载期绑定，Node < 22.15 时**加载即抛** `ERR_EXPORT_NOT_FOUND`（发生在 `installExitGuard()`
+//   之前），降级分支永不可达，且**任何模式**全崩（`--sessions` / `--project` 不需要 zstd 也崩）。
+//   见 audits/反哺报告-2026-10-26-全量审计外部复审-v1.md F-3。
 import { installExitGuard } from './_lib/exit-guard.mjs';   // 退出码硬化（v18.0.5）：fs 类异常 → 10，内部错误 → 70
 import { parseArgs as parseCliArgs, USAGE_CODE as CLI_USAGE_CODE } from './_lib/cli-args.mjs';  // 参数解析唯一实现（v18.2.9，审计 A7）
 import { writeReport } from './_lib/destructive-write.mjs';  // 写盘唯一出口（v19.1.9：--out 落盘走同一道守卫 + .bak）
+// v19.27.13（F-3）：zstd 改**模块级动态导入**（top-level await）。旧形态是顶层**静态**命名导入——
+//   Node < 22.15 时加载即抛 ERR_EXPORT_NOT_FOUND、任何模式全崩（见本文件头注）。动态导入对缺失导出
+//   **不抛**（解构得 undefined）：tree 模式据此显式 exit 10（下方分支）；readLiveUsage 回落据此返回
+//   null（与「缓存里没有这个会话」同形——engines 已要求 Node ≥ 22.19，旧 Node 本就出包契约）。
+let zstdDecompressSync;
+try { ({ zstdDecompressSync } = await import('node:zlib')); } catch { zstdDecompressSync = undefined }
 installExitGuard();
 
 const args = process.argv.slice(2);
@@ -168,10 +179,7 @@ if (opt.project) {
 
 // 树模式：扫描会话头 parentSession 建委托树
 if (opt.tree && !opt.ids) {
-  let zstdDecompressSync;
-  try {
-    ({ zstdDecompressSync } = await import('node:zlib'));
-  } catch {}
+  // v19.27.13（F-3）：zstd 已是模块级动态导入（见文件顶部）——此处只做「可用性判定」。
   if (typeof zstdDecompressSync !== 'function') {
     console.error('tree 模式需要 Node.js >= 22.15（node:zlib.zstdDecompressSync 缺失）——当前环境不支持，请改用 --sessions 显式列表，或升级 Node');
     process.exit(10);   // v18.12.0（L-67）：环境/参数不可用 → 10
@@ -245,6 +253,9 @@ const liveLogPath = (dir) => {
 };
 const readLiveUsage = (id) => {
   if (!existsSync(liveStoreRoot)) return null;
+  // v19.27.13（F-3）：zstd 动态导入在当前 Node 不可用（< 22.15）→ 回落整体不可用，返回 null
+  //   （与「缓存里没有这个会话」同形；engines 契约本就要求 ≥ 22.19，见文件头注）。
+  if (typeof zstdDecompressSync !== 'function') return null;
   let dir = null;
   for (const ws of readdirSync(liveStoreRoot)) {
     const cand = join(liveStoreRoot, ws, id);

@@ -64,3 +64,59 @@ test('S1 冲突：T8 清单写死件数（阿拉伯数字与中文数字都算�
     assert.match(issues[0], /件数/, '须点名件数问题：' + issues[0])
   }
 })
+
+// ── v19.27.13（反哺 2026-10-26 G-1）：README 复述层对账的回归钉 ─────────────────
+//   每条都用**修复前的真实旧文案**做负对照（反哺报告 F-1/F-4/F-5 的实测形态）。
+const G1_FACTS = {
+  ...FACTS,
+  command_count: 13,
+  config_keys: ['quiet', 'allowMechanismEdit', 'scriptTimeoutMs', 'scriptMaxOutputBytes', 'handoffLevel', 'hookRewriteContent', 'hookMaxBlockChars', 'hookMaxTotalChars', 'ethicsHook', 'panel'],
+  panel_default: true,
+  config_env_mirrors: ['LUNHENG_ALLOW_MECH_EDIT', 'LUNHENG_PANEL', 'LUNHENG_QUIET'],
+}
+const G1_CLEAN_LINE = 'covers `quiet`, `allowMechanismEdit`, `scriptTimeoutMs`, `scriptMaxOutputBytes`, `handoffLevel`, `hookRewriteContent`, `hookMaxBlockChars`, `hookMaxTotalChars`, `ethicsHook`, and `panel` (v18.90.0; **on by default since v18.93.0**) mirrored by `LUNHENG_QUIET` / `LUNHENG_ALLOW_MECH_EDIT` / `LUNHENG_PANEL`'
+const G1_CLEAN_CMD = '13 `/lunheng-*` slash commands (draft / resume / cite / audit / journal / ppt / history / rollback / status / stats / gate / abort / help)'
+const G1_CLEAN = { ...CLEAN, readmeEn: G1_CLEAN_LINE + '\n' + G1_CLEAN_CMD }
+
+test('G-1 干净复述层：无冲突（真值关系不复制文档数字之外的判断）', () => {
+  assert.deepEqual(checkDocs(G1_FACTS, G1_CLEAN), [])
+})
+
+test('G-1 冲突：panel 默认值反转（off by default、无 v18.93.0 锚点）→ 报出（F-1 形态）', () => {
+  const issues = checkDocs(G1_FACTS, { ...G1_CLEAN, readmeEn: G1_CLEAN_LINE.replace('**on by default since v18.93.0**', '**off** by default') + '\n' + G1_CLEAN_CMD })
+  assert.equal(issues.length, 1)
+  assert.match(issues[0], /v18\.93\.0/)
+})
+
+test('G-1 冲突：命令计数 11 且枚举缺 gate/abort → 两处都报（F-4 形态）', () => {
+  const issues = checkDocs(G1_FACTS, { ...G1_CLEAN, readmeEn: G1_CLEAN_LINE + '\n11 /lunheng-* slash commands (draft / resume / cite / audit / journal / ppt / history / rollback / status / stats / help)' })
+  assert.equal(issues.length, 2, JSON.stringify(issues))
+  assert.ok(issues.some((x) => /11 ≠ 派生值 13/.test(x)), '须点名手抄值与派生值：' + JSON.stringify(issues))
+  assert.ok(issues.some((x) => /缺 gate \/ abort/.test(x)), '须点名清单脱节：' + JSON.stringify(issues))
+})
+
+test('G-1 冲突：Config 枚举缺键（漏 hookMaxTotalChars——v18.18.1 同族第三次复发形态）→ 报出', () => {
+  const dropped = G1_CLEAN_LINE.replace('`hookMaxBlockChars`, `hookMaxTotalChars`, `ethicsHook`', '`hookMaxBlockChars`, `ethicsHook`')
+  const issues = checkDocs(G1_FACTS, { ...G1_CLEAN, readmeEn: dropped + '\n' + G1_CLEAN_CMD })
+  assert.equal(issues.length, 1)
+  assert.match(issues[0], /hookMaxTotalChars/)
+})
+
+test('G-1 冲突：env 镜像漏列 LUNHENG_PANEL → 报出（F-5「只有前两键有 env」形态）', () => {
+  const dropped = G1_CLEAN_LINE.replace('mirrored by `LUNHENG_QUIET` / `LUNHENG_ALLOW_MECH_EDIT` / `LUNHENG_PANEL`', 'mirrored by `LUNHENG_QUIET` / `LUNHENG_ALLOW_MECH_EDIT`')
+  const issues = checkDocs(G1_FACTS, { ...G1_CLEAN, readmeEn: dropped + '\n' + G1_CLEAN_CMD })
+  assert.equal(issues.length, 1)
+  assert.match(issues[0], /LUNHENG_PANEL/)
+})
+
+test('G-1 真值关系：派生面字段齐备且自洽（不复制具体清单字面量）', () => {
+  const f = collectFacts()
+  assert.ok(Array.isArray(f.config_keys) && f.config_keys.length >= 10, 'Config 键清单可派生')
+  assert.equal(f.config_key_count, f.config_keys.length)
+  assert.ok(f.config_keys.includes('panel') && f.config_keys.includes('hookMaxTotalChars'))
+  assert.equal(typeof f.panel_default, 'boolean')
+  assert.ok(Array.isArray(f.command_names) && f.command_names.length >= 13)
+  assert.equal(f.command_count, f.command_names.length)
+  assert.ok(!f.command_names.includes('-h'), '别名不计入计数')
+  assert.ok(Array.isArray(f.config_env_mirrors) && f.config_env_mirrors.every((k) => /^LUNHENG_/.test(k)))
+})

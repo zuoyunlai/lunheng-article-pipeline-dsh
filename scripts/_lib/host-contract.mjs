@@ -25,7 +25,12 @@
 //     · VERIFIED_HOST_VERSIONS = 契约表已核对过的宿主白名单（探针目标 = 其中任一实装版本）；
 //     · `ci.yml` 的 `loader-smoke` = 白名单每项各跑一条 leg（0.1.7-rc.2 / 0.2.1-rc.2）；
 //     · 新增版本入白名单前必须**先**跑探针 + loader-smoke，再放宽 peer——不得先放宽后补证据。
-export const VERIFIED_HOST_VERSIONS = Object.freeze(['0.1.2-rc.1', '0.2.1-rc.2'])
+// v19.27.13（反哺 2026-10-26 F-12⑧ 账实对齐）：**补录 0.1.7-rc.2**——它有自己的 CI 实测腿
+//   （`ci.yml` install-smoke matrix pin + loader-smoke 第一 leg），却一直不在本白名单，而上一行
+//   注释自述「loader-smoke = 白名单每项各跑一条 leg（0.1.7-rc.2 …）」——**账册与账页打架**，
+//   即 no-write-check 登记过的「两把尺」形态在版本面的复发。0.1.2-rc.1 保留（lockfile 实装 +
+//   全量测试是其真实证据腿，非无实证）；三版本两两同族的派发形态已由 CI 双 leg + 本地全量测试覆盖。
+export const VERIFIED_HOST_VERSIONS = Object.freeze(['0.1.2-rc.1', '0.1.7-rc.2', '0.2.1-rc.2'])
 
 // 探针默认目标 = lockfile 实装值。保留旧导出名：测试与脚本仍按 `CONTRACT_HOST_VERSION` 引用。
 export const CONTRACT_HOST_VERSION = VERIFIED_HOST_VERSIONS[0]

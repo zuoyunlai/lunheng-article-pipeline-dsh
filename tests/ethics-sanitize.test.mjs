@@ -28,7 +28,9 @@ test('E-1 词表：三个词表都能加载、无缺失（缺表必须走 degrad
 })
 
 test('E-2 硬模式：身份证 / 手机 / 固话 / 邮箱 / 银行卡 全部替换', () => {
-  const src = '身份证 110101199003071234，手机 13812345678，座机 010-12345678，邮箱 a.b-c@example.com，卡号 6222021234567890123'
+  // v19.27.13（反哺 F-2）：身份证/银行卡夹具换成**校验位合法**的样本——硬替换现被校验位门控，
+  //   旧夹具（校验位不合法）在新行为下降级为跳过/低置信，不再命中「全部替换」。
+  const src = '身份证 110101199003071233，手机 13812345678，座机 010-12345678，邮箱 a.b-c@example.com，卡号 6222021234567890128'
   const r = sanitize(src, { mode: 'basic', dicts })
   assert.match(r.text, /\[身份证号-REDACTED\]/)
   assert.match(r.text, /\[手机号-REDACTED\]/)
@@ -39,14 +41,55 @@ test('E-2 硬模式：身份证 / 手机 / 固话 / 邮箱 / 银行卡 全部替
   assert.equal(r.counts.phone, 1)
   assert.equal(r.counts.landline, 1)
   assert.equal(r.counts.email, 1)
-  assert.doesNotMatch(r.text, /110101199003071234/, '身份证原值不得残留')
+  assert.doesNotMatch(r.text, /110101199003071233/, '身份证原值不得残留')
   assert.doesNotMatch(r.text, /13812345678/, '手机原值不得残留')
 })
 
 test('E-3 身份证与银行卡不互相二次命中（顺序敏感：18 位先跑）', () => {
-  const r = sanitize('110101199003071234', { mode: 'basic', dicts })
+  // v19.27.13（F-2）：同 E-2，校验位合法样本（11010119900307123**3**）。
+  const r = sanitize('110101199003071233', { mode: 'basic', dicts })
   assert.equal(r.counts.idcard, 1, '应判为身份证')
   assert.equal(r.counts.bankcard, 0, '不得同时判为银行卡')
+})
+
+// v19.27.13（反哺 2026-10-26 F-2 回归钉）：旧正则 `\b1[3-9]\d{9}\b` / `0\d{2,3}-\d{7,8}` 对
+//   下列**常见书写形态**全部漏检且 counts=0（下游据计数误判「已干净」）——每行都是审计实测复现样本，
+//   见 audits/反哺报告-2026-10-26-全量审计外部复审-v1.md F-2。
+test('E-2a 手机号五形态：连字符 / 空格分组 / +86 / 86 前缀 / 前缀带分隔符都必须替换', () => {
+  const forms = ['138-1234-5678', '138 1234 5678', '+8613812345678', '8613812345678', '+86-138-1234-5678']
+  for (const f of forms) {
+    const r = sanitize(`电话 ${f} 请记录`, { mode: 'basic', dicts })
+    assert.equal(r.counts.phone, 1, `${f} 应判为手机号`)
+    assert.doesNotMatch(r.text, /138[0-9 -]*[0-9]/, `${f} 原值不得残留`)
+  }
+})
+
+test('E-2b 固话无连字符形态：`01012345678` 必须替换（旧正则强制连字符）', () => {
+  const r = sanitize('座机 01012345678 请记录', { mode: 'basic', dicts })
+  assert.equal(r.counts.landline, 1)
+  assert.doesNotMatch(r.text, /01012345678/)
+})
+
+test('E-2c 16-19 位数字未过 Luhn：不硬替换、计 bankcardLow、复核标记不回吐原文数字', () => {
+  const r = sanitize('订单号 1234567890123456 备查', { mode: 'basic', dicts })
+  assert.equal(r.counts.bankcard, 0, '订单号不得硬替换为银行卡')
+  assert.equal(r.counts.bankcardLow, 1, '应计低置信候选')
+  assert.match(r.text, /1234567890123456/, '正文原样保留（候选默认不改写正文）')
+  const flag = r.reviewFlags.find((x) => x.kind === 'bankcard-luhn-fail')
+  assert.ok(flag, '应有 bankcard-luhn-fail 复核标记')
+  assert.ok(!JSON.stringify(r.reviewFlags).includes('1234567890123456'), '复核标记不得回吐原文数字')
+})
+
+test('E-2d 身份证校验位不过：原样保留、不计数（18 位订单号不再是身份证误报）', () => {
+  const r = sanitize('编号 110101199003071234 备查', { mode: 'basic', dicts })   // 正确校验位为 3，此处给 4
+  assert.equal(r.counts.idcard, 0)
+  assert.match(r.text, /110101199003071234/, '正文原样保留')
+})
+
+test('E-2e 更长数字串不被截断匹配：16 位订单号不得被截出前 11 位当手机号', () => {
+  const r = sanitize('单号 1391234567812345 完', { mode: 'basic', dicts })
+  assert.equal(r.counts.phone, 0, '长数字串内部不得截断匹配为手机号')
+  assert.equal(r.counts.bankcardLow, 1, '整串按银行卡候选口径处理')
 })
 
 test('E-4 修正④：角色词不得重复（`受访者张三` 不得变成 `受访者受访者A`）', () => {

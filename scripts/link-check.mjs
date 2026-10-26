@@ -256,6 +256,40 @@ export function scan() {
     }
   }
 
+  // ── v19.27.13（反哺 2026-10-26 G-2）：模板名对账（含占位符形态）───────────────────
+  //   病灶（F-8 活样本）：`00-主控-coordinator.md:48` 引用 `templates/阶段确认-<阶段>.md`——名字带
+  //   `<占位符>`，被 NOT_A_PATH_RE 当占位符排除 → 五候选根零判定 → **死链静默存活**（真模板是
+  //   `主人确认-template.md`，TOMBSTONES 里也只登记了它的无占位符别名形态）。
+  //   判据：正文里凡 `templates/<名>.md` 提及（占位符 `<…>` 允许）必须满足其一——
+  //   ① 解析到 `references/templates/` 真实文件；② 占位符段当 `*` 通配后命中至少一个真实模板；
+  //   ③ TOMBSTONES 已登记（明写删除/别名的墓碑）。代码围栏内的提及不算（示例树是举例）。
+  {
+    const tplDir = join(SKILL_ROOT, 'references', 'templates')
+    const tplNames = existsSync(tplDir) ? readdirSync(tplDir).filter((f) => f.endsWith('.md')) : []
+    const MENTION_RE = /templates\/([^\s`\]\)（）{}：:，。；'"*]+(?:<[^<>]*>[^\s`\]\)（）{}：:，。；'"*]*)*)\.md/g
+    for (const abs of files) {
+      const from = relative(REPO_ROOT, abs).split(sep).join('/')
+      if (DOCS_HISTORICAL_RE.some((re) => re.test(from))) continue   // 留痕目录不判定
+      // 剥代码围栏（``` … ```）：布局树/示例里的 templates/ 是举例，不是引用
+      const text = readFileSync(abs, 'utf8').split(/```/).filter((_, i) => i % 2 === 0).join('\n')
+      for (const m of text.matchAll(MENTION_RE)) {
+        const name = m[1]
+        const full = name + '.md'
+        if (tplNames.includes(full)) continue
+        const tombHit = [...TOMBSTONES.keys()].some((k) => k.endsWith('/' + full) || k === full || k.endsWith('/templates/' + full))
+        if (tombHit) continue
+        if (name.includes('<')) {
+          // 占位段 `<…>` → `[\s\S]*`：先替换占位段、再转义其余字符（`<`/`>` 不在转义集内，
+          //   顺序反了会让替换模式永远 miss——首版实测踩过）。
+          const esc = name.replace(/<[^<>]*>/g, '\u0000').replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\u0000/g, '[\\s\\S]*')
+          const globRe = new RegExp('^' + esc + '\\.md$')
+          if (tplNames.some((n) => globRe.test(n))) continue   // 参数化提及命中真实模板族
+        }
+        broken.push([`templates/${full}`, from, [join(tplDir, full)], 'template-mention'])
+      }
+    }
+  }
+
   return {
     files: files.length,
     refs: refs.size,

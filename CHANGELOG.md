@@ -2,6 +2,34 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 19.27.13 — 2026-10-26
+
+<!-- 行为变更 8 条 | 锚点 = CHANGELOG.md § 19.27.13（外部复审反哺批：脱敏五形态+校验位 / zstd 死代码 / README 复述层对账门 / guard 探测归一） -->
+
+> **主题**：外部复审核实批落地。来源 = `audits/反哺报告-2026-10-26-全量审计外部复审-v1.md`（四个并行审计面 + 主审逐条回码核实，其中三条原判被纪律 A 复核**修正**后落地，见 §四）。核心判断：本批全部阻断项都不是机制失效，而是「门照不到的地方」——README 复述层三簇漂移（含 panel 默认值**披露反转**）、脱敏数字形态召回缺口、降级分支不可达。
+> **版本判据 = patch**：不改 M 门 25 项、不动四门口径、不新增角色/阶段；全部是修复与加固 + 两个新门（G-1 派生对账进 `derive-facts`、G-2 模板对账进 `link-check`）。
+
+- **① F-2 伦理脱敏数字形态与校验位（行为变更 · P1）**：手机号覆盖连字符 / 空格分组 / `+86`/`86` 前缀五形态（旧正则只认连续 11 位，实测 `138-1234-5678` 等四形态全部漏检且 `counts.phone=0` 给下游「干净」假信号）；固话允许无连字符；身份证加 ISO 7064 校验位（不过 = 订单号，不替换不计数）；银行卡加 Luhn（不过降级 `bankcardLow` 候选计数 + 复核标记，**不回吐原文数字**，H2 标记不触发注入——与人名低置信分档同构）。回归钉 `tests/ethics-sanitize.test.mjs` E-2a~E-2e（五形态正反向）。
+- **② F-3 token-cost zstd 死代码（行为变更 · P1）**：顶层静态导入使「Node < 22.15 → exit 10」降级分支永不可达（加载期即 `ERR_EXPORT_NOT_FOUND`，任何模式全崩）。改模块级动态导入：tree 模式缺 zstd 显式 exit 10、`readLiveUsage` 回落返回 null（连带修复：`readLiveUsage` 的 zstd 引用此前靠静态导入，直接删除会变悬空引用）。
+- **③ F-1/F-4/F-5 README 复述层三簇漂移 + G-1 派生对账门（P1/P2）**：panel 默认值六份用户文档反向（代码 v18.93.0 起默认开，五语 README + installation 全写默认关）→ 全部改为如实并带 `v18.93.0` 锚点；命令数五语 ×2 处 + 子技能 SKILL.md 正文 11 → 13（补 `-gate`/`-abort`）；Config 键计数（en「eight」/ zh「九者/六者」/ es「ocho」/ pt「oito」/ hi「नौ」/ SECURITY.md 同句自相矛盾）→ 十键 / 三 env 镜像 / 七者仅 Config。**根治**：`derive-facts` 新增四个派生真源（Config 键清单 ← `CONFIG_SPEC` 反射；命令清单 ← COMMANDS 表；panel 默认值；env 镜像 ← `process.env.LUNHENG_*` 实读点）+ 七文档复述层对账（判据全部语言无关锚点，遵 maintainers §6.1 纪律 C）；负对照 = 用本批修复前的真实旧文案喂入，五类漂移全数报出。
+- **④ F-7 guard 大小写归一：平台门 → FS 敏感性探测（行为变更 · P2）**：落地前按纪律 A **跑真实用例修正了原判**——`realpathSync.native` 在大小写不敏感 FS 上本就返回真实大小写（实测全大写变体归一回 `SKILL.md`），常见路径绕不过；真实残余是 **realpath 失败回退分支**。修法：win32 恒真，其余平台 tmpdir 探针一次（写混排大小写探针文件 + stat 换大小写变体），不敏感 FS 归一（只收紧）；macOS 多卷混挂残余如实留档。测试判据同步改为 FS 探测（原「仅 Windows」平台门测试更新为敏感性互斥双用例）。
+- **⑤ F-11 guard 登记制加固（行为变更 · P3 定级）**：`rename`/`move`/`delete`/`remove`/`rm`/`mv` 入 `WRITE_TOOLS`（删除/改名与覆写同等致命；现宿主无对应工具，按 v18.62.5「不可利用也先登记」先例）；未登记的**写样工具名**放行时打一行 warn（旧实现静默早退，删/改名类完全不在视野连日志都没有）。
+- **⑥ F-12①② 工具面（行为变更 · P3）**：`scriptMaxOutputBytes` 改按**字节**计（旧按 UTF-16 字符，中文内容实际缓冲可达配置值 ~3×）；`lunheng_m_gate`/`lunheng_handoff_check` 退出码双读——JSON 自报与进程码不一致时以非零者为准并标 `exitMismatch`（旧实现把「打完 JSON 后崩溃」读成成功）。
+- **⑦ F-6/F-12③④⑤⑥ 面板与客户端（行为变更 · P2/P3）**：SSE 写背压（`res.write` 返回 false 即断开，慢客户端不再无界积压）+ 连接上限 4（503）+ 心跳快照走签名缓存（三 mtime 未变且 <1s 复用；watch 触发与直连一律新鲜——首版缓存签名漏了子目录写入，被 panel.test 的 T9 雷达用例当场抓住后改为「心跳专用」）；`samePath` 只 stat 已知根、不对用户输入落盘（存在性 oracle + SMB 同步 IO 面）；`writePanelStatus` 临时文件 + rename 原子替换（POSIX 符号链接跟随覆写 + 交错写）；客户端「预览」按钮改「另存」（`/file` 一律 attachment 是安全边界，不动）；死组件 `Sparkline` 删除。
+- **⑧ F-8/F-9/F-12⑦⑧⑨⑩ + G-2/G-3/G-4（文档与小项）**：主控卡死链（`阶段确认-<阶段>` 占位模板名 → 真模板 `主人确认-template.md`）；SKILL.md `repo-hygiene-check` 宣告改「不随包、仅开发仓库」；`operations-capability.md` 按需读体积改「以 `ref-get --list` 现算为准」（97 KB 旧值实测已 117/143 KB）；host-contract 白名单**补录** 0.1.7-rc.2（有自己的 CI 腿却未入册，账册与账页打架；0.1.2-rc.1 保留——lockfile 实装 + 全量测试是其真实证据腿，落地时修正了原判「替换」为「补录」）；SKILL.md 排版残留（空 `---` 段 / 不平衡括号 / 教训 #57 撞号注记）。**G-2**：link-check 新增模板名对账（占位符形态也查；首跑即抓到 docs/quick-facts 与 troubleshooting 的 5 处既有漏判——修复一个扩展名比对 bug后确认四模板均在盘）；**G-3/G-4**：pack-smoke lib 面扩 `.mjs` + 发布物侧 `node --check` 语法冒烟（lib 全模块 + 三个跨层 CLI + client.js）。
+
+**验证**：全量 `node --test` 两个 glob：**1429/1429 全绿**（`node --test` 计 1431 例 = 1429 通过 + 2 既有登记 skip，0 fail；较 v19.27.12 增 14 例 = 脱敏五形态 6 + G-1 对账 6 + guard F-7/F-11 双用例 2）；门 `consistency-check` 0 漂移、`derive-facts --check` 含 G-1 七文档对账通过、`repo-hygiene-check` 全过、`link-check` 无未归类断链（含 G-2 反事实：塞入 F-8 旧形态必红、复原必绿）、`pack-smoke` 213 文件 + 语法冒烟 11 项通过、`no-write-check` 仓库哈希不变。每个行为变更带正反向回归（五形态脱敏 / guard 双平台探测互斥 / SSE 背压与上限 / 字节上限 / exitMismatch）。
+
+**回滚点**：`git revert` 本版提交即回到 v19.27.12——不改数据形态、不迁移项目文件；脱敏新行为只影响**新会话**的替换决策，既有 `run/` 产物不受影响。
+
+**未做（如实）**：
+- **G-5 panel 鉴权与默认值重议未动**（主人 2026-10-10 裁定「装完即用」，本批只修披露反转与性能面；随机 token 方案留主人裁定）。
+- **client.js 宿主侧真加载冒烟未接 CI**（pack-smoke 的 `node --check` 是语法面；真宿主加载需 web 客户端环境，单独立批）。
+- **guard 写样名告警的降噪阈值未调优**（词元命中即 warn，首版可能有噪声——观察一个版本段后再收）。
+- **run-path-fence.mjs 的同族归一未动**：其读面语义在大小写不敏感 FS 上经 realpath 归一已正确，且 `run-report.mjs` 内联副本耦合（G-3 的对账登记属后续批）。
+
+---
+
 ## 19.27.12 — 2026-10-25
 
 <!-- 行为变更 2 条 | 锚点 = CHANGELOG.md § 19.27.12（发版被跑者 tar 卡住：pack-smoke 加内置解包兜底） -->
