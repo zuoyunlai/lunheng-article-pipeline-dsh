@@ -12,7 +12,7 @@
 //   ④ resourceBase 目录下 SKILL.md / references/ / scripts/ 真实存在（渐进披露的相对引用前提）。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'   // v19.6.1（审计 F-1）：构造「工作区与 tmpdir 之外」的路径
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -172,6 +172,74 @@ test('C 组：注册 4 个只读原生工具，规范值可复算（真跑一次
     /未返回 JSON/,
     '拿不到 JSON（路径错 → exit 10）时必须 throw，不得返回伪造的规范值',
   )
+})
+
+test('工具输出截断：astral 字符跨越上限时不得留下孤立代理', {
+  skip: skipWhen(PIPE_SPAWN_BLOCKED, '当前宿主禁止子进程开命名管道，无法执行 runScript 截断回归'),
+}, async () => {
+  const d = tmp('lunheng-unicode-cap-')
+  try {
+    const skillRoot = join(d, 'skill')
+    const scripts = join(skillRoot, 'scripts')
+    mkdirSync(scripts, { recursive: true })
+    const json = JSON.stringify({ exit: 0, total: 0, pass: 0, results: [] })
+    writeFileSync(join(scripts, 'm-gate-check.mjs'),
+      `process.stdout.write(${JSON.stringify(json)})\nprocess.stderr.write(${JSON.stringify('A'.repeat(58) + '😀XXX')})\n`)
+    const { installLunhengTools } = await import(pathToFileURL(join(PACKAGE_ROOT, 'lib', 'tools.js')).href)
+    const regs = []
+    const ctx = { get: (n) => (n === 'tools' ? { register: (def) => { regs.push(def); return () => {} } } : undefined) }
+    await installLunhengTools(ctx, {
+      skillRoot,
+      scriptMaxOutputBytes: 64,
+      defineToolFactory: async () => ({ defineTool: (def) => def }),
+    })
+    const tool = regs.find((def) => def.name === 'lunheng_m_gate')
+    const value = await tool.execute(
+      { draft: join(d, 'draft.md'), evidence: join(d, 'evidence') },
+      { signal: new AbortController().signal },
+    )
+    assert.equal(value.stderr, 'A'.repeat(58) + '…', '省略号前不得保留半个 😀')
+    assert.ok(!/[\uD800-\uDFFF]/.test(value.stderr), '截断结果不得含孤立 UTF-16 代理')
+    assert.equal(value.truncated, true)
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
+test('工具退出码：双非零不一致与 JSON=0/proc=70 均保留诊断', {
+  skip: skipWhen(PIPE_SPAWN_BLOCKED, '当前宿主禁止子进程开命名管道，无法执行工具退出码回归'),
+}, async (t) => {
+  const { installLunhengTools } = await import(pathToFileURL(join(PACKAGE_ROOT, 'lib', 'tools.js')).href)
+  for (const toolName of ['lunheng_m_gate', 'lunheng_handoff_check']) {
+    for (const jsonExit of [1, 0]) {
+      await t.test(`${toolName}：JSON=${jsonExit} / proc=70`, async () => {
+        const d = tmp('lunheng-exit-mismatch-')
+        try {
+          const skillRoot = join(d, 'skill')
+          const scripts = join(skillRoot, 'scripts')
+          mkdirSync(scripts, { recursive: true })
+          const scriptName = toolName === 'lunheng_m_gate' ? 'm-gate-check.mjs' : 'handoff-check.mjs'
+          const payload = toolName === 'lunheng_m_gate' ? { exit: jsonExit } : { exit: jsonExit, role: 'T8' }
+          writeFileSync(join(scripts, scriptName),
+            `process.stdout.write(${JSON.stringify(JSON.stringify(payload))})\nprocess.exitCode = 70\n`)
+          const regs = []
+          const ctx = { get: (n) => (n === 'tools' ? { register: (def) => { regs.push(def); return () => {} } } : undefined) }
+          await installLunhengTools(ctx, { skillRoot, defineToolFactory: async () => ({ defineTool: (def) => def }) })
+          const tool = regs.find((def) => def.name === toolName)
+          const props = tool.output.schema.properties
+          assert.equal(props.exitMismatch?.type, 'boolean', '诊断字段必须穿过 additionalProperties:false 的 schema')
+          assert.equal(props.jsonExit?.type, 'number')
+          assert.equal(props.procExit?.type, 'number')
+          const args = toolName === 'lunheng_m_gate'
+            ? { draft: join(d, 'draft.md'), evidence: join(d, 'evidence') }
+            : { project: d, role: 'T8' }
+          const value = await tool.execute(args, { signal: new AbortController().signal })
+          assert.deepEqual(
+            { exit: value.exit, exitMismatch: value.exitMismatch, jsonExit: value.jsonExit, procExit: value.procExit },
+            { exit: 70, exitMismatch: true, jsonExit, procExit: 70 },
+          )
+        } finally { rmSync(d, { recursive: true, force: true }) }
+      })
+    }
+  }
 })
 
 // ════════════════════════════════════════════════════════════════════════════════════════════

@@ -16,7 +16,7 @@
 //      锁行为而不是源码字符串。覆盖：实时帧 / 未启用提示 / 空态 / SSE 断流兜底 / 座位如实汇报。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, symlinkSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, symlinkSync, lstatSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { pathToFileURL } from 'node:url'
@@ -28,7 +28,7 @@ delete process.env.LUNHENG_PANEL
 const PANEL_STATUS_FILE = join(tmpdir(), 'lunheng-panel-status.json')
 const readPanelStatus = () => JSON.parse(readFileSync(PANEL_STATUS_FILE, 'utf8'))
 import { tmp } from './_fixtures.mjs'
-import { registerPanel, handlePanelRequest, lightSnapshot, listProjects, panelRoots, PANEL_ROUTE, PANEL_HEARTBEAT_MS } from '../lib/panel.mjs'
+import { registerPanel, handlePanelRequest, lightSnapshot, listProjects, panelRoots, writePanelStatus, PANEL_ROUTE, PANEL_HEARTBEAT_MS } from '../lib/panel.mjs'
 
 const ROOT = join(import.meta.dirname, '..')
 
@@ -148,6 +148,38 @@ test('面板：SSE —— 头 + retry + 首帧 snapshot，断连后清理（不�
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
 
+test('面板：SSE 首帧背压受控断开，连接计数不泄漏', () => {
+  const d = tmp()
+  const active = []
+  try {
+    mkProject(d)
+    const ctx = mkCtx(d, {})
+    const backpressured = mkRes()
+    backpressured.write = (s) => {
+      const chunk = String(s)
+      backpressured.chunks.push(chunk)
+      return !chunk.startsWith('event: snapshot')
+    }
+    assert.doesNotThrow(
+      () => handlePanelRequest(ctx, mkReq('/lunheng-panel/events?project=proj-p'), backpressured),
+      '首个 snapshot write=false 不得访问尚未初始化的 close',
+    )
+
+    // 若首帧泄漏一个名额，这里第四条正常连接就会提前收到 503。
+    for (let i = 0; i < 4; i++) {
+      const req = mkReq('/lunheng-panel/events?project=proj-p')
+      const res = mkRes()
+      active.push(req)
+      handlePanelRequest(ctx, req, res)
+      assert.equal(res.code, 200, `首帧背压后的第 ${i + 1} 条正常连接不应受 503 影响`)
+    }
+    assert.equal(call(ctx, '/lunheng-panel/events?project=proj-p').code, 503, '四条活跃连接仍应触发既有上限')
+  } finally {
+    for (const req of active) req.emit('close')
+    rmSync(d, { recursive: true, force: true })
+  }
+})
+
 test('面板：客户端半边是 lazy-CJS 协议、零外部引用、只打同源面板路由', () => {
   const src = readFileSync(join(ROOT, 'lib', 'client.js'), 'utf8')
   assert.match(src, /window\.__ModuleLoader__\.load\(\{/)
@@ -228,6 +260,30 @@ test('面板（v18.90.1）：状态文件如实记录分支（未启用 / config
       assert.ok(sink2.route, 'env 通道也必须真的注册')
     } finally { delete process.env.LUNHENG_PANEL }
   } finally { rmSync(d, { recursive: true, force: true }) }
+})
+
+test('面板：状态写盘不跟随预置的旧临时路径符号链接', (t) => {
+  const d = tmp('lunheng-panel-symlink-')
+  const legacyTmp = `${PANEL_STATUS_FILE}.${process.pid}.tmp`
+  const sentinel = join(d, 'sentinel.txt')
+  const original = 'DO-NOT-OVERWRITE'
+  let linked = false
+  try {
+    writeFileSync(sentinel, original)
+    try {
+      symlinkSync(sentinel, legacyTmp, 'file')
+      linked = true
+    } catch (err) {
+      t.skip(`当前平台不能创建文件符号链接，未执行攻击复现：${err.code || err.message}`)
+      return
+    }
+    writePanelStatus({ stage: 'symlink-regression' })
+    assert.equal(readFileSync(sentinel, 'utf8'), original, '诊断写盘不得覆写符号链接目标')
+    assert.ok(lstatSync(legacyTmp).isSymbolicLink(), '预置链接不是本次创建的临时文件，不得被清理或改名')
+  } finally {
+    if (linked) rmSync(legacyTmp, { force: true })
+    rmSync(d, { recursive: true, force: true })
+  }
 })
 
 // ── v18.90.2：入口结构钉（真实宿主根因：注册落在异步链尾段，被 fiber reconcile 的 early-return 吞掉）──
