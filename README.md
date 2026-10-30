@@ -77,7 +77,7 @@ Phase 5  Finalize     T8 finalizer (run by the coordinator) → final draft, evi
 lunheng-article-pipeline/                 # the package is the repository
 ├── package.json              # declares main (lib/index.js) + dsh.bundle.patch
 ├── cordis.patch.yml          # bundle layer: self-register row + 3 model-tier subagent tools (mounted only when LUNHENG_* is set)
-├── lib/index.js              # plugin entry: skill + read-only tools + mechanism write guard + /lunheng-status
+├── lib/index.js              # plugin entry: skill + native tools (m_gate report writes gate reports) + mechanism write guard + /lunheng-status
 ├── skills/lunheng-article-pipeline/       # the main skill body (one directory)
 │   ├── SKILL.md              # skill entry (roles, gates, execution boundaries)
 │   ├── AGENTS.md             # operator manual

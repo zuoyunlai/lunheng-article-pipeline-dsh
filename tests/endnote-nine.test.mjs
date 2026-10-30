@@ -91,6 +91,19 @@ test('m-gate-check：仍只写必需五节 → 也通过（非学术稿不得被
   }
 })
 
+test('m-gate-check：只出现部分可选声明 → 顺序只约束实际出现节', () => {
+  const dir = tmp('lunheng-partial-decls-')
+  try {
+    const partial = [REQUIRED_5[0], REQUIRED_5[1], REQUIRED_5[2], REQUIRED_5[3], DECLS[1], DECLS[3], REQUIRED_5[4]]
+    const draft = mkFixture(dir, partial)
+    const r = run([join(SCRIPTS, 'm-gate-check.mjs'), draft, join(dir, 'final', '证据包')])
+    assert.equal(gateOf(r, 'M-Form-2').pass, true, '必需五节不受可选声明子集影响')
+    assert.equal(gateOf(r, 'M-Form-7').pass, true, '未出现的声明不得参与顺序判定')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('m-gate-check：四声明**错序**（排到 AI 使用声明之后）→ M-Form-7 仍必须报（顺序断言不得被放宽）', () => {
   const dir = tmp('lunheng-badorder-')
   try {
@@ -99,6 +112,7 @@ test('m-gate-check：四声明**错序**（排到 AI 使用声明之后）→ M-
     const r = run([join(SCRIPTS, 'm-gate-check.mjs'), draft, join(dir, 'final', '证据包')])
     const m7 = gateOf(r, 'M-Form-7')
     assert.equal(m7.pass, false, '错序必须报：' + JSON.stringify(m7))
+    assert.equal(m7.severity, 'P1', '白名单内但错序必须是 P1：' + JSON.stringify(m7))
     assert.match(String(m7.detail), /顺序违规/)
   } finally {
     rmSync(dir, { recursive: true, force: true })

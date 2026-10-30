@@ -263,6 +263,65 @@ test('m-gate-check M-Form-8：论点段缺 [Lxx] / 承重墙超载与幽灵编�
   rmSync(d, { recursive: true, force: true })
 })
 
+test('m-gate-check M-Form-8 语义契约：五类覆盖输入逐项映射到 P0/P1/P2/通过', () => {
+  const endnotes = DRAFT_OK.slice(DRAFT_OK.indexOf('\n\n## 参考文献'))
+  const cases = [
+    { name: '零类证据', refs: [], severity: 'P0', pass: false },
+    { name: '仅 L', refs: ['L01'], severity: 'P1', pass: false },
+    { name: '仅先', refs: ['先01'], severity: 'P1', pass: false },
+    { name: '仅 D', refs: ['D01'], severity: 'P1', pass: false },
+    { name: '仅 C', refs: ['C01'], severity: 'P1', pass: false },
+    { name: '仅 S', refs: ['S01'], severity: 'P1', pass: false },
+    { name: 'D+C 双覆盖但无文献族', refs: ['D01', 'C01'], severity: 'P2', pass: false },
+    { name: 'D+S 双覆盖但 S 不属于文献族', refs: ['D01', 'S01'], severity: 'P2', pass: false },
+    { name: 'L+D 双覆盖', refs: ['L01', 'D01'], severity: '通过', pass: true },
+    { name: '先+D 双覆盖', refs: ['先01', 'D01'], severity: '通过', pass: true },
+    { name: 'ACCEPTED-GAPS 豁免零类覆盖', refs: [], severity: '通过', pass: true, accepted: true },
+  ]
+  for (const c of cases) {
+    const { d, proj, fin, ev } = mkProject({ analysis: true })
+    setupCards(ev)
+    try {
+      const refs = c.refs.map((r) => `[${r}]`).join(' ')
+      const pad = '本段用于达到机械检查的最短节长，不包含额外证据编号。'.repeat(5)
+      writeFileSync(join(fin, '定稿.md'), '# 标题\n\n## 摘要\n\n摘要若干字。\n\n## 一、论点\n\n'
+        + `${pad}\n\n` + `正文 ${refs}。`.repeat(12) + endnotes)
+      if (c.accepted) writeFileSync(join(proj, 'analysis', '分析大纲.md'), '# 分析大纲\n\nACCEPTED-GAPS: 论点\n')
+      const it = gateOf(join(fin, '定稿.md'), ev, 'M-Form-8')
+      assert.equal(it.severity, c.severity, `${c.name} 的等级映射错误：${it.detail}`)
+      assert.equal(it.pass, c.pass, `${c.name} 的 pass 映射错误：${it.detail}`)
+      if (c.accepted) assert.match(it.detail, /已接受缺口.*论点/, '豁免段必须留痕：' + it.detail)
+    } finally {
+      rmSync(d, { recursive: true, force: true })
+    }
+  }
+})
+
+test('m-gate-check M-Exist-1 语义契约：硬缺失、软孤儿与 10/11 条边界', () => {
+  const { d, fin, ev } = mkProject()
+  setupCards(ev)
+  const draft = join(fin, '定稿.md')
+  const bodyAnchor = '正文 [L01] [D01] [C01] [先01]。'
+  const check = (name, text, severity, pass) => {
+    writeFileSync(draft, text)
+    const it = gateOf(draft, ev, 'M-Exist-1')
+    assert.equal(it.severity, severity, `${name} 的等级映射错误：${it.detail}`)
+    assert.equal(it.pass, pass, `${name} 的 pass 映射错误：${it.detail}`)
+  }
+  try {
+    check('普通漏引', DRAFT_OK.replace(bodyAnchor, `${bodyAnchor} [L99]`), 'P1', false)
+    check('LDC 硬孤儿', DRAFT_OK.replace('## 参考文献\n\n[L01] a', '## 参考文献\n\n[L01] a\n[L02] b'), 'P1', false)
+    check('缺口漏引', DRAFT_OK.replace(bodyAnchor, `${bodyAnchor} [G01]`), 'P1', false)
+    check('扩展编号未闭环', DRAFT_OK.replace(bodyAnchor, `${bodyAnchor} [脚注-1]`), 'P1', false)
+    check('仅先对照孤儿', DRAFT_OK.replace('[先01] p', '[先01] p\n[先02] q'), 'P2', true)
+    const leaked = (n) => Array.from({ length: n }, (_, i) => `[L${90 + i}]`).join(' ')
+    check('10 条硬缺失', DRAFT_OK.replace(bodyAnchor, `${bodyAnchor} ${leaked(10)}`), 'P1', false)
+    check('11 条硬缺失', DRAFT_OK.replace(bodyAnchor, `${bodyAnchor} ${leaked(11)}`), 'P0', false)
+  } finally {
+    rmSync(d, { recursive: true, force: true })
+  }
+})
+
 test('m-gate-check M-Exist-2 / M-Exist-3：空文件、悬空引用、证据包布局异常（v18.0.5 补回归网）', () => {
   const { d, fin, ev } = mkProject()
   setupCards(ev)

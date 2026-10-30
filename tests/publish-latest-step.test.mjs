@@ -57,15 +57,15 @@ function harness(latestTag, { newer = '' } = {}) {
   return { dir, bin }
 }
 
-function runStep(script, { dir, bin }, latestTag) {
-  return spawnSync('bash', ['-c', script], {
-    cwd: dir,
-    encoding: 'utf8',
-    env: { ...process.env, PATH: bin + (process.platform === 'win32' ? ';' : ':') + process.env.PATH, PKG: 'lunheng-article-pipeline', STUB_LATEST: latestTag },
-  })
+function runStep(script, { dir }, latestTag) {
+  const env = `PATH="bin:$PATH"\nexport PKG='lunheng-article-pipeline' STUB_LATEST='${latestTag}'\n`
+  writeFileSync(join(dir, 'step.sh'), env + script)
+  return spawnSync('bash', ['step.sh'], { cwd: dir, encoding: 'utf8' })
 }
 
 const SKIP = hasBash ? false : '本机没有 bash——无法执行 workflow shell，带理由跳过（不得读成通过）'
+// Windows 句柄可能延迟释放；有限重试后仍失败时，rmSync 保留并抛出最后一条真实错误。
+const RM_RETRY = { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }
 
 test('P1-2 ①：latest 与本版一致 → 该 step 必须 **exit 0**（且不得报 unbound variable）', { skip: SKIP }, () => {
   const s = extractStepShell('latest 前移硬断言')
@@ -76,7 +76,7 @@ test('P1-2 ①：latest 与本版一致 → 该 step 必须 **exit 0**（且不�
     assert.ok(!/unbound variable/.test(all), 'VER 必须由本 step 自己求值（跨 step 局部变量不共享）：' + all)
     assert.equal(r.status, 0, 'latest 已同步时必须通过：' + all)
     assert.match(all, /latest == 19\.27\.2/)
-  } finally { rmSync(h.dir, { recursive: true, force: true }) }
+  } finally { rmSync(h.dir, RM_RETRY) }
 })
 
 test('P1-2 ②：latest 落后 → 必须 **exit 1** 并给出可读修法（不得静默通过）', { skip: SKIP }, () => {
@@ -88,7 +88,7 @@ test('P1-2 ②：latest 落后 → 必须 **exit 1** 并给出可读修法（不
     assert.equal(r.status, 1, 'latest 落后必须红：' + all)
     assert.match(all, /latest=19\.27\.1/)
     assert.match(all, /dist-tag add/, '须给出可执行的闭合路径')
-  } finally { rmSync(h.dir, { recursive: true, force: true }) }
+  } finally { rmSync(h.dir, RM_RETRY) }
 })
 
 test('P1-2 ③：**补推历史 tag**（registry 上已有更新版本）→ 不得硬断言 latest==VER（防回退口径互斥）', { skip: SKIP }, () => {
@@ -101,7 +101,7 @@ test('P1-2 ③：**补推历史 tag**（registry 上已有更新版本）→ 不
     const all = `${r.stdout || ''}${r.stderr || ''}`
     assert.equal(r.status, 0, '补推历史 tag 不得因 latest 指向前进而失败：' + all)
     assert.match(all, /不\*\*断言 latest|不断言 latest|不\*\*断言/)
-  } finally { rmSync(h.dir, { recursive: true, force: true }) }
+  } finally { rmSync(h.dir, RM_RETRY) }
 })
 
 test('P1-2 ④：该 step 的 shell 必须能被 bash 解析（语法级，防「注释写对、语法写坏」）', { skip: SKIP }, () => {
@@ -110,10 +110,10 @@ test('P1-2 ④：该 step 的 shell 必须能被 bash 解析（语法级，防�
   try {
     const f = join(d, 'step.sh')
     writeFileSync(f, s)
-    const r = spawnSync('bash', ['-n', f], { encoding: 'utf8' })
+    const r = spawnSync('bash', ['-n', 'step.sh'], { cwd: d, encoding: 'utf8' })
     assert.equal(r.status, 0, 'bash -n 必须通过：' + `${r.stdout || ''}${r.stderr || ''}`)
     assert.ok(existsSync(f))
-  } finally { rmSync(d, { recursive: true, force: true }) }
+  } finally { rmSync(d, RM_RETRY) }
 })
 
 test('P1-2 ⑤：**变量不得裸接非 ASCII**（bash 3.2 会把多字节首字节并进变量名）', () => {

@@ -123,7 +123,7 @@ AI。
 
 test('C1/C2/C4/C5/C7 文档契约：六处新增判据必须在场且含关键措辞', () => {
   const hard = readFileSync(join(SK, 'references', '_shared', '机检硬格式.md'), 'utf8')
-  assert.match(hard, /实现判 \*\*P2\*\*（「有证据但缺/, 'C1 须更正纯 S 段档位为 P2')
+  assert.match(hard, /只用 `\[Sxx\]` 的段属于\*\*单类覆盖 → P1\*\*/, 'C1 须保持纯 S 段单类覆盖为 P1')
   assert.match(hard, /正文承重只引最贴切的一个编号/, 'C1 须有跨卡同源择一规则')
   const card07 = readFileSync(join(SK, 'references', 'agents', '07-审计-auditor.md'), 'utf8')
   assert.match(card07, /methodology-check[^\n]*--genre/, 'C2 T7 卡须要求 methodology-check 带 --genre')

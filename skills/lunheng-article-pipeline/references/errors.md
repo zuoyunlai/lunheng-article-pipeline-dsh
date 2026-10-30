@@ -49,7 +49,7 @@ M-Form-3 failed: temp_id pattern detected in output
 | `fact` | 事实/来源错（幻觉引用、URL 404、著录错） |
 | `inference` | 无支撑引申、逻辑跳跃 |
 | `attribution` | 归属错位（把 A 的来源或说法记给 B） |
-| `contract` | 机检契约/闭环不齐（字段缺、编号形态、五节顺序） |
+| `contract` | 机检契约/闭环不齐（字段缺、编号形态、文末节顺序） |
 | `drift` | 同一事实两处口径不同（简报↔稿、卡↔正文） |
 | `process` | 流程/时序缺失（该跑没跑、顺序错） |
 | `boundary` | 角色/产物越界（动了别人的文件、操作员语言泄入） |

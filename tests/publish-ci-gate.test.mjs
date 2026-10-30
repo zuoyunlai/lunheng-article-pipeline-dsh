@@ -15,6 +15,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const WF = join(ROOT, '.github', 'workflows', 'publish.yml')
 const hasBash = spawnSync('bash', ['-c', 'true']).status === 0
 const SKIP = hasBash ? false : '本机没有 bash——无法执行 workflow shell，带理由跳过'
+// Windows 句柄可能延迟释放；有限重试后仍失败时，rmSync 保留并抛出最后一条真实错误。
+const RM_RETRY = { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }
 
 /** 抽出「同 SHA CI 绿闸」step 的 run 块。 */
 function extractGate() {
@@ -44,12 +46,11 @@ function harness(json) {
   return { dir, bin }
 }
 
-function runGate(gate, { dir, bin }) {
+function runGate(gate, { dir }) {
   const script = gate.replace(/sleep 30/g, 'sleep 0').replace(/\+ 900/, '+ 3')
-  return spawnSync('bash', ['-c', script], {
-    cwd: dir, encoding: 'utf8',
-    env: { ...process.env, PATH: bin + (process.platform === 'win32' ? ';' : ':') + process.env.PATH, GITHUB_REPOSITORY: 'o/r', GITHUB_SHA: 'abc123' },
-  })
+  const env = 'PATH="bin:$PATH"\nexport GITHUB_REPOSITORY=\'o/r\' GITHUB_SHA=\'abc123\'\n'
+  writeFileSync(join(dir, 'gate.sh'), env + script)
+  return spawnSync('bash', ['gate.sh'], { cwd: dir, encoding: 'utf8' })
 }
 
 const wrap = (runs) => JSON.stringify({ total_count: runs.length, workflow_runs: runs })
@@ -62,7 +63,7 @@ test('P1-3 ①：同 SHA 的 ci.yml 全绿 → 闸门放行（exit 0）', { skip
     const all = `${r.stdout || ''}${r.stderr || ''}`
     assert.equal(r.status, 0, '全绿必须放行：' + all)
     assert.match(all, /已成功 1 次/)
-  } finally { rmSync(h.dir, { recursive: true, force: true }) }
+  } finally { rmSync(h.dir, RM_RETRY) }
 })
 
 test('P1-3 ②：同 SHA 有失败运行 → 闸门必须红（exit 1），且点名是哪次', { skip: SKIP }, () => {
@@ -72,7 +73,7 @@ test('P1-3 ②：同 SHA 有失败运行 → 闸门必须红（exit 1），且�
     const all = `${r.stdout || ''}${r.stderr || ''}`
     assert.equal(r.status, 1, '有失败必须红：' + all)
     assert.match(all, /未成功|failure/, '须点出失败：' + all)
-  } finally { rmSync(h.dir, { recursive: true, force: true }) }
+  } finally { rmSync(h.dir, RM_RETRY) }
 })
 
 test('P1-3 ③：同 SHA 查不到任何 ci 运行 → **fail-closed**（不得因「没记录」放行）', { skip: SKIP }, () => {
@@ -82,7 +83,7 @@ test('P1-3 ③：同 SHA 查不到任何 ci 运行 → **fail-closed**（不得�
     const all = `${r.stdout || ''}${r.stderr || ''}`
     assert.equal(r.status, 1, '无运行记录必须 fail-closed：' + all)
     assert.match(all, /fail-closed|等待/)
-  } finally { rmSync(h.dir, { recursive: true, force: true }) }
+  } finally { rmSync(h.dir, RM_RETRY) }
 })
 
 test('P1-3 ④：该闸的 shell 必须能被 bash 解析', { skip: SKIP }, () => {
@@ -90,7 +91,7 @@ test('P1-3 ④：该闸的 shell 必须能被 bash 解析', { skip: SKIP }, () =
   try {
     const f = join(d, 'gate.sh')
     writeFileSync(f, extractGate())
-    const r = spawnSync('bash', ['-n', f], { encoding: 'utf8' })
+    const r = spawnSync('bash', ['-n', 'gate.sh'], { cwd: d, encoding: 'utf8' })
     assert.equal(r.status, 0, 'bash -n 必须通过：' + `${r.stdout || ''}${r.stderr || ''}`)
-  } finally { rmSync(d, { recursive: true, force: true }) }
+  } finally { rmSync(d, RM_RETRY) }
 })

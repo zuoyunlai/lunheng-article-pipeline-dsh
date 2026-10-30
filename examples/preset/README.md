@@ -136,7 +136,7 @@ agentOptions: !!js "(e => { const p = e.LUNHENG_RETRIEVAL_PROVIDER, m = e.LUNHEN
 ```sh
 dsh plugin --profile web update lunheng-article-pipeline@dsh
 # 卸载后 4 段 - insert 行（自注册行 + 三档工具行）与入口注册的技能一并消失；
-# 入口安装的可选能力（原生只读工具 / 机制写保护 / /lunheng-status）随 ctx.effect 的 disposer 回收，不留残余
+# 入口安装的可选能力（原生工具，含受围栏的 m_gate report 写报告例外 / 机制写保护 / /lunheng-status）随 ctx.effect 的 disposer 回收，不留残余
 dsh plugin --profile web remove lunheng-article-pipeline
 ```
 

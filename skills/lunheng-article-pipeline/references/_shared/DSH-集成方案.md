@@ -3,7 +3,7 @@
 > 版本：v19.27.14
 > **用途**：把论衡的既有机制（**随包脚本** / 并行阶段 / 状态机 / 人在环闸门）**对齐 DSH 已有能力面**，替代平行自建。§一–§六 是**实施方案**，§七 是**落地状态表**，§八 是**可选配方**。**脚本清单与数量真源 = `SKILL.md` §执行能力边界 的「随包脚本白名单」行**（本文件不复述数字）。
 > **依据**：DSH 官方文档 `docs/cookbook/adding-a-tool.md`、`docs/tool-execution-pipeline.md`、`docs/subsystems/*.md`、`docs/capability-seams.md`（知识库副本见 `dsh-plugin-guide/references/official-docs/`；行号对快照 commit `d347e703…`）。
-> **当前状态（v18.76.0 对账）**：**C 组 9 项已启用 + 1 项仅配方（C-2）+ D2 workflow 配方已落地（可选）**：原生只读工具 + `executionMode` 声明 / `ctx.tools.guard()` 写保护 / `/lunheng-status` / 词预算门 / `tools/post-execute` 伦理脱敏自动挂载（命中标记经 `decision.additionalContexts` 送达，v18.76.0 · R1 修复） / `system-prompt/assemble` 钩子 / `examples/preset/agent.cordis.yml` preset 化（**C-9 `file-watcher:change`、C-10 `assistant/chunk`、C-12 `agent/request` 三条死监听器已移除**，见 §七）。**D2（Phase 内并行→`workflow`）配方已落地**（v18.71.0，`examples/workflow/phase1-retrieval.md`，**可选、不默认替换 subagent**，见 §三）。**未做（Backlog）**：**H8** `session-log` 投影 / **H9** `session-query-sqlite` / **H10** `web_profile`（主人 2026-09-30 裁定**不做**）；**H11** `goals` / `jobs`（仍禁接）。
+> **当前状态（v18.76.0 对账）**：**C 组 9 项已启用 + 1 项仅配方（C-2）+ D2 workflow 配方已落地（可选）**：原生工具 + `executionMode` 声明 / `ctx.tools.guard()` 写保护 / `/lunheng-status` / 词预算门 / `tools/post-execute` 伦理脱敏自动挂载（命中标记经 `decision.additionalContexts` 送达，v18.76.0 · R1 修复） / `system-prompt/assemble` 钩子 / `examples/preset/agent.cordis.yml` preset 化（**C-9 `file-watcher:change`、C-10 `assistant/chunk`、C-12 `agent/request` 三条死监听器已移除**，见 §七）。**D2（Phase 内并行→`workflow`）配方已落地**（v18.71.0，`examples/workflow/phase1-retrieval.md`，**可选、不默认替换 subagent**，见 §三）。**未做（Backlog）**：**H8** `session-log` 投影 / **H9** `session-query-sqlite` / **H10** `web_profile`（主人 2026-09-30 裁定**不做**）；**H11** `goals` / `jobs`（仍禁接）。
 
 ---
 
@@ -42,7 +42,7 @@
 5. **不得硬编码可调参数**——判断法：「`cordis.yml` 能否改它？」
 6. 配置用 Schemastery `Schema<Config>`，非法配置加载期响亮失败
 
-### 2.3 示例实现（`lib/tools.js`——**已通过 C-1 落地**：4 个只读工具已注册，见 §七 C-1；下方代码是落地前的旧备案形态，仅存参考）
+### 2.3 示例实现（`lib/tools.js`——C-1 已落地 4 个原生工具，`m_gate report` 为受限写报告例外；下方为旧备案）
 
 ```js
 import Schema from '@deepseek-ai/schemastery'
@@ -109,7 +109,7 @@ export function apply(ctx, config) {
 
 - 需给 `package.json` 增 `"exports": { "./tools": "./lib/tools.js" }` 与 `@deepseek-ai/schemastery` / `@deepseek-ai/dsh-tools` 依赖（**会使 checker 的 `manifest-peers` 由 PASS 变为需复核**——因为开始 import `@deepseek-ai/*`）
 - 需遵守 `redline-no-hardcoded-tunables`：所有超时/阈值走 `Config`
-- **已落地**：C-1 注册了 **4 个只读工具**（`lunheng_m_gate` / `lunheng_char_count` / `lunheng_handoff_check` / `lunheng_ethics_sanitize`，含 `count-chars` 与 `m-gate-check` 两个）；其余有写盘副作用的脚本**仍不暴露**（写盘副作用走主控 `pwsh`/脚本路径）
+- **已落地**：C-1 注册 **4 个原生工具**（`lunheng_m_gate` / `lunheng_char_count` / `lunheng_handoff_check` / `lunheng_ethics_sanitize`）；读取与校验只读，唯 `lunheng_m_gate` 的 `report` 受围栏写报告；其余写盘脚本不暴露。
 
 ---
 
@@ -171,7 +171,7 @@ return { gate: 'T2.5', pass: gatePass, literature: lit, data: dat, cases: cas }
 
 `workflow` 脚本是**无人在环的批处理**，因此以下必须留在主控：
 
-1. **四道人在环节点**（Phase 0 / 2.5 / 3.5 / 5）—— 需主人过目并回填确认单
+1. **四道人在环节点**（Phase 0 / 2.5 / 3.5 / 5）——四份单均落盘回填 §6；Phase 0 / 5 阻塞，2.5 / 3.5 通知不阻塞，均留主控
 2. **两道闸门的方向决策**—— 闸门「不通过」时是「补检索」「降级」还是「放弃」，是主控判断
 3. **T7 打回后的路径选择**—— 改字 / 改卡 / 兜底 / 升级主人（本轮实测三种路径都用过）
 4. **跨阶段版本号推进**—— v1→v2→v3 的版本语义与 `drafts/` 归档
@@ -207,7 +207,7 @@ return { gate: 'T2.5', pass: gatePass, literature: lit, data: dat, cases: cas }
 | 批次 | 内容 | 状态 |
 |---|---|---|
 | 1 | **D2**（Phase 1 并行改用 `workflow`） | ✅ **已落地**（v18.71.0，`examples/workflow/phase1-retrieval.md`；Phase 4.6/4.7 未纳入——v18.75.0 起该两阶段已串行） |
-| 2 | **D1**（脚本→工具） | ✅ **已落地**（C-1：4 个只读工具；含 `count-chars` + `m-gate-check`） |
+| 2 | **D1**（脚本→工具） | ✅ **已落地**（C-1：4 个原生工具；仅 `m_gate report` 可写报告） |
 | 3 | **D3**（`goals` / `planMode` 映射） | ⏸️ **待定**——会动 `status.md` 留痕语义与人在环呈现，需主人单独认可，不在本批范围 |
 
 **共同前提**：每次启用后须重跑 `dsh-plugin-dev check` 与 `scripts/consistency-check.mjs`，确认未破坏包面与文档一致性。
@@ -216,7 +216,7 @@ return { gate: 'T2.5', pass: gatePass, literature: lit, data: dat, cases: cas }
 
 ## 六、本方案的自我限制
 
-1. **默认不启用**——D1 已通过 C-1 落地为 4 个只读工具；D2 配方已落地但仅主控显式选择时用；D3 未接线。本文档 §一–§六是方案备案，§七是落地状态真源。
+1. **默认不启用**——D1 已落地（4 个原生工具，仅 `m_gate report` 可写报告）；D2 配方可选；D3 未接线。§一–§六为方案，§七为状态真源。
 2. **D1 已真实挂载**（C-1 的 4 个工具在用）；**D2 workflow 配方已写、但脚本本身未真跑过**——依赖 `workflow` 工具与真实项目，首次落地时须主控实测（§3.0 配方）并按本包 `dsh-plugin-dev check` 复核。
 3. **D1 会改变 checker 结果**——引入 `@deepseek-ai/*` 后 `manifest-peers` 由「optional 即可」转为「需对齐宿主版本」，属**预期变化**而非回归。
 4. **不替代现有机制**——M 门 / G 清单 / 三层防御是论衡的核心资产，本方案只改「机制如何被调用」，不改「机制检查什么」。
@@ -229,7 +229,7 @@ return { gate: 'T2.5', pass: gatePass, literature: lit, data: dat, cases: cas }
 
 | C 项 | 处置 | 实现位置 | 官方依据 |
 |---|---|---|---|
-| C-1 只读脚本→原生工具 | ✅ **已启用**（4 个只读工具；v18.60.1 由 3 增补 `lunheng_ethics_sanitize`——注：本行 v18.6.0 后曾长期停留在「2 个」，属漏刷新，v18.60.1 一并校正） | 入口内注册：`lib/tools.js` ← `lib/index.js` 的第二个 `ctx.effect`。**前三个**是脚本薄包装（spawn 随包脚本）；**第四个**（伦理脱敏）是 `lib/ethics-sanitize.js` 的**纯函数**，不派生子进程、只读调用方指定文件 + 随包词表 | `docs/cookbook/adding-a-tool.md`（规范值 + `render`）；`docs/subsystems/tools.md`（工具管线） |
+| C-1 只读脚本→原生工具 | ✅ **已启用**（4 个原生工具，仅 `m_gate report` 可写报告；v18.60.1 由 3 增补 `lunheng_ethics_sanitize`——注：本行 v18.6.0 后曾长期停留在「2 个」，属漏刷新，v18.60.1 一并校正） | 入口内注册：`lib/tools.js` ← `lib/index.js` 的第二个 `ctx.effect`。**前三个**是脚本薄包装（spawn 随包脚本）；**第四个**（伦理脱敏）是 `lib/ethics-sanitize.js` 的**纯函数**，不派生子进程、只读调用方指定文件 + 随包词表 | `docs/cookbook/adding-a-tool.md`（规范值 + `render`）；`docs/subsystems/tools.md`（工具管线） |
 | C-2 分档工具行→agent preset | 📋 **仅配方**（本包默认不装载三行，见下注） | 本文 §八 | `docs/architecture.md:131`；`docs/subsystems/tools.md:484-504`；`docs/subsystems/skills.md:13` |
 | C-3 四道人在环闸门→`ask_user_question` | ✅ **已启用** | `templates/主人确认-template.md` §6-§7 + `00-主控-扩展职责.md` §二十一 | `docs/tool-catalog.md:18,52-112`；`docs/subsystems/user-questions.md:35-44,136-147`；`docs/subsystems/plan.md:33` |
 | C-4 机制文件写保护机械化 | ✅ **已启用（部分）** | `lib/guard.js` → 入口内 `ctx.tools.guard()` | `docs/subsystems/tools.md:313-324`（`guard()` 只收紧；plain-context guard 全局生效） |
@@ -378,7 +378,7 @@ Runner failure: windows-acl-run: --temp is not an existing directory:
 | 校验产物（文件存在 / 行数 / grep 计数） | 主控 `pwsh` | ✅ **`read` / `glob` / `grep` 原生只读工具**（不经过 runner，永远可用） |
 | 跑随包脚本（`m-gate-check.mjs` / `count-chars.mjs` / `consistency-check.mjs` / `node --test`） | 主控 `pwsh` | ✅ **委派 `subagent` 执行**——子代理进程自带可用的临时区（本轮全部脚本验证均如此完成） |
 | 备份 / `cp` / `sha256` 对比 | 主控 `pwsh` | ✅ 委派 `subagent`；或 `write` 工具按内容重建（慢但可靠） |
-| M 门预检 | `pwsh` 调脚本 | ✅ bundle 部署下的原生只读工具 `lunheng_m_gate`（若清单里有） |
+| M 门预检 | `pwsh` 调脚本 | ✅ bundle 部署下的原生工具 `lunheng_m_gate`（若清单里有；`report` 按围栏写门报告） |
 
 ### 9.3 给主控的操作纪律（v18.2.2 起）
 

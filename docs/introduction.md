@@ -104,7 +104,7 @@ Phase 1 一次性并行派出 **T1 文献 ∥ T2 数据 ∥ T3 案例** 三个�
 
 - **语义化版本线（v17.0.0）**：版本号迁到 npm 强制的 semver（`2.5.2-dsh.N` → `N.0.0`），内容随 v18.0.0 首发。
 - **官方包形态（v18.0.0 – v18.0.2）**：新增包入口 `lib/index.js`（经 `ctx.skills.register()` 注册技能，`resourceBase` 指向随包技能目录）+ `cordis.patch.yml`（本包自注册行 + 三档工具）+ 五语 README + 入口回归测试；v18.0.1 补回被误删的**自注册行**（删了它，入口永不被 import、技能静默不注册），v18.0.2 修 M-Form-9 在 Phase 4 静默失效并统一退出码语义。
-- **DSH 能力面落地（v18.1.0；v18.60.1 加伦理脱敏）**：门禁脚本 → 只读原生工具（`lunheng_m_gate` / `lunheng_char_count` / `lunheng_handoff_check` / `lunheng_ethics_sanitize`）、机制文件写保护 → `ctx.tools.guard()`、进展自查 → `/lunheng-status`。
+- **DSH 能力面落地（v18.1.0；v18.60.1 加伦理脱敏）**：门禁脚本 → 原生工具（`lunheng_m_gate` / `lunheng_char_count` / `lunheng_handoff_check` / `lunheng_ethics_sanitize`；读取与校验只读，现行 `m_gate report` 可写门报告且受路径围栏）、机制文件写保护 → `ctx.tools.guard()`、进展自查 → `/lunheng-status`。
 - **门自己也要被门管（v18.3.0 – v18.6.0）**：G 体系机械下沉（M 门时为 25 项，其中机械 24 项交给 `m-gate-check.mjs` 判，另 1 项 = 人工门 M-Integrity-2；现行 26 项见 quick-facts）、两座巨石脚本拆成「门模块 + 聚合器」、新增**交接门** `handoff-check`（exit `20` 重派 / `21` 补交 / `22` 放行），把主控收报后的第一动作从手工 `read`/`ls` 变成一次只读机检。
 - **包内自带命令（v18.7.x）**：`lunheng-commands` 内嵌进本 bundle（`/lunheng` 斜杠命令开箱可用，不必单独安装）+ 写盘安全收口 + 两处 P0 hotfix。
 - **常驻开销收口（v18.8.0）**：维护者向元信息迁出到 `references/maintainers.md`，并新增**注解密度门**（16% → 12%）——从此文档膨胀本身也有门看着。

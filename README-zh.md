@@ -74,7 +74,7 @@ Phase 5  终检      T8 终检（主控执行）→ 定稿、证据包、交付�
 lunheng-article-pipeline/                 # 包即仓库
 ├── package.json              # 声明 main（lib/index.js）+ dsh.bundle.patch
 ├── cordis.patch.yml          # bundle 层：本包自注册行 + 3 档 subagent 工具（设了 LUNHENG_* 才装载）
-├── lib/index.js              # 插件入口：注册技能 + 只读工具 + 机制写保护 + /lunheng-status
+├── lib/index.js              # 插件入口：注册技能 + 原生工具（m_gate report 可写报告）+ 机制写保护 + /lunheng-status
 ├── skills/lunheng-article-pipeline/       # 技能本体（一个目录）
 │   ├── SKILL.md              # 技能入口（角色 / 闸门 / 执行能力边界）
 │   ├── AGENTS.md             # 操作手册

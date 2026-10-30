@@ -128,7 +128,7 @@ test('C 组降级：宿主无 tools / commands 服务时，技能仍注册且不
   assert.equal(captured.guards, 0)
 })
 
-test('C 组：注册 4 个只读原生工具，规范值可复算（真跑一次 M 门与字数）', {
+test('C 组：注册 4 个原生工具（m_gate report 可写门报告），规范值可复算（真跑一次 M 门与字数）', {
   // v18.2.6：带探测的条件跳过（不是无条件 skip）。本用例要**真跑随包脚本**，而工具在**测试进程内**
   //   `spawn`（`lib/tools.js` 的 `runScript`），受限 DSH 会话（workspace-write 沙箱）禁止被围栏进程
   //   开命名管道 → 必红。恒红会训练人无视红灯，故探测到该环境即带理由跳过；**CI / 无沙箱 host shell

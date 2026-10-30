@@ -71,4 +71,4 @@ Mermaid 源码 4 张图（装载面 / 编排面 / 门禁面 / 修订回环）：
 | `lib/panel.mjs` **运行面板（只读 HTTP 读面）** | 在宿主 `ctx.webServer` 上挂 `prefix` 路由 `/lunheng-panel/*`：`/ping`、`/plugin-info`（插件详情只读信息面）、`/projects`、`/snapshot`、`/file`（只读下载项目内产物）、`/events`（SSE） | **开**（v18.93.0 起「装完即用」） | `Config.panel: false` 或 `LUNHENG_PANEL=0` |
 | `lib/client.js` + 开工台 | 浏览器半边：运行面板视图 + 「开工台」表单；只写 `localStorage`，**不新增宿主路由** | 随面板 | 同面板 |
 
-**共同口径**：以上模块都**零第三方依赖**、不联网、不写盘（例外逐条写明：面板只读、工具仅 `m_gate` 的门报告可写、监听器默认只标记）；所有路径判定统一走 `lib/run-path-fence.mjs` 的**三层围栏**（词法 → 结构 → realpath 物理层），**新入口不得自写一套**（审计 §优化方向 2）。逐项信任边界与残余风险见 [`SECURITY.md`](../SECURITY.md)。
+**共同口径**：以上模块都**零第三方依赖**、不主动外发网络请求；项目数据面默认只读。写盘例外逐条写明：`lunheng_m_gate` 传 `report` 时写门报告（受可写范围围栏）；面板注册与诊断经 `writePanelStatus()` 写 `lunheng-panel-status.json`（不含项目内容）；监听器默认只标记。所有路径判定统一走 `lib/run-path-fence.mjs` 的**三层围栏**（词法 → 结构 → realpath 物理层），**新入口不得自写一套**（审计 §优化方向 2）。逐项信任边界与残余风险见 [`SECURITY.md`](../SECURITY.md)。
