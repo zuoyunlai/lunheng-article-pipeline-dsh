@@ -2,7 +2,7 @@
 
 > **论衡（lunheng-article-pipeline）** 是一个多 Agent 深度长文生产流水线，DeepSeek Harness（dsh）bundle 插件。它不是让一个 AI 直接写文章，而是让一支 **9 个 AI 角色组成的"论文生产小队"** 按既定协议协作：定题 → 三线并行检索 → 分析 → 写作 → 批判 → 审计 → 审稿 → 终检。每一步都有明确产出物、交接报告与质量闸门，最终交付**有证据底座、有反方论证、有独立审计、有人工核验节点**的文章。
 
-> 适用：公众号深度长文、研究报告、学术论文、商业评论、行业分析——任何"要站得住脚"的长内容。当前版本 **v19.27.15**（DSH 独立版本）。
+> 适用：公众号深度长文、研究报告、学术论文、商业评论、行业分析——任何"要站得住脚"的长内容。当前版本 **v19.27.16**（DSH 独立版本）。
 
 ---
 
@@ -148,6 +148,8 @@ DSH 下的三个关键适配：
 
 > **定位增强（v18.78.0 §7.2 双文档互引落地）**：本节「② v18.x 期间实战」指向的 README 验证表具体行号锚点（**单一真源 README.md L195-200**）——Generative-AI 学生写作 ~2000 字 / Formaldehyde cabbage ~4200 字 / Notion vs. idea ~6280 字 等案例的「字数 / 资源 / 关键结论」三字段对应 L195-200 表格行；逐字段对账请用锚点跳转。
 
+> **截至 v19.27.16 的边界（2026-11-06）**：19.x 期间**无新增「真实跑通」案例**。此后新增的只是复跑 / 审计记录（如上文 ③），本段不据此改写任何交付结论；CHANGELOG 新段与本段的版本对账由一致性规则 ㉜ 机械校验（v19.27.16 修复其取段方向后首次真正生效）。
+
 ---
 
 ## 快速上手
@@ -208,7 +210,7 @@ dsh plugin --profile web add lunheng-article-pipeline
 ## 获取方式
 
 - **GitHub（DSH bundle）**：https://github.com/zuoyunlai/lunheng-article-pipeline-dsh
-- **npm**：`lunheng-article-pipeline@dsh`（dist-tag `dsh` = 最新 DSH 迭代版）；锁定具体版本可写 `@19.27.15`
+- **npm**：`lunheng-article-pipeline@dsh`（dist-tag `dsh` = 最新 DSH 迭代版）；锁定具体版本可写 `@19.27.16`
 - **历史版本线（独立化前）**：https://github.com/zuoyunlai/lunheng-article-pipeline
 
 ---

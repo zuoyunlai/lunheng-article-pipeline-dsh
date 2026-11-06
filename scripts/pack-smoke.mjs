@@ -276,7 +276,8 @@ try {
     const cmdNames = captured.commands.map((c) => c.name)
     if (cmdNames.length === 2 && cmdNames.includes('lunheng-status') && cmdNames.includes('lunheng-stats')) {
       ok('人类命令已注册：/lunheng-status ＋ /lunheng-stats（均不产生模型消息）')
-      const r = captured.commands[0].handler({ rawInput: '', signal: new AbortController().signal })
+      // v19.27.16（R-04）：命令 handler 可返回 Promise（宿主契约），冒烟门必须 await 后再判形态。
+      const r = await captured.commands[0].handler({ rawInput: '', signal: new AbortController().signal })
       if (r && r.kind === 'success' && typeof r.text === 'string') ok('命令 handler 返回 CommandResult（可读文本）')
       else bad(`命令 handler 返回形态不符：${JSON.stringify(r)?.slice(0, 160)}`)
     } else {

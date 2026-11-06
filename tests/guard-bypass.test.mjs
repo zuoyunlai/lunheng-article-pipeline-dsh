@@ -251,3 +251,17 @@ test('F-11 写样名告警：未登记的写样工具放行时必须留痕（不
   assert.equal(await guard(exec('read', { path: SKILL_MD })), undefined)
   assert.equal(warns.length, before, 'read 类工具不得触发写样告警')
 })
+
+// v19.27.16（全量静态审计 R-07）：package.json 定义 main / dsh.bundle.patch / files，
+// 改它等同于改加载面——必须与 cordis.patch.yml 同属受保护根；文档面不得被误伤。
+test('R-07（v19.27.16）：package.json 必须被机制写保护拦截，README 不拦', async () => {
+  const guard = await runApply()
+  const reason = await guard(exec('write', { file_path: join(PACKAGE_ROOT, 'package.json') }))
+  assert.ok(reason, 'package.json 属于加载面，写入必须被拦')
+  assert.match(reason, /机制文件写保护/)
+  assert.equal(
+    await guard(exec('write', { file_path: join(PACKAGE_ROOT, 'README.md') })),
+    undefined,
+    '文档面（README）可自由改，不得被误伤',
+  )
+})

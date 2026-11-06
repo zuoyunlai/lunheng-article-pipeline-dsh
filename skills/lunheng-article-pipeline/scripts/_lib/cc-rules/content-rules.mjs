@@ -865,10 +865,13 @@ const HISTORY_TOKEN_RE = /此前|曾经|旧版|已删|已移除|已作废|历史
     if (existsSync(changelogPath) && existsSync(introPath)) {
       const cl = readFileSync(changelogPath, 'utf8');
       const intro = readFileSync(introPath, 'utf8');
-      // 解析 CHANGELOG.md 所有 `## X.Y.Z — YYYY-MM-DD` 段位号（取最近 10 段，避免对账全 81 段）
+      // 解析 CHANGELOG.md 所有 `## X.Y.Z — YYYY-MM-DD` 段位号（取最近 10 段，避免对账全 152 段）
+      //   v19.27.16（全量静态审计 R-01 修复）：CHANGELOG 按**新→旧**排列，取最近 10 段必须 slice(0,10)；
+      //   旧实现 slice(-10) 取的是**最旧** 10 段（实测 18.62.7…18.61.0），新段永不参与对账，
+      //   本门自 v19.1.11 起对 61 个版本段**恒为绿**（假绿）。负向用例见 consistency-check.test.mjs。
       const clSegments = [...cl.matchAll(/^##\s+(\d+\.\d+\.\d+)\s+—/gm)]
         .map((m) => m[1])
-        .slice(-10);
+        .slice(0, 10);
       // 解析 introduction.md §实战验证段最新提及版本号
       // 段起点：「## 实战验证（真实跑通）」；段内出现 vX.Y.Z 字面
       const introPracSeg = intro.match(/## 实战验证[\s\S]*?(?=\n## |\n# |$)/);

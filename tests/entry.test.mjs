@@ -528,11 +528,12 @@ test('C 组：/lunheng-status 命令 —— 读 run/<项目> 进展，不产生�
     const def = regs[0]
     assert.equal(def.name, 'lunheng-status')
     assert.ok(typeof def.description === 'string' && def.description.length > 0, 'description 必填（发现 UI 用）')
-    const ok = def.handler({ rawInput: ' proj-x', signal: new AbortController().signal })
+    // v19.27.16（R-04）：命令 handler 契约允许 Promise（宿主 index.d.ts:49），本用例随实现改 await。
+    const ok = await def.handler({ rawInput: ' proj-x', signal: new AbortController().signal })
     assert.equal(ok.kind, 'success', '有进展时返回 success')
     assert.match(ok.text, /proj-x/)
     assert.match(ok.text, /正在写初稿/, '应带出主人版进展内容')
-    const missing = def.handler({ rawInput: ' nope', signal: new AbortController().signal })
+    const missing = await def.handler({ rawInput: ' nope', signal: new AbortController().signal })
     assert.equal(missing.kind, 'success')
     assert.match(missing.text, /未找到项目/, '项目不存在时给可读提示（而非抛错）')
 
@@ -545,7 +546,7 @@ test('C 组：/lunheng-status 命令 —— 读 run/<项目> 进展，不产生�
       const proj2 = join(d2, 'run', 'session-proj')
       mkdirSync(proj2, { recursive: true })
       writeFileSync(join(proj2, 'status.md'), '# 状态机\n\n| 阶段 | 状态 |\n|---|---|\n| Phase 4 审计 | Running |\n')
-      const viaSession = def.handler({
+      const viaSession = await def.handler({
         rawInput: ' session-proj',
         signal: new AbortController().signal,
         agent: { session: { header: { cwd: d2 } } },
@@ -553,7 +554,7 @@ test('C 组：/lunheng-status 命令 —— 读 run/<项目> 进展，不产生�
       assert.equal(viaSession.kind, 'success', '带会话工作区的 invocation 必须能命中该项目')
       assert.match(viaSession.text, /session-proj/, '必须按会话工作区解析 run/（不得回落到宿主启动目录）')
       // 反向：同一 invocation 在**没有**会话工作区时只认兜底 cwd → 该项目不存在（证明优先级真的生效）
-      const viaFallback = def.handler({ rawInput: ' session-proj', signal: new AbortController().signal })
+      const viaFallback = await def.handler({ rawInput: ' session-proj', signal: new AbortController().signal })
       assert.match(viaFallback.text, /未找到项目/, '无会话工作区时应回落到 opts.cwd（只认 cwd 下的 run/）')
     } finally {
       rmSync(d2, { recursive: true, force: true })

@@ -2066,3 +2066,19 @@ test('面板 v19.27.1：QLT-6 的读数口径（qlt6.notes）必须穿透到面�
     assert.equal(q.components.find((c) => c.id === 'closure').ratio, 0)
   } finally { rmSync(d, { recursive: true, force: true }) }
 })
+
+// v19.27.16（全量静态审计 R-02）：Host 校验必须真正放行 IPv6 回环。
+// 病灶：旧实现 `String(host).split(':')[0]` 把 `[::1]:8765` 切成 `[` → 白名单永不命中 → 403。
+test('面板：Host 校验放行 IPv4 / 主机名 / IPv6 回环，拒绝非回环（v19.27.16 R-02）', () => {
+  const callHost = (host) => {
+    const res = mkRes()
+    handlePanelRequest({}, { url: '/lunheng-panel/ping', method: 'GET', headers: { host }, on: () => {}, }, res)
+    return res
+  }
+  for (const h of ['127.0.0.1:8765', 'localhost:8765', '[::1]:8765', '[::1]']) {
+    assert.equal(callHost(h).code, 200, `回环 Host 必须放行：${h}（实得 ${callHost(h).code}）`)
+  }
+  for (const h of ['evil.example:8765', '[::2]:8765', '10.0.0.1:8765']) {
+    assert.equal(callHost(h).code, 403, `非回环 Host 必须拒绝：${h}`)
+  }
+})

@@ -175,5 +175,15 @@ test('F-4 派生对账：`lib/change-surface.json` 必须与 CHANGELOG 当前版
     + `盘上 ${JSON.stringify({ version: onDisk.version, count: onDisk.count, anchor: onDisk.anchor })} vs `
     + `应为 ${JSON.stringify(expected)}。修法：node scripts/gen-change-surface.mjs（bump 后必跑）`)
   assert.equal(onDisk.version, expected.version, '派生数据的 version 必须等于 CHANGELOG 首段版本')
-  assert.ok(expected.count > 0, `CHANGELOG 当前段应有「行为变更 N 条」机读行（实测 ${expected.count}）——否则随包提示会退化成「未登记」`)
+  // v19.27.16（全量静态审计 R-03）：`count=0` 是**合法登记**——文档面 / 外部工具审计类发版
+  //   确实可能没有任何行为变更。旧断言 `count > 0` 会逼维护者把非行为变更写成行为变更（失真）。
+  //   「未登记」的唯一判据是 `count === null`（机读行缺失），不是 0。
+  assert.notEqual(expected.count, null, 'CHANGELOG 当前段必须有「行为变更 N 条」机读行（0 合法、null = 未登记）')
+})
+
+// v19.27.16（R-03）配套：0 条的机读行必须被派生为 0 而不是 null。
+test('F-4：行为变更 0 条是合法登记，不得被当成「未登记」', async () => {
+  const { deriveChangeSurface } = await import('../scripts/gen-change-surface.mjs')
+  const d = deriveChangeSurface('## 1.0.0 — 2026-01-01\n\n<!-- 行为变更 0 条 | 锚点 = CHANGELOG.md § 1.0.0 -->\n')
+  assert.equal(d.count, 0, '0 条必须解析为 0（null 才是未登记）')
 })

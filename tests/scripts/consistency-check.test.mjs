@@ -714,3 +714,21 @@ test('consistency-check ⑬ docs/ 安装 pin + 当前版本声明（v18.85.0-fea
   writeFileSync(intro, orig)
   rmSync(d, { recursive: true, force: true })
 })
+
+// v19.27.16（全量静态审计 R-01）：规则 ㉜ 的**真实触发路径**回归。
+// 病灶：实现用 `slice(-10)` 取「最近 10 段」，而 CHANGELOG 按新→旧排列 → 实际取到最旧 10 段，
+//   新段永不参与对账；本门自 v19.1.11 起对 61 个版本段恒绿（假绿）。
+// 判据：注入一个 99.0.0 新段（晚于 introduction §实战验证段最新提及版本）→ 必须报 P1「实战案例章节滞后」。
+test('consistency-check ㉜：新版本段晚于 introduction §实战验证段时必须报「实战案例章节滞后」（v19.27.16 R-01）', () => {
+  const { d, repo } = mkRepo({ full: true })
+  const cc = join(repo, 'skills', 'lunheng-article-pipeline', 'scripts', 'consistency-check.mjs')
+  const cl = join(repo, 'CHANGELOG.md')
+  const src = readFileSync(cl, 'utf8')
+  const at = src.indexOf('\n## ')
+  assert.ok(at > 0, '夹具假设 CHANGELOG 含 `## X.Y.Z` 版本段')
+  const injected = src.slice(0, at) + '\n## 99.0.0 — 2026-11-06\n\n<!-- 行为变更 0 条 | 锚点 = CHANGELOG.md § 99.0.0 -->\n' + src.slice(at)
+  writeFileSync(cl, injected)
+  const out = run([cc]).out
+  assert.match(out, /实战案例章节滞后/, '新段版本必须大于 introduction §实战验证段最新提及版本并触发 P1：' + out.slice(-600))
+  rmSync(d, { recursive: true, force: true })
+})

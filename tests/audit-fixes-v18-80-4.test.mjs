@@ -30,7 +30,7 @@ const { installStatusCommand } = await imp(join(ROOT, 'lib', 'commands.js'))
 
 const canSymlink = (() => { const d = join(tmpdir(), 'lh-sym-probe'); try { symlinkSync(d, d + '.link'); return true } catch { return false } finally { try { rmSync(d + '.link', { force: true }) } catch { /* */ } } })()
 
-test('P1-1：run/<项目>/status.md 为指向 run 外的软链接 → /lunheng-status 拒读并播报（不回显外部内容）', { skip: canSymlink ? false : '本机无文件 symlink 权限（EPERM）——环境不支持，带理由跳过' }, () => {
+test('P1-1：run/<项目>/status.md 为指向 run 外的软链接 → /lunheng-status 拒读并播报（不回显外部内容）', { skip: canSymlink ? false : '本机无文件 symlink 权限（EPERM）——环境不支持，带理由跳过' }, async () => {
   const d = join(tmpdir(), 'lh-p11-' + Date.now())
   const outside = join(d, 'outside-secret.md')
   const proj = join(d, 'ws', 'run', 'demo')
@@ -40,14 +40,15 @@ test('P1-1：run/<项目>/status.md 为指向 run 外的软链接 → /lunheng-s
   let handler = null
   const ctx = { get: () => ({ register: (def) => { handler = def.handler } }) }
   installStatusCommand(ctx, { cwd: join(d, 'ws') })
-  const r = handler({ rawInput: 'demo', agent: { session: { header: { cwd: join(d, 'ws') } } } })
+  // v19.27.16（R-04）：命令 handler 可返回 Promise（宿主契约），用例随实现 await。
+  const r = await handler({ rawInput: 'demo', agent: { session: { header: { cwd: join(d, 'ws') } } } })
   assert.equal(r.kind, 'success')
   assert.ok(!r.text.includes('OUTSIDE_RUN_SECRET_MARKER'), '外部内容不得被回显（越界读取）')
   assert.match(r.text, /拒绝读取|解析到项目目录之外/)
   rmSync(d, { recursive: true, force: true })
 })
 
-test('P1-1 对照：正常 status.md（非链接）仍可读', () => {
+test('P1-1 对照：正常 status.md（非链接）仍可读', async () => {
   const d = join(tmpdir(), 'lh-p11b-' + Date.now())
   const proj = join(d, 'ws', 'run', 'demo')
   mkdirSync(proj, { recursive: true })
@@ -55,7 +56,7 @@ test('P1-1 对照：正常 status.md（非链接）仍可读', () => {
   let handler = null
   const ctx = { get: () => ({ register: (def) => { handler = def.handler } }) }
   installStatusCommand(ctx, { cwd: join(d, 'ws') })
-  const r = handler({ rawInput: 'demo', agent: { session: { header: { cwd: join(d, 'ws') } } } })
+  const r = await handler({ rawInput: 'demo', agent: { session: { header: { cwd: join(d, 'ws') } } } })
   assert.equal(r.kind, 'success')
   assert.match(r.text, /Phase 1/)
   rmSync(d, { recursive: true, force: true })

@@ -231,3 +231,25 @@ test('Q5：resolveProjectDir 三层收口（不存在路径 / 二级子目录 / 
     rmSync(d, { recursive: true, force: true })
   }
 })
+
+// v19.27.16（全量静态审计 R-04）：命令 handler 已改 async；脚本挂起时必须在预算附近返回，
+// 且返回可读的「超时」错误（旧实现 spawnSync 会同步冻住事件循环，本用例无法在超时前测到）。
+test('v19.27.16 R-04：/lunheng-stats 异步执行，脚本挂起时按预算超时返回', async () => {
+  const d = mkdtempSync(join(tmpdir(), 'lh-cmd-timeout-'))
+  try {
+    const skillRoot = join(d, 'skill')
+    mkdirSync(join(skillRoot, 'scripts'), { recursive: true })
+    writeFileSync(join(skillRoot, 'scripts', 'lunheng-stats.mjs'), 'setInterval(() => {}, 1000)\n')
+    mkdirSync(join(d, 'run'), { recursive: true })
+    const captured = await grabRegistration(
+      (mod, ctx, o) => mod.installStatsCommand(ctx, o),
+      { cwd: d, skillRoot, scriptTimeoutMs: 120 },
+    )
+    const t0 = Date.now()
+    const r = await captured.handler({ rawInput: '', agent: { session: { header: { cwd: d } } } })
+    const ms = Date.now() - t0
+    assert.equal(r.kind, 'error', `挂起脚本必须返回 error，实得：${r.kind} ${r.text}`)
+    assert.match(r.text, /超时/, `必须给出可读的超时提示，实得：${r.text}`)
+    assert.ok(ms < 5000, `超时应在预算附近返回（不阻塞事件循环），实测 ${ms}ms`)
+  } finally { rmSync(d, { recursive: true, force: true }) }
+})
