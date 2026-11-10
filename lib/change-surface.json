@@ -1,7 +1,7 @@
 {
   "_comment": "派生文件，由 scripts/gen-change-surface.mjs 从 CHANGELOG.md 的当前版本段生成；改 CHANGELOG 后重跑该脚本（对账门：tests/changelog-structure.test.mjs）。**不要手改**。",
-  "version": "19.27.16",
-  "count": 8,
-  "anchor": "CHANGELOG.md § 19.27.16",
-  "generatedAt": "2026-11-06T06:05:34.042Z"
+  "version": "19.27.17",
+  "count": 3,
+  "anchor": "CHANGELOG.md § 19.27.17",
+  "generatedAt": "2026-11-10T14:04:00.205Z"
 }

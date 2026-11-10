@@ -45,6 +45,31 @@ test('consistency-check ⑨：.dsh 镜像与真源 size 相同但内容不同时
   rmSync(d, { recursive: true, force: true })
 })
 
+test('consistency-check ⑩c：`dsh-project-memory` 索引缓存不得被当成分档断言（v19.27.17 本机假 P1 修复，双侧锁）', () => {
+  // 病灶（v19.27.17 发版时实测）：`walkAny(REPO_ROOT)` 会把本机记忆插件的索引缓存
+  //   `<repo>/.dsh-project-memory/shards/<sha>.json` 当成仓库文档扫描——那些 json 存的是**被索引文档的旧副本**
+  //   （`relPath` + 摘录文本），而该目录自带 `.gitignore`（内容为 `*`）**自我忽略**：既不入库、也不随包，
+  //   CI 里根本不存在。实测本机因此报出 **4 处假 P1「分档映射漂移」**（缓存里躺着一句旧表述）。
+  //   修法 = 该目录不进扫描面；**但放宽不得变成失明** ⇒ 同一内容放进真文档位置必须照报（本用例 ② 侧）。
+  const { d, repo, R } = mkRepo()
+  const cc = join(repo, 'skills', 'lunheng-article-pipeline', 'scripts', 'consistency-check.mjs')
+  // ① 缓存侧：真实形态（`.dsh-project-memory/shards/<sha>.json`，单行 json，含旧分档表述）→ 不得报
+  const shardDir = join(repo, '.dsh-project-memory', 'shards')
+  mkdirSync(shardDir, { recursive: true })
+  writeFileSync(join(shardDir, 'deadbeef.json'),
+    JSON.stringify({ relPath: 'skills/lunheng-article-pipeline/x.md', text: 'subagent_retrieval 行写 T8/T9' }) + '\n')
+  const cacheOut = run([cc]).out
+  assert.doesNotMatch(cacheOut, /\[P1 分档映射漂移\][^\n]*\.dsh-project-memory/,
+    '自忽略的索引缓存被当成真断言（假阳性）：' + cacheOut.slice(-400))
+  // ② 对照侧：同样一句放进真文档（表格行形态）→ 必须照报，证明 ① 不是靠整条规则失效换来的
+  const doc = join(R, 'references', '_shared', '__tmp-tier-selftest.md')
+  writeFileSync(doc, '# 临时\n\n| `subagent_retrieval` | T8/T9 |\n')
+  const docOut = run([cc]).out
+  assert.match(docOut, /\[P1 分档映射漂移\][^\n]*__tmp-tier-selftest\.md/,
+    '真文档里的分档漂移必须照报（放宽不得变成失明）：' + docOut.slice(-400))
+  rmSync(d, { recursive: true, force: true })
+})
+
 test('consistency-check ⑩b：脚本名尾随数字（如 `eff4-probe2.mjs`）**不得**被当成脚本计数断言（v18.22.3 假阳性修复，双侧锁）', () => {
   const { d, repo, R } = mkRepo()
   const cc = join(repo, 'skills', 'lunheng-article-pipeline', 'scripts', 'consistency-check.mjs')

@@ -142,7 +142,13 @@ const walkAny = (dir, acc = []) => {
     const p = join(dir, name);
     const st = statSync(p);
     if (st.isDirectory()) {
-      if (name === '.git' || name === 'node_modules') continue;
+      // v19.27.17（issue #4 发版时踩到）**.dsh-project-memory 是**本机记忆插件（dsh-project-memory）的索引缓存，
+      //   不是仓库内容**：`shards/*.json` 存的是被索引文档的**旧副本**（含 `relPath` + 摘录文本），
+      //   且该目录自带 `.gitignore`（内容为 `*`）**自我忽略** ⇒ 既不入库、也不随包，CI 里根本不存在。
+      //   旧实现会扫到它，于是「文档**曾经**写过的分档映射」被当成**当前断言**报 P1（实测本机 4 处假 P1）。
+      //   判据：派生缓存的文本不是断言——被索引的真文档本身仍在扫描面内（双侧锁用例见
+      //   `tests/scripts/consistency-check.test.mjs`，缓存侧不得报 / 真文档侧必须照报）。
+      if (name === '.git' || name === 'node_modules' || name === '.dsh-project-memory') continue;
       walkAny(p, acc);
     } else if (/\.(md|ya?ml|json)$/.test(name)) acc.push(p);
   }

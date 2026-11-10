@@ -1300,6 +1300,60 @@ test('开工台（v19.0.1/v19.0.3）：控宽必须抄 shell 的**独立卡片�
   assert.ok(!String(S.wbWrap.flex || '').includes('1 1 100%'), '卡片本身不得横向撑满（v19.0.0 症状）')
 })
 
+// ── v19.27.17（issue #4）：展开态跨刷新把 composer 顶出可视区 ─────────────────────────────────
+
+test('开工台（v19.27.17 · issue #4）：展开态不跨刷新——初始恒收起，toggle 不写存储', async () => {
+  // 病灶（GitHub issue #4，DSH 0.2.0-rc.2 / macOS）：初始态读 `localStorage['lunheng.workbench.open']`，
+  //   该值为 `'1'` 时刷新后开工台**无声自动整屏展开**，把欢迎语与 composer 挤出可视区 —— 用户看到的是
+  //   「聊天区消失」（报告方给了 DOM 证据：composer 不在视口内，点「收起」后矩形复原）。
+  //   判据：展开态是**瞬时 UI 状态**，不是配置；它有毁掉首屏的能力，就不该有「下次还要这样」的语义。
+  const h = makeReactStub()
+  const writes = []
+  // 存量用户的状态：旧键 = '1'（= 报告方复现步骤 3）。首屏必须**完全不受它影响**。
+  const mod = await loadClient(h, {
+    fetch: fetchStub({}),
+    localStorage: {
+      getItem: (k) => (k === 'lunheng.workbench.open' ? '1' : null),
+      setItem: (k, v) => { writes.push(String(k) + '=' + String(v)) },
+      removeItem: () => {},
+    },
+  })
+  const P = mod.__panel
+  const props = { inputActions: { setDraft: () => {} }, ctx: { get: () => undefined } }
+  const first = h.render(P.Workbench, props)
+  assert.ok(first.includes('打开'), '首屏必须是收起态（按钮文案 = 打开）：' + first.slice(0, 120))
+  assert.ok(!first.includes('填写后生成结构化开场白'), '旧键 = "1" 时也不得自动展开表单')
+  assert.equal(wbFind(h.tree(), (n) => n.props && n.props.style === P.S.wbBody), null, '收起态不得渲染表单体')
+  // 功能不能被「默认收起」砍掉：点「打开」仍要展开，点「收起」仍要折叠。
+  wbButton(h.tree(), '打开').props.onClick()
+  assert.ok(h.render(P.Workbench, props).includes('填写后生成结构化开场白'), '点「打开」后必须展开')
+  wbButton(h.tree(), '收起').props.onClick()
+  assert.ok(h.render(P.Workbench, props).includes('打开'), '点「收起」后必须折叠回横条')
+  // 死字段判据：不是「留着但不读」，而是键、写入、导出三处一并删除。
+  assert.deepEqual(writes, [], '展开/收起不得再写 localStorage（旧实现会写 1/0）：' + writes.join(','))
+  assert.equal(P.LS_WB_OPEN, undefined, 'LS_WB_OPEN 必须已整体删除（旧键常量不得留在导出面）')
+})
+
+test('开工台（v19.27.17 · issue #4 方案 2）：两个滚动面都由**视口高度**封顶（矮屏不得顶掉 composer）', async () => {
+  // 旧版 body 320px + preview 150px + 标题栏 ~31 + 操作行 ~37 ≈ 540px **恒定**——固定 px 上限对矮屏
+  //   等于没有上限，足以把 composer 整块顶出可视区。修法：两处都改 `min(<px 上限>, <N>vh)`，
+  //   而**判据是那个 vh**：px 分支只在高屏生效（视觉与 19.27.16 一致），矮屏由 vh 兜住。
+  const h = makeReactStub()
+  const mod = await loadClient(h, { fetch: fetchStub({}) })
+  const S = mod.__panel.S
+  const vhOf = (v) => { const m = /(\d+(?:\.\d+)?)vh/.exec(String(v)); return m ? Number(m[1]) : null }
+  const body = vhOf(S.wbBody.maxHeight)
+  const prev = vhOf(S.wbPreview.maxHeight)
+  assert.ok(body !== null, '表单体上限必须相对视口（含 vh），否则矮屏仍是无上限：' + S.wbBody.maxHeight)
+  assert.ok(prev !== null, '预览框上限必须相对视口（含 vh）：' + S.wbPreview.maxHeight)
+  const budget = body + prev
+  assert.ok(budget <= 45, `两个滚动面的 vh 之和必须 ≤ 45vh（实际 ${budget}vh）——剩余视口要留给欢迎语与 composer`)
+  assert.match(String(S.wbBody.maxHeight), /\b320px\b/, '高屏分支仍是 320px（≥1067px 视口时视觉不得变窄）')
+  assert.match(String(S.wbPreview.maxHeight), /\b150px\b/, '高屏分支仍是 150px')
+  assert.equal(S.wbBody.overflow, 'auto', '上限必须配滚动（否则矮屏是裁内容，不是省空间）')
+  assert.equal(S.wbPreview.overflow, 'auto')
+})
+
 test('开工台（v19.0.0 §4.4）：zh/en 字典键集合必须逐字相同（双语平衡）', async () => {
   // 官方 locale 服务的**类型化**形态即「bilingual balance enforced at registration」；本包走未类型化
   //   单语形态（`register(ns, locale, dict)`）绕开了那道编译期检查 ⇒ 必须用测试等价保证。
