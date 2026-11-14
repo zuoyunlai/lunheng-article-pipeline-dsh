@@ -1,4 +1,4 @@
-> 版本：v19.27.17（DSH bundle 插件）
+> 版本：v19.27.18（DSH bundle 插件）
 
 
 # 论衡（lunheng-article-pipeline）— 通用深度长文多 Agent 流水线 运行手册
@@ -241,7 +241,7 @@ v2.3.13 起模型不再硬编码，模型解析分**三层**（从唯一真源�
 
 - **未装预设 / 未挂载对应工具 → 全部回退 `subagent`**（继承会话模型，任何模型配置都能跑）
 - 环境变量覆盖：`LUNHENG_RETRIEVAL_PROVIDER`+`MODEL` / `LUNHENG_STRONG_*` / `LUNHENG_AUDIT_*`（provider 与 model 分离，跨 provider 必须同时指定，否则 NO_ADAPTER）。**加载期求值**：改 env 后**需重载插件行**——v18.76.0 起原 `agent/request` 热路由监听器（H7）已按 v18.75.1 全量架构审计 R2 移除（该事件 payload 无判别键，恒空转），`_shared/DSH-集成方案.md` §七 C-12
-- 主控 Phase 0 先检查 `list_agents` 可用工具集（或 `--dump-config` 看 agent-presets 是否含论衡分档），确定本次派发用 `subagent_retrieval/strong/audit` 还是回退 `subagent`
+- 主控 Phase 0 先确认**会话工具清单**里有没有分档工具——`list_agents` 只返回 name/status/description，**不返回工具集**，不能用它查；或 `--dump-config` 看 agent-presets 是否含论衡分档。据此确定本次派发用 `subagent_retrieval/strong/audit` 还是回退 `subagent`
 
 ---
 
