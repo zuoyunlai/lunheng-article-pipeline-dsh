@@ -2,6 +2,23 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 19.27.20 — 2026-11-19
+
+<!-- 行为变更 3 条 | 锚点 = CHANGELOG.md § 19.27.20（DSH 0.2.2-rc.5 宿主契约核实：白名单与运行期实测分列 / 探针自曝产物级盲区 / 工具名 pwsh→ops_bash） -->
+
+> **主题**：DSH 0.2.2-rc.5 宿主契约核实批。rc.5 上实测六处接缝全部正常（插件 loaded 19.27.19、四个工具真可调、`system-prompt/assemble` 附录照常注入、`/lunheng-panel/ping` 200、`handoff_check --session-log` 能解 `session.v4.jsonl.zstd`、三档 subagent 全解析）；**问题不在加载面，而在两条账**——版本白名单只到 0.2.1-rc.2，而探针在本机实际核对的是仓库 `node_modules` 里的 0.1.2-rc.1（Desktop 宿主在 `app.asar` 内，普通 fs 读不到），于是「探针通过」与「运行中宿主通过」是两个命题却长得一样。
+> **版本判据 = patch**：不改 M 门判级、角色 / 阶段模型与宿主兼容区间（0.2.2-rc.5 本就在 `peerDependencies` 区间 `>=0.1.2-rc.1 <0.3.0` 内）；只加一条记账轴、一个可选参数与两处文档工具名。
+
+- **① 白名单与运行期实测分列（机制面 · 新增导出）**：`scripts/_lib/host-contract.mjs` 新增 `OBSERVED_HOST_VERSIONS = ['0.2.2-rc.3', '0.2.2-rc.5']`，与 `VERIFIED_HOST_VERSIONS`（**产物级**核对过）**刻意分两列**。为什么不能合并：白名单的证据是「探针读得到宿主产物、逐字比对三处派发形态与 `materializeFinalResult` 字段白名单」，而 Desktop 把宿主打进 `app.asar`，用户升级后不可能在本地补产物证据；运行期证据（真加载 / 真可调 / ping 200 / 日志可解）同样真实但**不可顶替**。两列各带准入依据，**不得把运行期项挪进白名单**。
+- **② 探针自曝产物级盲区（机制面 · 新增 `--host-version`）**：`scripts/host-contract-probe.mjs` 接受 `--host-version <semver>`，输出新增一行 `运行中宿主 X｜白名单 在册/未在册｜运行期实测 在册/未在册｜产物级核对目标 Y（= / ≠ 运行中宿主）`，JSON 增 `hostVersionAxis`。**默认行为与退出码不变**（不加参数时只多一行提示「产物级核对目标可能不是运行中的宿主」），故既有 CI 腿与测试不受影响。实测本机输出：`运行中宿主 0.2.2-rc.5｜白名单 未在册｜运行期实测 在册｜产物级核对目标 0.1.2-rc.1（≠ 运行中宿主，本次未覆盖）`。
+- **③ 工具名更正（文档面 · 不改行为）**：`SKILL.md` 两处 `pwsh` → `ops_bash`（「各档的 `pwsh`/命令执行能力」与「可调用」清单）。当前 Desktop 会话的 shell 工具是 `ops_bash`，`pwsh` 不在工具表；文档原有的「调用任何工具前先确认它在当前会话工具清单里」保留。
+
+**未采纳（如实）**：不把 0.2.2-rc.3/rc.5 挪进 `VERIFIED_HOST_VERSIONS`——那等于用运行期证据冒充产物级证据，与本仓「先跑探针 + loader-smoke 再放宽」的纪律相悖；也不改 `peerDependencies`（区间本就覆盖）。
+
+**验证**：全量回归 **1448/1448 通过**（runner 计 1450 例 = 1448 通过 + 2 个带理由跳过，0 失败）；六道门全绿——宿主契约探针（含新 `--host-version` 自曝行）、`derive-facts --check`（25/26、上限 60416 B）、一致性门 93 个 `.md` 0 漂移、打包面 `STRICT_WARN=1` 11 项通过 0 fail、卫生门全绿（含 ⑬ CHANGELOG 段结构、doc-budget、注解密度）、pack-smoke 发布物 214 文件 4412 KB 可装载。`docs/introduction.md` §实战验证「截至 … 的边界」段同步到 v19.27.20 并把本批列入「未跑真实项目」清单（规则 ㉜ 对账所需；**未**用 `WAIVER=实战滞后` 放行）。宿主侧实测证据见 ①：`loadedVersion == onDiskVersion == 19.27.19`、四工具真调 exit 0、`/lunheng-panel/ping` 200、`session.v4.jsonl.zstd` 抽样 0 坏行。
+
+**回滚点**：`git revert` 本版提交即回到 v19.27.19。本版只加导出常量、可选参数与文档工具名——不改 M 门判级、角色 / 阶段模型与宿主兼容区间。
+
 ## 19.27.19 — 2026-11-19
 
 <!-- 行为变更 0 条 | 锚点 = CHANGELOG.md § 19.27.19（GitHub issue #5：SKILL.md 正文内嵌版本溯源注记外移，只留现行口径） -->

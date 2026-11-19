@@ -32,6 +32,17 @@
 //   全量测试是其真实证据腿，非无实证）；三版本两两同族的派发形态已由 CI 双 leg + 本地全量测试覆盖。
 export const VERIFIED_HOST_VERSIONS = Object.freeze(['0.1.2-rc.1', '0.1.7-rc.2', '0.2.1-rc.2'])
 
+// 运行期实测版本（v19.27.20 新增，2026-11-19）——**与上面那条白名单刻意分两列记**。
+//
+// 为什么必须分两列：白名单的含义是「**产物级**核对过」——探针读得到宿主产物，逐字比对三处派发形态
+//   与 materializeFinalResult 字段白名单。而 Desktop 宿主把 dsh 打进 app.asar，普通 fs 读不到；
+//   用户一键升级后又不可能在自己机器上补产物证据。真正可得的另一类证据是**运行期**：插件真加载、
+//   四个工具真可调、/lunheng-panel/ping 真回 200、handoff_check --session-log 真能解宿主的
+//   session.v4.jsonl.zstd。两类证据价值不同、不可互相顶替——故分列，**不得把本表项挪进白名单**。
+//
+// 准入：本仓 CHANGELOG 有一段带实证的核实记录（0.2.2-rc.3 = 19.27.18 批；0.2.2-rc.5 = 19.27.20 批）。
+export const OBSERVED_HOST_VERSIONS = Object.freeze(['0.2.2-rc.3', '0.2.2-rc.5'])
+
 // 探针默认目标 = lockfile 实装值。保留旧导出名：测试与脚本仍按 `CONTRACT_HOST_VERSION` 引用。
 export const CONTRACT_HOST_VERSION = VERIFIED_HOST_VERSIONS[0]
 

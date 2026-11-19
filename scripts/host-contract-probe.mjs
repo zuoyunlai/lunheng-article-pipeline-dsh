@@ -24,6 +24,7 @@ import {
   HOST_CONTRACT,
   HOST_DISPATCH,
   MATERIALIZE_WHITELIST,
+  OBSERVED_HOST_VERSIONS,
   VERIFIED_HOST_VERSIONS,
 } from './_lib/host-contract.mjs'
 
@@ -172,6 +173,11 @@ function main() {
   const argv = process.argv.slice(2)
   const requireHost = argv.includes('--require-host')
   const asJson = argv.includes('--json')
+  // v19.27.20：--host-version <semver> 声明「运行中的宿主是哪一版」。Desktop 把宿主打进 app.asar，
+  //   resolveHostArtifacts() 在本机只能落到仓库 node_modules 的旧副本（实测 0.1.2-rc.1）——没有这个参数时，
+  //   「探针通过」与「运行中宿主通过」是两个命题，但输出长得一样。给了它就把两者的差**说出来**。
+  const hvAt = argv.indexOf('--host-version')
+  const hostVersion = hvAt >= 0 ? (argv[hvAt + 1] ?? null) : null
   const { files, toolsVersion } = resolveHostArtifacts()
   const read = (p) => (p ? readFileSync(p, 'utf8') : '')
   const missing = Object.entries(files).filter(([, p]) => !p).map(([k]) => k)
@@ -182,10 +188,26 @@ function main() {
     installedToolsVersion: toolsVersion,
   })
   const ok = errors.length === 0
+  const observed = Array.isArray(OBSERVED_HOST_VERSIONS) ? OBSERVED_HOST_VERSIONS : []
+  const hostVersionAxis = hostVersion === null
+    ? null
+    : {
+        hostVersion,
+        probeTarget: toolsVersion,
+        inVerifiedWhitelist: VERIFIED_HOST_VERSIONS.includes(hostVersion),
+        inObservedList: observed.includes(hostVersion),
+        artifactMatchesHost: toolsVersion === hostVersion,
+      }
   if (asJson) {
-    console.log(JSON.stringify({ ok, requireHost, missing, toolsVersion, errors, checks }, null, 2))
+    console.log(JSON.stringify({ ok, requireHost, missing, toolsVersion, hostVersionAxis, errors, checks }, null, 2))
   } else {
     console.log(`宿主契约产物探针（白名单 ${VERIFIED_HOST_VERSIONS.join(' / ')}｜实装 dsh-tools ${toolsVersion ?? '未安装'}）`)
+    if (hostVersionAxis) {
+      const a = hostVersionAxis
+      console.log(`  运行中宿主 ${a.hostVersion}｜白名单 ${a.inVerifiedWhitelist ? '在册' : '未在册'}｜运行期实测 ${a.inObservedList ? '在册' : '未在册'}｜产物级核对目标 ${a.probeTarget ?? '未安装'}${a.artifactMatchesHost ? '（= 运行中宿主）' : '（≠ 运行中宿主，本次未覆盖）'}`)
+    } else {
+      console.log('  ○ 未声明 --host-version：产物级核对目标可能不是运行中的宿主（Desktop 宿主在 app.asar 内，本脚本读不到）')
+    }
     for (const c of checks) console.log(`  ${c.ok ? '✓' : '✗'} ${c.name}${c.ok ? '' : ` — ${c.detail}`}`)
     if (missing.length) console.log(`  ○ 产物缺失：${missing.join(' / ')}`)
   }
