@@ -1,11 +1,11 @@
 ---
 name: "lunheng-article-pipeline"
-version: "19.27.18"
-description: "论衡 v19.27.18：DSH 原生多 Agent 深度长文流水线（学术论文/商业评论/行业分析/公众号）。9 个独立角色 T1-T9 + 主控；三角验证 + M 门 + G 审计 + 修订回环三环 + 期刊匹配 + auto_cite + 内嵌 13 个 /lunheng 斜杠命令。适用 ≥2000 字、证据可追溯的长文（4 人在环、数小时）；不适用 <2000 字短文、文学创作、理工科论文、营销软文、缺一手数据。"
+version: "19.27.19"
+description: "论衡 v19.27.19：DSH 原生多 Agent 深度长文流水线（学术论文/商业评论/行业分析/公众号）。9 个独立角色 T1-T9 + 主控；三角验证 + M 门 + G 审计 + 修订回环三环 + 期刊匹配 + auto_cite + 内嵌 13 个 /lunheng 斜杠命令。适用 ≥2000 字、证据可追溯的长文（4 人在环、数小时）；不适用 <2000 字短文、文学创作、理工科论文、营销软文、缺一手数据。"
 whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 description（v18.0.5：官方目录只渲染 name + description，本字段对模型不可见，保留仅供工具链与维护者阅读）。"
 ---
 
-> 版本：v19.27.18（DSH bundle 插件）
+> 版本：v19.27.19（DSH bundle 插件）
 > **逐版明细与历史成因外移（CTX-1）**：本文件只留**现行口径**；逐版明细与成因在**仓库根 `CHANGELOG.md`** 同名版本段——该文件**不在随包目录内**（npm 发布物与纯技能目录部署都没有它），读不到就跳过，**不要当成断链**。
 > **v2.5.2-dsh.8 角色语义定案（主人指令）**：**9 个角色 T1-T9 各自独立、不可相互替代**——T8 终检不是「主控兼做的杂活」而是独立角色（有独立角色卡），只是执行者由主控担任（**主控 = T0 调度 + T8 终检执行双重身份**），不 spawn 子代理；**T9 审稿启用与否按 [`references/_shared/文类档案.md`](references/_shared/文类档案.md)**（`academic-cn/-hum/-case` 必选不可关、`lit-review` 可选、其余默认不选；v18.75.0 由旧「默认选中」改）。
 
@@ -46,13 +46,13 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 - 📊 **档位 → 工具集能力**：三档 `subagent_retrieval` / `subagent_strong` / `subagent_audit` 由 `cordis.patch.yml` 的「分档闸门」段装载（配置真源 = [`references/_shared/模型路由.md`](references/_shared/模型路由.md)）。**各档的 `pwsh`/命令执行能力无机制声明**——实测**三方不一致**（T2/T5 报无 exec，T9-m 报有 exec）。
   > **判据（照此执行，不必猜）**：① **门禁类实测一律由主控代跑**——M 门 / G 审计 / 三个战略门（structure / methodology / cite-coverage）/ 字数 / 交接门；② 子代理话术里凡「跑脚本」的要求，按「能跑就跑、跑不了就**如实声明该步未跑**」写；③ 子代理若声明「已跑」，主控须以其 **exit code + 命令**为准，**不可仅凭文字采信**。
 - ✅ **可调用**：当前会话预设提供的工具（read / write / edit / web_search / web_fetch / todo_write / subagent / list_agents / pwsh 等）——DSH 无技能级白名单，工具集由 Agent 预设决定。**调用任何工具前先确认它在当前会话工具清单里**。
-- ✅ **随包脚本白名单（v19.13.0 增补 `ref-verify` 后：共 37 个；子技能另有五入口，见段末）**：`scripts/*.mjs` = consistency-check / m-gate-check / g-audit-check / fix-gates / md2html / pdfcheck / token-cost / count-chars / segment-chars / ref-get / build-evidence-bundle / final-check / refresh-gates / normalize-trust-level / model-routing / token-budget / apply-diff / lunheng-stats / handoff-check / apply-revision-cycle / apply-compression-cycle / structure-check / methodology-check / cite-coverage-check / journal-fit / meta-synthesize / quality-score / sources-index / self-check / disproofs-check / cite-format / run-report / preflight / pool-query / pool-extract / pool-report / ref-verify + 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等）——**受限 shell 使用**（另：`_lib` 子目录为共享库，非入口、不单独调用；**子技能的 `skills/lunheng-commands/scripts/*.mjs` 亦在名单内 = route-command / pending-cli / history-cli / stats-cli / owner-cli（v19.27.11 补入：这几个同样随包执行，安全声明见 `SECURITY.md` 三档清单）**——注：子技能名单写在 `+` 之后是有意的，⑥ 与 ⑩ 的解析器只取「第一个 `=` 到第一个 `+`」之间作主技能名单，写进那段会把两处口径混算）——主流程按需执行随包脚本白名单与有限验证命令；其余命令须经主人同意。
+- ✅ **随包脚本白名单（共 37 个；子技能另有五入口，见段末）**：`scripts/*.mjs` = consistency-check / m-gate-check / g-audit-check / fix-gates / md2html / pdfcheck / token-cost / count-chars / segment-chars / ref-get / build-evidence-bundle / final-check / refresh-gates / normalize-trust-level / model-routing / token-budget / apply-diff / lunheng-stats / handoff-check / apply-revision-cycle / apply-compression-cycle / structure-check / methodology-check / cite-coverage-check / journal-fit / meta-synthesize / quality-score / sources-index / self-check / disproofs-check / cite-format / run-report / preflight / pool-query / pool-extract / pool-report / ref-verify + 有限验证命令（ls/stat/wc/cp/diff/Get-FileHash 等）——**受限 shell 使用**（另：`_lib` 子目录为共享库，非入口、不单独调用；**子技能的 `skills/lunheng-commands/scripts/*.mjs` 亦在名单内 = route-command / pending-cli / history-cli / stats-cli / owner-cli（v19.27.11 补入：这几个同样随包执行，安全声明见 `SECURITY.md` 三档清单）**——注：子技能名单写在 `+` 之后是有意的，⑥ 与 ⑩ 的解析器只取「第一个 `=` 到第一个 `+`」之间作主技能名单，写进那段会把两处口径混算）——主流程按需执行随包脚本白名单与有限验证命令；其余命令须经主人同意。
   > **本行是「随包脚本清单与计数」的唯一真源**（`scripts/self-check.mjs` 拿它做**白名单 ↔ 磁盘双向对账**）——**不得外移、不得改计数**。**各脚本的用法 / exit 语义 / 边界**见 [`operations-capability.md`](operations-capability.md)。
 - ❌ **不做**：凭据访问 / 浏览器自动化 / 定时任务（除白名单脚本与验证命令外，主控默认不执行任意 shell，LLM 推理判定）。
 - ⚙️ **主控亲跑路径**：`final-check.mjs` / `m-gate-check.mjs`（**含 `--adjudicate` 与终检期复跑**）/ `handoff-check.mjs` / **`run-report.mjs`（Phase 5 交付必跑**：产 `final/运行报告.html` + `运行报告.json` 边车＝运行面板全部图表的数字层；同批 `token-cost.mjs` 写 `final/token-cost.json`）** —— **四条**属「主控亲跑」：**不走 spawn、不经 `subagent` 代发**（**同一条命令算一条路径**）。`--adjudicate` 前的 `<裁定.json>` 由主控 LLM 亲写（08 卡写死「T8 不 spawn」，子代理产的"裁定 JSON"在本门禁止出现）。
 - 🔒 **机制文件写保护**：`SKILL.md` / `AGENTS.md` / `references/**` / `scripts/**` / `cordis.patch.yml` 属**机制文件**——任何角色（含主控与子代理）**不得**用 write/edit 改动；改进动议只写 `audits/反哺报告-vN.md`，由主人在 host shell apply。**改机制文件 = P0 违规，本次交付作废**。主人授权走 `LUNHENG_ALLOW_MECH_EDIT=1`；**已知边界：guard 只看工具调用，`pwsh` 不经此门**。
 - 🧾 **闸门必须留机械证据**：T2.5/T7.5 与 M 门**不得只凭自述**——附脚本 exit code + 产物路径。exit：`0` 通过 / `1` P1 / `2` P0 / `3` 仅 P2·soft·SKIP（**需复核，不得当通过**）/ `10` 参数路径错（**不得与 P1 混用**）/ **`30` `--adjudicate` 裁定被拒**（拒绝裁定 ≠ 内容失败）/ `70` 内部错误。`model-routing.mjs` 另有 `4`＝需人工决定；`handoff-check.mjs` 用 `20/21/22`。**`3` 是「需人工复核」语义族**（M 门=仅 P2·soft·SKIP；`run-report`=缺 status.md；`cite-format`/`journal-fit` 等=适用但缺输入）——**不是 M 门专属码**，判读以各脚本 `--help` 为准。
-- 🛠 **原生工具 / 人类命令（可选）**：工具 `lunheng_m_gate`（M 门机械预检；给了 `report` 会写那一份门报告，v19.6.1 起只允许落在会话工作区或系统临时目录内）/ `lunheng_char_count` / `lunheng_handoff_check` / `lunheng_ethics_sanitize`——清单里有就优先用，没有就 `pwsh` 直调脚本（**两条路径等价，脚本是唯一真源**）；主人可用 `/lunheng-status` 自查进展。
+- 🛠 **原生工具 / 人类命令（可选）**：工具 `lunheng_m_gate`（M 门机械预检；给了 `report` 会写那一份门报告，只允许落在会话工作区或系统临时目录内）/ `lunheng_char_count` / `lunheng_handoff_check` / `lunheng_ethics_sanitize`——清单里有就优先用，没有就 `pwsh` 直调脚本（**两条路径等价，脚本是唯一真源**）；主人可用 `/lunheng-status` 自查进展。
 - 🪪 **技能来源自检**：启动时用 `read` 核对本文件版本头「> 版本：v…」与期望一致；**不一致即停机**并报告主人「技能来源可疑」——同名 skill 按 **rank 数字越小越近（胜出）**（`100 < 200 < 250 (bundle) < 300 < 400 (用户级) < 500 < 600`），低 rank 会**静默顶替**。完整 rank 表见 [`references/maintainers.md`](references/maintainers.md) §一。
 - ℹ️ **M 门**：**机检 25 项（M-Form 1-11 + M-Exist 1-12 + M-Integrity-1 + M-Fact-1）+ 人工 1 项（M-Integrity-2）= 总 26 项**——文档内 shell 示例仅供人类复核，agent 不执行任意 shell。
 - 💰 **长会话体量治理**：会话成本 ≈ **步数 × 每步上下文**；最贵的是**人驱动的主会话**。① 审计类长会话**按 Phase 拆 session**（靠落盘产物 + `status.md` 交接）；② **先跑机械门，只把失败项交给会话**（随包的 `m-gate-check` / `final-check` / `handoff-check` / `consistency-check` 零模型成本；`repo-hygiene-check` 仅存在于开发仓库根 `scripts/`、不随包——bundle / 纯技能目录形态下主控拿不到，勿列先跑清单）。使用者向说明见 [`docs/usage.md`](../../docs/usage.md)。
@@ -91,8 +91,8 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 
 ## ⚡ 启动速查表
 
-- 版本：v19.27.18｜角色：T0 主控（= T8 终检执行者）＋ T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / T8 终检（主控亲执行）/ T9 审稿（启用按文类档案：`academic-cn/-hum/-case` 必选，其余默认不选）
-- Phase：**主干 6 步 = S1 定题与授权 → S2 检索 → S3 分析与大纲 → S4 写作与批判 → S5 审计与终检 → S6 交付**（v19.8.0 反哺 v9 D1 起**主干 + 挂件两层模型**）；挂件（`挂件@S` 声明触发条件/产物/豁免）：查池@S1 → 补检索@S2 → 大纲人闸@S3 → 洞察人闸@S4 → 批判@S4 → 修订回环@S5 → 配图@S5 → G14 终闸@S5 → 审稿@S5。**兼容别名（至少保留一个 major 版本，旧编号不改写）**：0→0.5 查池→1→1.5 补检索→2→2.5 大纲→3→3.5 洞察→3.6 批判→4→4.2 修订→4.5 配图→4.6 G14→4.7 审稿→5。
+- 版本：v19.27.19｜角色：T0 主控（= T8 终检执行者）＋ T1 文献 / T2 数据 / T3 案例 / T4 分析 / T5 写作 / T6 批判 / T7 审计 / T8 终检（主控亲执行）/ T9 审稿（启用按文类档案：`academic-cn/-hum/-case` 必选，其余默认不选）
+- Phase：**主干 6 步 = S1 定题与授权 → S2 检索 → S3 分析与大纲 → S4 写作与批判 → S5 审计与终检 → S6 交付**（**主干 + 挂件两层模型**）；挂件（`挂件@S` 声明触发条件/产物/豁免）：查池@S1 → 补检索@S2 → 大纲人闸@S3 → 洞察人闸@S4 → 批判@S4 → 修订回环@S5 → 配图@S5 → G14 终闸@S5 → 审稿@S5。**兼容别名（至少保留一个 major 版本，旧编号不改写）**：0→0.5 查池→1→1.5 补检索→2→2.5 大纲→3→3.5 洞察→3.6 批判→4→4.2 修订→4.5 配图→4.6 G14→4.7 审稿→5。
   > **兼容别名说明**：上行的旧小数编号是**纯别名**——`agents-log.md` / `status.md` / 闸门记录里的旧编号**不改写**；新文档与 `todo_write` 排程用 S1-S6；流水线全景（pipeline-readme）仍是各阶段的详述真源（保留旧编号）。
   > **本行的权威性**：本行是主控排 `todo_write` 的**唯一 Phase 真源**；机检规则 **㉔** 断言「流水线全景出现的 Phase 编号 ⊆ 本行」（上行的别名数字链承担旧编号的白名单职责）。
   > **挂件豁免统一规则（取代逐案特设条款）**：挂件可省略，省略时须①在挂件声明的「豁免动作」列写明补偿（如省 T4 → 主控代产大纲 §11 最小段，见下方字数分层·连带规则）②`status.md` 与 `final/局限性.md` 记「省略 <挂件> → 对应机检记 N/A」。**豁免 ≠ 跳过机检的对账义务**。
@@ -100,7 +100,7 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 - 工具：subagent=派发（分档预设按角色选 subagent_retrieval/strong/audit）｜list_agents=查看｜todo_write=计划｜web_search/web_fetch=检索｜pwsh=命令｜edit/write=文件
 - 闸门：T2.5（检索→分析）/ T7.5（审计→终检）；M 门 exit 0；修订回环三环：A 轨 ≤2 轮 / B 轨至多 +1 深化轮 / G 环 1-2 轮
 - 闸门留痕：两道闸门各落一份 `audits/闸门记录-T2.5.md` / `-T7.5.md`（模板 `templates/闸门记录-template.md`）——「实据」列必须是路径/exit code/命令，写「已检查」被判 P1（机检 **M-Exist-5**）
-- 收报验收：收报后调 `lunheng_handoff_check --role Tn` 验产物/回报；exit 20 重派 / 21 补交 / **22 仅软提示·不等于已验收**；**Phase 5 前另加 `--require-gates --session-log <会话 id> --session-root $DSH_HOME/sessions`**（缺 → `exit 10`；= 主人真的答过的唯一独立核对层；v19.6.0）
+- 收报验收：收报后调 `lunheng_handoff_check --role Tn` 验产物/回报；exit 20 重派 / 21 补交 / **22 仅软提示·不等于已验收**；**Phase 5 前另加 `--require-gates --session-log <会话 id> --session-root $DSH_HOME/sessions`**（缺 → `exit 10`；= 主人真的答过的唯一独立核对层）
 - 素材按需加载留痕：T5 每轮覆盖写 `analysis/素材加载清单.md`（模板同名）——正文引用须 ⊆ 「## 已加载」，机检 **M-Form-11**（引了没读 = 引用不可信）
 - 审计视图：Phase 2/3.6/4/4.6/4.7/5 派发前主控跑 `build-evidence-bundle.mjs <项目> --summary` 刷新 `audits/审计视图-v0.md`（源三级回退：`--source` ＞ `final/定稿.md` ＞ `drafts/` 最高版本）；读前看视图头「视图源 + 阶段」
 - 检索收敛：T1/T2/T3 首轮软预算 ≤40 步；**连续 2 轮无新增卡即判饱和停**（饱和照实报，不补占位）
@@ -115,7 +115,7 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 
 ## ⚡ DSH 原生能力接缝（H1-H6）
 
-> 落地状态表、参数签名、边界论证与实现史**单一真源 = [`references/_shared/DSH-集成方案.md`](references/_shared/DSH-集成方案.md) §C 组**——本处只留**运行期会踩到的约束**（v19.27.7 常驻面瘦身：原先复述的四段参数细节已回真源）。
+> 落地状态表、参数签名、边界论证与实现史**单一真源 = [`references/_shared/DSH-集成方案.md`](references/_shared/DSH-集成方案.md) §C 组**——本处只留**运行期会踩到的约束**。
 
 - **H1 并发**：子代理可并发调工具（读面无冲突）；唯一写面是 `lunheng_m_gate` 的 `report`（限工作区/临时目录 + 原子写＝最后写者胜）——**同一项目不要并发跑两次带 `report` 的 M 门**。
 - **H2 自动脱敏**：材料类工具结果自动过 `lunheng_ethics_sanitize`（basic），命中摘要以**一行标记**进下一轮；**降低泄露面，不构成合规保证**（字段投影与写面契约见真源 §H2）。
@@ -161,7 +161,7 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 
 **轻量档（2000-3000 字）**：主控+写手直写；T1/T2 必跑，T3 空卡协议，T6 跳，T4 大纲可省（**省略时见上方连带规则**）；1000 字短评直接调 T5；纯观点/即时问答/朋友圈/邮件用 LLM 直接答。
 
-**⚡ 三入口（v19.12.0）**：Phase 0 先定**入口**（快写 / 写一篇 / 学术投稿）再定**文类**——入口定机检档，文类定体例；候选集与两问推断见 [`references/_shared/文类档案.md`](references/_shared/文类档案.md) §三入口与文类候选集。**≥20000 字不做一个项目**：人工拆章（一章一个 `course` 项目）+ 证据池复用，跨章一致性/文献总表/交叉引用归人工（L2/L3 未立项，2026-10-18 裁定）。
+**⚡ 三入口**：Phase 0 先定**入口**（快写 / 写一篇 / 学术投稿）再定**文类**——入口定机检档，文类定体例；候选集与两问推断见 [`references/_shared/文类档案.md`](references/_shared/文类档案.md) §三入口与文类候选集。**≥20000 字不做一个项目**：人工拆章（一章一个 `course` 项目）+ 证据池复用，跨章一致性/文献总表/交叉引用归人工（L2/L3 未立项，2026-10-18 裁定）。
 
 **⚡ 轻量快轨（第四入口，独立于上述三档）**：主人一句「快写 <主题>」触发——① Phase 0 压缩为**单次确认**（主题 + 字数 + 三段式授权串一行内回复）；**门数不减**——四份确认单照落，后三门降为通知单（主控自决、§6 仍回填；A7 核，漏落硬 21）；② 角色仅 **T1 检索（T2 空卡协议）+ T5 写作 + 主控终检**；③ 机检只跑 `m-gate-check.mjs --lite-profile`（**M-Form-1/3/5/7 + M-Exist-2 五道**，结构 + 证据包在盘即可，全文审计链全跳）；④ 产物 = **A1 最小交付集**（缺一 hard 20）：`定稿.md`/`证据包/`/`交付说明.md`/`局限性.md`/`运行报告.html`＋AI 披露双通道；**「快轨交付说明.md」是旧名，A1 只认 `交付说明.md`**；⑤ `QUICKSTART.md` 首屏即快轨，全量档作「学术模式」二级入口。**快轨不是学术交付**：无 T6-T9/G14/期刊匹配，交付说明须标「快轨模式·非学术投稿」。
 
@@ -193,7 +193,7 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 ## 核心原则
 
 1. **证据底座先行 + 三角验证**：M-Form-8 按实质 H2 节统计 `[Lxx]` / `[先NN]` / `[Dxx]` / `[Cxx]` / `[Sxx]` 五类独立证据；零类 P0、单类 P1、两类以上但无 `[Lxx]/[先NN]` 文献族 P2，`ACCEPTED-GAPS` 可豁免覆盖项。涉企业行为 / 事件必须配案例卡；检索不到标缺口，严禁编造。
-2. **人在环四节点（v19.8.0 反哺 v9 D6-b 起默认「两门阻塞 + 两通知不阻塞」）**：P0 定题 / P2.5 大纲 / P3.5 洞察 / P5 终稿 四节点**均落确认/通知单**（P3.6 T6 批判是内部动作，主人不介入）；其中 **P0 定题（门-A）与 P5 终稿（门-B）默认阻塞**等主人真实回复，**P2.5 大纲 / P3.5 洞察默认只通知不阻塞**——仍落盘 `阶段确认-Phase2.5.md` / `阶段确认-Phase3.5.md`（§6 由主控回填并标注「通知单·默认不阻塞」），主控按通知单首个推荐项自决，主人在门-B 可追溯翻阅；**主人显式声明「全过目」→ 恢复四门阻塞**。**唯一例外 = 主人显式授权「全自动」（v19.1.9）**：P5 门-B 也不再提问，主控自决；**但四份确认/通知单照旧落盘**（§6 由主控回填并注明「主人授权：全自动/通知单」+ 逐门记下替主人做的选择）⇒ **留痕不破、A7 四门留痕机械门不变**。**P0 不受此授权影响**（外部服务授权串与项目名围栏依赖它）。仅阻塞门用 `ask_user_question` 提问（选项首个 = 主控建议并标「（推荐）」，回填进确认单 §6）；默认通知门不调用提问，由主控按首个推荐项自决并回填；**子代理问不了**（owned child 无人应答会被拒）——闸门只能留在主控；工具失败 ≠ 同意（退回书面确认单并记失败码）。确认单增 **§0 本门增量**（判据决定全单/微确认单，不得凭感觉）、**§8 本门生效的数值约束**（主人可当场变更并留痕）、Phase 0 增 **§0-d 离场预案**（主人事前预授权「条件通过」：建议=通过 + 无 P0 + 无未做项，三条同时满足才生效，任一条不满足仍等主人——**预授权 ≠ 工具失败当通过**）。语义真源见 [`references/agents/00-主控-扩展职责.md`](references/agents/00-主控-扩展职责.md) §二十一。
+2. **人在环四节点（默认「两门阻塞 + 两通知不阻塞」）**：P0 定题 / P2.5 大纲 / P3.5 洞察 / P5 终稿 四节点**均落确认/通知单**（P3.6 T6 批判是内部动作，主人不介入）；其中 **P0 定题（门-A）与 P5 终稿（门-B）默认阻塞**等主人真实回复，**P2.5 大纲 / P3.5 洞察默认只通知不阻塞**——仍落盘 `阶段确认-Phase2.5.md` / `阶段确认-Phase3.5.md`（§6 由主控回填并标注「通知单·默认不阻塞」），主控按通知单首个推荐项自决，主人在门-B 可追溯翻阅；**主人显式声明「全过目」→ 恢复四门阻塞**。**唯一例外 = 主人显式授权「全自动」**：P5 门-B 也不再提问，主控自决；**但四份确认/通知单照旧落盘**（§6 由主控回填并注明「主人授权：全自动/通知单」+ 逐门记下替主人做的选择）⇒ **留痕不破、A7 四门留痕机械门不变**。**P0 不受此授权影响**（外部服务授权串与项目名围栏依赖它）。仅阻塞门用 `ask_user_question` 提问（选项首个 = 主控建议并标「（推荐）」，回填进确认单 §6）；默认通知门不调用提问，由主控按首个推荐项自决并回填；**子代理问不了**（owned child 无人应答会被拒）——闸门只能留在主控；工具失败 ≠ 同意（退回书面确认单并记失败码）。确认单增 **§0 本门增量**（判据决定全单/微确认单，不得凭感觉）、**§8 本门生效的数值约束**（主人可当场变更并留痕）、Phase 0 增 **§0-d 离场预案**（主人事前预授权「条件通过」：建议=通过 + 无 P0 + 无未做项，三条同时满足才生效，任一条不满足仍等主人——**预授权 ≠ 工具失败当通过**）。语义真源见 [`references/agents/00-主控-扩展职责.md`](references/agents/00-主控-扩展职责.md) §二十一。
 3. **反方论证强制**：每个核心论点配「可能的反驳 + 回应策略」。
 4. **独立审计**：T7 只审不改、与写手分离；引用分级抽验（C 100% / B ≥50% / A ≥10%）；G2.5 案例核验（多源交叉/时间锚点/立场并列）。
 5. **模型分工**：检索便宜快 / 分析写作强推理 / 审计顶配 / 主控路由（按本机可用模型调整）。
@@ -223,7 +223,7 @@ whenToUse: "「何时该用」与「何时不该用」的完整判据已并入 d
 ## 角色卡与模板
 
 - **9 个独立角色卡（T1-T9）**：`references/agents/01~09`（`00-主控-coordinator.md` = T0 调度 + T8 终检双身份；**`00-主控-扩展职责.md` = T0 实操手册（§一–§二十三）**；T8 独立卡 `08-终检-finalizer.md`，主控亲执行不 spawn；T9 启用按文类档案（`academic-cn/-hum/-case` 必选，其余默认不选）；T3 任何量级必 spawn 含 0 条空卡协议）。
-- **模板**：`references/templates/`（**清单以 `ls references/templates/` 为准，不在此写死数字、也不再逐项枚举**——v19.27.7 常驻面瘦身：手抄清单必漂且占常驻预算；按用途取用、别整目录读）：6 类卡片（`任务简报 / status / 交接报告 / 文献卡 / 数据卡 / 案例卡`）各含 **full + lite**（实战用 lite，培训/字段详解用 full）；其余为单文件模板（阶段确认单通用模板 = `主人确认-template.md`；`机检硬格式`表已收口到 [`references/_shared/机检硬格式.md`](references/_shared/机检硬格式.md)）。
+- **模板**：`references/templates/`（**清单以 `ls references/templates/` 为准，不在此写死数字、也不再逐项枚举**；按用途取用、别整目录读）：6 类卡片（`任务简报 / status / 交接报告 / 文献卡 / 数据卡 / 案例卡`）各含 **full + lite**（实战用 lite，培训/字段详解用 full）；其余为单文件模板（阶段确认单通用模板 = `主人确认-template.md`；`机检硬格式`表已收口到 [`references/_shared/机检硬格式.md`](references/_shared/机检硬格式.md)）。
   > `机检硬格式` 表已收口到 [`references/_shared/机检硬格式.md`](references/_shared/机检硬格式.md)。
 - **运行手册**：`references/pipeline-readme.md`（含 T1-T9/G14 派发话术 + M 门 + F 模式 + AI 披露）。
 - **其余文档**：字数判定表 / degraded-scenarios / 期刊数据库+匹配算法 / 中文数据源集成 / format-export / case-studies 均在 `references/_shared/` 与 `references/`（路径见各节链接）。
