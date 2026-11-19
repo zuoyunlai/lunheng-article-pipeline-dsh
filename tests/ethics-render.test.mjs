@@ -20,6 +20,9 @@ const PACKAGE_ROOT = join(HERE, '..')
 
 // 与 lib/tools.js:388-396 同形（v18.76.0 后的形态）。若 lib/tools.js render 改动且本测试未同步，
 // render 形态必须同步更新——这是「测试 = render 镜像」的纪律。
+// v19.27.21：镜像也要能取到 `COVERAGE_LINE`（真身用的是同一份常量，故这里**import 而非手抄**）。
+import { COVERAGE_LINE } from '../lib/ethics-sanitize.js'
+
 function renderLikeLibTools({ file = '<text>', v }) {
   return [{
     type: 'text',
@@ -29,7 +32,10 @@ function renderLikeLibTools({ file = '<text>', v }) {
         // v18.76.0（R4 修复）：只打项数 + 类别，不得打印 f.text / f.detail
         ? `\n**待复核**：${v.reviewFlags.length} 项（类别：${[...new Set(v.reviewFlags.map((f) => f.kind))].join(' / ')}）——明细含原名，仅在结构化返回值里；请只把本文的 \`text\`（已脱敏）交给下游角色`
         : '') +
-      (v.truncated ? `\n→ 还有后续内容，下一页用 offset=${v.nextOffset}（全文 ${v.textTotalChars} 字）` : ''),
+      (v.truncated ? `\n→ 还有后续内容，下一页用 offset=${v.nextOffset}（全文 ${v.textTotalChars} 字）` : '') +
+      // v19.27.21（审计 §P1-2 ③）：镜像同步「覆盖边界」段。**镜像落后于真身时本文件的形态契约用例会红**
+      //   ——这次正是它抓到的（首次落盘只改了 lib/tools.js）。字面必须与 `COVERAGE_LINE` 一致。
+      `\n— 覆盖边界 —\n${COVERAGE_LINE}`,
   }]
 }
 

@@ -64,7 +64,7 @@ async function fire(ctx, listeners, event, ...args) {
 test('H4 契约：listener 形参个数 = 3（assembly, context, next）', async () => {
   const { ctx, listeners } = makeCordaxLikeCtx()
   const mod = await import(pathToFileURL(INDEX_MOD).href)
-  mod.apply(ctx, {})
+  mod.apply(ctx, { promptTail: 'always' })   // v19.27.21：本文件测的是**尾注内容**，不是注入门控——门控由 tests/prompt-tail-gate.test.mjs 覆盖
   await new Promise((r) => setTimeout(r, 50))
 
   const handlers = listeners['system-prompt/assemble'] || []
@@ -79,7 +79,7 @@ test('H4 契约：listener 形参个数 = 3（assembly, context, next）', async
 test('H4 system-prompt 钩子：await next() 后向 sections 追加论衡段，不覆盖下游', async () => {
   const { ctx, listeners } = makeCordaxLikeCtx()
   const mod = await import(pathToFileURL(INDEX_MOD).href)
-  mod.apply(ctx, {})
+  mod.apply(ctx, { promptTail: 'always' })   // v19.27.21：本文件测的是**尾注内容**，不是注入门控——门控由 tests/prompt-tail-gate.test.mjs 覆盖
   await new Promise((r) => setTimeout(r, 50))
 
   const handlers = listeners['system-prompt/assemble'] || []
@@ -119,7 +119,7 @@ test('H4 版本自证（S7 修复）：尾注里出现的版本号必须**只有
   // 断言口径：**只看运行时渲染出的字符串**（注释/历史注记天然不参与），因此零假阳性。
   const { ctx, listeners } = makeCordaxLikeCtx()
   const mod = await import(pathToFileURL(INDEX_MOD).href)
-  mod.apply(ctx, {})
+  mod.apply(ctx, { promptTail: 'always' })   // v19.27.21：本文件测的是**尾注内容**，不是注入门控——门控由 tests/prompt-tail-gate.test.mjs 覆盖
   await new Promise((r) => setTimeout(r, 50))
 
   const pkgVersion = JSON.parse(readFileSync(join(PACKAGE_ROOT, 'package.json'), 'utf8')).version
@@ -145,7 +145,7 @@ test('H4 版本自证（S7 修复）：尾注里出现的版本号必须**只有
 test('H4 system-prompt 钩子：next() 返回无 sections 的对象也安全追加', async () => {
   const { ctx, listeners } = makeCordaxLikeCtx()
   const mod = await import(pathToFileURL(INDEX_MOD).href)
-  mod.apply(ctx, {})
+  mod.apply(ctx, { promptTail: 'always' })   // v19.27.21：本文件测的是**尾注内容**，不是注入门控——门控由 tests/prompt-tail-gate.test.mjs 覆盖
   await new Promise((r) => setTimeout(r, 50))
 
   const handlers = listeners['system-prompt/assemble'] || []
@@ -167,7 +167,7 @@ test('H4 兜底（P3 回归）：next() 返回 undefined 时不得抹掉装配�
   //   现有用例只覆盖「next 返回**无 sections 的对象**」（见上一条），漏了「返回 undefined / 非对象」这一形态。
   const { ctx, listeners } = makeCordaxLikeCtx()
   const mod = await import(pathToFileURL(INDEX_MOD).href)
-  mod.apply(ctx, {})
+  mod.apply(ctx, { promptTail: 'always' })   // v19.27.21：本文件测的是**尾注内容**，不是注入门控——门控由 tests/prompt-tail-gate.test.mjs 覆盖
   await new Promise((r) => setTimeout(r, 50))
 
   const handlers = listeners['system-prompt/assemble'] || []
@@ -194,7 +194,7 @@ test('H4 兜底（P3 回归）：next() 返回 undefined 时不得抹掉装配�
 test('基线契约：ctx.on 注册两个监听器（H2 + H4）；H3/H5/H7 已移除（v18.62.1 + v18.76.0）', async () => {
   const { ctx, listeners } = makeCordaxLikeCtx()
   const mod = await import(pathToFileURL(INDEX_MOD).href)
-  mod.apply(ctx, {})
+  mod.apply(ctx, { promptTail: 'always' })   // v19.27.21：本文件测的是**尾注内容**，不是注入门控——门控由 tests/prompt-tail-gate.test.mjs 覆盖
   await new Promise((r) => setTimeout(r, 50))
 
   // v18.76.0：lib/index.js 应注册 2 个监听器（全部有真实宿主派发方）：

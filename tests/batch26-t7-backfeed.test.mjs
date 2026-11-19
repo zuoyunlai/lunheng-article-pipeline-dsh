@@ -143,7 +143,7 @@ function makeCordaxLikeCtx() {
 test('batch26 · §四-17：会话追加提示除版本号外给出「行为变更 N 条」与 CHANGELOG 锚点', async () => {
   const { ctx, listeners } = makeCordaxLikeCtx()
   const mod = await import(pathToFileURL(join(ROOT, 'lib', 'index.js')).href)
-  mod.apply(ctx, {})
+  mod.apply(ctx, { promptTail: 'always' })   // v19.27.21：本文件测的是**尾注内容**，不是注入门控——门控由 tests/prompt-tail-gate.test.mjs 覆盖
   await new Promise((r) => setTimeout(r, 50))
 
   const handlers = listeners['system-prompt/assemble'] || []

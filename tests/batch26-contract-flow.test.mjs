@@ -110,7 +110,7 @@ function makeCordaxLikeCtx() {
 async function promptTail() {
   const { ctx, listeners } = makeCordaxLikeCtx()
   const mod = await import(pathToFileURL(join(ROOT, 'lib', 'index.js')).href)
-  mod.apply(ctx, {})
+  mod.apply(ctx, { promptTail: 'always' })   // v19.27.21：本文件测的是**尾注内容**，不是注入门控——门控由 tests/prompt-tail-gate.test.mjs 覆盖
   await new Promise((r) => setTimeout(r, 50))
   const handlers = listeners['system-prompt/assemble'] || []
   assert.ok(handlers.length >= 1, 'H4 监听器未注册')

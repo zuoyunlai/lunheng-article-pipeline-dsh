@@ -94,9 +94,16 @@ test('第3批③：H2 标记的三个口径必须同时成立（byType 排除 pe
   // (2) 低置信候选不得**单独**触发注入（否则每次中文读取都注入一行近零信息标记）
   //   v19.27.13（反哺 F-2 扩钉）：`bankcard-luhn-fail`（16-19 位未过银行卡校验的候选）与人名低置信
   //   同构——几乎恒见于订单号密集的技术文本，注入即回到本条当年消掉的噪声；候选数留 counts.bankcardLow。
-  assert.match(src, /const actionableReviews = deduped\.filter\(\(r\) => String\(r\?\.kind \|\| ''\) !== 'person-low-confidence' && String\(r\?\.kind \|\| ''\) !== 'bankcard-luhn-fail'\)/,
-    '注入条件必须把 `person-low-confidence` 与 `bankcard-luhn-fail` 两类**候选**复核项排除——'
-    + '候选数仍留在 `ethicsSanitized.counts`（personLow / bankcardLow）与工具面，不丢信息')
+  // v19.27.21（第三方全量审计 §P1-2 ①）：排除面新增 `uncovered-kind`（未覆盖形态探测结果）——
+  //   理由与另两类**完全同构**：门牌/物料编号在中文技术文本里几乎恒存在，单独触发即噪声复发。
+  //   本断言从「两个字面量」改为「三个字面量」：**收紧**，不是放宽。
+  const actionableLine = /const actionableReviews = deduped\.filter\(\(r\) => ([^\n]*?)\)\n/.exec(src)
+  assert.ok(actionableLine, '须能切出 `actionableReviews` 的过滤表达式（实现变更时须同批更新本用例）')
+  for (const kind of ['person-low-confidence', 'bankcard-luhn-fail', 'uncovered-kind']) {
+    assert.ok(actionableLine[1].includes("'" + kind + "'"),
+      '注入条件必须把 `' + kind + '` 排除——候选/未覆盖形态仍留在 `ethicsSanitized` 与工具面，不丢信息')
+  }
+  assert.match(actionableLine[1], /!== 'person-low-confidence'/, '必须是「不等于」形态（排除），不得误写成包含')
   assert.ok(!/const actionable = [^\n]*lowCandidates > 0/.test(src),
     '`actionable` 不得再含 `lowCandidates > 0`（姓氏正则对技术文本精度极低：实测 9.5 KB 技术表格 61 个候选、真名 0 个）')
 

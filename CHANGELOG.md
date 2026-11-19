@@ -2,6 +2,63 @@
 
 本文件记录 DSH bundle（lunheng-article-pipeline）的版本历史。DSH 版独立维护、独立版本线：**v17.0.0 起版本号 = 纯语义化版本，迭代号进 major**（`2.5.2-dsh.17` → `17.0.0` → `18.0.0`；历史 `-dsh.N` 段见下）。方案变更理由与映射见 `## 17.0.0` 段。
 
+## 19.27.21 — 2026-11-19
+
+<!-- 行为变更 8 条 | 锚点 = CHANGELOG.md § 19.27.21（第三方全量审计反哺批：写保护补名 / 脱敏能力边界可见 / 常驻注入开关 / 预算下调 / 命令不猜工作区） -->
+
+> **主题**：第三方审计反哺批。审计报告 = `audits/反哺报告-2026-11-19-论衡插件第三方全量审计-v1.md`。
+> **一句话**：本批不新增能力，只做三件「让声明与实现对齐」的事——**守卫按宿主真实工具名补齐**、
+> **脱敏把「我没有能力」变成可见事实**、**常驻注入给出开关**。
+
+- **① 写保护补齐三个可达工具名（§P1-1）**：`WRITE_TOOLS` 是按「见过的命名变体」枚举收集的，而本机
+  `ops_load_sdk` 声明的原始 API 目录里 `edit_file` / `replace` / `copy` **都是写面却不在集合内**——独立探针实测
+  三者对受保护根内路径返回 **ALLOW**，其中 `replace` / `copy` 连 F-11 的写样名告警都不触发（**完全静默**）。
+  现补入集合，并把 `replace` / `copy` / `truncate` 纳入告警分词；`WRITE_TOOLS` 一并导出供机械对账。
+  新增 `tests/guard-write-tools-coverage.test.mjs`：拿「宿主可达写类原始 API 名」清单求差集（集合层）**并**
+  真装 guard 逐个断言否决（行为层）——此前这个集合的充分性**没有任何判据**。
+- **② 脱敏新增「未覆盖形态」探测（§P1-2 ①）**：实测本工具对 IDN 邮箱 / 护照号 / 详细门牌 / 即时通讯账号 / 车牌
+  **一律原样返回且计数为 0**，而 H2 标记只报「命中替换 N 处」——于是「0」与「干净」在输出上长得一样。
+  新增 `lib/ethics-coverage.js`：**只登记不改写**，命中则 `uncovered[kind]++` 并压一条 `reviewFlags`。
+  新字段 `uncovered` 与 `counts` **并列**（不塞进 counts——那些键都会被当「替换数」打印）。
+- **③ 脱敏能力边界进单点常量并上屏（§P1-2 ③）**：新增 `COVERAGE` / `COVERAGE_LINE`（`lib/ethics-sanitize.js`），
+  由 **H2 标记**与 **工具 render** 共用同一份字面；工具描述补「**不覆盖**」清单。
+  H2 的 `uncovered-kind` **不单独触发注入**（与低置信候选同档，防噪声复发），但标记本来就要出现时会一并带上。
+- **④ 常驻注入开关 `promptTail`（§P2-1 · Config 第 11 键）**：H4 原本**每次** `system-prompt/assemble` 无条件追加
+  约 400–600 B；审计那一轮会话从未用过论衡却整轮挂着它。现默认 `auto` = 仅当会话工作区存在
+  `run/<项目>/status.md` 或 `agents-log.md` 时注入（判据是**文件系统事实**，不是「模型是否加载过技能」——
+  后者在装配入参里不可得）；`always` 恢复旧行为，`never` 完全不注入。**waterfall 纪律不变**：不注入也必须
+  先 `await next()`。新增 `tests/prompt-tail-gate.test.mjs` 穷举四态。
+- **⑤ `hookMaxTotalChars` 默认 1 MB → 256 KB（§P2-3）**：实测约 **0.165 ms/KB**（纯中文 400 K 字符 66 ms），
+  故 1 MB 预算最坏同步耗时约 165 ms，下调后约 41 ms；且与单块上限 `hookMaxBlockChars` 同值便于解释。
+- **⑥ `/lunheng-status` 与 `/lunheng-stats` 不再猜工作区（§P2-7）**：取不到 `invocation.agent.session.header.cwd` 时
+  旧实现回落 `process.cwd()`（Desktop 下通常是**安装目录**），于是「未找到项目」或更糟——读到**同名的另一个项目**。
+  现改为**显式拒绝**并给出可操作提示。`panelRoots` 的 cwd 兜底保留（HTTP 侧无会话上下文），但新增
+  `panelRootsInfo()` 并在 `/ping` 暴露 `rootsSource`，让「这个根是猜的」可被看见。
+- **⑦ `lunheng_char_count` 新增 `file` 字段（§P2-6）**：脚本顶层本就回显 `file` 而工具未转发；现转发**解析后的绝对路径**。
+  配套新增 `tests/tool-output-fields.test.mjs`——把「脚本有、工具丢弃」这类缺陷（v19.19.1 记过一次）变成机械门：
+  `execute` 返回键 ⊆ `output.schema`，且脚本顶层键 ⊆ schema ∪ 已登记缺口。
+- **⑧ 新增 `scripts/tool-count-probe.mjs`（§P2-4）**：结清挂了十余版的「三档工具到底装没装」。
+  **静态推演**（读 patch 的 `disabled` 表达式，不 eval；表达式引用了未登记的 env 名即 exit 10）＋
+  **运行期实测**（GET `/lunheng-panel/plugin-info`，以宿主自报为准）。本机实测：三档全部已配置
+  （`minimax-cn` / `MiniMax-M3` ×3）——**「默认零成本」在本机不成立**，此事实首次被真宿主证实。
+
+**未采纳（如实）**：
+- **不改 `panel` 默认值**（§P2-5）：默认开启有主人 2026-10-10 裁定背书；本批只补**披露位置**（五语种 README 首屏
+  新增「装前必读：三条默认开启面」）与 `/ping` 的 `rootsSource`，不改默认。
+- **不做 `lib/**` 注解外移**（§P2-9）：报告判为「择机 / 1 天」，且属**纯注释重构、零行为收益**。本批改动面已含
+  5 个 lib 文件、9 处行为变更，再叠加一次 7013 行的注释搬迁会让回归证据失去可归因性。**单列待做**。
+- **不改存量测试命名**（§P2-8）：与「不回头整改旧产物」口径一致；只对新增测试强制行为名，
+  本批三个新测试均以行为命名。
+
+**验证**：全量回归 **1465/1465 通过**（runner 计 1467 例 = 1465 通过 + 2 个带理由跳过，0 失败）；六道门全绿——
+`consistency-check`（93 个 .md 0 漂移）、`derive-facts --check`（Config **11 键** / 七份复述层对账）、
+`plugin-surface-check`（11 项通过 / 3 项白名单 skip）、`repo-hygiene-check`（含 ⑬ CHANGELOG 段结构 / doc-budget / 注解密度）、
+`host-contract-probe`（15 项）、`pack-smoke`（发布物 215 文件 4443 KB 可装载）。
+新增四组测试：`guard-write-tools-coverage`（写工具名集合充分性 + 行为否决）、`ethics-coverage`（未覆盖形态召回 / 不改写 / 不误报）、
+`prompt-tail-gate`（注入四态穷举）、`tool-output-fields`（execute 键 ⊆ schema，脚本键 ⊆ schema ∪ 缺口）。
+
+**回滚点**：`git revert` 本版提交即回到 v19.27.20。本批不改 M 门判级、角色 / 阶段模型与宿主兼容区间。
+
 ## 19.27.20 — 2026-11-19
 
 <!-- 行为变更 3 条 | 锚点 = CHANGELOG.md § 19.27.20（DSH 0.2.2-rc.5 宿主契约核实：白名单与运行期实测分列 / 探针自曝产物级盲区 / 工具名 pwsh→ops_bash） -->
