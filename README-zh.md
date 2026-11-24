@@ -1,8 +1,24 @@
-# 论衡（lunheng-article-pipeline）— DSH bundle 多 Agent 深度长文流水线
+<div align="center">
 
-> 🌐 [English](README.md) ｜ **中文**（本文件）｜ [Español](README-es.md) ｜ [Português](README-pt.md) ｜ [हिन्दी](README-hi.md)
+<img src="https://raw.githubusercontent.com/zuoyunlai/lunheng-article-pipeline-dsh/master/docs/assets/banner.svg" alt="Lunheng — nine-role long-form pipeline" width="100%" />
 
-> 版本：v19.27.21（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+# 论衡 · Lunheng
+
+**九个角色、四道人在环、可机检的长文流水线。**
+
+🌐 [English](README.md) · **中文** · [Español](README-es.md) · [Português](README-pt.md) · [हिन्दी](README-hi.md)
+
+[更新日志](CHANGELOG.md) · [MIT License](LICENSE)
+
+[![npm](https://img.shields.io/npm/v/lunheng-article-pipeline?label=npm&color=cb3837)](https://www.npmjs.com/package/lunheng-article-pipeline)
+[![downloads](https://img.shields.io/npm/dm/lunheng-article-pipeline?label=downloads&color=cb3837)](https://www.npmjs.com/package/lunheng-article-pipeline)
+[![ci](https://github.com/zuoyunlai/lunheng-article-pipeline-dsh/actions/workflows/ci.yml/badge.svg)](https://github.com/zuoyunlai/lunheng-article-pipeline-dsh/actions/workflows/ci.yml)
+[![license](https://img.shields.io/badge/license-MIT-3f7d3f)](LICENSE)
+[![node](https://img.shields.io/badge/node-22%20or%20later-3f7d3f)](package.json)
+
+</div>
+
+> 版本：v19.27.22（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > **装前必读**：面板（v18.93.0 起默认开）、机制写保护、脱敏均**默认开启**；详见 `SECURITY.md`。
 
@@ -121,7 +137,7 @@ patch 层做两件事：**插入一行本包自注册行**（`- id: lunheng-arti
 **只推 tag 发布，禁止本地 `npm publish`**（本地直发会绕过 CI 四道门与 OIDC 来源证明，且 npm 版本不可覆盖）。
 
 ```sh
-git tag v19.27.21 && git push origin v19.27.21   # 一次只推 1 个 tag（GitHub：单次 push >3 个 tag 不触发任何 workflow）
+git tag v19.27.22 && git push origin v19.27.22   # 一次只推 1 个 tag（GitHub：单次 push >3 个 tag 不触发任何 workflow）
 # publish.yml 依次跑：门 1 一致性 → 门 2 打包面 → 门 3 机械卫生 → 门 4 打包产物冒烟 → 脚本回归测试
 #   → tag/版本一致校验 → 幂等守卫 → OIDC 发布 --provenance --tag dsh → 发布后审计
 ```

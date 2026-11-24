@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="400" viewBox="0 0 1600 400" role="img" aria-labelledby="lt">
+  <title id="lt">Lunheng — a nine-role long-form pipeline for DeepSeek Harness</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2a1d15"/>
+      <stop offset=".55" stop-color="#1a1310"/>
+      <stop offset="1" stop-color="#100b09"/>
+    </linearGradient>
+    <radialGradient id="glow" cx=".14" cy=".46" r=".62">
+      <stop offset="0" stop-color="#8a3d00" stop-opacity=".45"/>
+      <stop offset="1" stop-color="#8a3d00" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="wheat" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fcecc9"/>
+      <stop offset="1" stop-color="#dfbd81"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#e6c893"/>
+      <stop offset="1" stop-color="#b8905c"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1600" height="400" fill="url(#bg)"/>
+  <rect width="1600" height="400" fill="url(#glow)"/>
+
+  <g stroke="#f5deb3" stroke-opacity=".07" stroke-width="1">
+    <line x1="0" y1="66" x2="1600" y2="66"/>
+    <line x1="0" y1="334" x2="1600" y2="334"/>
+    <line x1="812" y1="40" x2="812" y2="360"/>
+  </g>
+
+  <g stroke="#d9b982" stroke-opacity=".28" stroke-width="2" fill="none">
+    <path d="M28 52 V28 H52"/>
+    <path d="M1548 28 H1572 V52"/>
+    <path d="M28 348 V372 H52"/>
+    <path d="M1548 372 H1572 V348"/>
+  </g>
+
+  <g font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC','Segoe UI',sans-serif">
+    <circle cx="150" cy="196" r="58" fill="url(#wheat)"/>
+    <circle cx="150" cy="196" r="52" fill="none" stroke="#843900" stroke-opacity=".38" stroke-width="1.5"/>
+    <text x="150" y="219" text-anchor="middle" font-size="58" fill="#843900"
+          font-family="'Noto Serif CJK SC','Source Han Serif SC','Songti SC','SimSun',serif">衡</text>
+
+    <text x="246" y="180" font-size="88" font-weight="700" letter-spacing="10" fill="#f8f0e3"
+          font-family="'Noto Serif CJK SC','Source Han Serif SC','Songti SC','SimSun',serif">论衡</text>
+    <text x="250" y="224" font-size="24" letter-spacing="14" fill="#d9b982">LUNHENG</text>
+    <text x="250" y="272" font-size="21" fill="#c3ad8e">九角色 · 四道人在环 · 三角验证 · 可机检</text>
+    <text x="250" y="312" font-size="15" letter-spacing="3" fill="#8d7a66">DEEPSEEK HARNESS BUNDLE</text>
+
+    <text x="848" y="96" font-size="15" letter-spacing="4" fill="#9c8b77">SIX PHASES · NINE ROLES · ONE EVIDENCE BASE</text>
+
+    <g>
+      <rect x="848" y="116" width="96" height="52" rx="26" fill="#2b1f17" stroke="#5d4633"/>
+      <text x="896" y="150" text-anchor="middle" font-size="22" fill="#f3e6d2">定题</text>
+      <rect x="968" y="116" width="96" height="52" rx="26" fill="#2b1f17" stroke="#5d4633"/>
+      <text x="1016" y="150" text-anchor="middle" font-size="22" fill="#f3e6d2">检索</text>
+      <rect x="1088" y="116" width="96" height="52" rx="26" fill="#2b1f17" stroke="#5d4633"/>
+      <text x="1136" y="150" text-anchor="middle" font-size="22" fill="#f3e6d2">分析</text>
+      <rect x="1208" y="116" width="96" height="52" rx="26" fill="#2b1f17" stroke="#5d4633"/>
+      <text x="1256" y="150" text-anchor="middle" font-size="22" fill="#f3e6d2">写作</text>
+      <rect x="1328" y="116" width="96" height="52" rx="26" fill="#2b1f17" stroke="#5d4633"/>
+      <text x="1376" y="150" text-anchor="middle" font-size="22" fill="#f3e6d2">审计</text>
+      <rect x="1448" y="116" width="96" height="52" rx="26" fill="#3a2418" stroke="#a3763f"/>
+      <text x="1496" y="150" text-anchor="middle" font-size="22" fill="#fdf3e0">终检</text>
+      <g fill="#c9a063" font-size="20" text-anchor="middle" opacity=".85">
+        <text x="944" y="151">›</text>
+        <text x="1064" y="151">›</text>
+        <text x="1184" y="151">›</text>
+        <text x="1304" y="151">›</text>
+        <text x="1424" y="151">›</text>
+      </g>
+    </g>
+
+    <text x="848" y="212" font-size="17" fill="#c9a063">T1/T2/T3 并行 → T4 分析 → T5 写作 → T6/T7 批判审计 → T8 → T9</text>
+    <text x="848" y="244" font-size="16" fill="#94816c">三角验证 [L] [D] [C] · G0–G14 审计 · M 门机检 · 四道人在环确认</text>
+
+    <rect x="848" y="268" width="704" height="1" fill="#f5deb3" fill-opacity=".12"/>
+    <text x="848" y="300" font-size="15" fill="#8d7a66">Evidence-first long-form writing · academic · industry · commentary</text>
+  </g>
+
+  <rect y="396" width="1600" height="4" fill="url(#gold)" opacity=".55"/>
+</svg>

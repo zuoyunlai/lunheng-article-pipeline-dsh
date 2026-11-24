@@ -1,8 +1,24 @@
-# Lunheng (lunheng-article-pipeline) — a DeepSeek Harness bundle for multi-agent long-form writing
+<div align="center">
 
-> 🌐 **English** (this file) ｜ [中文](README-zh.md) ｜ [Español](README-es.md) ｜ [Português](README-pt.md) ｜ [हिन्दी](README-hi.md)
+<img src="https://raw.githubusercontent.com/zuoyunlai/lunheng-article-pipeline-dsh/master/docs/assets/banner.svg" alt="Lunheng — nine-role long-form pipeline" width="100%" />
 
-> 版本：v19.27.21（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+# Lunheng · 论衡
+
+**A nine-role, human-in-the-loop long-form pipeline you can machine-check.**
+
+🌐 **English** · [中文](README-zh.md) · [Español](README-es.md) · [Português](README-pt.md) · [हिन्दी](README-hi.md)
+
+[Changelog](CHANGELOG.md) · [MIT License](LICENSE)
+
+[![npm](https://img.shields.io/npm/v/lunheng-article-pipeline?label=npm&color=cb3837)](https://www.npmjs.com/package/lunheng-article-pipeline)
+[![downloads](https://img.shields.io/npm/dm/lunheng-article-pipeline?label=downloads&color=cb3837)](https://www.npmjs.com/package/lunheng-article-pipeline)
+[![ci](https://github.com/zuoyunlai/lunheng-article-pipeline-dsh/actions/workflows/ci.yml/badge.svg)](https://github.com/zuoyunlai/lunheng-article-pipeline-dsh/actions/workflows/ci.yml)
+[![license](https://img.shields.io/badge/license-MIT-3f7d3f)](LICENSE)
+[![node](https://img.shields.io/badge/node-22%20or%20later-3f7d3f)](package.json)
+
+</div>
+
+> 版本：v19.27.22（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > **Read before installing**: run panel (v18.93.0+ default on), mechanism write guard, ethics sanitizer — all **ON by default**; switches and limits in `SECURITY.md`.
 
@@ -124,7 +140,7 @@ The patch layer does two things: it **inserts one row for this package** (`- id:
 Releases are **tag-only**; a local `npm publish` is forbidden (it would bypass the CI gates and OIDC provenance, and a published npm version can never be overwritten).
 
 ```sh
-git tag v19.27.21 && git push origin v19.27.21   # push one tag at a time (GitHub: >3 tags in one push triggers no workflow)
+git tag v19.27.22 && git push origin v19.27.22   # push one tag at a time (GitHub: >3 tags in one push triggers no workflow)
 # publish.yml then runs gate 1 consistency → gate 2 packaging surface → gate 3 hygiene → gate 4 pack smoke → script tests
 #   → tag/version equality → idempotency guard → OIDC publish --provenance --tag dsh → post-publish audit
 ```

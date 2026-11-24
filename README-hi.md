@@ -1,8 +1,24 @@
-# लुन्हेंग (lunheng-article-pipeline) — बहु-एजेंट दीर्घ-लेख पाइपलाइन
+<div align="center">
 
-> 版本：v19.27.21（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+<img src="https://raw.githubusercontent.com/zuoyunlai/lunheng-article-pipeline-dsh/master/docs/assets/banner.svg" alt="Lunheng — nine-role long-form pipeline" width="100%" />
 
-> 🌐 [English](README.md) ｜ [中文](README-zh.md) ｜ [Español](README-es.md) ｜ [Português](README-pt.md) ｜ **हिन्दी**（यह फ़ाइल）
+# लुन्हेंग · 论衡
+
+**नौ भूमिकाएँ, मानवीय जाँच-बिंदु और मशीन-सत्यापित दीर्घ-लेख पाइपलाइन।**
+
+🌐 [English](README.md) · [中文](README-zh.md) · [Español](README-es.md) · [Português](README-pt.md) · **हिन्दी**
+
+[चेंजलॉग](CHANGELOG.md) · [MIT License](LICENSE)
+
+[![npm](https://img.shields.io/npm/v/lunheng-article-pipeline?label=npm&color=cb3837)](https://www.npmjs.com/package/lunheng-article-pipeline)
+[![downloads](https://img.shields.io/npm/dm/lunheng-article-pipeline?label=downloads&color=cb3837)](https://www.npmjs.com/package/lunheng-article-pipeline)
+[![ci](https://github.com/zuoyunlai/lunheng-article-pipeline-dsh/actions/workflows/ci.yml/badge.svg)](https://github.com/zuoyunlai/lunheng-article-pipeline-dsh/actions/workflows/ci.yml)
+[![license](https://img.shields.io/badge/license-MIT-3f7d3f)](LICENSE)
+[![node](https://img.shields.io/badge/node-22%20or%20later-3f7d3f)](package.json)
+
+</div>
+
+> 版本：v19.27.22（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > एक DeepSeek Harness (DSH) बंडल जो **माँग पर दो एजेंट स्किल** पंजीकृत करता है: `lunheng-article-pipeline` (मुख्य 9-भूमिका पाइपलाइन) और `lunheng-commands` (पतला wrapper जो 13 `/lunheng-*` स्लैश आदेश देता है: draft / resume / cite / audit / journal / ppt / history / rollback / status / stats / gate / abort / help; **कोई नई भूमिका नहीं, कोई नया M-द्वार आइटम नहीं**; देखें `skills/lunheng-commands/SKILL.md`)। मुख्य स्किल दीर्घ लेखन — शोध-पत्र, उद्योग विश्लेषण, व्यावसायिक समीक्षा और लंबे लेख — को **मानव-सहभागिता वाली 9-भूमिका पाइपलाइन** में बदल देती है।
 
@@ -117,7 +133,7 @@ patch परत दो काम करती है: **इस पैकेज �
 संस्करण **केवल tag से** प्रकाशित होते हैं; स्थानीय `npm publish` वर्जित है (यह CI द्वारों और OIDC provenance को दरकिनार करता है, और npm संस्करण कभी अधिलेखित नहीं हो सकता)।
 
 ```sh
-git tag v19.27.21 && git push origin v19.27.21   # एक बार में एक ही tag (GitHub: >3 tag एक push में कोई workflow नहीं चलाता)
+git tag v19.27.22 && git push origin v19.27.22   # एक बार में एक ही tag (GitHub: >3 tag एक push में कोई workflow नहीं चलाता)
 # publish.yml क्रम: द्वार 1 सुसंगति → द्वार 2 पैकेजिंग → द्वार 3 स्वच्छता → द्वार 4 पैकेज स्मोक → स्क्रिप्ट परीक्षण
 #   → tag/संस्करण समानता → idempotency गार्ड → OIDC publish --provenance --tag dsh → प्रकाशन-पश्चात लेखा-परीक्षा
 ```

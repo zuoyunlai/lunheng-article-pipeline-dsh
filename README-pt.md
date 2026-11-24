@@ -1,8 +1,24 @@
-# Lunheng (lunheng-article-pipeline) — pipeline multiagente para textos longos
+<div align="center">
 
-> 版本：v19.27.21（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
+<img src="https://raw.githubusercontent.com/zuoyunlai/lunheng-article-pipeline-dsh/master/docs/assets/banner.svg" alt="Lunheng — nine-role long-form pipeline" width="100%" />
 
-> 🌐 [English](README.md) ｜ [中文](README-zh.md) ｜ [Español](README-es.md) ｜ **Português**（este arquivo）｜ [हिन्दी](README-hi.md)
+# Lunheng · 论衡
+
+**Uma pipeline de nove papéis, com participação humana e verificação mecânica.**
+
+🌐 [English](README.md) · [中文](README-zh.md) · [Español](README-es.md) · **Português** · [हिन्दी](README-hi.md)
+
+[Registro de mudanças](CHANGELOG.md) · [MIT License](LICENSE)
+
+[![npm](https://img.shields.io/npm/v/lunheng-article-pipeline?label=npm&color=cb3837)](https://www.npmjs.com/package/lunheng-article-pipeline)
+[![downloads](https://img.shields.io/npm/dm/lunheng-article-pipeline?label=downloads&color=cb3837)](https://www.npmjs.com/package/lunheng-article-pipeline)
+[![ci](https://github.com/zuoyunlai/lunheng-article-pipeline-dsh/actions/workflows/ci.yml/badge.svg)](https://github.com/zuoyunlai/lunheng-article-pipeline-dsh/actions/workflows/ci.yml)
+[![license](https://img.shields.io/badge/license-MIT-3f7d3f)](LICENSE)
+[![node](https://img.shields.io/badge/node-22%20or%20later-3f7d3f)](package.json)
+
+</div>
+
+> 版本：v19.27.22（DSH bundle：package.json + cordis.patch.yml + lib/index.js）
 
 > Um bundle do DeepSeek Harness (DSH) que registra **duas skills de agente sob demanda**: `lunheng-article-pipeline` (a pipeline principal de 9 papéis) e `lunheng-commands` (um invólucro fino que expõe 13 comandos de barra `/lunheng-*`: draft / resume / cite / audit / journal / ppt / history / rollback / status / stats / gate / abort / help; **sem papel novo e sem item novo do portão M**; ver `skills/lunheng-commands/SKILL.md`). A skill principal transforma a produção de textos longos — artigos acadêmicos, análise setorial, comentário econômico e artigos extensos — em uma **pipeline de 9 papéis com participação humana**.
 
@@ -117,7 +133,7 @@ A camada patch faz duas coisas: **insere uma linha para este pacote** (`- id: lu
 As versões são publicadas **apenas por tag**; `npm publish` local é proibido (contorna os portões de CI e a proveniência OIDC, e uma versão npm nunca pode ser sobrescrita).
 
 ```sh
-git tag v19.27.21 && git push origin v19.27.21   # uma tag por push (GitHub: >3 tags em um push não dispara workflow)
+git tag v19.27.22 && git push origin v19.27.22   # uma tag por push (GitHub: >3 tags em um push não dispara workflow)
 # publish.yml executa: portão 1 consistência → portão 2 empacotamento → portão 3 higiene → portão 4 teste de fumaça do pacote → testes
 #   → tag/versão iguais → guarda de idempotência → OIDC publish --provenance --tag dsh → auditoria posterior
 ```
